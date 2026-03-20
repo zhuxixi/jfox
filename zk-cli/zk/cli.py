@@ -87,16 +87,46 @@ def init(
         raise typer.Exit(1)
 
 
+def extract_wiki_links(content: str) -> List[str]:
+    """从内容中提取 [[...]] 格式的维基链接"""
+    import re
+    pattern = r'\[\[(.*?)\]\]'
+    matches = re.findall(pattern, content)
+    return [m.strip() for m in matches]
+
+
+def find_note_id_by_title_or_id(title_or_id: str) -> Optional[str]:
+    """通过标题或ID查找笔记"""
+    all_notes = note.list_notes()
+    
+    # 首先尝试精确匹配 ID
+    for n in all_notes:
+        if n.id == title_or_id:
+            return n.id
+    
+    # 然后尝试标题包含匹配
+    for n in all_notes:
+        if title_or_id.lower() in n.title.lower():
+            return n.id
+    
+    # 最后尝试模糊匹配（标题相近）
+    for n in all_notes:
+        if n.title.lower() == title_or_id.lower():
+            return n.id
+    
+    return None
+
+
 @app.command()
 def add(
-    content: str = typer.Argument(..., help="笔记内容"),
+    content: str = typer.Argument(..., help="笔记内容（支持 [[笔记标题]] 格式链接）"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="笔记标题"),
     note_type: str = typer.Option("fleeting", "--type", help="笔记类型 (fleeting/literature/permanent)"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="标签（可多次使用）"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
-    """添加新笔记"""
+    """添加新笔记（内容中可用 [[笔记标题]] 引用其他笔记）"""
     try:
         # 解析类型
         try:
@@ -104,12 +134,25 @@ def add(
         except ValueError:
             raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent")
         
+        # 从内容中提取维基链接
+        wiki_links = extract_wiki_links(content)
+        resolved_links = []
+        unresolved = []
+        
+        for link_text in wiki_links:
+            target_id = find_note_id_by_title_or_id(link_text)
+            if target_id:
+                resolved_links.append(target_id)
+            else:
+                unresolved.append(link_text)
+        
         # 创建笔记
         new_note = note.create_note(
             content=content,
             title=title,
             note_type=nt,
             tags=tags or [],
+            links=resolved_links,
             source=source,
         )
         
@@ -122,14 +165,23 @@ def add(
                     "title": new_note.title,
                     "type": new_note.type.value,
                     "filepath": str(new_note.filepath),
+                    "links": resolved_links,
                 },
             }
+            
+            if unresolved:
+                result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
             
             if json_output:
                 console.print(output_json(result))
             else:
                 console.print(f"[green]✓[/green] Note created: {new_note.title}")
+                console.print(f"  ID: {new_note.id}")
                 console.print(f"  Path: {new_note.filepath}")
+                if resolved_links:
+                    console.print(f"  Links: {len(resolved_links)} connection(s)")
+                if unresolved:
+                    console.print(f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]")
         else:
             raise Exception("Failed to save note")
             
@@ -271,6 +323,197 @@ def list(
                 console.print(f"  {n.filepath}")
                 console.print()
         
+    except Exception as e:
+        result = {
+            "success": False,
+            "error": str(e),
+        }
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def refs(
+    note_id: Optional[str] = typer.Option(None, "--note", "-n", help="查看特定笔记的引用关系"),
+    search: Optional[str] = typer.Option(None, "--search", "-s", help="搜索笔记标题"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """查看笔记引用关系（反向链接）"""
+    try:
+        if search:
+            # 搜索笔记
+            all_notes = note.list_notes()
+            matches = [n for n in all_notes if search.lower() in n.title.lower()]
+            
+            result = {
+                "query": search,
+                "matches": [
+                    {"id": n.id, "title": n.title, "type": n.type.value}
+                    for n in matches
+                ]
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[bold]Search:[/bold] '{search}'\n")
+                if matches:
+                    for n in matches:
+                        console.print(f"• [{n.type.value}] {n.title}")
+                        console.print(f"  ID: {n.id}")
+                        console.print(f"  引用此笔记: {len(n.backlinks)} 处")
+                        console.print()
+                else:
+                    console.print("[dim]No matches found[/dim]")
+        
+        elif note_id:
+            # 查看特定笔记的引用关系
+            n = note.load_note_by_id(note_id)
+            if not n:
+                console.print(f"[red]Note not found: {note_id}[/red]")
+                raise typer.Exit(1)
+            
+            # 获取链接到的笔记
+            forward_links = []
+            for link_id in n.links:
+                link_note = note.load_note_by_id(link_id)
+                if link_note:
+                    forward_links.append({
+                        "id": link_id,
+                        "title": link_note.title,
+                        "type": link_note.type.value
+                    })
+            
+            # 获取反向链接
+            backward_links = []
+            for back_id in n.backlinks:
+                back_note = note.load_note_by_id(back_id)
+                if back_note:
+                    backward_links.append({
+                        "id": back_id,
+                        "title": back_note.title,
+                        "type": back_note.type.value
+                    })
+            
+            result = {
+                "note": {
+                    "id": n.id,
+                    "title": n.title,
+                    "type": n.type.value,
+                },
+                "forward_links": forward_links,
+                "backward_links": backward_links,
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[bold]{n.title}[/bold]\n")
+                
+                if forward_links:
+                    console.print("[cyan]→ Links to:[/cyan]")
+                    for link in forward_links:
+                        console.print(f"  • [{link['type']}] {link['title']}")
+                    console.print()
+                
+                if backward_links:
+                    console.print("[green]← Linked by:[/green]")
+                    for link in backward_links:
+                        console.print(f"  • [{link['type']}] {link['title']}")
+                    console.print()
+                
+                if not forward_links and not backward_links:
+                    console.print("[dim]No connections yet[/dim]")
+        
+        else:
+            # 显示所有笔记及其链接统计
+            all_notes = note.list_notes()
+            notes_with_links = []
+            for n in all_notes:
+                notes_with_links.append({
+                    "id": n.id,
+                    "title": n.title,
+                    "type": n.type.value,
+                    "outgoing": len(n.links),
+                    "incoming": len(n.backlinks),
+                })
+            
+            result = {"notes": notes_with_links}
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                table = Table(title="Note References")
+                table.add_column("ID", style="dim")
+                table.add_column("Title", style="cyan")
+                table.add_column("Type", style="green")
+                table.add_column("Out", justify="right")
+                table.add_column("In", justify="right")
+                
+                for n in notes_with_links:
+                    table.add_row(
+                        n["id"][:14],
+                        n["title"][:40],
+                        n["type"],
+                        str(n["outgoing"]),
+                        str(n["incoming"])
+                    )
+                
+                console.print(table)
+    
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def delete(
+    note_id: str = typer.Argument(..., help="笔记 ID"),
+    force: bool = typer.Option(False, "--force", "-f", help="强制删除不确认"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """删除笔记"""
+    try:
+        # 先查找笔记
+        n = note.load_note_by_id(note_id)
+        if not n:
+            console.print(f"[red]Note not found: {note_id}[/red]")
+            raise typer.Exit(1)
+        
+        # 确认删除
+        if not force:
+            if json_output:
+                console.print(f"Use --force to delete: {n.title}")
+                raise typer.Exit(1)
+            else:
+                console.print(f"Note: {n.title}")
+                confirm = input("Delete? (y/N): ")
+                if confirm.lower() != "y":
+                    console.print("Cancelled")
+                    raise typer.Exit(0)
+        
+        # 执行删除
+        if note.delete_note(note_id):
+            result = {
+                "success": True,
+                "deleted": note_id,
+                "title": n.title,
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[green]✓[/green] Deleted: {n.title}")
+        else:
+            raise Exception("Failed to delete note")
+            
     except Exception as e:
         result = {
             "success": False,

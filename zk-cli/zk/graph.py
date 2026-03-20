@@ -90,7 +90,7 @@ class KnowledgeGraph:
             except Exception as e:
                 console.print(f"[red]Error parsing {note_file}: {e}[/red]")
         
-        # Second pass: add edges from links
+        # Second pass: add edges from frontmatter links
         for note_id, note in self._note_cache.items():
             for linked_id in note.links:
                 if linked_id in self._note_cache:
@@ -98,8 +98,40 @@ class KnowledgeGraph:
                     # Auto-generate backlink
                     self.graph.add_edge(linked_id, note_id, type="backlink")
         
+        # Third pass: extract and add wiki links from content [[...]]
+        for note_id, note in self._note_cache.items():
+            wiki_links = self._extract_wiki_links(note.content)
+            for link_text in wiki_links:
+                linked_id = self._resolve_link(link_text)
+                if linked_id and linked_id in self._note_cache:
+                    # Add edge if not already exists
+                    if not self.graph.has_edge(note_id, linked_id):
+                        self.graph.add_edge(note_id, linked_id, type="wiki_link")
+                        self.graph.add_edge(linked_id, note_id, type="backlink")
+        
         console.print(f"[green]Built graph: {len(self.graph)} nodes, {self.graph.number_of_edges()} edges[/green]")
         return self
+    
+    def _extract_wiki_links(self, content: str) -> List[str]:
+        """Extract [[...]] wiki links from content."""
+        pattern = r'\[\[(.*?)\]\]'
+        matches = re.findall(pattern, content)
+        return [m.strip() for m in matches]
+    
+    def _resolve_link(self, link_text: str) -> Optional[str]:
+        """Resolve a link text to a note ID."""
+        # First try exact ID match
+        if link_text in self._note_cache:
+            return link_text
+        
+        # Then try title match
+        for note_id, note in self._note_cache.items():
+            if link_text.lower() in note.title.lower():
+                return note_id
+            if note.title.lower() == link_text.lower():
+                return note_id
+        
+        return None
     
     def _parse_note_file(self, file_path: Path) -> Optional[Note]:
         """Parse a note file and extract metadata."""

@@ -1,7 +1,7 @@
 # JFox 项目会话记录
 
 ## 会话时间
-2026-03-20
+2026-03-20 ~ 2026-03-21
 
 ## 项目起源
 
@@ -32,29 +32,102 @@
 
 ---
 
-## 其他命名备选（已考虑）
+## 开发进展
 
-### 德语风格（Zettelkasten 起源）
-- Zettel / ZettelKit / ZettelBox
-- Kasten / Denkkasten
+### Issue #3: CLI Core MVP ✅ 已完成
+实现了基础 CLI 功能：
+- `init` - 初始化知识库
+- `add` - 添加笔记
+- `search` - 语义搜索
+- `list` - 列出笔记
+- `status` - 查看状态
+- CPU-only embedding 后端（sentence-transformers）
 
-### 连接与网络
-- NexNote / Linkloom / Weave / Synapse
+### Issue #7: Simplify to CPU-only ✅ 已完成
+- 移除 NPU/GPU 复杂逻辑
+- 简化为纯 CPU 后端
+- 性能：1.6ms/text，约 600 texts/sec
 
-### 思维与想法
-- CogNote / Thinklet / Ideon / Cortex / Cogito
+### Issue #4: Advanced Features ✅ 已完成
+实现了高级功能：
 
-### 独特创意
-- Luhmann（卡片盒发明者）
-- SlipBox / PermaNote / Folge
+#### 1. 知识图谱 (graph.py)
+- NetworkX 驱动的有向图
+- 自动反向链接生成
+- 图遍历和最短路径
+- 孤立笔记检测
+- Hub 节点分析
+
+#### 2. 文件监控 (indexer.py)
+- Watchdog 实时监控
+- 自动索引更新
+- 索引完整性验证
+
+#### 3. 新 CLI 命令
+| 命令 | 功能 |
+|------|------|
+| `zk query <text>` | 语义搜索 + 图谱联合查询 |
+| `zk graph --stats` | 图谱统计 |
+| `zk graph --orphans` | 孤立笔记 |
+| `zk daily` | 今日笔记 |
+| `zk inbox` | 临时笔记 |
+| `zk index status/rebuild/verify` | 索引管理 |
+| `zk delete <id>` | 删除笔记 |
+| `zk refs --search/--note` | 查看引用关系 |
+
+#### 4. 双向链接 `[[...]]` 支持 🆕
+- 人类友好的引用格式：`[[笔记标题]]`
+- 自动解析并建立链接关系
+- 自动维护反向链接
+- 支持标题模糊匹配
+
+**示例：**
+```bash
+zk add "深度学习是 [[机器学习概述]] 的一个分支..." --title "深度学习" --type permanent
+# 自动识别 "机器学习概述" 并建立链接
+```
+
+---
+
+## 笔记格式
+
+```markdown
+---
+id: '20260321013131'
+title: 深度学习介绍
+type: permanent
+created: '2026-03-21T01:31:31'
+updated: '2026-03-21T01:31:31'
+tags: []
+links:
+- 20260321011528        # 正向链接
+backlinks: []            # 反向链接（自动生成）
+---
+
+# 深度学习介绍
+
+深度学习是 [[机器学习概述]] 的一个分支...
+```
+
+---
+
+## 技术栈
+
+- **CLI**: Typer + Rich
+- **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
+- **Vector DB**: ChromaDB
+- **Graph**: NetworkX
+- **File Watch**: Watchdog
+- **Python**: >=3.10
 
 ---
 
 ## 下一步行动
-- [ ] 初始化项目基础结构
-- [ ] 定义核心功能模块
-- [ ] 技术选型
-- [ ] 设计数据模型
+- [x] Issue #4 高级功能实现
+- [ ] Issue #5: Kimi Skill 集成
+- [ ] Issue #6: 性能优化
+- [ ] 完善 README 文档
+- [ ] 添加更多测试用例
 
 ---
 
