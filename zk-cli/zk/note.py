@@ -187,3 +187,52 @@ def search_notes(
     """搜索笔记"""
     vector_store = get_vector_store()
     return vector_store.search(query, top_k=top_k, note_type=note_type)
+
+
+def find_note_file(config_obj, note_id: str) -> Optional[Path]:
+    """
+    通过 ID 查找笔记文件路径
+    
+    Args:
+        config_obj: ZKConfig 配置对象
+        note_id: 笔记 ID
+        
+    Returns:
+        文件路径或 None
+    """
+    for note_type in NoteType:
+        dir_path = config_obj.notes_dir / note_type.value
+        if not dir_path.exists():
+            continue
+        
+        for filepath in dir_path.glob(f"{note_id}*.md"):
+            return filepath
+    
+    return None
+
+
+class NoteManager:
+    """笔记管理器类，用于面向对象的操作"""
+    
+    @staticmethod
+    def load_note(filepath: Path) -> Optional[Note]:
+        """从文件加载笔记"""
+        return load_note_static(filepath)
+    
+    @staticmethod
+    def find_note_file(config_obj, note_id: str) -> Optional[Path]:
+        """通过 ID 查找笔记文件路径"""
+        return find_note_file(config_obj, note_id)
+
+
+def load_note_static(filepath: Path) -> Optional[Note]:
+    """从文件加载笔记（静态版本）"""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        return Note.from_markdown(content, filepath)
+        
+    except Exception as e:
+        logger.error(f"Failed to load note from {filepath}: {e}")
+        return None
