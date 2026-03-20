@@ -13,12 +13,13 @@ from rich.tree import Tree
 from rich.panel import Panel
 
 from .models import NoteType
-from .config import config, ZKConfig
+from .config import config, ZKConfig, get_config
 from . import note
 from .embedding_backend import get_backend
 from .graph import KnowledgeGraph
 from .indexer import Indexer
 from .vector_store import get_vector_store
+from .kb_manager import get_kb_manager, KBStats
 
 # 配置日志
 logging.basicConfig(
@@ -882,6 +883,218 @@ def index(
         
         else:
             console.print(f"[red]Unknown action: {action}. Use: status, rebuild, verify[/red]")
+            raise typer.Exit(1)
+    
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# 知识库管理命令
+# =============================================================================
+
+@app.command()
+def kb(
+    action: str = typer.Argument("list", help="操作: list, create, switch, remove, info, rename"),
+    name: Optional[str] = typer.Argument(None, help="知识库名称"),
+    new_name: Optional[str] = typer.Argument(None, help="新名称（仅 rename 使用）"),
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（仅 create 使用）"),
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
+    force: bool = typer.Option(False, "--force", "-f", help="强制操作（删除时跳过确认）"),
+    set_default: bool = typer.Option(False, "--default", help="创建后设为默认"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """
+    知识库管理：列出、创建、切换、删除知识库
+    
+    示例:
+        zk kb list                    # 列出所有知识库
+        zk kb create work             # 创建名为 work 的知识库
+        zk kb create work --path ~/work-notes --desc "工作笔记"
+        zk kb switch work             # 切换到 work 知识库
+        zk kb info work               # 查看 work 知识库详情
+        zk kb remove temp --force     # 强制删除 temp 知识库
+        zk kb rename old new          # 重命名知识库
+    """
+    try:
+        manager = get_kb_manager()
+        
+        if action == "list":
+            # 列出所有知识库
+            stats_list = manager.list_all()
+            
+            result = {
+                "current": manager.config_manager.get_default_kb_name(),
+                "knowledge_bases": [
+                    {
+                        "name": s.name,
+                        "path": str(s.path),
+                        "total_notes": s.total_notes,
+                        "by_type": s.by_type,
+                        "created": s.created,
+                        "last_used": s.last_used,
+                        "description": s.description,
+                        "is_current": s.is_current,
+                    }
+                    for s in stats_list
+                ]
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                table = Table(title="Knowledge Bases")
+                table.add_column("Status", style="dim", justify="center")
+                table.add_column("Name", style="cyan")
+                table.add_column("Path", style="green")
+                table.add_column("Notes", justify="right")
+                table.add_column("F/L/P", justify="center")
+                table.add_column("Last Used", style="dim")
+                
+                for s in stats_list:
+                    status = "●" if s.is_current else "○"
+                    types_str = f"{s.by_type.get('fleeting', 0)}/{s.by_type.get('literature', 0)}/{s.by_type.get('permanent', 0)}"
+                    last_used = s.last_used[:10] if s.last_used else "Never"
+                    table.add_row(
+                        status,
+                        s.name,
+                        str(s.path)[:40],
+                        str(s.total_notes),
+                        types_str,
+                        last_used,
+                    )
+                
+                console.print(table)
+                console.print("\n[dim]● = current default, ○ = available[/dim]")
+        
+        elif action == "create":
+            if not name:
+                console.print("[red]Error: name is required for create[/red]")
+                raise typer.Exit(1)
+            
+            path_obj = Path(path) if path else None
+            success, message = manager.create(
+                name=name,
+                path=path_obj,
+                description=description,
+                set_as_default=set_default
+            )
+            
+            result = {"success": success, "message": message}
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                if success:
+                    console.print(f"[green]✓[/green] {message}")
+                else:
+                    console.print(f"[red]✗[/red] {message}")
+                    raise typer.Exit(1)
+        
+        elif action == "switch":
+            if not name:
+                console.print("[red]Error: name is required for switch[/red]")
+                raise typer.Exit(1)
+            
+            success, message = manager.switch(name)
+            result = {"success": success, "message": message}
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                if success:
+                    console.print(f"[green]✓[/green] {message}")
+                else:
+                    console.print(f"[red]✗[/red] {message}")
+                    raise typer.Exit(1)
+        
+        elif action == "remove" or action == "delete":
+            if not name:
+                console.print("[red]Error: name is required for remove[/red]")
+                raise typer.Exit(1)
+            
+            # 确认删除
+            if not force and not json_output:
+                kb_info = manager.get_info(name)
+                if kb_info:
+                    console.print(f"Knowledge base: {kb_info.name}")
+                    console.print(f"Path: {kb_info.path}")
+                    console.print(f"Notes: {kb_info.total_notes}")
+                    confirm = input("\nDelete this knowledge base? [y/N]: ")
+                    if confirm.lower() != "y":
+                        console.print("Cancelled")
+                        raise typer.Exit(0)
+            
+            success, message = manager.remove(name, delete_data=force)
+            result = {"success": success, "message": message}
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                if success:
+                    console.print(f"[green]✓[/green] {message}")
+                else:
+                    console.print(f"[red]✗[/red] {message}")
+                    raise typer.Exit(1)
+        
+        elif action == "info":
+            # 如果没有指定名称，显示当前知识库
+            target_name = name or manager.config_manager.get_default_kb_name()
+            
+            stats = manager.get_info(target_name)
+            if not stats:
+                console.print(f"[red]Knowledge base '{target_name}' not found[/red]")
+                raise typer.Exit(1)
+            
+            result = {
+                "name": stats.name,
+                "path": str(stats.path),
+                "total_notes": stats.total_notes,
+                "by_type": stats.by_type,
+                "created": stats.created,
+                "last_used": stats.last_used,
+                "description": stats.description,
+                "is_current": stats.is_current,
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[bold]{stats.name}[/bold]" + (" [current]" if stats.is_current else ""))
+                console.print(f"  Path: {stats.path}")
+                console.print(f"  Description: {stats.description or 'N/A'}")
+                console.print(f"  Created: {stats.created or 'Unknown'}")
+                console.print(f"  Last used: {stats.last_used or 'Never'}")
+                console.print(f"\n  Total notes: {stats.total_notes}")
+                console.print(f"    - Fleeting: {stats.by_type.get('fleeting', 0)}")
+                console.print(f"    - Literature: {stats.by_type.get('literature', 0)}")
+                console.print(f"    - Permanent: {stats.by_type.get('permanent', 0)}")
+        
+        elif action == "rename":
+            if not name or not new_name:
+                console.print("[red]Error: both old and new name are required for rename[/red]")
+                raise typer.Exit(1)
+            
+            success, message = manager.rename(name, new_name)
+            result = {"success": success, "message": message}
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                if success:
+                    console.print(f"[green]✓[/green] {message}")
+                else:
+                    console.print(f"[red]✗[/red] {message}")
+                    raise typer.Exit(1)
+        
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            console.print("Available actions: list, create, switch, remove, info, rename")
             raise typer.Exit(1)
     
     except Exception as e:

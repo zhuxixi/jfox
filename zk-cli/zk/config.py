@@ -8,11 +8,20 @@ from typing import Optional
 import yaml
 
 
+def get_default_kb_path() -> Path:
+    """获取默认知识库路径（从全局配置）"""
+    try:
+        from .global_config import get_global_config_manager
+        return get_global_config_manager().get_default_kb_path()
+    except Exception:
+        return Path.home() / ".zettelkasten"
+
+
 @dataclass
 class ZKConfig:
     """Zettelkasten 配置"""
     # 路径
-    base_dir: Path = field(default_factory=lambda: Path.home() / ".zettelkasten")
+    base_dir: Path = field(default_factory=get_default_kb_path)
     notes_dir: Path = field(init=False)
     zk_dir: Path = field(init=False)
     chroma_dir: Path = field(init=False)
@@ -74,11 +83,14 @@ class ZKConfig:
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "ZKConfig":
         """从文件加载配置"""
+        # 首先获取默认知识库路径
+        default_path = get_default_kb_path()
+        
         if path is None:
-            path = Path.home() / ".zettelkasten" / ".zk" / "config.yaml"
+            path = default_path / ".zk" / "config.yaml"
         
         if not path.exists():
-            return cls()
+            return cls(base_dir=default_path)
         
         with open(path, 'r', encoding='utf-8') as f:
             config_dict = yaml.safe_load(f)
@@ -86,9 +98,22 @@ class ZKConfig:
         # 转换路径
         if 'base_dir' in config_dict:
             config_dict['base_dir'] = Path(config_dict['base_dir'])
+        else:
+            config_dict['base_dir'] = default_path
         
         return cls(**config_dict)
 
+    @classmethod
+    def for_kb(cls, kb_path: Path) -> "ZKConfig":
+        """为指定知识库创建配置"""
+        return cls(base_dir=kb_path)
 
-# 全局配置实例
-config = ZKConfig.load()
+
+# 全局配置实例（动态获取当前默认知识库）
+def get_config() -> ZKConfig:
+    """获取当前默认知识库的配置"""
+    return ZKConfig.load()
+
+
+# 为了向后兼容，保留 config 变量，但使用动态获取
+config = get_config()
