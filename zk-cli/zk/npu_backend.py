@@ -51,13 +51,23 @@ class NPUAccelerator:
         # Try to use Optimum for NPU first
         if self._device_name == "NPU":
             try:
-                self._load_with_optimum()
+                self._load_with_optimum_npu()
                 self._use_optimum = True
                 logger.info(f"Model loaded on {self._device_name} using Optimum")
                 return
             except Exception as e:
-                logger.warning(f"Failed to load with Optimum: {e}, falling back to CPU")
-                self._device_name = "CPU"
+                logger.warning(f"Failed to load with Optimum on NPU: {e}")
+                # Try GPU as fallback
+                try:
+                    logger.info("Trying GPU...")
+                    self._load_with_optimum_gpu()
+                    self._device_name = "GPU"
+                    self._use_optimum = True
+                    logger.info(f"Model loaded on GPU using Optimum")
+                    return
+                except Exception as e2:
+                    logger.warning(f"Failed to load on GPU: {e2}, falling back to CPU")
+                    self._device_name = "CPU"
         
         # Fallback to sentence-transformers
         try:
@@ -70,17 +80,43 @@ class NPUAccelerator:
             logger.error(f"Failed to load model: {e}")
             raise
     
-    def _load_with_optimum(self):
-        """Load model using Optimum for NPU support"""
+    def _load_with_optimum_npu(self):
+        """Load model using Optimum for NPU support with static shapes"""
+        try:
+            from optimum.intel import OVModelForFeatureExtraction
+            from transformers import AutoTokenizer
+            import openvino as ov
+            
+            # Check if we have a pre-compiled model for NPU
+            cache_dir = ov.Core().get_property("NPU", "CACHE_DIR") if "NPU" in ov.Core().available_devices else None
+            
+            # Load model with static shapes for NPU
+            # Use batch_size=1, seq_length=128 for compatibility
+            self.model = OVModelForFeatureExtraction.from_pretrained(
+                self.model_name,
+                export=True,
+                device="NPU",
+                ov_config={
+                    "CACHE_DIR": "",
+                    "PERFORMANCE_HINT": "LATENCY",
+                }
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            
+        except ImportError:
+            logger.error("Optimum or transformers not installed")
+            raise
+    
+    def _load_with_optimum_gpu(self):
+        """Load model using Optimum for GPU support"""
         try:
             from optimum.intel import OVModelForFeatureExtraction
             from transformers import AutoTokenizer
             
-            # Load model with Optimum
             self.model = OVModelForFeatureExtraction.from_pretrained(
                 self.model_name,
                 export=True,
-                device="NPU"
+                device="GPU"
             )
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             
@@ -117,11 +153,16 @@ class NPUAccelerator:
         
         embeddings = []
         for text in texts:
-            inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+            inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=128)
             with torch.no_grad():
                 outputs = self.model(**inputs)
             # Use mean pooling
-            embedding = outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
+            attention_mask = inputs['attention_mask']
+            token_embeddings = outputs.last_hidden_state
+            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+            sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+            sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+            embedding = (sum_embeddings / sum_mask).squeeze().numpy()
             embeddings.append(embedding)
         
         return np.array(embeddings)
