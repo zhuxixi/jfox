@@ -12,7 +12,7 @@ from rich.table import Table
 from .models import NoteType
 from .config import config, ZKConfig
 from . import note
-from .npu_backend import get_npu_accelerator
+from .embedding_backend import get_backend
 
 # 配置日志
 logging.basicConfig(
@@ -189,8 +189,7 @@ def status(
         stats = note.get_stats()
         
         # 获取 NPU 状态
-        npu = get_npu_accelerator()
-        npu_health = npu.health_check()
+        backend = get_backend()
         
         result = {
             "knowledge_base": {
@@ -198,10 +197,9 @@ def status(
                 "exists": config.base_dir.exists(),
             },
             "stats": stats,
-            "npu": {
-                "available": npu_health["openvino_available"],
-                "devices": npu_health["available_devices"],
-                "selected_device": npu_health["selected_device"],
+            "backend": {
+                "type": "CPU",
+                "model": backend.model_name if backend.model else "not loaded",
             },
         }
         

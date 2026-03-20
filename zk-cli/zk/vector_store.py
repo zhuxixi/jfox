@@ -59,9 +59,9 @@ class VectorStore:
             document = f"{note.title}\n{note.content}"
             
             # 获取 embedding
-            from .npu_backend import get_npu_accelerator
-            npu = get_npu_accelerator()
-            embedding = npu.encode_single(document).tolist()
+            from .embedding_backend import get_backend
+            backend = get_backend()
+            embedding = backend.encode_single(document).tolist()
             
             # 添加到 ChromaDB
             self.collection.add(
@@ -95,9 +95,9 @@ class VectorStore:
         
         try:
             # 获取查询向量
-            from .npu_backend import get_npu_accelerator
-            npu = get_npu_accelerator()
-            query_embedding = npu.encode_single(query).tolist()
+            from .embedding_backend import get_backend
+            backend = get_backend()
+            query_embedding = backend.encode_single(query).tolist()
             
             # 构建过滤条件
             where = {}
