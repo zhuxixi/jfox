@@ -131,14 +131,40 @@ backlinks: []            # 反向链接（自动生成）
 - 故障排除指南
 - 性能基准测试
 
+### Issue #11: 多知识库管理 ✅ 已完成
+- `zk kb` 命令组：list, create, switch, remove, info, rename
+- 全局配置存储在 ~/.zk_config.json
+- 支持多个独立知识库
+
+### Issue #10: 集成测试框架 ✅ 已完成
+- tests/utils/temp_kb.py - 临时知识库管理
+- tests/utils/zk_cli.py - CLI 命令封装
+- tests/utils/note_generator.py - 测试数据生成
+- tests/conftest.py - pytest fixtures
+- tests/test_integration.py - 集成测试
+
+### Issue #5: Kimi Skill 集成 ✅ 已完成
+- `zk mcp` 命令启动 MCP Server
+- MCP 接口：search_notes, add_note, get_note, list_notes, get_kb_info, find_related
+- STDIO 模式用于 Kimi Skill
+
+### Issue #6: 性能优化 ✅ 已完成
+- `zk bulk-import` - 批量导入笔记
+- `zk perf` - 性能工具和报告
+- ModelCache - 模型缓存（5分钟TTL）
+- BatchProcessor - 批量处理优化
+
 ---
 
 ## 下一步行动
 - [x] Issue #4 高级功能实现
 - [x] Issue #8 完善 README 文档
-- [ ] Issue #5: Kimi Skill 集成
-- [ ] Issue #6: 性能优化
-- [ ] 添加更多测试用例
+- [x] Issue #11 多知识库管理
+- [x] Issue #10 集成测试框架
+- [x] Issue #5 Kimi Skill 集成
+- [x] Issue #6 性能优化
+- [ ] Web 界面
+- [ ] 移动端支持
 
 ---
 
