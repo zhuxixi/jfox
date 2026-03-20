@@ -20,6 +20,7 @@ from .graph import KnowledgeGraph
 from .indexer import Indexer
 from .vector_store import get_vector_store
 from .kb_manager import get_kb_manager, KBStats
+from .mcp_server import ZKMCPServer
 
 # 配置日志
 logging.basicConfig(
@@ -1103,6 +1104,38 @@ def kb(
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# MCP Server 命令
+# =============================================================================
+
+@app.command()
+def mcp():
+    """
+    启动 MCP Server (用于 Kimi Skill)
+    
+    以 STDIO 模式启动 MCP Server，处理来自 Kimi 的请求。
+    
+    支持的接口:
+        - search_notes: 语义搜索笔记
+        - add_note: 添加新笔记
+        - get_note: 获取笔记详情
+        - list_notes: 列出笔记
+        - get_kb_info: 获取知识库信息
+        - find_related: 查找相关笔记
+    
+    示例:
+        zk mcp
+    """
+    try:
+        server = ZKMCPServer()
+        server.run_stdio()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.error(f"MCP Server error: {e}")
         raise typer.Exit(1)
 
 
