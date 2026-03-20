@@ -21,6 +21,12 @@ from .indexer import Indexer
 from .vector_store import get_vector_store
 from .kb_manager import get_kb_manager, KBStats
 from .mcp_server import ZKMCPServer
+from .performance import (
+    bulk_import_notes, 
+    BatchProcessor, 
+    ModelCache,
+    get_perf_monitor
+)
 
 # 配置日志
 logging.basicConfig(
@@ -1136,6 +1142,114 @@ def mcp():
         pass
     except Exception as e:
         logger.error(f"MCP Server error: {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# 性能优化命令
+# =============================================================================
+
+@app.command()
+def bulk_import(
+    file_path: str = typer.Argument(..., help="JSON 文件路径，包含笔记数据"),
+    note_type: str = typer.Option("permanent", "--type", "-t", help="笔记类型"),
+    batch_size: int = typer.Option(32, "--batch-size", "-b", help="批处理大小"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """
+    批量导入笔记（性能优化版）
+    
+    从 JSON 文件批量导入笔记，使用批量嵌入和批量数据库操作。
+    
+    JSON 文件格式:
+        [
+            {"title": "笔记1", "content": "内容1", "tags": ["tag1"]},
+            {"title": "笔记2", "content": "内容2"}
+        ]
+    
+    示例:
+        zk bulk-import notes.json --type permanent --batch-size 32
+    """
+    try:
+        import json
+        
+        # 读取文件
+        with open(file_path, 'r', encoding='utf-8') as f:
+            notes_data = json.load(f)
+        
+        console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
+        
+        # 批量导入
+        result = bulk_import_notes(
+            notes_data=notes_data,
+            note_type=note_type,
+            batch_size=batch_size,
+            show_progress=not json_output
+        )
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[green]✓[/green] Imported: {result['imported']}")
+            console.print(f"[red]✗[/red] Failed: {result['failed']}")
+            console.print(f"Total: {result['total']}")
+    
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def perf(
+    action: str = typer.Argument("report", help="操作: report, clear-cache"),
+):
+    """
+    性能工具和报告
+    
+    示例:
+        zk perf report         # 显示性能报告
+        zk perf clear-cache    # 清除模型缓存
+    """
+    try:
+        if action == "report":
+            monitor = get_perf_monitor()
+            report = monitor.report()
+            
+            if not report:
+                console.print("[dim]No performance data yet[/dim]")
+                return
+            
+            table = Table(title="Performance Report")
+            table.add_column("Operation", style="cyan")
+            table.add_column("Count", justify="right")
+            table.add_column("Avg (s)", justify="right")
+            table.add_column("Total (s)", justify="right")
+            
+            for op, stats in sorted(report.items(), key=lambda x: x[1]["total"], reverse=True):
+                table.add_row(
+                    op,
+                    str(stats["count"]),
+                    f"{stats['avg']:.3f}",
+                    f"{stats['total']:.3f}",
+                )
+            
+            console.print(table)
+        
+        elif action == "clear-cache":
+            ModelCache.clear()
+            console.print("[green]✓[/green] Model cache cleared")
+        
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            console.print("Available: report, clear-cache")
+            raise typer.Exit(1)
+    
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
 
 
