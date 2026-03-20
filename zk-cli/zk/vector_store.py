@@ -142,6 +142,30 @@ class VectorStore:
             logger.error(f"Failed to delete note {note_id}: {e}")
             return False
     
+    def add_or_update_note(self, note: Note) -> bool:
+        """添加或更新笔记（如果已存在则更新）"""
+        # 先尝试删除旧的（如果存在）
+        try:
+            self.collection.delete(ids=[note.id])
+        except Exception:
+            pass  # 可能不存在，忽略错误
+        
+        # 添加新的
+        return self.add_note(note)
+    
+    def get_all_ids(self) -> List[str]:
+        """获取所有索引的笔记 ID"""
+        if self.collection is None:
+            self.init()
+        
+        try:
+            # 获取所有数据
+            result = self.collection.get(include=[])
+            return result.get("ids", [])
+        except Exception as e:
+            logger.error(f"Failed to get all IDs: {e}")
+            return []
+    
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
         if self.collection is None:
