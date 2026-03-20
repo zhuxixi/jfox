@@ -1,0 +1,170 @@
+"""ChromaDB 向量存储封装"""
+
+import logging
+from pathlib import Path
+from typing import List, Optional, Dict, Any
+
+import chromadb
+from chromadb.config import Settings
+
+from .models import Note
+from .config import config
+
+logger = logging.getLogger(__name__)
+
+
+class VectorStore:
+    """向量存储封装"""
+    
+    def __init__(self, persist_directory: Optional[Path] = None):
+        if persist_directory is None:
+            persist_directory = config.chroma_dir
+        
+        self.persist_directory = persist_directory
+        self.client = None
+        self.collection = None
+        
+    def init(self):
+        """初始化 ChromaDB"""
+        if self.client is not None:
+            return
+            
+        # 确保目录存在
+        self.persist_directory.mkdir(parents=True, exist_ok=True)
+        
+        # 创建客户端
+        self.client = chromadb.PersistentClient(
+            path=str(self.persist_directory),
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+            )
+        )
+        
+        # 获取或创建集合
+        self.collection = self.client.get_or_create_collection(
+            name="notes",
+            metadata={"hnsw:space": "cosine"}
+        )
+        
+        logger.info(f"VectorStore initialized at {self.persist_directory}")
+    
+    def add_note(self, note: Note) -> bool:
+        """添加笔记到向量存储"""
+        if self.collection is None:
+            self.init()
+        
+        try:
+            # 准备文档内容
+            document = f"{note.title}\n{note.content}"
+            
+            # 获取 embedding
+            from .embedding_backend import get_backend
+            backend = get_backend()
+            embedding = backend.encode_single(document).tolist()
+            
+            # 添加到 ChromaDB
+            self.collection.add(
+                ids=[note.id],
+                documents=[document],
+                embeddings=[embedding],
+                metadatas=[{
+                    "title": note.title,
+                    "type": note.type.value,
+                    "filepath": str(note.filepath),
+                    "tags": ",".join(note.tags),
+                }]
+            )
+            
+            logger.debug(f"Added note {note.id} to vector store")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to add note {note.id}: {e}")
+            return False
+    
+    def search(
+        self, 
+        query: str, 
+        top_k: int = 5,
+        note_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """语义搜索"""
+        if self.collection is None:
+            self.init()
+        
+        try:
+            # 获取查询向量
+            from .embedding_backend import get_backend
+            backend = get_backend()
+            query_embedding = backend.encode_single(query).tolist()
+            
+            # 构建过滤条件
+            where = {}
+            if note_type:
+                where["type"] = note_type
+            
+            # 搜索
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k,
+                where=where if where else None,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            # 格式化结果
+            formatted_results = []
+            for i in range(len(results["ids"][0])):
+                formatted_results.append({
+                    "id": results["ids"][0][i],
+                    "document": results["documents"][0][i],
+                    "metadata": results["metadatas"][0][i],
+                    "distance": results["distances"][0][i],
+                    "score": 1 - results["distances"][0][i],  # 转换为相似度
+                })
+            
+            return formatted_results
+            
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            return []
+    
+    def delete_note(self, note_id: str) -> bool:
+        """删除笔记"""
+        if self.collection is None:
+            self.init()
+        
+        try:
+            self.collection.delete(ids=[note_id])
+            logger.debug(f"Deleted note {note_id} from vector store")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete note {note_id}: {e}")
+            return False
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取统计信息"""
+        if self.collection is None:
+            self.init()
+        
+        try:
+            count = self.collection.count()
+            return {
+                "total_notes": count,
+                "persist_directory": str(self.persist_directory),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get stats: {e}")
+            return {"total_notes": 0, "error": str(e)}
+
+
+# 全局向量存储实例
+_vector_store: Optional[VectorStore] = None
+
+
+def get_vector_store() -> VectorStore:
+    """获取全局向量存储实例"""
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = VectorStore()
+    return _vector_store
