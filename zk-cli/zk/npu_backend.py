@@ -1,4 +1,4 @@
-"""NPU 加速器封装（Lunar Lake 优化）"""
+"""NPU Accelerator Wrapper (Lunar Lake Optimized)"""
 
 import logging
 from typing import List, Optional
@@ -8,16 +8,17 @@ logger = logging.getLogger(__name__)
 
 
 class NPUAccelerator:
-    """NPU 加速器封装（Lunar Lake 优化）"""
+    """NPU Accelerator Wrapper (Lunar Lake Optimized)"""
     
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2", device: str = "auto"):
         self.model_name = model_name
         self.device = device
         self.model = None
         self._device_name = None
+        self._use_optimum = False
         
     def _detect_device(self) -> str:
-        """自动检测最佳设备"""
+        """Auto-detect best device"""
         if self.device != "auto":
             return self.device
             
@@ -26,7 +27,7 @@ class NPUAccelerator:
             core = ov.Core()
             devices = core.available_devices
             
-            # 优先级：NPU > GPU > CPU
+            # Priority: NPU > GPU > CPU
             if "NPU" in devices:
                 logger.info("NPU device detected")
                 return "NPU"
@@ -41,42 +42,64 @@ class NPUAccelerator:
             return "CPU"
     
     def load(self):
-        """加载模型"""
+        """Load model"""
         if self.model is not None:
             return
             
         self._device_name = self._detect_device()
         
+        # Try to use Optimum for NPU first
+        if self._device_name == "NPU":
+            try:
+                self._load_with_optimum()
+                self._use_optimum = True
+                logger.info(f"Model loaded on {self._device_name} using Optimum")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to load with Optimum: {e}, falling back to CPU")
+                self._device_name = "CPU"
+        
+        # Fallback to sentence-transformers
         try:
             from sentence_transformers import SentenceTransformer
             
-            if self._device_name in ["NPU", "GPU"]:
-                # 使用 OpenVINO 后端
-                try:
-                    self.model = SentenceTransformer(
-                        self.model_name,
-                        backend="openvino",
-                        device=self._device_name
-                    )
-                    logger.info(f"Model loaded on {self._device_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to load with OpenVINO backend: {e}, falling back to CPU")
-                    self.model = SentenceTransformer(self.model_name)
-                    self._device_name = "CPU"
-            else:
-                # CPU 模式
-                self.model = SentenceTransformer(self.model_name)
-                logger.info("Model loaded on CPU")
-                
+            self.model = SentenceTransformer(self.model_name)
+            logger.info(f"Model loaded on {self._device_name}")
+            
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise
     
+    def _load_with_optimum(self):
+        """Load model using Optimum for NPU support"""
+        try:
+            from optimum.intel import OVModelForFeatureExtraction
+            from transformers import AutoTokenizer
+            
+            # Load model with Optimum
+            self.model = OVModelForFeatureExtraction.from_pretrained(
+                self.model_name,
+                export=True,
+                device="NPU"
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            
+        except ImportError:
+            logger.error("Optimum or transformers not installed")
+            raise
+    
     def encode(self, texts: List[str], batch_size: int = 32) -> np.ndarray:
-        """编码文本"""
+        """Encode texts"""
         if self.model is None:
             self.load()
-            
+        
+        if self._use_optimum:
+            return self._encode_with_optimum(texts)
+        else:
+            return self._encode_with_st(texts, batch_size)
+    
+    def _encode_with_st(self, texts: List[str], batch_size: int = 32) -> np.ndarray:
+        """Encode using sentence-transformers"""
         try:
             return self.model.encode(
                 texts, 
@@ -88,22 +111,37 @@ class NPUAccelerator:
             logger.error(f"Encoding failed: {e}")
             raise
     
+    def _encode_with_optimum(self, texts: List[str]) -> np.ndarray:
+        """Encode using Optimum"""
+        import torch
+        
+        embeddings = []
+        for text in texts:
+            inputs = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+            # Use mean pooling
+            embedding = outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
+            embeddings.append(embedding)
+        
+        return np.array(embeddings)
+    
     def encode_single(self, text: str) -> np.ndarray:
-        """编码单条文本"""
+        """Encode single text"""
         return self.encode([text])[0]
     
     @property
     def dimension(self) -> int:
-        """向量维度"""
+        """Embedding dimension"""
         return 384
     
     @property
     def current_device(self) -> str:
-        """当前使用的设备"""
+        """Current device being used"""
         return self._device_name or "unknown"
     
     def health_check(self) -> dict:
-        """健康检查"""
+        """Health check"""
         try:
             import openvino as ov
             core = ov.Core()
@@ -114,6 +152,7 @@ class NPUAccelerator:
                 "available_devices": devices,
                 "selected_device": self._device_name,
                 "model_loaded": self.model is not None,
+                "using_optimum": self._use_optimum,
             }
         except ImportError:
             return {
@@ -121,15 +160,16 @@ class NPUAccelerator:
                 "available_devices": [],
                 "selected_device": "CPU",
                 "model_loaded": self.model is not None,
+                "using_optimum": False,
             }
 
 
-# 全局 NPU 加速器实例
+# Global NPU accelerator instance
 _npu_accelerator: Optional[NPUAccelerator] = None
 
 
 def get_npu_accelerator() -> NPUAccelerator:
-    """获取全局 NPU 加速器实例"""
+    """Get global NPU accelerator instance"""
     global _npu_accelerator
     if _npu_accelerator is None:
         _npu_accelerator = NPUAccelerator()
