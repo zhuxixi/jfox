@@ -248,19 +248,19 @@ zk mcp    # 启动 MCP Server (STDIO 模式)
 ---
 
 *会话总结自动生成*
-### Issue #9: Obsidian CLI 调研 ✅ 已更新
+### Issue #9: Obsidian CLI 调研 ✅ 已更新 (子 Issue 已拆分)
 https://github.com/zhuxixi/jfox/issues/9
 
-**调研结论：**
+**子 Issue 追踪：**
 
-| 优化项 | 优先级 | 说明 |
-|--------|--------|------|
-| BM25 混合搜索 | **高** | 补充语义搜索，精确关键词匹配 |
-| 多格式输出 | **高** | csv, yaml, paths 格式 |
-| TUI 模式 | 中 | 交互式界面 |
-| HTTP API | 中 | 外部工具访问 |
-| 模板系统 | 中 | 快速创建标准化笔记 |
-| OCR/PDF | 低 | 非文本内容索引 |
+| Issue | 标题 | 优先级 | 说明 |
+|-------|------|--------|------|
+| #17 | Hybrid Search: BM25 + Semantic | **高** | BM25 混合搜索 |
+| #18 | Multi-format Output Support | **高** | csv, yaml, paths 格式 |
+| #19 | TUI Mode | 中 | 交互式界面 |
+| #20 | HTTP API Server | 中 | 外部工具访问 |
+| #21 | Template System | 中 | 快速创建标准化笔记 |
+| #22 | OCR & PDF Extraction | 低 | 非文本内容索引 |
 
 **当前优势：**
 - ✅ 语义搜索 (ChromaDB 持久化)
