@@ -170,6 +170,21 @@ backlinks: []            # 反向链接（自动生成）
 
 ---
 
+## Issue #23: 链接发现策略设计 ✅ 已创建
+https://github.com/zhuxixi/jfox/issues/23
+
+**核心问题**：CLI 添加笔记时，如何自动发现与现有笔记的链接？
+
+**讨论要点：**
+- 语义相似度自动发现 (推荐)
+- 标签驱动关联
+- 图谱补全算法
+- 自动 vs 手动 vs 混合策略
+
+**关联：** Issue #16 (suggest-links), Issue #12 (Agent 工作流)
+
+---
+
 ## Issue #12: Voice-to-Knowledge Workflow Design ✅ 已创建
 
 **GitHub Issue:** https://github.com/zhuxixi/jfox/issues/12
