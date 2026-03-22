@@ -170,6 +170,26 @@ backlinks: []            # 反向链接（自动生成）
 
 ---
 
+## Issue #24: 知识融合完整工作流 ✅ 已创建
+https://github.com/zhuxixi/jfox/issues/24
+
+**核心问题**：从 Inbox 到融入知识网络的完整流程设计
+
+**Zettelkasten 标准工作流：**
+```
+Capture → Process → Connect → Develop
+(捕获)    (整理)    (连接)    (发展)
+```
+
+**建议的新命令：**
+- `zk review` - 查看待整理队列（孤立笔记、过期 fleeting）
+- `zk process` - 处理笔记（类型转换、完善内容、建立链接）
+- `zk extract` - 从文献提取永久笔记
+
+**关联：** Issue #12 (Agent 需要完整流程), #16 (suggest-links), #21 (templates)
+
+---
+
 ## Issue #23: 链接发现策略设计 ✅ 已创建
 https://github.com/zhuxixi/jfox/issues/23
 
