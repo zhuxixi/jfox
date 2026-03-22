@@ -52,36 +52,73 @@ def output_json(data: dict) -> str:
 
 @app.command()
 def init(
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径"),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="知识库名称（默认: default）"),
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten 或 ~/.zettelkasten-<name>）"),
+    description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
+    set_default: bool = typer.Option(True, "--default/--no-default", help="设为默认知识库"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
-    """初始化知识库"""
+    """
+    初始化知识库
+    
+    创建一个新的知识库并注册到全局配置。
+    
+    示例:
+        zk init                          # 初始化默认知识库
+        zk init --name work              # 创建名为 work 的知识库
+        zk init --name personal --path ~/notes --desc "个人笔记"
+    """
     try:
-        # 使用指定路径或默认路径
-        if path:
-            config.base_dir = Path(path).expanduser().resolve()
-            # 重新计算派生路径
-            config.notes_dir = config.base_dir / "notes"
-            config.zk_dir = config.base_dir / ".zk"
-            config.chroma_dir = config.zk_dir / "chroma_db"
+        kb_name = name or "default"
+        manager = get_kb_manager()
         
-        # 创建目录
-        config.ensure_dirs()
+        # 如果知识库已存在，提示错误
+        if manager.config_manager.kb_exists(kb_name):
+            result = {
+                "success": False,
+                "error": f"Knowledge base '{kb_name}' already exists. Use 'zk kb list' to see all knowledge bases.",
+            }
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[red]✗[/red] Knowledge base '{kb_name}' already exists")
+                console.print(f"[dim]Use 'zk kb list' to see all knowledge bases[/dim]")
+            raise typer.Exit(1)
         
-        # 保存配置
-        config.save()
+        # 确定路径
+        path_obj = Path(path) if path else None
         
-        result = {
-            "success": True,
-            "message": "Knowledge base initialized successfully",
-            "path": str(config.base_dir),
-            "notes_dir": str(config.notes_dir),
-        }
+        # 创建知识库
+        success, message = manager.create(
+            name=kb_name,
+            path=path_obj,
+            description=description,
+            set_as_default=set_default
+        )
         
-        if json_output:
-            console.print(output_json(result))
+        if success:
+            result = {
+                "success": True,
+                "message": message,
+                "name": kb_name,
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[green]✓[/green] {message}")
+                if set_default:
+                    console.print(f"[dim]This is now your default knowledge base[/dim]")
         else:
-            console.print(f"[green]✓[/green] Knowledge base initialized at: {config.base_dir}")
+            result = {
+                "success": False,
+                "error": message,
+            }
+            if json_output:
+                console.print(output_json(result))
+            else:
+                console.print(f"[red]✗[/red] {message}")
+            raise typer.Exit(1)
         
     except Exception as e:
         result = {

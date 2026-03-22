@@ -45,14 +45,35 @@ pip install -e .
 ### 1. 初始化知识库
 
 ```bash
+# 初始化默认知识库
 zk init
+
+# 创建命名知识库
+zk init --name work --desc "工作笔记"
+zk init --name personal --path ~/my-notes --desc "个人笔记"
 ```
 
-这会在你的用户目录下创建 `~/.zettelkasten` 文件夹，包含：
-- `notes/` - 笔记文件存储
-- `.zk/` - 索引和配置
+这会创建知识库并注册到全局配置：
+- 默认路径：`~/.zettelkasten`（默认知识库）或 `~/.zettelkasten-<name>`
+- 包含目录：`notes/`（笔记文件）、`.zk/`（索引和配置）
 
-### 2. 创建第一条笔记
+### 2. 管理多个知识库
+
+```bash
+# 列出所有知识库
+zk kb list
+
+# 切换默认知识库
+zk kb switch work
+
+# 查看知识库详情
+zk kb info work
+
+# 删除知识库
+zk kb remove work --force
+```
+
+### 3. 创建第一条笔记
 
 ```bash
 zk add "这是我的第一条笔记，关于 Zettelkasten 知识管理方法" \
@@ -100,11 +121,23 @@ zk query "卢曼的方法论"
 
 ## 📚 完整命令参考
 
+### 知识库管理
+
+| 命令 | 说明 | 示例 |
+|------|------|------|
+| `zk init` | 初始化知识库 | `zk init --name work --desc "工作笔记"` |
+| `zk kb list` | 列出所有知识库 | `zk kb list` |
+| `zk kb create <name>` | 创建知识库 | `zk kb create work --desc "工作笔记"` |
+| `zk kb switch <name>` | 切换默认知识库 | `zk kb switch work` |
+| `zk kb info [name]` | 查看知识库详情 | `zk kb info work` |
+| `zk kb rename <old> <new>` | 重命名知识库 | `zk kb rename work job` |
+| `zk kb remove <name>` | 删除知识库 | `zk kb remove temp --force` |
+
 ### 基础命令
 
 | 命令 | 说明 | 示例 |
 |------|------|------|
-| `zk init` | 初始化知识库 | `zk init` |
+| `zk init` | 初始化知识库 | `zk init` 或 `zk init --name work` |
 | `zk add <content>` | 添加笔记 | `zk add "内容" --title "标题" --type permanent` |
 | `zk list` | 列出笔记 | `zk list --type permanent --limit 20` |
 | `zk search <query>` | 语义搜索 | `zk search "机器学习"` |
@@ -147,6 +180,91 @@ zk query "卢曼的方法论"
 | 命令 | 说明 | 示例 |
 |------|------|------|
 | `zk query <text>` | 语义+图谱联合搜索 | `zk query "相关概念" --depth 2` |
+
+---
+
+## 📦 知识库管理
+
+支持多知识库管理，方便区分不同领域的笔记（如工作、学习、个人）。
+
+### 全局配置
+
+所有知识库信息存储在 `~/.zk_config.json`：
+
+```json
+{
+  "current_kb": "work",
+  "knowledge_bases": {
+    "default": {
+      "path": "/home/user/.zettelkasten",
+      "description": "Default knowledge base",
+      "created": "2026-03-20T10:00:00"
+    },
+    "work": {
+      "path": "/home/user/.zettelkasten-work",
+      "description": "工作笔记",
+      "created": "2026-03-21T14:30:00"
+    }
+  }
+}
+```
+
+### 初始化命名知识库
+
+```bash
+# 创建名为 work 的知识库
+zk init --name work --desc "工作相关笔记"
+
+# 指定自定义路径
+zk init --name personal --path ~/Documents/my-notes --desc "个人笔记"
+
+# 创建但不设为默认
+zk init --name temp --no-default
+```
+
+### 查看所有知识库
+
+```bash
+$ zk kb list
+
+● default    ~/.zettelkasten              42    10/15/17    2026-03-20
+○ work       ~/.zettelkasten-work         28    5/8/15      2026-03-21
+○ personal   ~/.zettelkasten-personal     15    3/5/7       2026-03-19
+
+● = current default, ○ = available
+```
+
+列说明：
+- `Status`: ● 当前默认，○ 可用
+- `F/L/P`: 闪念笔记/文献笔记/永久笔记数量
+
+### 切换知识库
+
+```bash
+# 切换到 work 知识库
+zk kb switch work
+
+# 之后的所有操作都在 work 知识库上进行
+zk add "新项目想法" --title "项目A"
+zk list
+```
+
+### 知识库详情
+
+```bash
+$ zk kb info work
+
+work [current]
+  Path: /home/user/.zettelkasten-work
+  Description: 工作笔记
+  Created: 2026-03-21T14:30:00
+  Last used: 2026-03-21T18:45:00
+
+  Total notes: 28
+    - Fleeting: 5
+    - Literature: 8
+    - Permanent: 15
+```
 
 ---
 
@@ -253,18 +371,22 @@ $ zk graph --orphans
 
 ### 文件结构
 
+单个知识库：
 ```
-~/.zettelkasten/
+~/.zettelkasten/                    # 默认知识库
 ├── notes/
-│   ├── fleeting/          # 闪念笔记
-│   │   └── 20260321-011558.md
-│   ├── literature/        # 文献笔记
-│   │   └── 20260321011546-deep-learning.md
-│   └── permanent/         # 永久笔记
-│       └── 20260321011528-ml-note-1.md
+│   ├── fleeting/                   # 闪念笔记
+│   ├── literature/                 # 文献笔记
+│   └── permanent/                  # 永久笔记
 └── .zk/
-    └── chroma_db/         # 向量索引
+    └── chroma_db/                  # 向量索引
+
+~/.zettelkasten-work/               # 命名知识库示例
+├── notes/
+└── .zk/
 ```
+
+全局配置：`~/.zk_config.json`
 
 ### 笔记文件格式
 
@@ -384,15 +506,17 @@ chcp 65001
 
 ## 🛤️ 路线图
 
-- [x] 基础 CLI 功能
+- [x] 基础 CLI 功能 (Issue #3)
 - [x] 语义搜索
-- [x] 知识图谱
+- [x] 知识图谱 (Issue #4)
 - [x] 双向链接
 - [x] 文件监控
-- [ ] Kimi Skill 集成（Issue #5）
-- [ ] 性能优化（Issue #6）
+- [x] 多知识库管理 (Issue #11)
+- [x] Kimi Skill 集成 (Issue #5)
+- [x] 性能优化 (Issue #6)
 - [ ] Web 界面
 - [ ] 移动端支持
+- [ ] 数据同步
 
 ---
 
