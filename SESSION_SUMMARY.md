@@ -48,7 +48,9 @@
 - 简化为纯 CPU 后端
 - 性能：1.6ms/text，约 600 texts/sec
 
-### Issue #4: Advanced Features ✅ 已完成
+### Issue #4: Advanced Features ✅ 已完成 (已关闭)
+https://github.com/zhuxixi/jfox/issues/4
+
 实现了高级功能：
 
 #### 1. 知识图谱 (graph.py)
