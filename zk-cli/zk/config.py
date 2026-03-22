@@ -1,6 +1,7 @@
 """配置管理"""
 
 import os
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -117,3 +118,51 @@ def get_config() -> ZKConfig:
 
 # 为了向后兼容，保留 config 变量，但使用动态获取
 config = get_config()
+
+
+@contextmanager
+def use_kb(kb_name: Optional[str] = None):
+    """
+    临时使用指定知识库的上下文管理器
+    
+    用法:
+        with use_kb("work"):
+            # 在这个上下文中，操作都在 work 知识库上
+            note = create_note(...)
+    
+    Args:
+        kb_name: 知识库名称，None 表示使用当前默认知识库
+        
+    Raises:
+        ValueError: 知识库不存在
+    """
+    if not kb_name:
+        yield
+        return
+    
+    from .kb_manager import get_kb_manager
+    manager = get_kb_manager()
+    
+    if not manager.config_manager.kb_exists(kb_name):
+        raise ValueError(f"Knowledge base '{kb_name}' not found")
+    
+    # 保存原始配置
+    original_base_dir = config.base_dir
+    original_notes_dir = config.notes_dir
+    original_zk_dir = config.zk_dir
+    original_chroma_dir = config.chroma_dir
+    
+    try:
+        # 切换到目标知识库
+        kb_path = manager.config_manager.get_kb_path(kb_name)
+        config.base_dir = kb_path
+        config.notes_dir = kb_path / "notes"
+        config.zk_dir = kb_path / ".zk"
+        config.chroma_dir = config.zk_dir / "chroma_db"
+        yield
+    finally:
+        # 恢复原始配置
+        config.base_dir = original_base_dir
+        config.notes_dir = original_notes_dir
+        config.zk_dir = original_zk_dir
+        config.chroma_dir = original_chroma_dir

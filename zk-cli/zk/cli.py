@@ -162,6 +162,73 @@ def find_note_id_by_title_or_id(title_or_id: str) -> Optional[str]:
     return None
 
 
+def _add_note_impl(
+    content: str,
+    title: Optional[str],
+    note_type: str,
+    tags: Optional[List[str]],
+    source: Optional[str],
+    json_output: bool,
+):
+    """添加笔记的内部实现"""
+    # 解析类型
+    try:
+        nt = NoteType(note_type.lower())
+    except ValueError:
+        raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent")
+    
+    # 从内容中提取维基链接
+    wiki_links = extract_wiki_links(content)
+    resolved_links = []
+    unresolved = []
+    
+    for link_text in wiki_links:
+        target_id = find_note_id_by_title_or_id(link_text)
+        if target_id:
+            resolved_links.append(target_id)
+        else:
+            unresolved.append(link_text)
+    
+    # 创建笔记
+    new_note = note.create_note(
+        content=content,
+        title=title,
+        note_type=nt,
+        tags=tags or [],
+        links=resolved_links,
+        source=source,
+    )
+    
+    # 保存笔记
+    if note.save_note(new_note):
+        result = {
+            "success": True,
+            "note": {
+                "id": new_note.id,
+                "title": new_note.title,
+                "type": new_note.type.value,
+                "filepath": str(new_note.filepath),
+                "links": resolved_links,
+            },
+        }
+        
+        if unresolved:
+            result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[green]✓[/green] Note created: {new_note.title}")
+            console.print(f"  ID: {new_note.id}")
+            console.print(f"  Path: {new_note.filepath}")
+            if resolved_links:
+                console.print(f"  Links: {len(resolved_links)} connection(s)")
+            if unresolved:
+                console.print(f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]")
+    else:
+        raise Exception("Failed to save note")
+
+
 @app.command()
 def add(
     content: str = typer.Argument(..., help="笔记内容（支持 [[笔记标题]] 格式链接）"),
@@ -169,66 +236,18 @@ def add(
     note_type: str = typer.Option("fleeting", "--type", help="笔记类型 (fleeting/literature/permanent)"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="标签（可多次使用）"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """添加新笔记（内容中可用 [[笔记标题]] 引用其他笔记）"""
     try:
-        # 解析类型
-        try:
-            nt = NoteType(note_type.lower())
-        except ValueError:
-            raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent")
-        
-        # 从内容中提取维基链接
-        wiki_links = extract_wiki_links(content)
-        resolved_links = []
-        unresolved = []
-        
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id:
-                resolved_links.append(target_id)
-            else:
-                unresolved.append(link_text)
-        
-        # 创建笔记
-        new_note = note.create_note(
-            content=content,
-            title=title,
-            note_type=nt,
-            tags=tags or [],
-            links=resolved_links,
-            source=source,
-        )
-        
-        # 保存笔记
-        if note.save_note(new_note):
-            result = {
-                "success": True,
-                "note": {
-                    "id": new_note.id,
-                    "title": new_note.title,
-                    "type": new_note.type.value,
-                    "filepath": str(new_note.filepath),
-                    "links": resolved_links,
-                },
-            }
-            
-            if unresolved:
-                result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                console.print(f"[green]✓[/green] Note created: {new_note.title}")
-                console.print(f"  ID: {new_note.id}")
-                console.print(f"  Path: {new_note.filepath}")
-                if resolved_links:
-                    console.print(f"  Links: {len(resolved_links)} connection(s)")
-                if unresolved:
-                    console.print(f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]")
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _add_note_impl(content, title, note_type, tags, source, json_output)
         else:
-            raise Exception("Failed to save note")
+            _add_note_impl(content, title, note_type, tags, source, json_output)
             
     except Exception as e:
         result = {
