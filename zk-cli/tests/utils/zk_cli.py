@@ -274,3 +274,11 @@ class ZKCLI:
             args.append(name)
         
         return self._run("kb", *args)
+    
+    def kb_current(self, json_output: bool = True) -> CLIResult:
+        """查看当前知识库"""
+        args = ["current"]
+        if not json_output:
+            args.append("--no-json")
+        
+        return self._run("kb", *args)

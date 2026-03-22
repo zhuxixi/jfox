@@ -944,7 +944,7 @@ def index(
 
 @app.command()
 def kb(
-    action: str = typer.Argument("list", help="操作: list, create, switch, remove, info, rename"),
+    action: str = typer.Argument("list", help="操作: list, create, switch, remove, info, current, rename"),
     name: Optional[str] = typer.Argument(None, help="知识库名称"),
     new_name: Optional[str] = typer.Argument(None, help="新名称（仅 rename 使用）"),
     path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（仅 create 使用）"),
@@ -961,6 +961,7 @@ def kb(
         zk kb create work             # 创建名为 work 的知识库
         zk kb create work --path ~/work-notes --desc "工作笔记"
         zk kb switch work             # 切换到 work 知识库
+        zk kb current                 # 显示当前知识库
         zk kb info work               # 查看 work 知识库详情
         zk kb remove temp --force     # 强制删除 temp 知识库
         zk kb rename old new          # 重命名知识库
@@ -1086,6 +1087,50 @@ def kb(
                     console.print(f"[red]✗[/red] {message}")
                     raise typer.Exit(1)
         
+        elif action == "current":
+            # 显示当前知识库
+            current_name = manager.config_manager.get_default_kb_name()
+            
+            if not current_name:
+                console.print("[red]No default knowledge base configured[/red]")
+                raise typer.Exit(1)
+            
+            stats = manager.get_info(current_name)
+            if not stats:
+                console.print(f"[red]Knowledge base '{current_name}' not found[/red]")
+                raise typer.Exit(1)
+            
+            result = {
+                "name": stats.name,
+                "path": str(stats.path),
+                "total_notes": stats.total_notes,
+                "by_type": stats.by_type,
+                "created": stats.created,
+                "last_used": stats.last_used,
+                "description": stats.description,
+                "is_current": True,
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                # 表格格式输出
+                table = Table(title=f"Current Knowledge Base: {stats.name}")
+                table.add_column("Property", style="cyan")
+                table.add_column("Value", style="green")
+                
+                table.add_row("Name", stats.name)
+                table.add_row("Path", str(stats.path))
+                table.add_row("Description", stats.description or "N/A")
+                table.add_row("Created", stats.created or "Unknown")
+                table.add_row("Last Used", stats.last_used or "Never")
+                table.add_row("Total Notes", str(stats.total_notes))
+                table.add_row("Fleeting", str(stats.by_type.get('fleeting', 0)))
+                table.add_row("Literature", str(stats.by_type.get('literature', 0)))
+                table.add_row("Permanent", str(stats.by_type.get('permanent', 0)))
+                
+                console.print(table)
+        
         elif action == "info":
             # 如果没有指定名称，显示当前知识库
             target_name = name or manager.config_manager.get_default_kb_name()
@@ -1138,7 +1183,7 @@ def kb(
         
         else:
             console.print(f"[red]Unknown action: {action}[/red]")
-            console.print("Available actions: list, create, switch, remove, info, rename")
+            console.print("Available actions: list, create, switch, remove, info, current, rename")
             raise typer.Exit(1)
     
     except Exception as e:
