@@ -175,9 +175,21 @@ backlinks: []            # 反向链接（自动生成）
 ### 背景
 用户希望设计一套**语音输入 + AI Agent** 驱动的工作流程，而非直接使用 CLI。
 
-### 核心场景
-1. **代码仓库知识提取** - Agent 读取 git log，提炼知识存入知识库
-2. **日常知识记录** - 语音输入 → Agent 结构化 → 存储笔记
+### 核心场景设计（5个场景）
+1. 💻 **代码开发知识沉淀** - 技术问题记录、解决方案归档
+2. 📝 **会议/对话快速记录** - 会议纪要、任务追踪
+3. 📚 **文献/文章阅读** - 读书笔记、知识摘录
+4. 🔍 **项目复盘总结** - git 历史分析、决策记录
+5. 💡 **日常灵感捕捉** - 快速记录、待整理想法
+
+### 子 Issue 追踪
+
+| Issue | 标题 | 优先级 | 状态 |
+|-------|------|--------|------|
+| #13 | Add `--kb` parameter to all note commands | **高** | 待实现 |
+| #14 | Add `kb current` command | **高** | 待实现 |
+| #15 | Extend MCP Server with KB management | **高** | 待实现 |
+| #16 | Add suggest-links command | 中 | 待实现 |
 
 ### CLI 功能检查结果
 
@@ -185,20 +197,26 @@ backlinks: []            # 反向链接（自动生成）
 |------|------|-------------|------|
 | `zk init --name` | ✅ | ✅ 满足 | Agent 可直接调用 |
 | `zk kb switch` | ✅ | ⚠️ 需改进 | 需要显式切换，容易混淆 |
-| `zk add` | ✅ | ⚠️ 需改进 | 缺少 `--kb` 参数指定知识库 |
+| `zk add` | ✅ | ⚠️ 需改进 | 缺少 `--kb` 参数 (Issue #13) |
 | `zk search` | ✅ | ✅ 满足 | MCP `search_notes` 可用 |
 | `zk query` | ✅ | ✅ 满足 | 语义+图谱联合搜索 |
-| MCP Server | ✅ | ⚠️ 需扩展 | 缺少 kb_switch, kb_current 等方法 |
+| MCP Server | ✅ | ⚠️ 需扩展 | Issue #15 |
 
-### 关键问题
-1. **知识库指定** - 当前 `add` 只能存到当前默认知识库
-2. **MCP 接口不全** - 缺少知识库管理、引用关系、标签搜索等方法
-3. **Agent 上下文** - 需要明确当前操作的知识库
+### 立即可用的 Agent 工作流
 
-### 建议方案
-- **短期**: Agent 使用 `kb switch` + `add` 组合
-- **中期**: 添加 `--kb` 参数到所有相关命令
-- **长期**: 扩展 MCP Server，支持完整知识库管理
+```python
+class ZKAgent:
+    async def add_note(self, content: str, kb: str = "default", **kwargs):
+        # 临时切换到目标知识库
+        await self.run(f"zk kb switch {kb}")
+        # 执行添加
+        return await self.run(f'zk add "{content}" --type fleeting')
+```
+
+### 下一步
+- 实现 Issue #13: `--kb` 参数
+- 实现 Issue #14: `kb current` 命令
+- 实现 Issue #15: MCP Server 扩展
 
 ---
 
