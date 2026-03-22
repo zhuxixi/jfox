@@ -168,4 +168,64 @@ backlinks: []            # 反向链接（自动生成）
 
 ---
 
+## Issue #12: Voice-to-Knowledge Workflow Design ✅ 已创建
+
+**GitHub Issue:** https://github.com/zhuxixi/jfox/issues/12
+
+### 背景
+用户希望设计一套**语音输入 + AI Agent** 驱动的工作流程，而非直接使用 CLI。
+
+### 核心场景
+1. **代码仓库知识提取** - Agent 读取 git log，提炼知识存入知识库
+2. **日常知识记录** - 语音输入 → Agent 结构化 → 存储笔记
+
+### CLI 功能检查结果
+
+| 功能 | 状态 | Agent 适用性 | 备注 |
+|------|------|-------------|------|
+| `zk init --name` | ✅ | ✅ 满足 | Agent 可直接调用 |
+| `zk kb switch` | ✅ | ⚠️ 需改进 | 需要显式切换，容易混淆 |
+| `zk add` | ✅ | ⚠️ 需改进 | 缺少 `--kb` 参数指定知识库 |
+| `zk search` | ✅ | ✅ 满足 | MCP `search_notes` 可用 |
+| `zk query` | ✅ | ✅ 满足 | 语义+图谱联合搜索 |
+| MCP Server | ✅ | ⚠️ 需扩展 | 缺少 kb_switch, kb_current 等方法 |
+
+### 关键问题
+1. **知识库指定** - 当前 `add` 只能存到当前默认知识库
+2. **MCP 接口不全** - 缺少知识库管理、引用关系、标签搜索等方法
+3. **Agent 上下文** - 需要明确当前操作的知识库
+
+### 建议方案
+- **短期**: Agent 使用 `kb switch` + `add` 组合
+- **中期**: 添加 `--kb` 参数到所有相关命令
+- **长期**: 扩展 MCP Server，支持完整知识库管理
+
+---
+
+## 命令参考
+
+### 知识库管理
+```bash
+zk init --name work --desc "工作笔记"    # 初始化命名知识库
+zk kb list                                # 列出所有知识库
+zk kb switch work                         # 切换默认知识库
+zk kb info work                           # 查看知识库详情
+```
+
+### 笔记操作
+```bash
+zk add "内容" --title "标题" --type permanent   # 添加笔记
+zk search "查询"                               # 语义搜索
+zk query "查询" --depth 2                      # 联合搜索
+zk refs --search "关键词"                      # 查看引用
+```
+
+### MCP Server
+```bash
+zk mcp    # 启动 MCP Server (STDIO 模式)
+```
+
+---
+
 *会话总结自动生成*
+*最后更新: 2026-03-22*
