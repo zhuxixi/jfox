@@ -261,34 +261,51 @@ def add(
         raise typer.Exit(1)
 
 
+def _search_impl(
+    query: str,
+    top: int,
+    note_type: Optional[str],
+    json_output: bool,
+):
+    """搜索笔记的内部实现"""
+    results = note.search_notes(query, top_k=top, note_type=note_type)
+    
+    result = {
+        "query": query,
+        "total": len(results),
+        "results": results,
+    }
+    
+    if json_output:
+        console.print(output_json(result))
+    else:
+        console.print(f"[bold]Query:[/bold] {query}")
+        console.print(f"[bold]Results:[/bold] {len(results)}\n")
+        
+        for i, r in enumerate(results, 1):
+            score = r.get("score", 0)
+            console.print(f"{i}. [{score:.2f}] {r['metadata'].get('title', 'Untitled')}")
+            console.print(f"   {r['document'][:100]}...")
+            console.print()
+
+
 @app.command()
 def search(
     query: str = typer.Argument(..., help="搜索查询"),
     top: int = typer.Option(5, "--top", "-n", help="返回结果数量"),
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """语义搜索笔记"""
     try:
-        results = note.search_notes(query, top_k=top, note_type=note_type)
-        
-        result = {
-            "query": query,
-            "total": len(results),
-            "results": results,
-        }
-        
-        if json_output:
-            console.print(output_json(result))
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _search_impl(query, top, note_type, json_output)
         else:
-            console.print(f"[bold]Query:[/bold] {query}")
-            console.print(f"[bold]Results:[/bold] {len(results)}\n")
-            
-            for i, r in enumerate(results, 1):
-                score = r.get("score", 0)
-                console.print(f"{i}. [{score:.2f}] {r['metadata'].get('title', 'Untitled')}")
-                console.print(f"   {r['document'][:100]}...")
-                console.print()
+            _search_impl(query, top, note_type, json_output)
         
     except Exception as e:
         result = {
@@ -355,37 +372,53 @@ def status(
         raise typer.Exit(1)
 
 
+def _list_impl(
+    note_type: Optional[str],
+    limit: int,
+    json_output: bool,
+):
+    """列出笔记的内部实现"""
+    # 解析类型
+    nt = None
+    if note_type:
+        try:
+            nt = NoteType(note_type.lower())
+        except ValueError:
+            raise ValueError(f"Invalid note type: {note_type}")
+    
+    notes = note.list_notes(note_type=nt, limit=limit)
+    
+    result = {
+        "total": len(notes),
+        "notes": [n.to_dict() for n in notes],
+    }
+    
+    if json_output:
+        console.print(output_json(result))
+    else:
+        console.print(f"[bold]Total:[/bold] {len(notes)} notes\n")
+        for n in notes:
+            console.print(f"• [{n.type.value}] {n.title}")
+            console.print(f"  {n.filepath}")
+            console.print()
+
+
 @app.command()
 def list(
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
     limit: int = typer.Option(10, "--limit", "-n", help="显示数量"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """列出笔记"""
     try:
-        # 解析类型
-        nt = None
-        if note_type:
-            try:
-                nt = NoteType(note_type.lower())
-            except ValueError:
-                raise ValueError(f"Invalid note type: {note_type}")
-        
-        notes = note.list_notes(note_type=nt, limit=limit)
-        
-        result = {
-            "total": len(notes),
-            "notes": [n.to_dict() for n in notes],
-        }
-        
-        if json_output:
-            console.print(output_json(result))
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _list_impl(note_type, limit, json_output)
         else:
-            console.print(f"[bold]Total:[/bold] {len(notes)} notes\n")
-            for n in notes:
-                console.print(f"• [{n.type.value}] {n.title}")
-                console.print(f"  {n.filepath}")
-                console.print()
+            _list_impl(note_type, limit, json_output)
         
     except Exception as e:
         result = {
@@ -399,134 +432,150 @@ def list(
         raise typer.Exit(1)
 
 
+def _refs_impl(
+    note_id: Optional[str],
+    search: Optional[str],
+    json_output: bool,
+):
+    """查看笔记引用关系的内部实现"""
+    if search:
+        # 搜索笔记
+        all_notes = note.list_notes()
+        matches = [n for n in all_notes if search.lower() in n.title.lower()]
+        
+        result = {
+            "query": search,
+            "matches": [
+                {"id": n.id, "title": n.title, "type": n.type.value}
+                for n in matches
+            ]
+        }
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[bold]Search:[/bold] '{search}'\n")
+            if matches:
+                for n in matches:
+                    console.print(f"• [{n.type.value}] {n.title}")
+                    console.print(f"  ID: {n.id}")
+                    console.print(f"  引用此笔记: {len(n.backlinks)} 处")
+                    console.print()
+            else:
+                console.print("[dim]No matches found[/dim]")
+    
+    elif note_id:
+        # 查看特定笔记的引用关系
+        n = note.load_note_by_id(note_id)
+        if not n:
+            console.print(f"[red]Note not found: {note_id}[/red]")
+            raise typer.Exit(1)
+        
+        # 获取链接到的笔记
+        forward_links = []
+        for link_id in n.links:
+            link_note = note.load_note_by_id(link_id)
+            if link_note:
+                forward_links.append({
+                    "id": link_id,
+                    "title": link_note.title,
+                    "type": link_note.type.value
+                })
+        
+        # 获取反向链接
+        backward_links = []
+        for back_id in n.backlinks:
+            back_note = note.load_note_by_id(back_id)
+            if back_note:
+                backward_links.append({
+                    "id": back_id,
+                    "title": back_note.title,
+                    "type": back_note.type.value
+                })
+        
+        result = {
+            "note": {
+                "id": n.id,
+                "title": n.title,
+                "type": n.type.value,
+            },
+            "forward_links": forward_links,
+            "backward_links": backward_links,
+        }
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[bold]{n.title}[/bold]\n")
+            
+            if forward_links:
+                console.print("[cyan]→ Links to:[/cyan]")
+                for link in forward_links:
+                    console.print(f"  • [{link['type']}] {link['title']}")
+                console.print()
+            
+            if backward_links:
+                console.print("[green]← Linked by:[/green]")
+                for link in backward_links:
+                    console.print(f"  • [{link['type']}] {link['title']}")
+                console.print()
+            
+            if not forward_links and not backward_links:
+                console.print("[dim]No connections yet[/dim]")
+    
+    else:
+        # 显示所有笔记及其链接统计
+        all_notes = note.list_notes()
+        notes_with_links = []
+        for n in all_notes:
+            notes_with_links.append({
+                "id": n.id,
+                "title": n.title,
+                "type": n.type.value,
+                "outgoing": len(n.links),
+                "incoming": len(n.backlinks),
+            })
+        
+        result = {"notes": notes_with_links}
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            table = Table(title="Note References")
+            table.add_column("ID", style="dim")
+            table.add_column("Title", style="cyan")
+            table.add_column("Type", style="green")
+            table.add_column("Out", justify="right")
+            table.add_column("In", justify="right")
+            
+            for n in notes_with_links:
+                table.add_row(
+                    n["id"][:14],
+                    n["title"][:40],
+                    n["type"],
+                    str(n["outgoing"]),
+                    str(n["incoming"])
+                )
+            
+            console.print(table)
+
+
 @app.command()
 def refs(
     note_id: Optional[str] = typer.Option(None, "--note", "-n", help="查看特定笔记的引用关系"),
     search: Optional[str] = typer.Option(None, "--search", "-s", help="搜索笔记标题"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """查看笔记引用关系（反向链接）"""
     try:
-        if search:
-            # 搜索笔记
-            all_notes = note.list_notes()
-            matches = [n for n in all_notes if search.lower() in n.title.lower()]
-            
-            result = {
-                "query": search,
-                "matches": [
-                    {"id": n.id, "title": n.title, "type": n.type.value}
-                    for n in matches
-                ]
-            }
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                console.print(f"[bold]Search:[/bold] '{search}'\n")
-                if matches:
-                    for n in matches:
-                        console.print(f"• [{n.type.value}] {n.title}")
-                        console.print(f"  ID: {n.id}")
-                        console.print(f"  引用此笔记: {len(n.backlinks)} 处")
-                        console.print()
-                else:
-                    console.print("[dim]No matches found[/dim]")
-        
-        elif note_id:
-            # 查看特定笔记的引用关系
-            n = note.load_note_by_id(note_id)
-            if not n:
-                console.print(f"[red]Note not found: {note_id}[/red]")
-                raise typer.Exit(1)
-            
-            # 获取链接到的笔记
-            forward_links = []
-            for link_id in n.links:
-                link_note = note.load_note_by_id(link_id)
-                if link_note:
-                    forward_links.append({
-                        "id": link_id,
-                        "title": link_note.title,
-                        "type": link_note.type.value
-                    })
-            
-            # 获取反向链接
-            backward_links = []
-            for back_id in n.backlinks:
-                back_note = note.load_note_by_id(back_id)
-                if back_note:
-                    backward_links.append({
-                        "id": back_id,
-                        "title": back_note.title,
-                        "type": back_note.type.value
-                    })
-            
-            result = {
-                "note": {
-                    "id": n.id,
-                    "title": n.title,
-                    "type": n.type.value,
-                },
-                "forward_links": forward_links,
-                "backward_links": backward_links,
-            }
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                console.print(f"[bold]{n.title}[/bold]\n")
-                
-                if forward_links:
-                    console.print("[cyan]→ Links to:[/cyan]")
-                    for link in forward_links:
-                        console.print(f"  • [{link['type']}] {link['title']}")
-                    console.print()
-                
-                if backward_links:
-                    console.print("[green]← Linked by:[/green]")
-                    for link in backward_links:
-                        console.print(f"  • [{link['type']}] {link['title']}")
-                    console.print()
-                
-                if not forward_links and not backward_links:
-                    console.print("[dim]No connections yet[/dim]")
-        
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _refs_impl(note_id, search, json_output)
         else:
-            # 显示所有笔记及其链接统计
-            all_notes = note.list_notes()
-            notes_with_links = []
-            for n in all_notes:
-                notes_with_links.append({
-                    "id": n.id,
-                    "title": n.title,
-                    "type": n.type.value,
-                    "outgoing": len(n.links),
-                    "incoming": len(n.backlinks),
-                })
-            
-            result = {"notes": notes_with_links}
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                table = Table(title="Note References")
-                table.add_column("ID", style="dim")
-                table.add_column("Title", style="cyan")
-                table.add_column("Type", style="green")
-                table.add_column("Out", justify="right")
-                table.add_column("In", justify="right")
-                
-                for n in notes_with_links:
-                    table.add_row(
-                        n["id"][:14],
-                        n["title"][:40],
-                        n["type"],
-                        str(n["outgoing"]),
-                        str(n["incoming"])
-                    )
-                
-                console.print(table)
+            _refs_impl(note_id, search, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
@@ -537,46 +586,62 @@ def refs(
         raise typer.Exit(1)
 
 
+def _delete_impl(
+    note_id: str,
+    force: bool,
+    json_output: bool,
+):
+    """删除笔记的内部实现"""
+    # 先查找笔记
+    n = note.load_note_by_id(note_id)
+    if not n:
+        console.print(f"[red]Note not found: {note_id}[/red]")
+        raise typer.Exit(1)
+    
+    # 确认删除
+    if not force:
+        if json_output:
+            console.print(f"Use --force to delete: {n.title}")
+            raise typer.Exit(1)
+        else:
+            console.print(f"Note: {n.title}")
+            confirm = input("Delete? (y/N): ")
+            if confirm.lower() != "y":
+                console.print("Cancelled")
+                raise typer.Exit(0)
+    
+    # 执行删除
+    if note.delete_note(note_id):
+        result = {
+            "success": True,
+            "deleted": note_id,
+            "title": n.title,
+        }
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[green]✓[/green] Deleted: {n.title}")
+    else:
+        raise Exception("Failed to delete note")
+
+
 @app.command()
 def delete(
     note_id: str = typer.Argument(..., help="笔记 ID"),
     force: bool = typer.Option(False, "--force", "-f", help="强制删除不确认"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """删除笔记"""
     try:
-        # 先查找笔记
-        n = note.load_note_by_id(note_id)
-        if not n:
-            console.print(f"[red]Note not found: {note_id}[/red]")
-            raise typer.Exit(1)
-        
-        # 确认删除
-        if not force:
-            if json_output:
-                console.print(f"Use --force to delete: {n.title}")
-                raise typer.Exit(1)
-            else:
-                console.print(f"Note: {n.title}")
-                confirm = input("Delete? (y/N): ")
-                if confirm.lower() != "y":
-                    console.print("Cancelled")
-                    raise typer.Exit(0)
-        
-        # 执行删除
-        if note.delete_note(note_id):
-            result = {
-                "success": True,
-                "deleted": note_id,
-                "title": n.title,
-            }
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                console.print(f"[green]✓[/green] Deleted: {n.title}")
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _delete_impl(note_id, force, json_output)
         else:
-            raise Exception("Failed to delete note")
+            _delete_impl(note_id, force, json_output)
             
     except Exception as e:
         result = {
@@ -590,75 +655,92 @@ def delete(
         raise typer.Exit(1)
 
 
+def _query_impl(
+    query_str: str,
+    top: int,
+    graph_depth: int,
+    json_output: bool,
+):
+    """语义搜索 + 知识图谱联合查询的内部实现"""
+    # 1. 语义搜索
+    vector_results = note.search_notes(query_str, top_k=top)
+    
+    # 2. 构建知识图谱并查找相关笔记
+    graph = KnowledgeGraph(config).build()
+    
+    # 3. 为每个搜索结果查找图谱关联
+    enriched_results = []
+    for r in vector_results:
+        note_id = r["id"]
+        related = graph.get_related(note_id, depth=graph_depth)
+        
+        # 获取相关笔记详情
+        related_notes = []
+        for depth_key, note_ids in related.items():
+            depth = int(depth_key.split("_")[1])
+            for nid in note_ids[:3]:  # 限制每层的数量
+                n = note.load_note_by_id(nid)
+                if n:
+                    related_notes.append({
+                        "id": nid,
+                        "title": n.title,
+                        "type": n.type.value,
+                        "depth": depth,
+                    })
+        
+        enriched_results.append({
+            **r,
+            "related_notes": related_notes,
+            "graph_stats": {
+                "neighbors": len(graph.get_neighbors(note_id)),
+            }
+        })
+    
+    result = {
+        "query": query_str,
+        "semantic_results": len(vector_results),
+        "results": enriched_results,
+    }
+    
+    if json_output:
+        console.print(output_json(result))
+    else:
+        console.print(f"[bold]Query:[/bold] {query_str}")
+        console.print(f"[bold]Results:[/bold] {len(enriched_results)}\n")
+        
+        for i, r in enumerate(enriched_results, 1):
+            score = r.get("score", 0)
+            panel_content = f"[cyan]{r['document'][:150]}...[/cyan]"
+            
+            if r["related_notes"]:
+                panel_content += "\n\n[dim]Related:[/dim]"
+                for rel in r["related_notes"][:3]:
+                    panel_content += f"\n  • [{rel['type']}] {rel['title']}"
+            
+            console.print(Panel(
+                panel_content,
+                title=f"{i}. [{score:.2f}] {r['metadata'].get('title', 'Untitled')}",
+                border_style="blue"
+            ))
+
+
 @app.command()
 def query(
     query_str: str = typer.Argument(..., help="搜索查询"),
     top: int = typer.Option(5, "--top", "-n", help="返回结果数量"),
     graph_depth: int = typer.Option(2, "--depth", "-d", help="图谱遍历深度"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """语义搜索 + 知识图谱联合查询"""
     try:
-        # 1. 语义搜索
-        vector_results = note.search_notes(query_str, top_k=top)
-        
-        # 2. 构建知识图谱并查找相关笔记
-        graph = KnowledgeGraph(config).build()
-        
-        # 3. 为每个搜索结果查找图谱关联
-        enriched_results = []
-        for r in vector_results:
-            note_id = r["id"]
-            related = graph.get_related(note_id, depth=graph_depth)
-            
-            # 获取相关笔记详情
-            related_notes = []
-            for depth_key, note_ids in related.items():
-                depth = int(depth_key.split("_")[1])
-                for nid in note_ids[:3]:  # 限制每层的数量
-                    n = note.load_note_by_id(nid)
-                    if n:
-                        related_notes.append({
-                            "id": nid,
-                            "title": n.title,
-                            "type": n.type.value,
-                            "depth": depth,
-                        })
-            
-            enriched_results.append({
-                **r,
-                "related_notes": related_notes,
-                "graph_stats": {
-                    "neighbors": len(graph.get_neighbors(note_id)),
-                }
-            })
-        
-        result = {
-            "query": query_str,
-            "semantic_results": len(vector_results),
-            "results": enriched_results,
-        }
-        
-        if json_output:
-            console.print(output_json(result))
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _query_impl(query_str, top, graph_depth, json_output)
         else:
-            console.print(f"[bold]Query:[/bold] {query_str}")
-            console.print(f"[bold]Results:[/bold] {len(enriched_results)}\n")
-            
-            for i, r in enumerate(enriched_results, 1):
-                score = r.get("score", 0)
-                panel_content = f"[cyan]{r['document'][:150]}...[/cyan]"
-                
-                if r["related_notes"]:
-                    panel_content += "\n\n[dim]Related:[/dim]"
-                    for rel in r["related_notes"][:3]:
-                        panel_content += f"\n  • [{rel['type']}] {rel['title']}"
-                
-                console.print(Panel(
-                    panel_content,
-                    title=f"{i}. [{score:.2f}] {r['metadata'].get('title', 'Untitled')}",
-                    border_style="blue"
-                ))
+            _query_impl(query_str, top, graph_depth, json_output)
         
     except Exception as e:
         result = {"success": False, "error": str(e)}
@@ -667,6 +749,103 @@ def query(
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
+
+
+def _graph_impl(
+    note_id: Optional[str],
+    depth: int,
+    stats: bool,
+    orphans: bool,
+    json_output: bool,
+):
+    """知识图谱可视化和分析的内部实现"""
+    kg = KnowledgeGraph(config).build()
+    
+    if stats:
+        # 显示统计信息
+        graph_stats = kg.get_stats()
+        result = {
+            "total_nodes": graph_stats.total_nodes,
+            "total_edges": graph_stats.total_edges,
+            "avg_degree": round(graph_stats.avg_degree, 2),
+            "isolated_nodes": graph_stats.isolated_nodes,
+            "clusters": graph_stats.clusters,
+            "top_hubs": [
+                {"id": nid, "title": kg.graph.nodes[nid].get("title", ""), "degree": deg}
+                for nid, deg in graph_stats.hubs[:10]
+            ],
+        }
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            table = Table(title="Knowledge Graph Statistics")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Value", style="green")
+            table.add_row("Total Notes", str(graph_stats.total_nodes))
+            table.add_row("Total Links", str(graph_stats.total_edges))
+            table.add_row("Average Degree", f"{graph_stats.avg_degree:.2f}")
+            table.add_row("Isolated Notes", str(graph_stats.isolated_nodes))
+            table.add_row("Clusters", str(graph_stats.clusters))
+            console.print(table)
+            
+            console.print("\n[bold]Top Connected Notes:[/bold]")
+            for nid, deg in graph_stats.hubs[:10]:
+                title = kg.graph.nodes[nid].get("title", "Untitled")
+                console.print(f"  • {nid}: {title} ({deg} connections)")
+    
+    elif orphans:
+        # 显示孤立笔记
+        orphan_ids = kg.get_orphan_notes()
+        orphans_list = []
+        for oid in orphan_ids:
+            n = note.load_note_by_id(oid)
+            if n:
+                orphans_list.append({"id": oid, "title": n.title, "type": n.type.value})
+        
+        result = {"orphans": orphans_list}
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
+            for o in orphans_list:
+                console.print(f"  • [{o['type']}] {o['title']} ({o['id']})")
+    
+    elif note_id:
+        # 显示特定笔记的图谱
+        if note_id not in kg.graph:
+            console.print(f"[red]Note not found: {note_id}[/red]")
+            raise typer.Exit(1)
+        
+        related = kg.get_related(note_id, depth=depth)
+        n = note.load_note_by_id(note_id)
+        
+        result = {
+            "note_id": note_id,
+            "title": n.title if n else "",
+            "related": related,
+        }
+        
+        if json_output:
+            console.print(output_json(result))
+        else:
+            tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")
+            
+            for depth_key, note_ids in related.items():
+                depth_num = depth_key.split("_")[1]
+                level = tree.add(f"[dim]Depth {depth_num}[/dim]")
+                for nid in note_ids[:10]:  # 限制显示数量
+                    rel_note = note.load_note_by_id(nid)
+                    if rel_note:
+                        level.add(f"[{rel_note.type.value}] {rel_note.title}")
+            
+            console.print(tree)
+    
+    else:
+        # 显示整体图谱文本可视化
+        viz = kg.visualize_text()
+        console.print(viz)
 
 
 @app.command()
@@ -675,97 +854,18 @@ def graph(
     depth: int = typer.Option(2, "--depth", "-d", help="遍历深度"),
     stats: bool = typer.Option(False, "--stats", "-s", help="显示统计信息"),
     orphans: bool = typer.Option(False, "--orphans", "-o", help="显示孤立笔记"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """知识图谱可视化和分析"""
     try:
-        kg = KnowledgeGraph(config).build()
-        
-        if stats:
-            # 显示统计信息
-            graph_stats = kg.get_stats()
-            result = {
-                "total_nodes": graph_stats.total_nodes,
-                "total_edges": graph_stats.total_edges,
-                "avg_degree": round(graph_stats.avg_degree, 2),
-                "isolated_nodes": graph_stats.isolated_nodes,
-                "clusters": graph_stats.clusters,
-                "top_hubs": [
-                    {"id": nid, "title": kg.graph.nodes[nid].get("title", ""), "degree": deg}
-                    for nid, deg in graph_stats.hubs[:10]
-                ],
-            }
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                table = Table(title="Knowledge Graph Statistics")
-                table.add_column("Metric", style="cyan")
-                table.add_column("Value", style="green")
-                table.add_row("Total Notes", str(graph_stats.total_nodes))
-                table.add_row("Total Links", str(graph_stats.total_edges))
-                table.add_row("Average Degree", f"{graph_stats.avg_degree:.2f}")
-                table.add_row("Isolated Notes", str(graph_stats.isolated_nodes))
-                table.add_row("Clusters", str(graph_stats.clusters))
-                console.print(table)
-                
-                console.print("\n[bold]Top Connected Notes:[/bold]")
-                for nid, deg in graph_stats.hubs[:10]:
-                    title = kg.graph.nodes[nid].get("title", "Untitled")
-                    console.print(f"  • {nid}: {title} ({deg} connections)")
-        
-        elif orphans:
-            # 显示孤立笔记
-            orphan_ids = kg.get_orphan_notes()
-            orphans_list = []
-            for oid in orphan_ids:
-                n = note.load_note_by_id(oid)
-                if n:
-                    orphans_list.append({"id": oid, "title": n.title, "type": n.type.value})
-            
-            result = {"orphans": orphans_list}
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
-                for o in orphans_list:
-                    console.print(f"  • [{o['type']}] {o['title']} ({o['id']})")
-        
-        elif note_id:
-            # 显示特定笔记的图谱
-            if note_id not in kg.graph:
-                console.print(f"[red]Note not found: {note_id}[/red]")
-                raise typer.Exit(1)
-            
-            related = kg.get_related(note_id, depth=depth)
-            n = note.load_note_by_id(note_id)
-            
-            result = {
-                "note_id": note_id,
-                "title": n.title if n else "",
-                "related": related,
-            }
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")
-                
-                for depth_key, note_ids in related.items():
-                    depth_num = depth_key.split("_")[1]
-                    level = tree.add(f"[dim]Depth {depth_num}[/dim]")
-                    for nid in note_ids[:10]:  # 限制显示数量
-                        rel_note = note.load_note_by_id(nid)
-                        if rel_note:
-                            level.add(f"[{rel_note.type.value}] {rel_note.title}")
-                
-                console.print(tree)
-        
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _graph_impl(note_id, depth, stats, orphans, json_output)
         else:
-            # 显示整体图谱文本可视化
-            viz = kg.visualize_text()
-            console.print(viz)
+            _graph_impl(note_id, depth, stats, orphans, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
@@ -774,49 +874,64 @@ def graph(
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
+
+
+def _daily_impl(
+    date: Optional[str],
+    json_output: bool,
+):
+    """查看某天笔记的内部实现"""
+    if date:
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+    else:
+        target_date = datetime.now()
+    
+    date_str = target_date.strftime("%Y%m%d")
+    
+    # 查找当天的笔记
+    all_notes = note.list_notes()
+    daily_notes = [n for n in all_notes if n.id.startswith(date_str)]
+    
+    result = {
+        "date": target_date.strftime("%Y-%m-%d"),
+        "total": len(daily_notes),
+        "notes": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "type": n.type.value,
+                "created": n.created.isoformat() if n.created else None,
+            }
+            for n in daily_notes
+        ],
+    }
+    
+    if json_output:
+        console.print(output_json(result))
+    else:
+        console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
+        if daily_notes:
+            for n in daily_notes:
+                console.print(f"• [{n.type.value}] {n.title}")
+        else:
+            console.print("[dim]No notes found for this date.[/dim]")
 
 
 @app.command()
 def daily(
     date: Optional[str] = typer.Option(None, "--date", "-d", help="日期 (YYYY-MM-DD, 默认今天)"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """查看某天的笔记（默认今天）"""
     try:
-        if date:
-            target_date = datetime.strptime(date, "%Y-%m-%d")
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _daily_impl(date, json_output)
         else:
-            target_date = datetime.now()
-        
-        date_str = target_date.strftime("%Y%m%d")
-        
-        # 查找当天的笔记
-        all_notes = note.list_notes()
-        daily_notes = [n for n in all_notes if n.id.startswith(date_str)]
-        
-        result = {
-            "date": target_date.strftime("%Y-%m-%d"),
-            "total": len(daily_notes),
-            "notes": [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "type": n.type.value,
-                    "created": n.created.isoformat() if n.created else None,
-                }
-                for n in daily_notes
-            ],
-        }
-        
-        if json_output:
-            console.print(output_json(result))
-        else:
-            console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
-            if daily_notes:
-                for n in daily_notes:
-                    console.print(f"• [{n.type.value}] {n.title}")
-            else:
-                console.print("[dim]No notes found for this date.[/dim]")
+            _daily_impl(date, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
@@ -827,35 +942,50 @@ def daily(
         raise typer.Exit(1)
 
 
+def _inbox_impl(
+    limit: int,
+    json_output: bool,
+):
+    """查看临时笔记的内部实现"""
+    fleeting_notes = note.list_notes(note_type=NoteType.FLEETING, limit=limit)
+    
+    result = {
+        "total": len(fleeting_notes),
+        "notes": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "created": n.created.isoformat() if n.created else None,
+                "filepath": str(n.filepath) if n.filepath else None,
+            }
+            for n in fleeting_notes
+        ],
+    }
+    
+    if json_output:
+        console.print(output_json(result))
+    else:
+        console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
+        for n in fleeting_notes:
+            time_str = n.created.strftime("%H:%M") if n.created else ""
+            console.print(f"• [{time_str}] {n.title}")
+
+
 @app.command()
 def inbox(
     limit: int = typer.Option(20, "--limit", "-n", help="显示数量"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """查看临时笔记 (Fleeting Notes)"""
     try:
-        fleeting_notes = note.list_notes(note_type=NoteType.FLEETING, limit=limit)
-        
-        result = {
-            "total": len(fleeting_notes),
-            "notes": [
-                {
-                    "id": n.id,
-                    "title": n.title,
-                    "created": n.created.isoformat() if n.created else None,
-                    "filepath": str(n.filepath) if n.filepath else None,
-                }
-                for n in fleeting_notes
-            ],
-        }
-        
-        if json_output:
-            console.print(output_json(result))
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _inbox_impl(limit, json_output)
         else:
-            console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
-            for n in fleeting_notes:
-                time_str = n.created.strftime("%H:%M") if n.created else ""
-                console.print(f"• [{time_str}] {n.title}")
+            _inbox_impl(limit, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
