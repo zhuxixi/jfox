@@ -224,3 +224,78 @@ class TemplateManager:
     def get_available_templates(self) -> List[str]:
         """Get list of available template names"""
         return [t.name for t in self.list_templates()]
+    
+    def create_template(self, name: str, description: str, note_type: str, 
+                       title_format: str, content: str, tags: List[str]) -> NoteTemplate:
+        """
+        Create a new custom template
+        
+        Args:
+            name: Template name
+            description: Template description
+            note_type: Note type (fleeting/literature/permanent)
+            title_format: Title format with variables
+            content: Template content
+            tags: Default tags
+            
+        Returns:
+            Created NoteTemplate
+            
+        Raises:
+            TemplateError: If template already exists
+        """
+        template_path = self.templates_dir / f"{name}.yaml"
+        
+        if template_path.exists():
+            raise TemplateError(f"Template '{name}' already exists")
+        
+        template_data = {
+            "name": name,
+            "description": description,
+            "note_type": note_type,
+            "title_format": title_format,
+            "content": content,
+            "tags": tags,
+            "is_builtin": False,
+        }
+        
+        self._save_template_file(template_path, template_data, is_builtin=False)
+        
+        return NoteTemplate(
+            name=name,
+            description=description,
+            note_type=note_type,
+            title_format=title_format,
+            content=content,
+            tags=tags,
+            is_builtin=False,
+        )
+    
+    def delete_template(self, name: str) -> None:
+        """
+        Delete a custom template
+        
+        Args:
+            name: Template name
+            
+        Raises:
+            TemplateNotFoundError: If template doesn't exist
+            TemplateError: If trying to delete a built-in template
+        """
+        template = self.get_template(name)
+        
+        if not template:
+            raise TemplateNotFoundError(f"Template '{name}' not found")
+        
+        if template.is_builtin:
+            raise TemplateError(f"Cannot remove built-in template '{name}'")
+        
+        template_path = self.templates_dir / f"{name}.yaml"
+        template_path.unlink()
+    
+    def get_template_path(self, name: str) -> Optional[Path]:
+        """Get the file path of a template"""
+        template_path = self.templates_dir / f"{name}.yaml"
+        if template_path.exists():
+            return template_path
+        return None

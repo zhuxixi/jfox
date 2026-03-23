@@ -28,6 +28,7 @@ from .performance import (
     get_perf_monitor
 )
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
+from .template_cli import template_app
 
 # 配置日志
 logging.basicConfig(
@@ -42,6 +43,9 @@ app = typer.Typer(
     help="Zettelkasten 知识管理 CLI",
     add_completion=False,
 )
+
+# 添加子命令
+app.add_typer(template_app, name="template", help="Manage note templates")
 
 console = Console(soft_wrap=False, width=9999)
 
