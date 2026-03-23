@@ -9,6 +9,21 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 2 - 2026-03-23
+
+完成 Issue #13: 为所有笔记命令添加 --kb 参数支持。
+
+本次工作：
+- 完整实现 Issue #13，为全部 9 个笔记命令添加 --kb / -k 参数
+- search, list, refs, delete, query, graph, daily, inbox 命令现已支持临时知识库切换
+- add 命令在此前已实现，本次保持一致性完善
+- 统一实现模式：提取逻辑到 _impl 辅助函数，使用 use_kb() 上下文管理器
+- 保持向后兼容，不指定 --kb 时使用默认知识库
+- 所有命令通过 CLI 导入测试，--help 显示正常
+
+提交记录：
+- 008d1c8: feat: Complete Issue #13 - Add --kb parameter to all note commands
+
 ### Session 1 - 2026-03-23
 
 分析可开发 Issues 并完成 #14，启动 #13 开发。
@@ -32,3 +47,7 @@
 ---
 
 *Total: 1 sessions | Last Updated: 2026-03-23*
+
+---
+
+*Total: 2 sessions | Last Updated: 2026-03-23*
