@@ -42,7 +42,9 @@ def cli(temp_kb):
     """
     zk_cli = ZKCLI(temp_kb)
     zk_cli.init()
-    return zk_cli
+    yield zk_cli
+    # 测试结束后清理
+    zk_cli.cleanup()
 
 
 @pytest.fixture
@@ -87,6 +89,9 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "integration: marks tests as integration tests"
+    )
+    config.addinivalue_line(
+        "markers", "timeout(seconds): marks tests with timeout in seconds"
     )
 
 

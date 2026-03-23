@@ -6,6 +6,7 @@ CLI 命令封装
 
 import json
 import subprocess
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Union
@@ -38,19 +39,24 @@ class ZKCLI:
     
     用法:
         cli = ZKCLI(kb_path)
+        cli.init()  # 初始化并注册知识库
         result = cli.add("内容", title="标题")
         assert result.success
+        cli.cleanup()  # 清理时注销知识库
     """
     
-    def __init__(self, kb_path: Optional[Path] = None):
+    def __init__(self, kb_path: Optional[Path] = None, kb_name: Optional[str] = None):
         """
         初始化 CLI 封装
         
         Args:
             kb_path: 知识库路径（None 使用当前默认）
+            kb_name: 知识库名称（None 自动生成）
         """
         self.kb_path = kb_path
+        self.kb_name = kb_name or f"test_{uuid.uuid4().hex[:8]}"
         self._last_result: Optional[CLIResult] = None
+        self._initialized = False
     
     def _run(
         self, 
@@ -74,13 +80,21 @@ class ZKCLI:
         # 构建命令
         command = ["python", "-m", "zk", cmd]
         
-        # 添加其他参数（先添加，让 --path 在后面覆盖）
+        # 添加其他参数
         command.extend(args)
         
         # 如果指定了知识库路径，使用 --path（init 命令支持 --path）
         if self.kb_path is not None and cmd == "init":
             if "--path" not in args:
                 command.extend(["--path", str(self.kb_path)])
+            # 使用指定的名称
+            if "--name" not in args:
+                command.extend(["--name", self.kb_name])
+        
+        # 对于非 init/kb 命令，如果有知识库名称，使用 --kb
+        if cmd not in ("init", "kb") and self._initialized:
+            if "--kb" not in args and "-k" not in args:
+                command.extend(["--kb", self.kb_name])
         
         # 默认使用 JSON 输出（便于解析）
         if json_output and "--json" not in args and "--no-json" not in args:
@@ -102,13 +116,29 @@ class ZKCLI:
                 data = json.loads(stdout)
             except json.JSONDecodeError:
                 # 如果失败，可能是日志混在输出中，尝试提取 JSON 部分
+                # 策略：从开头找第一个 '{'，从结尾找最后一个 '}'
                 import re
-                json_match = re.search(r'\{.*\}', stdout, re.DOTALL)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group())
-                    except json.JSONDecodeError:
-                        pass
+                # 尝试匹配最外层的大括号（考虑嵌套）
+                start_idx = stdout.find('{')
+                if start_idx != -1:
+                    # 找到匹配的结束括号
+                    brace_count = 0
+                    end_idx = start_idx
+                    for i, char in enumerate(stdout[start_idx:], start=start_idx):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i + 1
+                                break
+                    
+                    if brace_count == 0 and end_idx > start_idx:
+                        json_str = stdout[start_idx:end_idx]
+                        try:
+                            data = json.loads(json_str)
+                        except json.JSONDecodeError:
+                            pass
         
         success = result.returncode == 0
         
@@ -126,8 +156,20 @@ class ZKCLI:
     # ==================== 基础命令 ====================
     
     def init(self) -> CLIResult:
-        """初始化知识库"""
-        return self._run("init")
+        """初始化知识库并注册"""
+        result = self._run("init")
+        if result.success:
+            self._initialized = True
+        return result
+    
+    def cleanup(self) -> CLIResult:
+        """清理并注销知识库"""
+        if self._initialized:
+            # 注销知识库
+            result = self._run("kb", "remove", self.kb_name, "--force")
+            self._initialized = False
+            return result
+        return CLIResult(success=True, returncode=0, stdout="", stderr="", data={})
     
     def add(
         self, 
@@ -282,3 +324,62 @@ class ZKCLI:
             args.append("--no-json")
         
         return self._run("kb", *args)
+    
+    # ==================== 工作流命令 ====================
+    
+    def daily(self, date: Optional[str] = None) -> CLIResult:
+        """
+        查看某天的笔记（默认今天）
+        
+        Args:
+            date: 日期 (YYYY-MM-DD, 默认今天)
+        """
+        args = []
+        if date:
+            args.extend(["--date", date])
+        
+        return self._run("daily", *args)
+    
+    def inbox(self, limit: int = 20) -> CLIResult:
+        """
+        查看临时笔记 (Fleeting Notes)
+        
+        Args:
+            limit: 显示数量
+        """
+        args = ["--limit", str(limit)]
+        return self._run("inbox", *args)
+    
+    def query(
+        self, 
+        query_str: str, 
+        top: int = 5, 
+        graph_depth: int = 2
+    ) -> CLIResult:
+        """
+        语义搜索 + 知识图谱联合查询
+        
+        Args:
+            query_str: 搜索查询
+            top: 返回结果数量
+            graph_depth: 图谱遍历深度
+        """
+        args = [query_str, "--top", str(top), "--depth", str(graph_depth)]
+        return self._run("query", *args)
+    
+    def suggest_links(
+        self, 
+        content: str, 
+        top_k: int = 5, 
+        threshold: float = 0.6
+    ) -> CLIResult:
+        """
+        根据内容推荐可以链接的已有笔记
+        
+        Args:
+            content: 内容文本
+            top_k: 返回建议数量
+            threshold: 相似度阈值 (0-1)
+        """
+        args = [content, "--top", str(top_k), "--threshold", str(threshold)]
+        return self._run("suggest-links", *args)

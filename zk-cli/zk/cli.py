@@ -42,7 +42,7 @@ app = typer.Typer(
     add_completion=False,
 )
 
-console = Console()
+console = Console(soft_wrap=False, width=9999)
 
 
 def output_json(data: dict) -> str:
@@ -201,6 +201,18 @@ def _add_note_impl(
     
     # 保存笔记
     if note.save_note(new_note):
+        # 更新被链接笔记的反向链接
+        backlink_updated = 0
+        for target_id in resolved_links:
+            target_note = note.load_note_by_id(target_id)
+            if target_note:
+                # 避免重复添加
+                if new_note.id not in target_note.backlinks:
+                    target_note.backlinks.append(new_note.id)
+                    # 重新保存目标笔记
+                    note.save_note(target_note, add_to_index=False)
+                    backlink_updated += 1
+        
         result = {
             "success": True,
             "note": {
@@ -223,6 +235,8 @@ def _add_note_impl(
             console.print(f"  Path: {new_note.filepath}")
             if resolved_links:
                 console.print(f"  Links: {len(resolved_links)} connection(s)")
+            if backlink_updated > 0:
+                console.print(f"  Backlinks updated: {backlink_updated} note(s)")
             if unresolved:
                 console.print(f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]")
     else:
