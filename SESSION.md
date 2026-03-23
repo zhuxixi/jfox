@@ -9,45 +9,25 @@
 
 ## Recent Sessions (最近5次)
 
-### Session 2 - 2026-03-23
-
-完成 Issue #13: 为所有笔记命令添加 --kb 参数支持。
-
-本次工作：
-- 完整实现 Issue #13，为全部 9 个笔记命令添加 --kb / -k 参数
-- search, list, refs, delete, query, graph, daily, inbox 命令现已支持临时知识库切换
-- add 命令在此前已实现，本次保持一致性完善
-- 统一实现模式：提取逻辑到 _impl 辅助函数，使用 use_kb() 上下文管理器
-- 保持向后兼容，不指定 --kb 时使用默认知识库
-- 所有命令通过 CLI 导入测试，--help 显示正常
-
-提交记录：
-- 008d1c8: feat: Complete Issue #13 - Add --kb parameter to all note commands
-
 ### Session 1 - 2026-03-23
 
-分析可开发 Issues 并完成 #14，启动 #13 开发。
+**实现 Issue #32：核心工作流测试**
 
-已完成工作：
-- 分析 6 个可立即开发的 Issues (#13-#18)
-- 为 #14 设计详细验收测试方案
-- 实现 #14: 添加 zk kb current 命令，支持 JSON/表格格式输出
-- 创建 tests/test_kb_current.py 测试套件
-- 实现 #13 (部分): 添加 use_kb() 上下文管理器，zk add 支持 --kb 参数
-- 创建多个新 Issue：知识融合工作流 (#24)、链接发现策略 (#23)
-- 关闭 #14
+完成了 Zettelkasten 工作流的完整测试套件实现：
 
-文件变更：
-- zk-cli/zk/cli.py: 添加 kb current 和 --kb 参数支持
-- zk-cli/zk/config.py: 添加 use_kb() 上下文管理器
-- zk-cli/tests/test_kb_current.py: 新增测试文件
-- DEVELOPMENT_PLAN.md: 创建开发计划文档
-- SESSION_SUMMARY.md: 更新项目状态
+1. **测试覆盖**：创建了 19 个测试用例，完整覆盖 Capture→Process→Connect→Develop 四个阶段，以及多知识库隔离和端到端工作流测试。
+
+2. **反向链接修复**：发现 CLI 创建链接时不自动维护 backlinks 的问题，修复了 `_add_note_impl` 函数，创建笔记时自动更新被链接笔记的反向链接。
+
+3. **测试基础设施**：
+   - 实现命名知识库隔离（每个测试使用独立命名的知识库）
+   - 修复 `zk_cli.py` 自动添加 `--kb` 参数的问题
+   - 修复 JSON 输出被 Rich 自动换行的问题
+
+4. **Embedding 测试优化**：发现 embedding 测试等待逻辑不正确，采用简单延迟方案确保计算完成后再执行搜索验证。
+
+5. **全部测试通过**：19/19 测试通过，耗时约 22 分钟（笔记本 CPU 环境）。
 
 ---
 
 *Total: 1 sessions | Last Updated: 2026-03-23*
-
----
-
-*Total: 2 sessions | Last Updated: 2026-03-23*
