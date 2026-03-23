@@ -266,9 +266,11 @@ def _search_impl(
     top: int,
     note_type: Optional[str],
     search_mode: str,
-    json_output: bool,
+    output_format: str,
 ):
     """搜索笔记的内部实现"""
+    from .formatters import OutputFormatter
+    
     results = note.search_notes(query, top_k=top, note_type=note_type, mode=search_mode)
     
     result = {
@@ -278,9 +280,9 @@ def _search_impl(
         "results": results,
     }
     
-    if json_output:
-        console.print(output_json(result))
-    else:
+    if output_format == "json":
+        console.print(OutputFormatter.to_json(result))
+    elif output_format == "table":
         mode_display = {
             "hybrid": "Hybrid (BM25 + Semantic)",
             "semantic": "Semantic",
@@ -303,6 +305,34 @@ def _search_impl(
             console.print(f"{i}. [{score:.2f}]{badge} {r['metadata'].get('title', 'Untitled')}")
             console.print(f"   {r['document'][:100]}...")
             console.print()
+    elif output_format == "csv":
+        # 扁平化结果数据
+        flat_results = []
+        for r in results:
+            flat_r = {
+                "id": r.get("id", ""),
+                "title": r.get("metadata", {}).get("title", ""),
+                "type": r.get("metadata", {}).get("type", ""),
+                "score": r.get("score", 0),
+                "search_mode": r.get("search_mode", ""),
+            }
+            flat_results.append(flat_r)
+        console.print(OutputFormatter.to_csv(flat_results, headers=["id", "title", "type", "score", "search_mode"]))
+    elif output_format == "yaml":
+        console.print(OutputFormatter.to_yaml(result))
+    elif output_format == "paths":
+        # 从结果中提取文件路径
+        from . import note as note_module
+        paths = []
+        for r in results:
+            note_id = r.get("id")
+            if note_id:
+                n = note_module.load_note_by_id(note_id)
+                if n and n.filepath:
+                    paths.append({"filepath": n.filepath})
+        console.print(OutputFormatter.to_paths(paths, key="filepath"))
+    else:
+        raise ValueError(f"Unsupported format: {output_format}")
 
 
 @app.command()
@@ -311,8 +341,10 @@ def search(
     top: int = typer.Option(5, "--top", "-n", help="返回结果数量"),
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
     search_mode: str = typer.Option("hybrid", "--mode", "-m", help="搜索模式: hybrid, semantic, keyword"),
+    output_format: str = typer.Option("table", "--format", "-f", 
+                                       help="输出格式: json, table, csv, yaml, paths"),
+    json_output: bool = typer.Option(False, "--json/--no-json", help="JSON 输出（向后兼容）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """
     搜索笔记
@@ -327,20 +359,24 @@ def search(
         zk search "async await" --mode keyword --top 10
     """
     try:
+        # 向后兼容：如果指定了 --json，使用 json 格式
+        if json_output:
+            output_format = "json"
+        
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _search_impl(query, top, note_type, search_mode, json_output)
+                _search_impl(query, top, note_type, search_mode, output_format)
         else:
-            _search_impl(query, top, note_type, search_mode, json_output)
+            _search_impl(query, top, note_type, search_mode, output_format)
         
     except Exception as e:
         result = {
             "success": False,
             "error": str(e),
         }
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
@@ -403,9 +439,11 @@ def status(
 def _list_impl(
     note_type: Optional[str],
     limit: int,
-    json_output: bool,
+    output_format: str,
 ):
     """列出笔记的内部实现"""
+    from .formatters import OutputFormatter
+    
     # 解析类型
     nt = None
     if note_type:
@@ -415,45 +453,74 @@ def _list_impl(
             raise ValueError(f"Invalid note type: {note_type}")
     
     notes = note.list_notes(note_type=nt, limit=limit)
+    data = [n.to_dict() for n in notes]
     
     result = {
         "total": len(notes),
-        "notes": [n.to_dict() for n in notes],
+        "notes": data,
     }
     
-    if json_output:
-        console.print(output_json(result))
-    else:
+    if output_format == "json":
+        console.print(OutputFormatter.to_json(result))
+    elif output_format == "table":
         console.print(f"[bold]Total:[/bold] {len(notes)} notes\n")
         for n in notes:
             console.print(f"• [{n.type.value}] {n.title}")
             console.print(f"  {n.filepath}")
             console.print()
+    elif output_format == "tree":
+        console.print(OutputFormatter.to_tree(data, group_by="type"))
+    elif output_format in ["csv", "yaml", "paths"]:
+        # 对于 csv, yaml, paths，只输出 notes 列表
+        if output_format == "csv":
+            console.print(OutputFormatter.to_csv(data, headers=["id", "title", "type", "created"]))
+        elif output_format == "yaml":
+            console.print(OutputFormatter.to_yaml(result))
+        elif output_format == "paths":
+            console.print(OutputFormatter.to_paths(data, key="filepath"))
+    else:
+        raise ValueError(f"Unsupported format: {output_format}")
 
 
 @app.command()
 def list(
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
     limit: int = typer.Option(10, "--limit", "-n", help="显示数量"),
+    output_format: str = typer.Option("table", "--format", "-f", 
+                                       help="输出格式: json, table, csv, yaml, paths, tree"),
+    json_output: bool = typer.Option(False, "--json/--no-json", help="JSON 输出（向后兼容）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
-    """列出笔记"""
+    """
+    列出笔记
+    
+    支持多种输出格式：
+    - json: JSON 格式
+    - table: 表格格式（默认）
+    - csv: CSV 格式，可用于 Excel
+    - yaml: YAML 格式
+    - paths: 仅输出文件路径
+    - tree: 树形结构
+    """
     try:
+        # 向后兼容：如果指定了 --json，使用 json 格式
+        if json_output:
+            output_format = "json"
+        
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _list_impl(note_type, limit, json_output)
+                _list_impl(note_type, limit, output_format)
         else:
-            _list_impl(note_type, limit, json_output)
+            _list_impl(note_type, limit, output_format)
         
     except Exception as e:
         result = {
             "success": False,
             "error": str(e),
         }
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
