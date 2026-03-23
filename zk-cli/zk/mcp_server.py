@@ -64,6 +64,9 @@ class ZKMCPHandler:
             "search_by_tag": self.search_by_tag,
             "daily_notes": self.daily_notes,
             "query_semantic_graph": self.query_semantic_graph,
+            
+            # 链接建议
+            "suggest_links": self.suggest_links,
         }
         
         handler = handlers.get(method)
@@ -533,6 +536,33 @@ class ZKMCPHandler:
             })
         
         return enriched_results
+    
+    def suggest_links(
+        self, 
+        content: str, 
+        top_k: int = 5, 
+        threshold: float = 0.6
+    ) -> List[Dict[str, Any]]:
+        """
+        根据内容推荐可以链接的已有笔记
+        
+        Args:
+            content: 输入内容
+            top_k: 返回建议数量
+            threshold: 相似度阈值
+            
+        Returns:
+            建议链接的笔记列表
+        """
+        from . import note as note_module
+        
+        suggestions = note_module.suggest_links(
+            content=content,
+            top_k=top_k,
+            threshold=threshold
+        )
+        
+        return suggestions
 
 
 class ZKMCPServer:

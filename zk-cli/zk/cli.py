@@ -971,6 +971,75 @@ def _inbox_impl(
             console.print(f"• [{time_str}] {n.title}")
 
 
+def _suggest_links_impl(
+    content: str,
+    top_k: int,
+    threshold: float,
+    json_output: bool,
+):
+    """推荐链接笔记的内部实现"""
+    suggestions = note.suggest_links(content, top_k=top_k, threshold=threshold)
+    
+    result = {
+        "content": content[:200] + "..." if len(content) > 200 else content,
+        "total_suggestions": len(suggestions),
+        "threshold": threshold,
+        "suggestions": suggestions,
+    }
+    
+    if json_output:
+        console.print(output_json(result))
+    else:
+        if suggestions:
+            console.print(f"[bold]Suggested links (confidence > {threshold}):[/bold]\n")
+            for i, s in enumerate(suggestions, 1):
+                match_badge = "[cyan]semantic[/cyan]" if s["match_type"] == "semantic" else "[yellow]keyword[/yellow]"
+                console.print(f"{i}. [{s['score']:.2f}] {s['title']} ({s['id']})")
+                console.print(f"   Match type: {match_badge}")
+                if s.get("matched_keywords"):
+                    console.print(f"   Keywords: {', '.join(s['matched_keywords'])}")
+                console.print()
+            
+            console.print("[dim]Use with: zk add \"... [[note title]] ...\"[/dim]")
+        else:
+            console.print(f"[dim]No suggestions found (threshold: {threshold})[/dim]")
+
+
+@app.command()
+def suggest_links(
+    content: str = typer.Argument(..., help="内容文本（用于推荐相关笔记）"),
+    top_k: int = typer.Option(5, "--top", "-n", help="返回建议数量"),
+    threshold: float = typer.Option(0.6, "--threshold", "-t", help="相似度阈值 (0-1)"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """
+    根据内容推荐可以链接的已有笔记
+    
+    使用语义相似度和关键词匹配混合策略，帮助发现知识间的联系。
+    
+    示例:
+        zk suggest-links "今天学习了 Python 的 async/await 机制"
+        zk suggest-links "笔记内容" --top 10 --threshold 0.5
+    """
+    try:
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _suggest_links_impl(content, top_k, threshold, json_output)
+        else:
+            _suggest_links_impl(content, top_k, threshold, json_output)
+    
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if json_output:
+            console.print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
 @app.command()
 def inbox(
     limit: int = typer.Option(20, "--limit", "-n", help="显示数量"),
