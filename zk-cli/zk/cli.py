@@ -27,6 +27,7 @@ from .performance import (
     ModelCache,
     get_perf_monitor
 )
+from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
 
 # 配置日志
 logging.basicConfig(
@@ -169,8 +170,42 @@ def _add_note_impl(
     tags: Optional[List[str]],
     source: Optional[str],
     json_output: bool,
+    template: Optional[str] = None,
 ):
     """添加笔记的内部实现"""
+    # 如果指定了模板，使用模板渲染
+    if template:
+        templates_dir = config.base_dir / ".zk" / "templates"
+        template_manager = TemplateManager(templates_dir)
+        
+        try:
+            # 准备模板变量
+            template_vars = {
+                "title": title or "",
+                "content": content,
+                "source": source or "",
+            }
+            
+            # 渲染模板
+            rendered = template_manager.render(template, template_vars)
+            
+            # 使用渲染结果
+            content = rendered["content"]
+            if rendered["title"]:
+                title = rendered["title"]
+            note_type = rendered["note_type"]
+            # 合并模板的 tags 和用户提供的 tags
+            template_tags = rendered["tags"]
+            if tags:
+                tags = list(set(template_tags + tags))
+            else:
+                tags = template_tags
+                
+        except TemplateNotFoundError as e:
+            raise ValueError(str(e))
+        except TemplateRenderError as e:
+            raise ValueError(str(e))
+    
     # 解析类型
     try:
         nt = NoteType(note_type.lower())
@@ -250,6 +285,7 @@ def add(
     note_type: str = typer.Option("fleeting", "--type", help="笔记类型 (fleeting/literature/permanent)"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="标签（可多次使用）"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
+    template: Optional[str] = typer.Option(None, "--template", "-T", help="使用模板创建笔记 (quick/meeting/literature)"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
@@ -259,9 +295,9 @@ def add(
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _add_note_impl(content, title, note_type, tags, source, json_output)
+                _add_note_impl(content, title, note_type, tags, source, json_output, template)
         else:
-            _add_note_impl(content, title, note_type, tags, source, json_output)
+            _add_note_impl(content, title, note_type, tags, source, json_output, template)
             
     except Exception as e:
         result = {
