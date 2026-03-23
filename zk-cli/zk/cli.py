@@ -265,13 +265,15 @@ def _search_impl(
     query: str,
     top: int,
     note_type: Optional[str],
+    search_mode: str,
     json_output: bool,
 ):
     """搜索笔记的内部实现"""
-    results = note.search_notes(query, top_k=top, note_type=note_type)
+    results = note.search_notes(query, top_k=top, note_type=note_type, mode=search_mode)
     
     result = {
         "query": query,
+        "mode": search_mode,
         "total": len(results),
         "results": results,
     }
@@ -279,12 +281,26 @@ def _search_impl(
     if json_output:
         console.print(output_json(result))
     else:
+        mode_display = {
+            "hybrid": "Hybrid (BM25 + Semantic)",
+            "semantic": "Semantic",
+            "keyword": "Keyword (BM25)",
+        }.get(search_mode, search_mode)
+        
         console.print(f"[bold]Query:[/bold] {query}")
+        console.print(f"[bold]Mode:[/bold] {mode_display}")
         console.print(f"[bold]Results:[/bold] {len(results)}\n")
         
         for i, r in enumerate(results, 1):
             score = r.get("score", 0)
-            console.print(f"{i}. [{score:.2f}] {r['metadata'].get('title', 'Untitled')}")
+            mode_badge = r.get("search_mode", "")
+            badge = ""
+            if mode_badge == "semantic":
+                badge = " [cyan]S[/cyan]"
+            elif mode_badge == "keyword":
+                badge = " [yellow]K[/yellow]"
+            
+            console.print(f"{i}. [{score:.2f}]{badge} {r['metadata'].get('title', 'Untitled')}")
             console.print(f"   {r['document'][:100]}...")
             console.print()
 
@@ -294,18 +310,30 @@ def search(
     query: str = typer.Argument(..., help="搜索查询"),
     top: int = typer.Option(5, "--top", "-n", help="返回结果数量"),
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
+    search_mode: str = typer.Option("hybrid", "--mode", "-m", help="搜索模式: hybrid, semantic, keyword"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
-    """语义搜索笔记"""
+    """
+    搜索笔记
+    
+    支持三种搜索模式：
+    - hybrid: 混合搜索（BM25 + 语义），默认
+    - semantic: 纯语义搜索
+    - keyword: 纯关键词搜索 (BM25)
+    
+    示例:
+        zk search "Python" --mode hybrid
+        zk search "async await" --mode keyword --top 10
+    """
     try:
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _search_impl(query, top, note_type, json_output)
+                _search_impl(query, top, note_type, search_mode, json_output)
         else:
-            _search_impl(query, top, note_type, json_output)
+            _search_impl(query, top, note_type, search_mode, json_output)
         
     except Exception as e:
         result = {
@@ -1067,85 +1095,132 @@ def inbox(
 
 @app.command()
 def index(
-    action: str = typer.Argument("status", help="操作: status, rebuild, verify"),
+    action: str = typer.Argument("status", help="操作: status, rebuild, verify, rebuild-bm25, bm25-status"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """索引管理：查看状态、重建索引、验证完整性"""
     try:
-        vector_store = get_vector_store()
-        indexer = Indexer(config, vector_store)
-        
-        if action == "status":
-            stats = indexer.get_stats()
-            vs_stats = vector_store.get_stats()
+        if action == "rebuild-bm25":
+            # 重建 BM25 索引
+            from .bm25_index import get_bm25_index
+            from . import note as note_module
+            
+            console.print("[yellow]Rebuilding BM25 index...[/yellow]")
+            bm25_index = get_bm25_index()
+            notes = note_module.list_notes(limit=10000)
+            success = bm25_index.rebuild_from_notes(notes)
             
             result = {
-                "total_indexed": stats.total_indexed,
-                "last_indexed": stats.last_indexed.isoformat() if stats.last_indexed else None,
-                "pending_changes": stats.pending_changes,
-                "vector_store": vs_stats,
+                "success": success,
+                "indexed": len(notes),
             }
             
             if json_output:
                 console.print(output_json(result))
             else:
-                table = Table(title="Index Status")
+                if success:
+                    console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
+                else:
+                    console.print("[red]✗[/red] Failed to rebuild BM25 index")
+        
+        elif action == "bm25-status":
+            # 查看 BM25 索引状态
+            from .bm25_index import get_bm25_index
+            
+            bm25_index = get_bm25_index()
+            stats = bm25_index.get_stats()
+            
+            result = {
+                "bm25_index": stats,
+            }
+            
+            if json_output:
+                console.print(output_json(result))
+            else:
+                table = Table(title="BM25 Index Status")
                 table.add_column("Property", style="cyan")
                 table.add_column("Value", style="green")
-                table.add_row("Total Indexed", str(stats.total_indexed))
-                table.add_row("Last Indexed", str(stats.last_indexed or "Never"))
-                table.add_row("Pending Changes", str(stats.pending_changes))
-                table.add_row("Vector Store Notes", str(vs_stats.get("total_notes", 0)))
+                table.add_row("Indexed Documents", str(stats["indexed"]))
+                table.add_row("Index Version", str(stats["version"]))
+                table.add_row("Index File", str(stats["index_path"]))
+                table.add_row("Index Exists", "Yes" if stats["index_exists"] else "No")
                 console.print(table)
-                
-                if stats.errors:
-                    console.print("\n[yellow]Recent Errors:[/yellow]")
-                    for err in stats.errors[-5:]:
-                        console.print(f"  • {err}")
-        
-        elif action == "rebuild":
-            console.print("[yellow]Rebuilding index...[/yellow]")
-            count = indexer.index_all()
-            
-            result = {
-                "success": True,
-                "indexed": count,
-            }
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                console.print(f"[green]✓[/green] Indexed {count} notes")
-        
-        elif action == "verify":
-            verification = indexer.verify_index()
-            
-            result = verification
-            
-            if json_output:
-                console.print(output_json(result))
-            else:
-                if verification["healthy"]:
-                    console.print("[green]✓[/green] Index is healthy")
-                else:
-                    console.print("[yellow]⚠[/yellow] Index has issues")
-                
-                console.print(f"  Files: {verification['total_files']}")
-                console.print(f"  Indexed: {verification['total_indexed']}")
-                
-                if verification["missing_from_index"]:
-                    console.print(f"\n[yellow]Missing from index ({len(verification['missing_from_index'])}):[/yellow]")
-                    for nid in verification["missing_from_index"][:5]:
-                        console.print(f"  • {nid}")
-                
-                if verification["orphaned_in_index"]:
-                    console.print(f"\n[yellow]Orphaned in index ({len(verification['orphaned_in_index'])}):[/yellow]")
-                    for nid in verification["orphaned_in_index"][:5]:
-                        console.print(f"  • {nid}")
         
         else:
-            console.print(f"[red]Unknown action: {action}. Use: status, rebuild, verify[/red]")
-            raise typer.Exit(1)
+            vector_store = get_vector_store()
+            indexer = Indexer(config, vector_store)
+            
+            if action == "status":
+                stats = indexer.get_stats()
+                vs_stats = vector_store.get_stats()
+                
+                result = {
+                    "total_indexed": stats.total_indexed,
+                    "last_indexed": stats.last_indexed.isoformat() if stats.last_indexed else None,
+                    "pending_changes": stats.pending_changes,
+                    "vector_store": vs_stats,
+                }
+                
+                if json_output:
+                    console.print(output_json(result))
+                else:
+                    table = Table(title="Index Status")
+                    table.add_column("Property", style="cyan")
+                    table.add_column("Value", style="green")
+                    table.add_row("Total Indexed", str(stats.total_indexed))
+                    table.add_row("Last Indexed", str(stats.last_indexed or "Never"))
+                    table.add_row("Pending Changes", str(stats.pending_changes))
+                    table.add_row("Vector Store Notes", str(vs_stats.get("total_notes", 0)))
+                    console.print(table)
+                    
+                    if stats.errors:
+                        console.print("\n[yellow]Recent Errors:[/yellow]")
+                        for err in stats.errors[-5:]:
+                            console.print(f"  • {err}")
+            
+            elif action == "rebuild":
+                console.print("[yellow]Rebuilding index...[/yellow]")
+                count = indexer.index_all()
+                
+                result = {
+                    "success": True,
+                    "indexed": count,
+                }
+                
+                if json_output:
+                    console.print(output_json(result))
+                else:
+                    console.print(f"[green]✓[/green] Indexed {count} notes")
+            
+            elif action == "verify":
+                verification = indexer.verify_index()
+                
+                result = verification
+                
+                if json_output:
+                    console.print(output_json(result))
+                else:
+                    if verification["healthy"]:
+                        console.print("[green]✓[/green] Index is healthy")
+                    else:
+                        console.print("[yellow]⚠[/yellow] Index has issues")
+                    
+                    console.print(f"  Files: {verification['total_files']}")
+                    console.print(f"  Indexed: {verification['total_indexed']}")
+                    
+                    if verification["missing_from_index"]:
+                        console.print(f"\n[yellow]Missing from index ({len(verification['missing_from_index'])}):[/yellow]")
+                    for nid in verification["missing_from_index"][:5]:
+                        console.print(f"  • {nid}")
+                    
+                    if verification["orphaned_in_index"]:
+                        console.print(f"\n[yellow]Orphaned in index ({len(verification['orphaned_in_index'])}):[/yellow]")
+                        for nid in verification["orphaned_in_index"][:5]:
+                            console.print(f"  • {nid}")
+            
+            else:
+                console.print(f"[red]Unknown action: {action}. Use: status, rebuild, verify, rebuild-bm25, bm25-status[/red]")
+                raise typer.Exit(1)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}

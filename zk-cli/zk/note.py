@@ -66,6 +66,15 @@ def save_note(note: Note, add_to_index: bool = True) -> bool:
         if add_to_index:
             vector_store = get_vector_store()
             vector_store.add_note(note)
+            
+            # 添加到 BM25 索引
+            try:
+                from .bm25_index import get_bm25_index
+                bm25_index = get_bm25_index()
+                content = f"{note.title} {note.content}"
+                bm25_index.add_document(note.id, content)
+            except Exception as e:
+                logger.warning(f"Failed to add note to BM25 index: {e}")
         
         return True
         
@@ -145,6 +154,14 @@ def delete_note(note_id: str) -> bool:
         vector_store = get_vector_store()
         vector_store.delete_note(note_id)
         
+        # 从 BM25 索引删除
+        try:
+            from .bm25_index import get_bm25_index
+            bm25_index = get_bm25_index()
+            bm25_index.remove_document(note_id)
+        except Exception as e:
+            logger.warning(f"Failed to remove note from BM25 index: {e}")
+        
         return True
         
     except Exception as e:
@@ -183,10 +200,33 @@ def search_notes(
     query: str,
     top_k: int = 5,
     note_type: Optional[str] = None,
+    mode: str = "hybrid",
 ) -> List[Dict[str, Any]]:
-    """搜索笔记"""
-    vector_store = get_vector_store()
-    return vector_store.search(query, top_k=top_k, note_type=note_type)
+    """
+    搜索笔记
+    
+    Args:
+        query: 搜索查询
+        top_k: 返回结果数量
+        note_type: 笔记类型筛选
+        mode: 搜索模式 - "hybrid"(混合), "semantic"(语义), "keyword"(关键词)
+        
+    Returns:
+        搜索结果列表
+    """
+    from .search_engine import get_search_engine, SearchMode
+    
+    search_engine = get_search_engine()
+    
+    # 转换模式
+    mode_map = {
+        "hybrid": SearchMode.HYBRID,
+        "semantic": SearchMode.SEMANTIC,
+        "keyword": SearchMode.KEYWORD,
+    }
+    search_mode = mode_map.get(mode.lower(), SearchMode.HYBRID)
+    
+    return search_engine.search(query, top_k=top_k, mode=search_mode, note_type=note_type)
 
 
 def extract_keywords(content: str, max_keywords: int = 10) -> List[str]:

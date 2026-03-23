@@ -159,6 +159,16 @@ def use_kb(kb_name: Optional[str] = None):
         config.notes_dir = kb_path / "notes"
         config.zk_dir = kb_path / ".zk"
         config.chroma_dir = config.zk_dir / "chroma_db"
+        
+        # 重置 BM25 索引和搜索引擎（使用新的知识库路径）
+        try:
+            from .bm25_index import reset_bm25_index
+            from .search_engine import reset_search_engine
+            reset_bm25_index()
+            reset_search_engine()
+        except Exception:
+            pass  # 忽略重置错误
+        
         yield
     finally:
         # 恢复原始配置
