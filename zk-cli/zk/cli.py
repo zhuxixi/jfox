@@ -2,9 +2,13 @@
 
 import json
 import logging
+import warnings
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime, timedelta
+
+# 过滤 networkx 的 backend 警告
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="networkx backend defined more than once")
 
 import typer
 from rich.console import Console
