@@ -439,9 +439,12 @@ def search(
 
 @app.command()
 def status(
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table, yaml"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """查看知识库状态"""
+    from .formatters import OutputFormatter
+    
     try:
         stats = note.get_stats()
         
@@ -460,9 +463,16 @@ def status(
             },
         }
         
+        # 处理 --json 快捷方式
         if json_output:
-            console.print(output_json(result))
-        else:
+            output_format = "json"
+        
+        # 根据格式输出
+        if output_format == "json":
+            console.print(OutputFormatter.to_json(result))
+        elif output_format == "yaml":
+            console.print(OutputFormatter.to_yaml(result))
+        elif output_format == "table":
             # 打印表格
             table = Table(title="Knowledge Base Status")
             table.add_column("Property", style="cyan")
@@ -477,16 +487,12 @@ def status(
             table.add_row("Model", backend.model_name)
             
             console.print(table)
+        else:
+            console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
+            raise typer.Exit(1)
         
     except Exception as e:
-        result = {
-            "success": False,
-            "error": str(e),
-        }
-        if json_output:
-            console.print(output_json(result))
-        else:
-            console.print(f"[red]✗[/red] Error: {e}")
+        console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
 
@@ -1365,7 +1371,8 @@ def kb(
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
     force: bool = typer.Option(False, "--force", "-f", help="强制操作（删除时跳过确认）"),
     set_default: bool = typer.Option(False, "--default", help="创建后设为默认"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", help="输出格式: json, table, csv, yaml（仅 list/info/current 有效）"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """
     知识库管理：列出、创建、切换、删除知识库
@@ -1385,6 +1392,8 @@ def kb(
         
         if action == "list":
             # 列出所有知识库
+            from .formatters import OutputFormatter
+            
             stats_list = manager.list_all()
             
             result = {
@@ -1404,9 +1413,33 @@ def kb(
                 ]
             }
             
+            # 处理 --json 快捷方式
             if json_output:
-                console.print(output_json(result))
-            else:
+                output_format = "json"
+            
+            # 根据格式输出
+            if output_format == "json":
+                console.print(OutputFormatter.to_json(result))
+            elif output_format == "yaml":
+                console.print(OutputFormatter.to_yaml(result))
+            elif output_format == "csv":
+                # CSV 格式
+                flat_data = []
+                for s in stats_list:
+                    flat_data.append({
+                        "name": s.name,
+                        "path": str(s.path),
+                        "total_notes": s.total_notes,
+                        "fleeting": s.by_type.get('fleeting', 0),
+                        "literature": s.by_type.get('literature', 0),
+                        "permanent": s.by_type.get('permanent', 0),
+                        "created": s.created,
+                        "last_used": s.last_used or "",
+                        "description": s.description or "",
+                        "is_current": "*" if s.is_current else "",
+                    })
+                console.print(OutputFormatter.to_csv(flat_data, headers=["name", "path", "total_notes", "fleeting", "literature", "permanent", "created", "last_used", "description", "is_current"]))
+            elif output_format == "table":
                 table = Table(title="Knowledge Bases")
                 table.add_column("Status", style="dim", justify="center")
                 table.add_column("Name", style="cyan")
@@ -1416,7 +1449,7 @@ def kb(
                 table.add_column("Last Used", style="dim")
                 
                 for s in stats_list:
-                    status = "●" if s.is_current else "○"
+                    status = "*" if s.is_current else ""
                     types_str = f"{s.by_type.get('fleeting', 0)}/{s.by_type.get('literature', 0)}/{s.by_type.get('permanent', 0)}"
                     last_used = s.last_used[:10] if s.last_used else "Never"
                     table.add_row(
@@ -1429,7 +1462,10 @@ def kb(
                     )
                 
                 console.print(table)
-                console.print("\n[dim]● = current default, ○ = available[/dim]")
+                console.print("\n[dim]* = current default[/dim]")
+            else:
+                console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
+                raise typer.Exit(1)
         
         elif action == "create":
             if not name:
@@ -1503,6 +1539,8 @@ def kb(
         
         elif action == "current":
             # 显示当前知识库
+            from .formatters import OutputFormatter
+            
             current_name = manager.config_manager.get_default_kb_name()
             
             if not current_name:
@@ -1525,9 +1563,16 @@ def kb(
                 "is_current": True,
             }
             
+            # 处理 --json 快捷方式
             if json_output:
-                console.print(output_json(result))
-            else:
+                output_format = "json"
+            
+            # 根据格式输出
+            if output_format == "json":
+                console.print(OutputFormatter.to_json(result))
+            elif output_format == "yaml":
+                console.print(OutputFormatter.to_yaml(result))
+            elif output_format == "table":
                 # 表格格式输出
                 table = Table(title=f"Current Knowledge Base: {stats.name}")
                 table.add_column("Property", style="cyan")
@@ -1544,9 +1589,14 @@ def kb(
                 table.add_row("Permanent", str(stats.by_type.get('permanent', 0)))
                 
                 console.print(table)
+            else:
+                console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
+                raise typer.Exit(1)
         
         elif action == "info":
             # 如果没有指定名称，显示当前知识库
+            from .formatters import OutputFormatter
+            
             target_name = name or manager.config_manager.get_default_kb_name()
             
             stats = manager.get_info(target_name)
@@ -1565,18 +1615,38 @@ def kb(
                 "is_current": stats.is_current,
             }
             
+            # 处理 --json 快捷方式
             if json_output:
-                console.print(output_json(result))
+                output_format = "json"
+            
+            # 根据格式输出
+            if output_format == "json":
+                console.print(OutputFormatter.to_json(result))
+            elif output_format == "yaml":
+                console.print(OutputFormatter.to_yaml(result))
+            elif output_format == "table":
+                # 表格格式输出
+                title = f"Knowledge Base: {stats.name}"
+                if stats.is_current:
+                    title += " [current]"
+                table = Table(title=title)
+                table.add_column("Property", style="cyan")
+                table.add_column("Value", style="green")
+                
+                table.add_row("Name", stats.name)
+                table.add_row("Path", str(stats.path))
+                table.add_row("Description", stats.description or "N/A")
+                table.add_row("Created", stats.created or "Unknown")
+                table.add_row("Last Used", stats.last_used or "Never")
+                table.add_row("Total Notes", str(stats.total_notes))
+                table.add_row("Fleeting", str(stats.by_type.get('fleeting', 0)))
+                table.add_row("Literature", str(stats.by_type.get('literature', 0)))
+                table.add_row("Permanent", str(stats.by_type.get('permanent', 0)))
+                
+                console.print(table)
             else:
-                console.print(f"[bold]{stats.name}[/bold]" + (" [current]" if stats.is_current else ""))
-                console.print(f"  Path: {stats.path}")
-                console.print(f"  Description: {stats.description or 'N/A'}")
-                console.print(f"  Created: {stats.created or 'Unknown'}")
-                console.print(f"  Last used: {stats.last_used or 'Never'}")
-                console.print(f"\n  Total notes: {stats.total_notes}")
-                console.print(f"    - Fleeting: {stats.by_type.get('fleeting', 0)}")
-                console.print(f"    - Literature: {stats.by_type.get('literature', 0)}")
-                console.print(f"    - Permanent: {stats.by_type.get('permanent', 0)}")
+                console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
+                raise typer.Exit(1)
         
         elif action == "rename":
             if not name or not new_name:
