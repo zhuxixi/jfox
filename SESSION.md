@@ -9,6 +9,40 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 2 - 2026-03-24
+
+**模板系统 MVP 实现与 Knowledge Base Skill 创建**
+
+1. **Issue #36 - Template MVP 完成**
+   - 创建 `zk/template.py` 模块，实现 TemplateManager 和 NoteTemplate
+   - 3 个内置模板：quick、meeting、literature
+   - 扩展 `zk add` 命令，添加 `--template` 选项
+   - 基础变量支持：date、time、datetime、title、content
+   - 新增 12 个单元测试，全部通过
+
+2. **Issue #37 - 模板管理命令完成**
+   - 创建 `zk template` 子命令组
+   - 5 个管理命令：list、show、create、edit、remove
+   - 内置模板保护（禁止编辑/删除）
+   - 支持 `$EDITOR` 环境变量编辑模板
+   - 所有命令支持 `--kb` 参数指定知识库
+
+3. **创建 GitHub Issues**
+   - Issue #39: Knowledge Base Skill 细化与优化
+   - Issue #40: CLI 全局可用命令安装
+
+4. **创建 Knowledge Base Skill**
+   - 完整 SKILL.md 定义（10.7KB），包含意图识别、命令映射、执行流程、5个示例对话
+   - README.md 使用说明
+   - evals/evals.json 12个测试用例
+   - 存放于 `skill/` 目录
+
+5. **提交记录**
+   - `f6ad666` feat(template): implement #36 Template MVP
+   - `74a870a` feat(template): implement #37 template management commands
+
+---
+
 ### Session 1 - 2026-03-23
 
 **实现 Issue #32：核心工作流测试**
@@ -30,4 +64,4 @@
 
 ---
 
-*Total: 1 sessions | Last Updated: 2026-03-23*
+*Total: 2 sessions | Last Updated: 2026-03-24*
