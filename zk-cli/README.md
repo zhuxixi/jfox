@@ -21,11 +21,21 @@
 
 ### 从 GitHub 安装（推荐）
 
+安装后 `zk` 命令将全局可用：
+
 ```bash
 pip install git+https://github.com/zhuxixi/jfox.git@main#subdirectory=zk-cli
 ```
 
+验证安装：
+```bash
+zk --help
+zk --version
+```
+
 ### 本地开发安装
+
+适合需要修改代码的开发者：
 
 ```bash
 git clone https://github.com/zhuxixi/jfox.git
@@ -33,10 +43,29 @@ cd jfox/zk-cli
 pip install -e .
 ```
 
+`-e` (editable) 模式表示开发时修改代码立即生效，无需重新安装。
+
+### 卸载
+
+```bash
+pip uninstall zk-cli
+```
+
 ### 依赖要求
 
 - Python >= 3.10
 - 依赖包：typer, rich, sentence-transformers, chromadb, networkx, watchdog, pyyaml
+
+### Windows PATH 问题
+
+如果在 Windows 上提示找不到 `zk` 命令，请确保 Python Scripts 目录在 PATH 中：
+
+```powershell
+# 查看安装位置
+pip show zk-cli | findstr Location
+# 将对应的 Scripts 目录添加到 PATH，例如：
+# C:\Users\<用户名>\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\Scripts
+```
 
 ---
 
