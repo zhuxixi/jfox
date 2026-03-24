@@ -9,6 +9,18 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 2 - 2026-03-23
+
+**Issue #43: status 命令缺少 --kb 参数支持**
+- 为 `zk status` 命令添加 `--kb` / `-k` 参数，支持指定目标知识库
+- 重构代码结构，提取 `_status_impl` 内部实现函数
+- 使用 `use_kb` 上下文管理器实现知识库临时切换
+- 验证通过：`zk status --kb boboyun --format json` 和 `zk status --kb boboyun` 均正常工作
+- 关闭 Issue #43
+
+**相关发现**
+- 发现 `suggest-links`、`graph`、`refs` 等命令仍缺少 `--format` 参数支持（已有 Issue #25, #26, #29 跟进）
+
 ### Session 1 - 2026-03-24
 
 **Issue #40: 将 zk CLI 安装为全局可用命令**
@@ -28,9 +40,9 @@
 **提交记录**
 - 8bb7b37 docs: update README with global CLI installation instructions (#40)
 - ee97f0c feat(#27, #28): Add --format support to status and kb commands
-- 71f7f8e fix: suppress networkx backend warning
+- 71f7b8e fix: suppress networkx backend warning
 - 6bed6c0 chore: clean up temporary files
 
 ---
 
-*Total: 1 sessions | Last Updated: 2026-03-24*
+*Total: 2 sessions | Last Updated: 2026-03-23*
