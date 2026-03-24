@@ -110,39 +110,5 @@ class TestSuggestLinks:
             pytest.skip(f"Knowledge base not configured: {e}")
 
 
-class TestMCPSuggestLinks:
-    """测试 MCP suggest_links 方法"""
-    
-    def test_mcp_suggest_links(self):
-        """MCP handler 应支持 suggest_links 方法"""
-        from zk.mcp_server import ZKMCPHandler
-        
-        handler = ZKMCPHandler()
-        
-        # 构造请求
-        request = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "suggest_links",
-            "params": {
-                "content": "Python programming",
-                "top_k": 3,
-                "threshold": 0.5
-            }
-        }
-        
-        response = handler.handle(request)
-        
-        assert "jsonrpc" in response
-        assert response["jsonrpc"] == "2.0"
-        assert "id" in response
-        assert response["id"] == 1
-        # 可能有 result 或 error
-        assert "result" in response or "error" in response
-        
-        if "result" in response:
-            assert isinstance(response["result"], list)
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

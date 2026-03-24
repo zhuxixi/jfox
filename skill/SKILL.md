@@ -455,6 +455,366 @@ def resolve_knowledge_base(intent, params):
 
 ---
 
+## Available Tools
+
+所有 Tool 通过执行 CLI 命令实现，使用 `--format json` 获取结构化数据。
+
+### Tool: kb_list
+列出所有知识库
+
+**触发场景**: "有哪些知识库", "列出知识库"
+
+**CLI 命令**:
+```bash
+zk kb list --format json
+```
+
+**返回示例**:
+```json
+{
+  "current": "default",
+  "knowledge_bases": [
+    {"name": "default", "path": "~/.zettelkasten", "total_notes": 10, "is_current": true},
+    {"name": "work", "path": "~/.zettelkasten-work", "total_notes": 25}
+  ]
+}
+```
+
+---
+
+### Tool: kb_switch
+切换到指定知识库
+
+**触发场景**: "切换到 work 知识库", "使用 personal 库"
+
+**参数**:
+- `name` (required): 知识库名称
+
+**CLI 命令**:
+```bash
+zk kb switch <name>
+```
+
+---
+
+### Tool: kb_create
+创建新知诖库
+
+**触发场景**: "创建新知识库", "新建一个叫 study 的知识库"
+
+**参数**:
+- `name` (required): 知识库名称
+- `path` (optional): 自定义路径
+- `description` (optional): 描述
+
+**CLI 命令**:
+```bash
+zk init --name <name> [--path <path>] [--desc <description>]
+```
+
+---
+
+### Tool: kb_status
+查看当前知识库状态
+
+**触发场景**: "知识库状态", "查看状态"
+
+**参数**:
+- `kb` (optional): 指定知识库，不传使用当前默认
+
+**CLI 命令**:
+```bash
+zk status [--kb <kb>] --format json
+```
+
+**返回示例**:
+```json
+{
+  "knowledge_base": {"path": "~/.zettelkasten", "exists": true},
+  "stats": {"total": 10, "by_type": {"fleeting": 5, "literature": 2, "permanent": 3}},
+  "backend": {"type": "CPU", "model": "all-MiniLM-L6-v2"}
+}
+```
+
+---
+
+### Tool: note_add
+添加新笔记
+
+**触发场景**: "记录一个想法", "帮我记个笔记", "添加笔记"
+
+**参数**:
+- `content` (required): 笔记内容
+- `title` (optional): 标题，不传则自动生成
+- `note_type` (optional): 类型 (fleeting/literature/permanent)，默认 fleeting
+- `tags` (optional): 标签列表
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk add "<content>" [--title "<title>"] [--type <type>] [--tag <tag1>] [--tag <tag2>] [--kb <kb>]
+```
+
+**返回示例**:
+```json
+{
+  "success": true,
+  "note": {
+    "id": "20260324010123",
+    "title": "AI 观察",
+    "type": "fleeting",
+    "filepath": "notes/20260324010123.md"
+  }
+}
+```
+
+---
+
+### Tool: note_add_with_template
+使用模板创建笔记
+
+**触发场景**: "用 meeting 模板记录", "创建会议记录"
+
+**参数**:
+- `content` (required): 笔记内容
+- `template` (required): 模板名称 (quick/meeting/literature)
+- `title` (optional): 标题
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk add "<content>" --template <template> [--title "<title>"] [--kb <kb>]
+```
+
+---
+
+### Tool: note_search
+搜索笔记
+
+**触发场景**: "搜索 Python", "找一下关于机器学习的笔记"
+
+**参数**:
+- `query` (required): 搜索关键词
+- `top_k` (optional): 返回数量，默认 5
+- `search_mode` (optional): 搜索模式 (hybrid/semantic/keyword)，默认 hybrid
+- `note_type` (optional): 筛选笔记类型
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk search "<query>" [--top <n>] [--mode <mode>] [--type <type>] [--kb <kb>] --format json
+```
+
+**返回示例**:
+```json
+{
+  "query": "Python",
+  "total": 3,
+  "results": [
+    {"id": "20260320", "title": "Python 装饰器", "type": "permanent", "score": 0.92},
+    {"id": "20260318", "title": "Python 异步编程", "type": "literature", "score": 0.85}
+  ]
+}
+```
+
+---
+
+### Tool: note_list
+列出笔记
+
+**触发场景**: "列出最近的笔记", "查看笔记列表"
+
+**参数**:
+- `limit` (optional): 数量限制，默认 10
+- `note_type` (optional): 筛选类型 (fleeting/literature/permanent)
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk list [--limit <n>] [--type <type>] [--kb <kb>] --format json
+```
+
+---
+
+### Tool: note_delete
+删除笔记
+
+**触发场景**: "删除笔记", "删掉这个笔记"
+
+**参数**:
+- `note_id` (required): 笔记 ID
+- `force` (optional): 是否强制删除不确认，默认 false
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk delete <note_id> [--force] [--kb <kb>]
+```
+
+---
+
+### Tool: note_refs
+查看笔记引用关系
+
+**触发场景**: "查看笔记的引用关系", "这个笔记被哪些笔记引用"
+
+**参数**:
+- `note_id` (optional): 指定笔记 ID，不传显示所有笔记链接统计
+- `search` (optional): 搜索笔记标题
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk refs [--note <id>] [--search <query>] [--kb <kb>] --format json
+```
+
+---
+
+### Tool: kb_inbox
+查看临时笔记
+
+**触发场景**: "查看收件箱", "最近的临时笔记"
+
+**参数**:
+- `limit` (optional): 数量限制，默认 20
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk inbox [--limit <n>] [--kb <kb>]
+```
+
+---
+
+### Tool: kb_suggest_links
+推荐相关笔记
+
+**触发场景**: "这个内容和哪些笔记相关", "推荐可以链接的笔记"
+
+**参数**:
+- `content` (required): 内容文本
+- `top_k` (optional): 推荐数量，默认 5
+- `threshold` (optional): 相似度阈值 0-1，默认 0.6
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk suggest-links "<content>" [--top <n>] [--threshold <t>] [--kb <kb>]
+```
+
+---
+
+### Tool: note_query
+语义搜索 + 知识图谱联合查询（高级搜索）
+
+**触发场景**: "深度搜索", "查找相关内容及关联笔记", "这个主题的完整知识网络"
+
+**参数**:
+- `query` (required): 搜索关键词
+- `top_k` (optional): 返回数量，默认 5
+- `graph_depth` (optional): 图谱遍历深度，默认 2
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk query "<query>" [--top <n>] [--depth <d>] [--kb <kb>] --format json
+```
+
+**返回示例**:
+```json
+{
+  "query": "Python",
+  "semantic_results": 5,
+  "results": [
+    {
+      "id": "20260320",
+      "title": "Python 装饰器",
+      "content": "装饰器是一种语法糖...",
+      "score": 0.92,
+      "related_notes": [
+        {"id": "20260318", "title": "函数式编程", "depth": 1}
+      ],
+      "graph_neighbors": 3
+    }
+  ]
+}
+```
+
+---
+
+### Tool: kb_daily_notes
+查看某天的笔记（默认今天）
+
+**触发场景**: "今天记录了什么", "昨天的笔记", "查看某天的笔记"
+
+**参数**:
+- `date` (optional): 日期 (YYYY-MM-DD)，不传默认今天
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+zk daily [--date <YYYY-MM-DD>] [--kb <kb>]
+```
+
+---
+
+### Tool: kb_graph
+知识图谱分析
+
+**触发场景**: "查看知识图谱", "有哪些孤立笔记"
+
+**参数**:
+- `action` (optional): 操作类型 (stats/orphans/note)，默认显示整体
+- `note_id` (optional): 查看特定笔记的图谱
+- `depth` (optional): 遍历深度，默认 2
+- `kb` (optional): 目标知识库
+
+**CLI 命令**:
+```bash
+# 查看统计
+zk graph --stats [--kb <kb>] --format json
+
+# 查看孤立笔记
+zk graph --orphans [--kb <kb>] --format json
+
+# 查看特定笔记的关联
+zk graph --note <id> [--depth <d>] [--kb <kb>]
+```
+
+---
+
+### Tool: template_list
+列出可用模板
+
+**触发场景**: "有哪些模板", "可用模板列表"
+
+**CLI 命令**:
+```bash
+zk template list
+```
+
+---
+
+## Windows 使用注意事项
+
+1. **UTF-8 编码**：如遇中文显示乱码，先运行：
+   ```powershell
+   chcp 65001
+   ```
+
+2. **全局命令**：确保 `zk` 命令可用：
+   ```powershell
+   pip install -e ./zk-cli
+   where zk  # 验证安装
+   ```
+
+3. **表格格式问题**：如果表格显示异常，改用 JSON 格式：
+   ```bash
+   zk status --format json
+   ```
+
+---
+
 ## Best Practices
 
 1. **主动确认知识库**：当上下文不明确时，主动询问而非假设

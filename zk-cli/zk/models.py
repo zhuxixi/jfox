@@ -35,6 +35,11 @@ class Note:
     embedding: Optional[List[float]] = None    # 向量
     score: Optional[float] = None              # 检索得分
     hop: Optional[int] = None                  # 图谱距离
+    _filepath: Optional[Path] = None           # 自定义文件路径（覆盖默认）
+    
+    def set_filepath(self, path: Path):
+        """设置自定义文件路径（用于测试）"""
+        self._filepath = path
     
     @property
     def filename(self) -> str:
@@ -50,6 +55,10 @@ class Note:
     @property
     def filepath(self) -> Path:
         """完整文件路径"""
+        # 如果设置了自定义路径，优先使用
+        if self._filepath is not None:
+            return self._filepath
+        
         from .config import config
         base = config.notes_dir / self.type.value
         return base / self.filename

@@ -321,7 +321,7 @@ class ZKCLI:
         """查看当前知识库"""
         args = ["current"]
         if not json_output:
-            args.append("--no-json")
+            args.extend(["--format", "table"])
         
         return self._run("kb", *args)
     

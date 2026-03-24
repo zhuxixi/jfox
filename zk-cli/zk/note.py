@@ -7,15 +7,23 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 from .models import Note, NoteType
-from .config import config
+from .config import config, ZKConfig
 from .vector_store import get_vector_store
 
 logger = logging.getLogger(__name__)
 
 
 def generate_id() -> str:
-    """生成时间戳 ID"""
-    return datetime.now().strftime("%Y%m%d%H%M%S")
+    """
+    生成唯一 ID
+    
+    格式: 时间戳 + 4位随机数 (共18位)
+    例如: 202603242325281234
+    """
+    import random
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    random_suffix = random.randint(0, 9999)
+    return f"{timestamp}{random_suffix:04d}"
 
 
 def create_note(
@@ -96,11 +104,22 @@ def load_note(filepath: Path) -> Optional[Note]:
         return None
 
 
-def load_note_by_id(note_id: str) -> Optional[Note]:
-    """通过 ID 加载笔记"""
+def load_note_by_id(note_id: str, cfg: Optional[ZKConfig] = None) -> Optional[Note]:
+    """
+    通过 ID 加载笔记
+    
+    Args:
+        note_id: 笔记 ID
+        cfg: 可选的配置对象，默认使用全局 config
+        
+    Returns:
+        Note 对象或 None
+    """
+    use_config = cfg or config
+    
     # 在所有类型目录中搜索
     for note_type in NoteType:
-        dir_path = config.notes_dir / note_type.value
+        dir_path = use_config.notes_dir / note_type.value
         if not dir_path.exists():
             continue
         
@@ -113,14 +132,26 @@ def load_note_by_id(note_id: str) -> Optional[Note]:
 def list_notes(
     note_type: Optional[NoteType] = None,
     limit: Optional[int] = None,
+    cfg: Optional[ZKConfig] = None,
 ) -> List[Note]:
-    """列出笔记"""
+    """
+    列出笔记
+    
+    Args:
+        note_type: 笔记类型筛选
+        limit: 数量限制
+        cfg: 可选的配置对象，默认使用全局 config
+        
+    Returns:
+        笔记列表
+    """
+    use_config = cfg or config
     notes = []
     
     types_to_list = [note_type] if note_type else list(NoteType)
     
     for nt in types_to_list:
-        dir_path = config.notes_dir / nt.value
+        dir_path = use_config.notes_dir / nt.value
         if not dir_path.exists():
             continue
         
@@ -169,8 +200,18 @@ def delete_note(note_id: str) -> bool:
         return False
 
 
-def get_stats() -> Dict[str, Any]:
-    """获取知识库统计"""
+def get_stats(cfg: Optional[ZKConfig] = None) -> Dict[str, Any]:
+    """
+    获取知识库统计
+    
+    Args:
+        cfg: 可选的配置对象，默认使用全局 config
+        
+    Returns:
+        统计信息字典
+    """
+    use_config = cfg or config
+    
     stats = {
         "total": 0,
         "by_type": {},
@@ -179,7 +220,7 @@ def get_stats() -> Dict[str, Any]:
     
     # 统计各类型笔记数量
     for note_type in NoteType:
-        dir_path = config.notes_dir / note_type.value
+        dir_path = use_config.notes_dir / note_type.value
         if dir_path.exists():
             count = len(list(dir_path.glob("*.md")))
             stats["by_type"][note_type.value] = count
@@ -290,6 +331,7 @@ def suggest_links(
     top_k: int = 5,
     threshold: float = 0.6,
     exclude_ids: Optional[List[str]] = None,
+    cfg: Optional[ZKConfig] = None,
 ) -> List[Dict[str, Any]]:
     """
     根据内容推荐可以链接的已有笔记
@@ -301,6 +343,7 @@ def suggest_links(
         top_k: 返回建议数量
         threshold: 相似度阈值（0-1）
         exclude_ids: 要排除的笔记 ID 列表
+        cfg: 可选的配置对象，默认使用全局 config
         
     Returns:
         建议链接的笔记列表，按置信度排序
@@ -333,7 +376,7 @@ def suggest_links(
     try:
         keywords = extract_keywords(content, max_keywords=5)
         if keywords:
-            all_notes = list_notes(limit=200)  # 获取足够多的笔记用于匹配
+            all_notes = list_notes(limit=200, cfg=cfg)  # 获取足够多的笔记用于匹配
             
             for note in all_notes:
                 if note.id in seen_ids:
