@@ -323,7 +323,7 @@ class ZKCLI:
         if not json_output:
             args.extend(["--format", "table"])
         
-        return self._run("kb", *args)
+        return self._run("kb", *args, json_output=json_output)
     
     # ==================== 工作流命令 ====================
     
