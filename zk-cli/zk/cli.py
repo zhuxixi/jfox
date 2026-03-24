@@ -440,59 +440,71 @@ def search(
         raise typer.Exit(1)
 
 
+def _status_impl(output_format: str, json_output: bool):
+    """查看知识库状态的内部实现"""
+    from .formatters import OutputFormatter
+    
+    stats = note.get_stats()
+    
+    # 获取 NPU 状态
+    backend = get_backend()
+    
+    result = {
+        "knowledge_base": {
+            "path": str(config.base_dir),
+            "exists": config.base_dir.exists(),
+        },
+        "stats": stats,
+        "backend": {
+            "type": "CPU",
+            "model": backend.model_name if backend.model else "not loaded",
+        },
+    }
+    
+    # 处理 --json 快捷方式
+    if json_output:
+        output_format = "json"
+    
+    # 根据格式输出
+    if output_format == "json":
+        console.print(OutputFormatter.to_json(result))
+    elif output_format == "yaml":
+        console.print(OutputFormatter.to_yaml(result))
+    elif output_format == "table":
+        # 打印表格
+        table = Table(title="Knowledge Base Status")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+        
+        table.add_row("Base Path", str(config.base_dir))
+        table.add_row("Total Notes", str(stats["total"]))
+        table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
+        table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
+        table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
+        table.add_row("Backend", "CPU")
+        table.add_row("Model", backend.model_name)
+        
+        console.print(table)
+    else:
+        console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
+        raise typer.Exit(1)
+
+
 @app.command()
 def status(
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table, yaml"),
     json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
 ):
     """查看知识库状态"""
-    from .formatters import OutputFormatter
-    
     try:
-        stats = note.get_stats()
-        
-        # 获取 NPU 状态
-        backend = get_backend()
-        
-        result = {
-            "knowledge_base": {
-                "path": str(config.base_dir),
-                "exists": config.base_dir.exists(),
-            },
-            "stats": stats,
-            "backend": {
-                "type": "CPU",
-                "model": backend.model_name if backend.model else "not loaded",
-            },
-        }
-        
-        # 处理 --json 快捷方式
-        if json_output:
-            output_format = "json"
-        
-        # 根据格式输出
-        if output_format == "json":
-            console.print(OutputFormatter.to_json(result))
-        elif output_format == "yaml":
-            console.print(OutputFormatter.to_yaml(result))
-        elif output_format == "table":
-            # 打印表格
-            table = Table(title="Knowledge Base Status")
-            table.add_column("Property", style="cyan")
-            table.add_column("Value", style="green")
-            
-            table.add_row("Base Path", str(config.base_dir))
-            table.add_row("Total Notes", str(stats["total"]))
-            table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
-            table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
-            table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-            table.add_row("Backend", "CPU")
-            table.add_row("Model", backend.model_name)
-            
-            console.print(table)
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                _status_impl(output_format, json_output)
         else:
-            console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
-            raise typer.Exit(1)
+            _status_impl(output_format, json_output)
         
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
