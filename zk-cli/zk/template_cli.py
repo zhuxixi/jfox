@@ -31,11 +31,16 @@ def get_template_manager() -> TemplateManager:
 @template_app.command("list")
 def list_templates(
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """列出所有可用模板"""
     try:
         from .config import use_kb
+        
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
         
         if kb:
             with use_kb(kb):
@@ -49,7 +54,7 @@ def list_templates(
         builtin_templates = [t for t in templates if t.is_builtin]
         custom_templates = [t for t in templates if not t.is_builtin]
         
-        if json_output:
+        if output_format == "json":
             import json
             result = {
                 "builtin": [
@@ -70,7 +75,7 @@ def list_templates(
                 ],
             }
             console.print(json.dumps(result, ensure_ascii=False, indent=2))
-        else:
+        elif output_format == "table":
             if builtin_templates:
                 console.print("[bold]Built-in Templates:[/bold]")
                 table = Table()
@@ -95,6 +100,9 @@ def list_templates(
                 console.print(table)
             elif not builtin_templates:
                 console.print("[dim]No templates found[/dim]")
+        else:
+            console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
+            raise typer.Exit(1)
                 
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")

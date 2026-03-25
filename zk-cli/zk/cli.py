@@ -1060,6 +1060,7 @@ def graph(
 
 def _daily_impl(
     date: Optional[str],
+    output_format: str,
     json_output: bool,
 ):
     """查看某天笔记的内部实现"""
@@ -1088,7 +1089,7 @@ def _daily_impl(
         ],
     }
     
-    if json_output:
+    if output_format == "json":
         console.print(output_json(result))
     else:
         console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
@@ -1103,21 +1104,26 @@ def _daily_impl(
 def daily(
     date: Optional[str] = typer.Option(None, "--date", "-d", help="日期 (YYYY-MM-DD, 默认今天)"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """查看某天的笔记（默认今天）"""
     try:
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
+        
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _daily_impl(date, json_output)
+                _daily_impl(date, output_format, json_output)
         else:
-            _daily_impl(date, json_output)
+            _daily_impl(date, output_format, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
@@ -1126,6 +1132,7 @@ def daily(
 
 def _inbox_impl(
     limit: int,
+    output_format: str,
     json_output: bool,
 ):
     """查看临时笔记的内部实现"""
@@ -1144,7 +1151,7 @@ def _inbox_impl(
         ],
     }
     
-    if json_output:
+    if output_format == "json":
         console.print(output_json(result))
     else:
         console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
@@ -1232,21 +1239,26 @@ def suggest_links(
 def inbox(
     limit: int = typer.Option(20, "--limit", "-n", help="显示数量"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """查看临时笔记 (Fleeting Notes)"""
     try:
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
+        
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _inbox_impl(limit, json_output)
+                _inbox_impl(limit, output_format, json_output)
         else:
-            _inbox_impl(limit, json_output)
+            _inbox_impl(limit, output_format, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
@@ -1256,10 +1268,15 @@ def inbox(
 @app.command()
 def index(
     action: str = typer.Argument("status", help="操作: status, rebuild, verify, rebuild-bm25, bm25-status"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """索引管理：查看状态、重建索引、验证完整性"""
     try:
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
+        
         if action == "rebuild-bm25":
             # 重建 BM25 索引
             from .bm25_index import get_bm25_index
@@ -1275,7 +1292,7 @@ def index(
                 "indexed": len(notes),
             }
             
-            if json_output:
+            if output_format == "json":
                 console.print(output_json(result))
             else:
                 if success:
@@ -1294,7 +1311,7 @@ def index(
                 "bm25_index": stats,
             }
             
-            if json_output:
+            if output_format == "json":
                 console.print(output_json(result))
             else:
                 table = Table(title="BM25 Index Status")
@@ -1321,7 +1338,7 @@ def index(
                     "vector_store": vs_stats,
                 }
                 
-                if json_output:
+                if output_format == "json":
                     console.print(output_json(result))
                 else:
                     table = Table(title="Index Status")
@@ -1347,7 +1364,7 @@ def index(
                     "indexed": count,
                 }
                 
-                if json_output:
+                if output_format == "json":
                     console.print(output_json(result))
                 else:
                     console.print(f"[green]✓[/green] Indexed {count} notes")
@@ -1357,7 +1374,7 @@ def index(
                 
                 result = verification
                 
-                if json_output:
+                if output_format == "json":
                     console.print(output_json(result))
                 else:
                     if verification["healthy"]:
