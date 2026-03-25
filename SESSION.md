@@ -9,6 +9,16 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 3 - 2026-03-23
+
+**Issues #25, #26, #29: 多格式输出支持扩展**
+- 为 `refs` 命令添加 `--format` 参数支持（json/table）
+- 为 `graph` 命令添加 `--format` 参数支持（json/table）
+- 为 `suggest-links` 命令添加 `--format` 参数支持（json/table）
+- 统一修改默认 `json_output` 为 `False`，默认输出表格格式更友好
+- 保留 `--json` 快捷方式保持向后兼容
+- 批量关闭 Issue #25, #26, #29
+
 ### Session 2 - 2026-03-23
 
 **Issue #43: status 命令缺少 --kb 参数支持**
@@ -17,9 +27,6 @@
 - 使用 `use_kb` 上下文管理器实现知识库临时切换
 - 验证通过：`zk status --kb boboyun --format json` 和 `zk status --kb boboyun` 均正常工作
 - 关闭 Issue #43
-
-**相关发现**
-- 发现 `suggest-links`、`graph`、`refs` 等命令仍缺少 `--format` 参数支持（已有 Issue #25, #26, #29 跟进）
 
 ### Session 1 - 2026-03-24
 
@@ -37,12 +44,6 @@
 **Bug 修复**
 - 添加警告过滤，消除 networkx backend 重复注册的 RuntimeWarning
 
-**提交记录**
-- 8bb7b37 docs: update README with global CLI installation instructions (#40)
-- ee97f0c feat(#27, #28): Add --format support to status and kb commands
-- 71f7b8e fix: suppress networkx backend warning
-- 6bed6c0 chore: clean up temporary files
-
 ---
 
-*Total: 2 sessions | Last Updated: 2026-03-23*
+*Total: 3 sessions | Last Updated: 2026-03-23*
