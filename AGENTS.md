@@ -390,4 +390,13 @@ class OutputFormatter:
 
 ---
 
+## Session History
+
+📋 **完整会话历史**: [SESSION.md](./SESSION.md)
+
+> 最近会话摘要：
+> - **Session 1** (2026-03-25): 通过 `/init` 命令生成 AGENTS.md 项目指南
+
+---
+
 *本文档最后更新: 2026-03-25*
