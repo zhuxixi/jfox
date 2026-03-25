@@ -109,7 +109,6 @@ class KnowledgeGraph:
                         self.graph.add_edge(note_id, linked_id, type="wiki_link")
                         self.graph.add_edge(linked_id, note_id, type="backlink")
         
-        console.print(f"[green]Built graph: {len(self.graph)} nodes, {self.graph.number_of_edges()} edges[/green]")
         return self
     
     def _extract_wiki_links(self, content: str) -> List[str]:

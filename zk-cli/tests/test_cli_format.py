@@ -101,7 +101,11 @@ class TestCLIFormat:
         
         assert result.success
         data = json.loads(result.stdout)
-        assert isinstance(data, list)
+        # list 命令返回 {"notes": [...], "total": N} 格式
+        if isinstance(data, dict) and "notes" in data:
+            assert len(data["notes"]) >= 3
+        else:
+            assert isinstance(data, list)
 
     # ==========================================================================
     # Search 命令测试
