@@ -325,6 +325,25 @@ class ZKCLI:
         
         return self._run("kb", *args, json_output=json_output)
     
+    # ==================== 通用命令执行 ====================
+    
+    def run(self, cmd: str, *args) -> CLIResult:
+        """
+        运行任意 CLI 命令
+        
+        用于测试 --format 等参数
+        
+        Args:
+            cmd: 子命令
+            *args: 参数
+            
+        Returns:
+            CLIResult
+        """
+        # 检测是否需要 JSON 解析
+        json_output = "--json" not in args and "--format" not in args
+        return self._run(cmd, *args, json_output=json_output)
+    
     # ==================== 工作流命令 ====================
     
     def daily(self, date: Optional[str] = None) -> CLIResult:
