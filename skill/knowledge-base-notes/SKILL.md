@@ -59,7 +59,7 @@ def execute(user_input):
 
 ## Available Tools
 
-### note_add
+### add
 添加笔记
 
 **触发**: "记录一个想法", "添加笔记"
@@ -78,7 +78,7 @@ zk add "{content}" --kb {kb} [--title "{title}"] [--type {type}] [--tag {tag}] -
 
 ---
 
-### note_add_with_template
+### add (with template)
 使用模板创建笔记
 
 **触发**: "用 meeting 模板", "创建会议记录"
@@ -96,7 +96,7 @@ zk add "{content}" --kb {kb} --template {template} [--title "{title}"] --format 
 
 ---
 
-### note_search
+### search
 搜索笔记
 
 **触发**: "搜索", "找一下"
@@ -114,7 +114,7 @@ zk search "{query}" --kb {kb} --format json [--top {n}] [--mode {mode}]
 
 ---
 
-### note_query
+### query
 深度搜索（语义+图谱）
 
 **触发**: "深度搜索", "查找关联内容"
@@ -132,7 +132,7 @@ zk query "{query}" --kb {kb} --format json [--top {n}] [--depth {d}]
 
 ---
 
-### note_delete
+### delete
 删除笔记
 
 **触发**: "删除笔记"
@@ -149,7 +149,7 @@ zk delete {note_id} --kb {kb} [--force]
 
 ---
 
-### note_refs
+### refs
 查看引用关系
 
 **触发**: "查看引用", "被哪些笔记引用"
@@ -165,7 +165,7 @@ zk refs --kb {kb} --note {note_id} --format json
 
 ---
 
-### kb_suggest_links
+### suggest-links
 推荐相关笔记
 
 **触发**: "推荐链接", "和哪些笔记相关"
@@ -178,12 +178,12 @@ zk refs --kb {kb} --note {note_id} --format json
 
 **CLI**:
 ```bash
-zk suggest-links "{content}" --kb {kb} [--top {n}] [--threshold {t}]
+zk suggest-links "{content}" --kb {kb} --format json [--top {n}] [--threshold {t}]
 ```
 
 ---
 
-### kb_graph
+### graph
 知识图谱分析
 
 **触发**: "知识图谱", "孤立笔记", "图谱统计"
@@ -200,14 +200,14 @@ zk graph --kb {kb} --format json [--stats | --orphans | --note {id}]
 
 ---
 
-### template_list
+### template list
 列出可用模板
 
 **触发**: "有哪些模板", "可用模板"
 
 **CLI**:
 ```bash
-zk template list
+zk template list --kb {kb} --format json
 ```
 
 ## 响应模板
@@ -253,12 +253,24 @@ zk template list
 用户: "记录一个想法：AI 发展很快"
 → Notes Skill
 → 获取 kb = "work"（从上下文）
-→ 执行: zk add "AI 发展很快" --kb work
+→ 执行: zk add "AI 发展很快" --kb work --format json
 
 用户: "搜索 Python"
 → Notes Skill
 → 获取 kb = "work"
 → 执行: zk search "Python" --kb work --format json
+
+用户: "查看引用"
+→ Notes Skill
+→ 执行: zk refs --kb work --format json
+
+用户: "推荐相关笔记"
+→ Notes Skill
+→ 执行: zk suggest-links "内容" --kb work --format json
+
+用户: "知识图谱统计"
+→ Notes Skill
+→ 执行: zk graph --kb work --stats --format json
 ```
 
 ## 参考

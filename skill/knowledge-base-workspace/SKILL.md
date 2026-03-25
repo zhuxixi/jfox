@@ -160,31 +160,31 @@ zk status --kb {current_kb} --format json
 
 ---
 
-### kb_daily_notes
+### daily
 查看某天笔记（默认今天）
 
 **触发**: "今天的笔记", "昨天的笔记", "查看某天的笔记"
 
 **CLI**:
 ```bash
-zk daily --kb {current_kb} [--date YYYY-MM-DD]
+zk daily --kb {current_kb} [--date YYYY-MM-DD] --format json
 ```
 
 ---
 
-### kb_inbox
+### inbox
 查看临时笔记
 
 **触发**: "查看收件箱", "最近的临时笔记"
 
 **CLI**:
 ```bash
-zk inbox --kb {current_kb} [--limit N]
+zk inbox --kb {current_kb} [--limit N] --format json
 ```
 
 ---
 
-### note_list
+### list
 列出笔记
 
 **触发**: "列出笔记", "最近的笔记", "查看笔记列表"
