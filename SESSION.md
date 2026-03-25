@@ -9,6 +9,19 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 4 - 2026-03-23
+
+**Issue #30: 多格式输出测试套件**
+- 创建 `test_formatters.py`：OutputFormatter 单元测试（31 个测试用例）
+  - 覆盖 JSON、YAML、CSV、Paths、Table、Tree 所有格式
+  - 包含边界情况：空数据、嵌套数据、Unicode、大小写不敏感
+- 创建 `test_cli_format.py`：CLI --format 集成测试
+  - 测试 list、search、status、refs、graph、suggest-links 命令
+  - 测试 --json 向后兼容性
+  - 测试错误处理
+- 为 ZKCLI 测试工具添加 `run()` 方法支持灵活测试
+- 关闭 Issue #30
+
 ### Session 3 - 2026-03-23
 
 **Issues #25, #26, #29: 多格式输出支持扩展**
@@ -46,4 +59,4 @@
 
 ---
 
-*Total: 3 sessions | Last Updated: 2026-03-23*
+*Total: 4 sessions | Last Updated: 2026-03-23*
