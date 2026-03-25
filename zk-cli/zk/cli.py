@@ -605,6 +605,7 @@ def list(
 def _refs_impl(
     note_id: Optional[str],
     search: Optional[str],
+    output_format: str,
     json_output: bool,
 ):
     """查看笔记引用关系的内部实现"""
@@ -621,7 +622,7 @@ def _refs_impl(
             ]
         }
         
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[bold]Search:[/bold] '{search}'\n")
@@ -673,7 +674,7 @@ def _refs_impl(
             "backward_links": backward_links,
         }
         
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[bold]{n.title}[/bold]\n")
@@ -708,7 +709,7 @@ def _refs_impl(
         
         result = {"notes": notes_with_links}
         
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             table = Table(title="Note References")
@@ -735,21 +736,26 @@ def refs(
     note_id: Optional[str] = typer.Option(None, "--note", "-n", help="查看特定笔记的引用关系"),
     search: Optional[str] = typer.Option(None, "--search", "-s", help="搜索笔记标题"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """查看笔记引用关系（反向链接）"""
     try:
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
+        
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _refs_impl(note_id, search, json_output)
+                _refs_impl(note_id, search, output_format, json_output)
         else:
-            _refs_impl(note_id, search, json_output)
+            _refs_impl(note_id, search, output_format, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
@@ -926,6 +932,7 @@ def _graph_impl(
     depth: int,
     stats: bool,
     orphans: bool,
+    output_format: str,
     json_output: bool,
 ):
     """知识图谱可视化和分析的内部实现"""
@@ -946,7 +953,7 @@ def _graph_impl(
             ],
         }
         
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             table = Table(title="Knowledge Graph Statistics")
@@ -975,7 +982,7 @@ def _graph_impl(
         
         result = {"orphans": orphans_list}
         
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
@@ -997,7 +1004,7 @@ def _graph_impl(
             "related": related,
         }
         
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")
@@ -1025,21 +1032,26 @@ def graph(
     stats: bool = typer.Option(False, "--stats", "-s", help="显示统计信息"),
     orphans: bool = typer.Option(False, "--orphans", "-o", help="显示孤立笔记"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """知识图谱可视化和分析"""
     try:
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
+        
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _graph_impl(note_id, depth, stats, orphans, json_output)
+                _graph_impl(note_id, depth, stats, orphans, output_format, json_output)
         else:
-            _graph_impl(note_id, depth, stats, orphans, json_output)
+            _graph_impl(note_id, depth, stats, orphans, output_format, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
@@ -1145,6 +1157,7 @@ def _suggest_links_impl(
     content: str,
     top_k: int,
     threshold: float,
+    output_format: str,
     json_output: bool,
 ):
     """推荐链接笔记的内部实现"""
@@ -1157,7 +1170,7 @@ def _suggest_links_impl(
         "suggestions": suggestions,
     }
     
-    if json_output:
+    if output_format == "json":
         console.print(output_json(result))
     else:
         if suggestions:
@@ -1181,7 +1194,8 @@ def suggest_links(
     top_k: int = typer.Option(5, "--top", "-n", help="返回建议数量"),
     threshold: float = typer.Option(0.6, "--threshold", "-t", help="相似度阈值 (0-1)"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """
     根据内容推荐可以链接的已有笔记
@@ -1192,18 +1206,22 @@ def suggest_links(
         zk suggest-links "今天学习了 Python 的 async/await 机制"
         zk suggest-links "笔记内容" --top 10 --threshold 0.5
     """
+    # 处理 --json 快捷方式
+    if json_output:
+        output_format = "json"
+    
     try:
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _suggest_links_impl(content, top_k, threshold, json_output)
+                _suggest_links_impl(content, top_k, threshold, output_format, json_output)
         else:
-            _suggest_links_impl(content, top_k, threshold, json_output)
+            _suggest_links_impl(content, top_k, threshold, output_format, json_output)
     
     except Exception as e:
         result = {"success": False, "error": str(e)}
-        if json_output:
+        if output_format == "json":
             console.print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
