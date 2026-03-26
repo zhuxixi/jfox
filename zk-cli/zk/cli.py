@@ -50,7 +50,7 @@ app = typer.Typer(
 # 添加子命令
 app.add_typer(template_app, name="template", help="Manage note templates")
 
-console = Console(soft_wrap=False, width=9999)
+console = Console(soft_wrap=False, width=9999, legacy_windows=False)
 
 
 def output_json(data: dict) -> str:
@@ -538,11 +538,17 @@ def _list_impl(
     if output_format == "json":
         console.print(OutputFormatter.to_json(result))
     elif output_format == "table":
-        console.print(f"[bold]Total:[/bold] {len(notes)} notes\n")
+        table = Table(title=f"Notes ({len(notes)} total)")
+        table.add_column("ID", style="dim")
+        table.add_column("Title", style="cyan")
+        table.add_column("Type", style="green")
+        table.add_column("Created", style="dim")
+        
         for n in notes:
-            console.print(f"• [{n.type.value}] {n.title}")
-            console.print(f"  {n.filepath}")
-            console.print()
+            created_str = n.created.strftime("%Y-%m-%d") if n.created else ""
+            table.add_row(n.id[:14], n.title[:40], n.type.value, created_str)
+        
+        console.print(table)
     elif output_format == "tree":
         console.print(OutputFormatter.to_tree(data, group_by="type"))
     elif output_format in ["csv", "yaml", "paths"]:
@@ -628,7 +634,7 @@ def _refs_impl(
             console.print(f"[bold]Search:[/bold] '{search}'\n")
             if matches:
                 for n in matches:
-                    console.print(f"• [{n.type.value}] {n.title}")
+                    console.print(f"- [{n.type.value}] {n.title}")
                     console.print(f"  ID: {n.id}")
                     console.print(f"  引用此笔记: {len(n.backlinks)} 处")
                     console.print()
@@ -682,13 +688,13 @@ def _refs_impl(
             if forward_links:
                 console.print("[cyan]→ Links to:[/cyan]")
                 for link in forward_links:
-                    console.print(f"  • [{link['type']}] {link['title']}")
+                    console.print(f"  - [{link['type']}] {link['title']}")
                 console.print()
             
             if backward_links:
                 console.print("[green]← Linked by:[/green]")
                 for link in backward_links:
-                    console.print(f"  • [{link['type']}] {link['title']}")
+                    console.print(f"  - [{link['type']}] {link['title']}")
                 console.print()
             
             if not forward_links and not backward_links:
@@ -891,7 +897,7 @@ def _query_impl(
             if r["related_notes"]:
                 panel_content += "\n\n[dim]Related:[/dim]"
                 for rel in r["related_notes"][:3]:
-                    panel_content += f"\n  • [{rel['type']}] {rel['title']}"
+                    panel_content += f"\n  - [{rel['type']}] {rel['title']}"
             
             console.print(Panel(
                 panel_content,
@@ -969,7 +975,7 @@ def _graph_impl(
             console.print("\n[bold]Top Connected Notes:[/bold]")
             for nid, deg in graph_stats.hubs[:10]:
                 title = kg.graph.nodes[nid].get("title", "Untitled")
-                console.print(f"  • {nid}: {title} ({deg} connections)")
+                console.print(f"  - {nid}: {title} ({deg} connections)")
     
     elif orphans:
         # 显示孤立笔记
@@ -987,7 +993,7 @@ def _graph_impl(
         else:
             console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
             for o in orphans_list:
-                console.print(f"  • [{o['type']}] {o['title']} ({o['id']})")
+                console.print(f"  - [{o['type']}] {o['title']} ({o['id']})")
     
     elif note_id:
         # 显示特定笔记的图谱
@@ -1095,7 +1101,7 @@ def _daily_impl(
         console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
         if daily_notes:
             for n in daily_notes:
-                console.print(f"• [{n.type.value}] {n.title}")
+                console.print(f"- [{n.type.value}] {n.title}")
         else:
             console.print("[dim]No notes found for this date.[/dim]")
 
@@ -1157,7 +1163,7 @@ def _inbox_impl(
         console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
         for n in fleeting_notes:
             time_str = n.created.strftime("%H:%M") if n.created else ""
-            console.print(f"• [{time_str}] {n.title}")
+            console.print(f"- [{time_str}] {n.title}")
 
 
 def _suggest_links_impl(
@@ -1353,7 +1359,7 @@ def index(
                     if stats.errors:
                         console.print("\n[yellow]Recent Errors:[/yellow]")
                         for err in stats.errors[-5:]:
-                            console.print(f"  • {err}")
+                            console.print(f"  - {err}")
             
             elif action == "rebuild":
                 console.print("[yellow]Rebuilding index...[/yellow]")
@@ -1388,12 +1394,12 @@ def index(
                     if verification["missing_from_index"]:
                         console.print(f"\n[yellow]Missing from index ({len(verification['missing_from_index'])}):[/yellow]")
                     for nid in verification["missing_from_index"][:5]:
-                        console.print(f"  • {nid}")
+                        console.print(f"  - {nid}")
                     
                     if verification["orphaned_in_index"]:
                         console.print(f"\n[yellow]Orphaned in index ({len(verification['orphaned_in_index'])}):[/yellow]")
                         for nid in verification["orphaned_in_index"][:5]:
-                            console.print(f"  • {nid}")
+                            console.print(f"  - {nid}")
             
             else:
                 console.print(f"[red]Unknown action: {action}. Use: status, rebuild, verify, rebuild-bm25, bm25-status[/red]")
