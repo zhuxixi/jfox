@@ -1,7 +1,15 @@
 """
 pytest 配置和 fixtures
+
+提供：
+1. 临时知识库 fixture
+2. CLI 封装 fixture
+3. 笔记生成器 fixture
+4. 模型缓存（session 级别）
+5. Mock embedding 支持（快速测试）
 """
 
+import os
 import pytest
 from pathlib import Path
 
@@ -10,9 +18,67 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
-from tests.utils.temp_kb import temp_knowledge_base, TemporaryKnowledgeBase
-from tests.utils.zk_cli import ZKCLI
-from tests.utils.note_generator import NoteGenerator, generate_test_dataset
+# ============================================================================
+# 模型缓存 - Session 级别（大幅减少重复加载）
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def embedding_model():
+    """
+    Session 级别的模型缓存
+    
+    所有测试共享一个模型实例，避免重复加载（节省 30-60 秒/测试）
+    """
+    # 使用环境变量控制是否使用真实模型
+    if os.environ.get("ZK_TEST_MOCK_EMBEDDING", "0") == "1":
+        # 返回 mock 模型
+        return None
+    
+    try:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        return model
+    except Exception as e:
+        print(f"Warning: Failed to load embedding model: {e}")
+        return None
+
+
+@pytest.fixture(scope="session")
+def mock_embedding_backend():
+    """
+    Mock embedding backend 用于快速测试
+    
+    返回随机向量，不加载真实模型，测试速度快 10-20 倍
+    """
+    import numpy as np
+    
+    class MockEmbeddingBackend:
+        """Mock embedding backend - 返回随机向量"""
+        
+        def __init__(self):
+            self.dimension = 384
+            
+        def encode(self, texts, **kwargs):
+            """返回随机向量"""
+            if isinstance(texts, str):
+                texts = [texts]
+            return np.random.rand(len(texts), self.dimension).astype('float32')
+        
+        def encode_batch(self, texts, batch_size=32):
+            """批量编码"""
+            return self.encode(texts)
+    
+    return MockEmbeddingBackend()
+
+
+# ============================================================================
+# 知识库和 CLI Fixtures
+# ============================================================================
+
+# 从 utils 目录导入（pytest 自动将 tests 目录加入路径）
+from utils.temp_kb import temp_knowledge_base, TemporaryKnowledgeBase
+from utils.zk_cli import ZKCLI
+from utils.note_generator import NoteGenerator, generate_test_dataset
 
 
 @pytest.fixture
@@ -48,6 +114,35 @@ def cli(temp_kb):
 
 
 @pytest.fixture
+def cli_fast(temp_kb, mock_embedding_backend):
+    """
+    使用 mock embedding 的快速 CLI 实例
+    
+    用于不需要真实语义搜索的测试，速度快 10-20 倍
+    
+    用法:
+        @pytest.mark.fast
+        def test_something(cli_fast):
+            result = cli_fast.add("内容", title="测试")
+            assert result.success
+    """
+    # 使用 mock backend
+    import unittest.mock
+    from zk import embedding_backend
+    
+    original_get_backend = embedding_backend.get_backend
+    
+    def mock_get_backend():
+        return mock_embedding_backend
+    
+    with unittest.mock.patch.object(embedding_backend, 'get_backend', mock_get_backend):
+        zk_cli = ZKCLI(temp_kb)
+        zk_cli.init()
+        yield zk_cli
+        zk_cli.cleanup()
+
+
+@pytest.fixture
 def generator():
     """
     提供笔记生成器
@@ -78,9 +173,12 @@ def large_dataset():
     return generate_test_dataset("large")
 
 
+# ============================================================================
 # pytest 配置
+# ============================================================================
+
 def pytest_configure(config):
-    """配置 pytest"""
+    """配置 pytest 标记"""
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
@@ -91,7 +189,16 @@ def pytest_configure(config):
         "markers", "integration: marks tests as integration tests"
     )
     config.addinivalue_line(
-        "markers", "timeout(seconds): marks tests with timeout in seconds"
+        "markers", "workflow: marks tests as workflow tests"
+    )
+    config.addinivalue_line(
+        "markers", "bulk: marks tests that import large amount of data (slow)"
+    )
+    config.addinivalue_line(
+        "markers", "embedding: marks tests that require real embedding model (very slow)"
+    )
+    config.addinivalue_line(
+        "markers", "fast: marks tests that use mock embedding (very fast)"
     )
 
 
@@ -109,3 +216,25 @@ def pytest_addoption(parser):
         default=False,
         help="Run performance benchmarks"
     )
+
+
+def pytest_collection_modifyitems(config, items):
+    """
+    自动标记测试
+    
+    根据测试名称自动添加标记，方便筛选
+    """
+    for item in items:
+        # 如果测试名称包含 'embedding' 或 'semantic'，自动添加 embedding 标记
+        if any(keyword in item.nodeid.lower() for keyword in 
+               ['embedding', 'semantic', 'search', 'suggest', 'query']):
+            if 'embedding' not in item.keywords:
+                item.add_marker(pytest.mark.embedding)
+        
+        # 如果测试名称包含 'bulk' 或 'batch'，自动添加 slow 和 bulk 标记
+        if any(keyword in item.nodeid.lower() for keyword in 
+               ['bulk', 'batch', 'large', 'many']):
+            if 'slow' not in item.keywords:
+                item.add_marker(pytest.mark.slow)
+            if 'bulk' not in item.keywords:
+                item.add_marker(pytest.mark.bulk)

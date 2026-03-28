@@ -14,7 +14,7 @@ class TestBasicCRUD:
     
     def test_init_creates_directory_structure(self, temp_kb):
         """Test init creates correct directory structure"""
-        from tests.utils.zk_cli import ZKCLI
+        from utils.zk_cli import ZKCLI
         
         cli = ZKCLI(temp_kb)
         result = cli.init()

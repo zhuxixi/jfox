@@ -421,8 +421,8 @@ class TestMultiKBWorkflow:
     
     def test_multi_kb_isolation(self, cli):
         """多知识库数据隔离"""
-        from tests.utils.zk_cli import ZKCLI
-        from tests.utils.temp_kb import TemporaryKnowledgeBase
+        from utils.zk_cli import ZKCLI
+        from utils.temp_kb import TemporaryKnowledgeBase
         
         # 1. Create two isolated knowledge bases
         with TemporaryKnowledgeBase() as kb1_path:

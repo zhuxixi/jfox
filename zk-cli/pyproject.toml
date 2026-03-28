@@ -36,8 +36,13 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # 基础测试
     "pytest>=7.0",
     "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",       # 并行测试加速
+    "pytest-timeout>=2.0",     # 超时控制
+    
+    # 代码质量
     "black>=23.0",
     "ruff>=0.1.0",
 ]
