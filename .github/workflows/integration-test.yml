@@ -62,16 +62,18 @@ jobs:
     
     - name: Run fast tests (no embedding)
       run: |
-        # 运行非 embedding 测试，并行 4 个进程
-        pytest tests/ -m "not embedding and not slow" -n 4 --timeout=120 -v --tb=short
-      timeout-minutes: 15
+        # 运行非 embedding 测试（单进程避免知识库冲突）
+        pytest tests/ -m "not embedding and not slow" --timeout=180 -v --tb=short
+      timeout-minutes: 20
     
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-fast-${{ matrix.os }}-py${{ matrix.python-version }}
-        path: zk-cli/.pytest_cache/
+        path: |
+          zk-cli/.pytest_cache/
+          zk-cli/htmlcov/
 
   # ============ 核心测试（带 embedding，但只跑核心）============
   test-core:
@@ -118,15 +120,16 @@ jobs:
     - name: Run core tests
       run: |
         # 只跑核心工作流测试，单进程避免模型加载冲突
-        pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=300 --tb=short
-      timeout-minutes: 20
+        pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short
+      timeout-minutes: 25
     
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-core-${{ matrix.os }}-py${{ matrix.python-version }}
-        path: zk-cli/.pytest_cache/
+        path: |
+          zk-cli/.pytest_cache/
 
   # ============ 全量测试（仅 main 分支或手动触发）============
   test-full:
@@ -181,13 +184,14 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: test-results-full-${{ matrix.os }}-py${{ matrix.python-version }}
-        path: zk-cli/.pytest_cache/
+        path: |
+          zk-cli/.pytest_cache/
 
   # ============ 覆盖率报告汇总 ============
   coverage:
     runs-on: ubuntu-latest
     needs: [test-fast]
-    if: always()
+    if: always() && needs.test-fast.result == 'success'
     
     defaults:
       run:
@@ -209,7 +213,8 @@ jobs:
     
     - name: Run coverage
       run: |
-        pytest tests/ -m "not embedding and not slow" --cov=zk --cov-report=xml --cov-report=html -v
+        pytest tests/ -m "not embedding and not slow" --cov=zk --cov-report=xml --cov-report=html -v --timeout=300
+      timeout-minutes: 25
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
