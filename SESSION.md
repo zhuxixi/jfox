@@ -9,6 +9,32 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 3 - 2026-03-29
+
+本次会话完成了 GitHub Actions CI/CD 配置的搭建和测试覆盖率现状分析。
+
+主要工作：
+1. 创建完整的 CI/CD 工作流 (.github/workflows/integration-test.yml)
+   - 支持 Fast/Core/Full 三级测试策略
+   - 解决 Windows 上 Unicode 编码错误 (PYTHONIOENCODING=utf-8)
+   - 添加 rank-bm25 缺失依赖
+   - CI 在 Ubuntu/Windows 上全部通过
+
+2. 添加测试基础设施
+   - pytest.ini 配置文件（超时、标记分类）
+   - conftest.py 模型缓存优化（Session 级别共享）
+   - tests/utils/assertions.py 测试断言工具
+
+3. 分析当前测试覆盖率
+   - 当前覆盖率：26.67% (771/2891 行)
+   - 运行测试：95 passed, 39 deselected
+   - 生成覆盖率报告并上传到 Artifacts
+
+4. 制定覆盖率提升计划
+   - 目标：26% → 50%（需新增 ~2150 行覆盖）
+   - 计划：3 个 Phase，预计 10-11 小时
+   - 优先测试 formatters/bm25/models/graph 等模块
+
 ### Session 2 - 2026-03-27
 
 **修复 Windows 编码问题和测试失败**
@@ -60,3 +86,7 @@
 ---
 
 *Total: 2 sessions | Last Updated: 2026-03-27*
+
+---
+
+*Total: 3 sessions | Last Updated: 2026-03-29*
