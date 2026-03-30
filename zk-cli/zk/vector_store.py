@@ -192,3 +192,9 @@ def get_vector_store() -> VectorStore:
     if _vector_store is None:
         _vector_store = VectorStore()
     return _vector_store
+
+
+def reset_vector_store():
+    """重置全局向量存储实例（用于切换知识库时）"""
+    global _vector_store
+    _vector_store = None

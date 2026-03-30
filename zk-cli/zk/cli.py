@@ -148,25 +148,31 @@ def extract_wiki_links(content: str) -> List[str]:
     return [m.strip() for m in matches]
 
 
-def find_note_id_by_title_or_id(title_or_id: str) -> Optional[str]:
-    """通过标题或ID查找笔记"""
-    all_notes = note.list_notes()
-    
+def find_note_id_by_title_or_id(
+    title_or_id: str, all_notes: Optional[list] = None
+) -> Optional[str]:
+    """通过标题或ID查找笔记
+
+    匹配优先级：精确ID → 精确标题 → 标题包含
+    """
+    if all_notes is None:
+        all_notes = note.list_notes()
+
     # 首先尝试精确匹配 ID
     for n in all_notes:
         if n.id == title_or_id:
             return n.id
-    
-    # 然后尝试标题包含匹配
-    for n in all_notes:
-        if title_or_id.lower() in n.title.lower():
-            return n.id
-    
-    # 最后尝试模糊匹配（标题相近）
+
+    # 然后尝试标题精确匹配
     for n in all_notes:
         if n.title.lower() == title_or_id.lower():
             return n.id
-    
+
+    # 最后尝试标题包含匹配（作为 fallback）
+    for n in all_notes:
+        if title_or_id.lower() in n.title.lower():
+            return n.id
+
     return None
 
 
@@ -223,9 +229,12 @@ def _add_note_impl(
     wiki_links = extract_wiki_links(content)
     resolved_links = []
     unresolved = []
-    
+
+    # 缓存笔记列表，避免每个链接重复加载
+    all_notes = note.list_notes() if wiki_links else []
+
     for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text)
+        target_id = find_note_id_by_title_or_id(link_text, all_notes=all_notes)
         if target_id:
             resolved_links.append(target_id)
         else:
