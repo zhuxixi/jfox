@@ -160,12 +160,14 @@ def use_kb(kb_name: Optional[str] = None):
         config.zk_dir = kb_path / ".zk"
         config.chroma_dir = config.zk_dir / "chroma_db"
         
-        # 重置 BM25 索引和搜索引擎（使用新的知识库路径）
+        # 重置索引和搜索引擎（使用新的知识库路径）
         try:
             from .bm25_index import reset_bm25_index
             from .search_engine import reset_search_engine
+            from .vector_store import reset_vector_store
             reset_bm25_index()
             reset_search_engine()
+            reset_vector_store()
         except Exception:
             pass  # 忽略重置错误
         
