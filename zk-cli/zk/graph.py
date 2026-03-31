@@ -3,7 +3,6 @@ Knowledge graph module using NetworkX for Zettelkasten notes.
 
 Provides:
 - Link graph construction from note relationships
-- Backlink auto-generation
 - Graph traversal and path finding
 - Hub and authority analysis
 """
