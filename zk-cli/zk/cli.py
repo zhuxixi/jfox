@@ -50,7 +50,7 @@ app = typer.Typer(
 # 添加子命令
 app.add_typer(template_app, name="template", help="Manage note templates")
 
-console = Console(soft_wrap=False, width=9999, legacy_windows=False)
+console = Console(legacy_windows=False)
 
 
 def output_json(data: dict) -> str:

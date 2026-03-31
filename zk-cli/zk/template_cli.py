@@ -13,7 +13,7 @@ from .config import config
 from .template import TemplateManager, TemplateError, TemplateNotFoundError
 
 
-console = Console(soft_wrap=False, width=9999)
+console = Console()
 
 # Create template subcommand app
 template_app = typer.Typer(
