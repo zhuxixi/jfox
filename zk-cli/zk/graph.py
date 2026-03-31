@@ -90,14 +90,12 @@ class KnowledgeGraph:
             except Exception as e:
                 console.print(f"[red]Error parsing {note_file}: {e}[/red]")
         
-        # Second pass: add edges from frontmatter links
+        # Second pass: add edges from frontmatter links (one directed edge per link)
         for note_id, note in self._note_cache.items():
             for linked_id in note.links:
                 if linked_id in self._note_cache:
                     self.graph.add_edge(note_id, linked_id, type="links")
-                    # Auto-generate backlink
-                    self.graph.add_edge(linked_id, note_id, type="backlink")
-        
+
         # Third pass: extract and add wiki links from content [[...]]
         for note_id, note in self._note_cache.items():
             wiki_links = self._extract_wiki_links(note.content)
@@ -107,7 +105,6 @@ class KnowledgeGraph:
                     # Add edge if not already exists
                     if not self.graph.has_edge(note_id, linked_id):
                         self.graph.add_edge(note_id, linked_id, type="wiki_link")
-                        self.graph.add_edge(linked_id, note_id, type="backlink")
         
         return self
     
@@ -122,14 +119,17 @@ class KnowledgeGraph:
         # First try exact ID match
         if link_text in self._note_cache:
             return link_text
-        
-        # Then try title match
+
+        # Then try exact title match
+        for note_id, note in self._note_cache.items():
+            if note.title.lower() == link_text.lower():
+                return note_id
+
+        # Finally try substring match as fallback
         for note_id, note in self._note_cache.items():
             if link_text.lower() in note.title.lower():
                 return note_id
-            if note.title.lower() == link_text.lower():
-                return note_id
-        
+
         return None
     
     def _parse_note_file(self, file_path: Path) -> Optional[Note]:
@@ -214,8 +214,8 @@ class KnowledgeGraph:
         return related
     
     def find_clusters(self) -> List[Set[str]]:
-        """Find clusters of strongly connected notes."""
-        clusters = list(nx.strongly_connected_components(self.graph))
+        """Find clusters of connected notes (weakly connected components)."""
+        clusters = list(nx.weakly_connected_components(self.graph))
         # Filter out singletons and sort by size
         clusters = [c for c in clusters if len(c) > 1]
         clusters.sort(key=len, reverse=True)
@@ -224,14 +224,19 @@ class KnowledgeGraph:
     def get_hubs(self, top_n: int = 10) -> List[Tuple[str, int]]:
         """
         Get the most connected notes (hubs).
-        
+
+        Degree counts both outgoing links and incoming backlinks.
+
         Args:
             top_n: Number of top hubs to return
-            
+
         Returns:
             List of (note_id, degree) tuples
         """
-        degrees = [(n, self.graph.degree(n)) for n in self.graph.nodes()]
+        degrees = [
+            (n, self.graph.in_degree(n) + self.graph.out_degree(n))
+            for n in self.graph.nodes()
+        ]
         degrees.sort(key=lambda x: x[1], reverse=True)
         return degrees[:top_n]
     
