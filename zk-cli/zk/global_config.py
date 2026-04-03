@@ -6,6 +6,7 @@
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path.home() / ".zk_config.json"
 DEFAULT_KB_NAME = "default"
-DEFAULT_KB_PATH = Path.home() / ".zettelkasten"
+DEFAULT_KB_PATH = Path(os.environ.get('ZK_KB_ROOT', str(Path.home() / '.zettelkasten')))
 
 
 @dataclass
