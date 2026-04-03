@@ -331,21 +331,11 @@ class TestGlobalConfigManager:
         manager._config = GlobalConfig()
 
         with patch.object(manager, '_save', return_value=True):
-            kb_path = DEFAULT_KB_PATH / "new"
-            result = manager.add_knowledge_base("new_kb", kb_path, "Description")
+            result = manager.add_knowledge_base("new_kb", Path("/path/to/new"), "Description")
 
         assert result is True
         assert "new_kb" in manager._config.knowledge_bases
         assert manager._config.knowledge_bases["new_kb"].description == "Description"
-
-    def test_add_knowledge_base_rejects_outside_path(self, manager):
-        """测试拒绝统一管理目录外的路径"""
-        manager._config = GlobalConfig()
-
-        result = manager.add_knowledge_base("bad_kb", Path("/tmp/outside_kb"))
-
-        assert result is False
-        assert "bad_kb" not in manager._config.knowledge_bases
     
     def test_add_knowledge_base_duplicate(self, manager):
         """测试添加重复知识库"""

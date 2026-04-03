@@ -156,6 +156,24 @@ class TestKnowledgeBaseManager:
             call_args = mock_config_manager.add_knowledge_base.call_args
             assert call_args is not None
     
+    def test_create_rejects_path_outside_managed_dir(self, manager, mock_config_manager):
+        """测试拒绝管理目录外的显式路径"""
+        mock_config_manager.kb_exists.return_value = False
+
+        success, message = manager.create(name="outside_kb", path=Path("/tmp/outside"))
+
+        assert success is False
+        assert "outside" in message.lower() or "managed" in message.lower()
+
+    def test_create_rejects_reserved_name(self, manager, mock_config_manager):
+        """测试拒绝保留名称"""
+        mock_config_manager.kb_exists.return_value = False
+
+        success, message = manager.create(name="notes")
+
+        assert success is False
+        assert "reserved" in message.lower()
+
     def test_create_handles_exception(self, manager, mock_config_manager):
         """测试创建知识库时处理异常"""
         mock_config_manager.kb_exists.return_value = False

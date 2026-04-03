@@ -181,17 +181,7 @@ class GlobalConfigManager:
             logger.warning(f"Knowledge base '{name}' already exists")
             return False
 
-        # 验证路径在统一管理目录 ~/.zettelkasten/ 下
         resolved_path = path.expanduser().resolve()
-        kb_root = DEFAULT_KB_PATH.resolve()
-        try:
-            resolved_path.relative_to(kb_root)
-        except ValueError:
-            logger.error(
-                f"Knowledge base path '{resolved_path}' is outside "
-                f"managed directory '{kb_root}'"
-            )
-            return False
 
         kb = KnowledgeBaseEntry(
             name=name,

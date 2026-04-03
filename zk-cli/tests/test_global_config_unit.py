@@ -331,15 +331,6 @@ class TestGlobalConfigManager:
         assert "new_kb" in manager._config.knowledge_bases
         assert manager._config.knowledge_bases["new_kb"].description == "Description"
 
-    def test_add_knowledge_base_rejects_outside_path(self, manager):
-        """测试拒绝统一管理目录外的路径"""
-        manager._config = GlobalConfig()
-
-        result = manager.add_knowledge_base("bad_kb", Path("/tmp/outside_kb"))
-
-        assert result is False
-        assert "bad_kb" not in manager._config.knowledge_bases
-    
     def test_add_knowledge_base_duplicate(self, manager):
         """测试添加重复知识库"""
         entry = KnowledgeBaseEntry(
