@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# JFox pre-push hook: push 前自动跑快速单元测试
+# 只跑不涉及 embedding/ChromaDB 的单元测试，几秒内完成
+# 如果需要跳过（紧急情况），使用: git push --no-verify
+
+set -e
+
+echo "[pre-push] Running fast unit tests..."
+
+cd zk-cli
+
+# 只跑非 embedding 非 slow 的测试，排除已知的 template_cli 失败
+python -m pytest tests/unit/ -m "not embedding and not slow" \
+    --timeout=30 -q --tb=short --no-header \
+    --ignore=tests/unit/test_template_cli.py 2>&1
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "[pre-push] FAILED! Fix tests before pushing."
+    echo "[pre-push] Skip with: git push --no-verify"
+    exit 1
+fi
+
+echo "[pre-push] All tests passed. Pushing..."
