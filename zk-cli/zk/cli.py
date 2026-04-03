@@ -87,7 +87,7 @@ def init(
                 "error": f"Knowledge base '{kb_name}' already exists. Use 'zk kb list' to see all knowledge bases.",
             }
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 console.print(f"[red]✗[/red] Knowledge base '{kb_name}' already exists")
                 console.print(f"[dim]Use 'zk kb list' to see all knowledge bases[/dim]")
@@ -112,7 +112,7 @@ def init(
             }
             
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 console.print(f"[green]✓[/green] {message}")
                 if set_default:
@@ -123,7 +123,7 @@ def init(
                 "error": message,
             }
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 console.print(f"[red]✗[/red] {message}")
             raise typer.Exit(1)
@@ -134,7 +134,7 @@ def init(
             "error": str(e),
         }
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -158,22 +158,19 @@ def find_note_id_by_title_or_id(
     if all_notes is None:
         all_notes = note.list_notes()
 
-    # 首先尝试精确匹配 ID
+    # 单次遍历，按优先级：精确ID → 精确标题 → 标题包含
+    title_lower = title_or_id.lower()
+    contains_match = None
+
     for n in all_notes:
         if n.id == title_or_id:
             return n.id
-
-    # 然后尝试标题精确匹配
-    for n in all_notes:
-        if n.title.lower() == title_or_id.lower():
+        if n.title.lower() == title_lower:
             return n.id
+        if contains_match is None and title_lower in n.title.lower():
+            contains_match = n.id
 
-    # 最后尝试标题包含匹配（作为 fallback）
-    for n in all_notes:
-        if title_or_id.lower() in n.title.lower():
-            return n.id
-
-    return None
+    return contains_match
 
 
 def _add_note_impl(
@@ -279,7 +276,7 @@ def _add_note_impl(
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
         
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[green]✓[/green] Note created: {new_note.title}")
             console.print(f"  ID: {new_note.id}")
@@ -321,7 +318,7 @@ def add(
             "error": str(e),
         }
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -347,7 +344,7 @@ def _search_impl(
     }
     
     if output_format == "json":
-        console.print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json(result))
     elif output_format == "table":
         mode_display = {
             "hybrid": "Hybrid (BM25 + Semantic)",
@@ -385,7 +382,7 @@ def _search_impl(
             flat_results.append(flat_r)
         console.print(OutputFormatter.to_csv(flat_results, headers=["id", "title", "type", "score", "search_mode"]))
     elif output_format == "yaml":
-        console.print(OutputFormatter.to_yaml(result))
+        print(OutputFormatter.to_yaml(result))
     elif output_format == "paths":
         # 从结果中提取文件路径
         from . import note as note_module
@@ -443,7 +440,7 @@ def search(
             "error": str(e),
         }
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -476,9 +473,9 @@ def _status_impl(output_format: str, json_output: bool):
     
     # 根据格式输出
     if output_format == "json":
-        console.print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json(result))
     elif output_format == "yaml":
-        console.print(OutputFormatter.to_yaml(result))
+        print(OutputFormatter.to_yaml(result))
     elif output_format == "table":
         # 打印表格
         table = Table(title="Knowledge Base Status")
@@ -545,7 +542,7 @@ def _list_impl(
     }
     
     if output_format == "json":
-        console.print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json(result))
     elif output_format == "table":
         table = Table(title=f"Notes ({len(notes)} total)")
         table.add_column("ID", style="dim")
@@ -565,7 +562,7 @@ def _list_impl(
         if output_format == "csv":
             console.print(OutputFormatter.to_csv(data, headers=["id", "title", "type", "created"]))
         elif output_format == "yaml":
-            console.print(OutputFormatter.to_yaml(result))
+            print(OutputFormatter.to_yaml(result))
         elif output_format == "paths":
             console.print(OutputFormatter.to_paths(data, key="filepath"))
     else:
@@ -611,7 +608,7 @@ def list(
             "error": str(e),
         }
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -638,7 +635,7 @@ def _refs_impl(
         }
         
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[bold]Search:[/bold] '{search}'\n")
             if matches:
@@ -690,7 +687,7 @@ def _refs_impl(
         }
         
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[bold]{n.title}[/bold]\n")
             
@@ -725,7 +722,7 @@ def _refs_impl(
         result = {"notes": notes_with_links}
         
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             table = Table(title="Note References")
             table.add_column("ID", style="dim")
@@ -771,7 +768,7 @@ def refs(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -810,7 +807,7 @@ def _delete_impl(
         }
         
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[green]✓[/green] Deleted: {n.title}")
     else:
@@ -840,7 +837,7 @@ def delete(
             "error": str(e),
         }
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -894,7 +891,7 @@ def _query_impl(
     }
     
     if json_output:
-        console.print(output_json(result))
+        print(output_json(result))
     else:
         console.print(f"[bold]Query:[/bold] {query_str}")
         console.print(f"[bold]Results:[/bold] {len(enriched_results)}\n")
@@ -936,7 +933,7 @@ def query(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -969,7 +966,7 @@ def _graph_impl(
         }
         
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             table = Table(title="Knowledge Graph Statistics")
             table.add_column("Metric", style="cyan")
@@ -998,7 +995,7 @@ def _graph_impl(
         result = {"orphans": orphans_list}
         
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
             for o in orphans_list:
@@ -1020,7 +1017,7 @@ def _graph_impl(
         }
         
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")
             
@@ -1067,7 +1064,7 @@ def graph(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -1105,7 +1102,7 @@ def _daily_impl(
     }
     
     if output_format == "json":
-        console.print(output_json(result))
+        print(output_json(result))
     else:
         console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
         if daily_notes:
@@ -1139,7 +1136,7 @@ def daily(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -1167,7 +1164,7 @@ def _inbox_impl(
     }
     
     if output_format == "json":
-        console.print(output_json(result))
+        print(output_json(result))
     else:
         console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
         for n in fleeting_notes:
@@ -1193,7 +1190,7 @@ def _suggest_links_impl(
     }
     
     if output_format == "json":
-        console.print(output_json(result))
+        print(output_json(result))
     else:
         if suggestions:
             console.print(f"[bold]Suggested links (confidence > {threshold}):[/bold]\n")
@@ -1244,7 +1241,7 @@ def suggest_links(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -1274,7 +1271,7 @@ def inbox(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -1308,7 +1305,7 @@ def index(
             }
             
             if output_format == "json":
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 if success:
                     console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
@@ -1327,7 +1324,7 @@ def index(
             }
             
             if output_format == "json":
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 table = Table(title="BM25 Index Status")
                 table.add_column("Property", style="cyan")
@@ -1354,7 +1351,7 @@ def index(
                 }
                 
                 if output_format == "json":
-                    console.print(output_json(result))
+                    print(output_json(result))
                 else:
                     table = Table(title="Index Status")
                     table.add_column("Property", style="cyan")
@@ -1380,7 +1377,7 @@ def index(
                 }
                 
                 if output_format == "json":
-                    console.print(output_json(result))
+                    print(output_json(result))
                 else:
                     console.print(f"[green]✓[/green] Indexed {count} notes")
             
@@ -1390,7 +1387,7 @@ def index(
                 result = verification
                 
                 if output_format == "json":
-                    console.print(output_json(result))
+                    print(output_json(result))
                 else:
                     if verification["healthy"]:
                         console.print("[green]✓[/green] Index is healthy")
@@ -1417,7 +1414,7 @@ def index(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -1484,9 +1481,9 @@ def kb(
             
             # 根据格式输出
             if output_format == "json":
-                console.print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json(result))
             elif output_format == "yaml":
-                console.print(OutputFormatter.to_yaml(result))
+                print(OutputFormatter.to_yaml(result))
             elif output_format == "csv":
                 # CSV 格式
                 flat_data = []
@@ -1548,7 +1545,7 @@ def kb(
             result = {"success": success, "message": message}
             
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -1565,7 +1562,7 @@ def kb(
             result = {"success": success, "message": message}
             
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -1594,7 +1591,7 @@ def kb(
             result = {"success": success, "message": message}
             
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -1634,9 +1631,9 @@ def kb(
             
             # 根据格式输出
             if output_format == "json":
-                console.print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json(result))
             elif output_format == "yaml":
-                console.print(OutputFormatter.to_yaml(result))
+                print(OutputFormatter.to_yaml(result))
             elif output_format == "table":
                 # 表格格式输出
                 table = Table(title=f"Current Knowledge Base: {stats.name}")
@@ -1686,9 +1683,9 @@ def kb(
             
             # 根据格式输出
             if output_format == "json":
-                console.print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json(result))
             elif output_format == "yaml":
-                console.print(OutputFormatter.to_yaml(result))
+                print(OutputFormatter.to_yaml(result))
             elif output_format == "table":
                 # 表格格式输出
                 title = f"Knowledge Base: {stats.name}"
@@ -1722,7 +1719,7 @@ def kb(
             result = {"success": success, "message": message}
             
             if json_output:
-                console.print(output_json(result))
+                print(output_json(result))
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -1738,7 +1735,7 @@ def kb(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
@@ -1787,7 +1784,7 @@ def bulk_import(
         )
         
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[green]✓[/green] Imported: {result['imported']}")
             console.print(f"[red]✗[/red] Failed: {result['failed']}")
@@ -1796,7 +1793,7 @@ def bulk_import(
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
-            console.print(output_json(result))
+            print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
