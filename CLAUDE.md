@@ -97,7 +97,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 
 ## Test Infrastructure
 
-- **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `generator` (NoteGenerator)
+- **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `cli_fast` (ZKCLI with mocked embeddings), `generator` (NoteGenerator), `mock_embedding_backend`
 - **Test utils** (`tests/utils/`): `temp_kb.py`, `zk_cli.py` (CLI wrapper), `note_generator.py`
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
@@ -111,13 +111,20 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 
 ## CI (GitHub Actions)
 
-Three-level test strategy in `.github/workflows/integration-test.yml`:
+Four jobs in `.github/workflows/integration-test.yml`:
 - **Fast** (PR/push): `not embedding and not slow`, Python 3.11, Ubuntu + Windows
 - **Core** (main branch): Core workflow tests with real embeddings, Python 3.10 + 3.12
 - **Full** (manual): All tests, all OS, all Python versions
+- **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
 
 ## Windows Notes
 
 - `robocopy` flags get misinterpreted by bash — use `cmd.exe /c "robocopy source dest /E"`
 - Set `PYTHONUTF8=1` and `chcp 65001` for encoding
 - HuggingFace mirror for China: `export HF_ENDPOINT=https://hf-mirror.com`
+
+## Gotchas
+
+- `jinja2` is imported by `template.py` but not explicitly listed in `pyproject.toml` dependencies (pulled in transitively by another package)
+- `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
+- Test directory migration is partial: root-level `test_*_unit.py` files duplicate `tests/unit/` tests
