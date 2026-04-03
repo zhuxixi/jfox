@@ -54,12 +54,19 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 
 | Module | Role |
 |--------|------|
-| `cli.py` | All CLI commands (~1000 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
+| `cli.py` | All CLI commands (~1800 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
 | `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
 | `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json` |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
 | `formatters.py` | Output formats: JSON, CSV, YAML, Table, Paths |
 | `indexer.py` | File monitoring (watchdog) + incremental indexing |
+| `note.py` | Markdown file CRUD with YAML frontmatter |
+| `models.py` | `Note` data model with frontmatter serialization |
+| `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
+| `bm25_index.py` | BM25 keyword search index |
+| `embedding_backend.py` | Sentence-transformers embedding backend |
+| `vector_store.py` | ChromaDB vector store for semantic search |
+| `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
 | `performance.py` | Batch processing and model caching |
 
@@ -93,8 +100,14 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 - **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `generator` (NoteGenerator)
 - **Test utils** (`tests/utils/`): `temp_kb.py`, `zk_cli.py` (CLI wrapper), `note_generator.py`
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
-- **Test markers**: `slow`, `performance`, `integration`, `embedding`
+- **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
 - **Run single-process** to avoid ChromaDB/model loading conflicts
+- **Test directory reorganization in progress**:
+  - `tests/unit/` — Pure logic unit tests (formatters, config, kb_manager, template)
+  - `tests/integration/` — Cross-module integration tests (backlinks)
+  - `tests/performance/` — Performance benchmarks
+  - Root-level `test_*_unit.py` files also exist (partial migration)
+- **pytest.ini**: `timeout=120`, `--strict-markers`, `-ra` (show all test summary)
 
 ## CI (GitHub Actions)
 
