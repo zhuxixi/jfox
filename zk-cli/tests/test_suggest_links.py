@@ -46,7 +46,7 @@ class TestExtractKeywords:
             assert kw not in stopwords
 
 
-@pytest.mark.embedding
+@pytest.mark.unit
 class TestSuggestLinks:
     """测试 suggest_links 功能，使用 cli_fast fixture 搭建临时知识库"""
 

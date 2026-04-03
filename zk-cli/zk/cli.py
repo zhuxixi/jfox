@@ -73,8 +73,8 @@ def init(
     
     示例:
         zk init                          # 初始化默认知识库
-        zk init --name work              # 创建名为 work 的知识库
-        zk init --name personal --path ~/notes --desc "个人笔记"
+        zk init --name work              # 创建名为 work 的知识库（~/.zettelkasten/work/）
+        zk init --name personal --desc "个人笔记"
     """
     try:
         kb_name = name or "default"
@@ -1441,8 +1441,8 @@ def kb(
     
     示例:
         zk kb list                    # 列出所有知识库
-        zk kb create work             # 创建名为 work 的知识库
-        zk kb create work --path ~/work-notes --desc "工作笔记"
+        zk kb create work             # 创建名为 work 的知识库（~/.zettelkasten/work/）
+        zk kb create work --desc "工作笔记"
         zk kb switch work             # 切换到 work 知识库
         zk kb current                 # 显示当前知识库
         zk kb info work               # 查看 work 知识库详情

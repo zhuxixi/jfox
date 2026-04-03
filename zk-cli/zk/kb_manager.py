@@ -71,6 +71,11 @@ class KnowledgeBaseManager:
         # 检查名称是否已存在
         if self.config_manager.kb_exists(name):
             return False, f"Knowledge base '{name}' already exists"
+
+        # 检查名称不与保留目录冲突（default KB 的内部目录）
+        reserved_names = {"notes", ".zk", ".zk_config.json"}
+        if name.lower() in reserved_names:
+            return False, f"Name '{name}' is reserved and cannot be used as a KB name"
         
         # 确定路径（统一管理到 ~/.zettelkasten/ 下）
         if path is None:
@@ -144,6 +149,13 @@ class KnowledgeBaseManager:
         
         # 删除数据（如果需要）
         if delete_data and path and path.exists():
+            # 禁止删除 default KB 的数据目录，因为其他命名 KB 也在其中
+            if path.resolve() == DEFAULT_KB_PATH.resolve():
+                return (
+                    True,
+                    f"Removed knowledge base '{name}' from config, "
+                    f"but cannot delete data: default KB directory contains other KBs",
+                )
             try:
                 shutil.rmtree(path)
                 return True, f"Removed knowledge base '{name}' and deleted all data"
