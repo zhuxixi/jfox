@@ -179,15 +179,35 @@ def large_dataset():
 
 def pytest_configure(config):
     """配置 pytest 标记"""
+    # 测试类型标记
     config.addinivalue_line(
-        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
+        "markers", "unit: marks tests as unit tests (fast, isolated)"
+    )
+    config.addinivalue_line(
+        "markers", "integration: marks tests as integration tests (tests multiple components)"
     )
     config.addinivalue_line(
         "markers", "performance: marks tests as performance tests"
     )
     config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
+        "markers", "e2e: marks tests as end-to-end tests"
     )
+    
+    # 耗时分级标记
+    config.addinivalue_line(
+        "markers", "fast: marks tests as fast (< 1 second)"
+    )
+    config.addinivalue_line(
+        "markers", "normal: marks tests as normal speed (1-10 seconds)"
+    )
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (10-60 seconds)"
+    )
+    config.addinivalue_line(
+        "markers", "very_slow: marks tests as very slow (> 60 seconds)"
+    )
+    
+    # 功能标记（保留原有标记兼容）
     config.addinivalue_line(
         "markers", "workflow: marks tests as workflow tests"
     )
@@ -196,9 +216,6 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "embedding: marks tests that require real embedding model (very slow)"
-    )
-    config.addinivalue_line(
-        "markers", "fast: marks tests that use mock embedding (very fast)"
     )
 
 
@@ -222,17 +239,38 @@ def pytest_collection_modifyitems(config, items):
     """
     自动标记测试
     
-    根据测试名称自动添加标记，方便筛选
+    根据测试路径和名称自动添加标记，方便筛选
     """
     for item in items:
-        # 如果测试名称包含 'embedding' 或 'semantic'，自动添加 embedding 标记
-        if any(keyword in item.nodeid.lower() for keyword in 
-               ['embedding', 'semantic', 'search', 'suggest', 'query']):
+        nodeid = item.nodeid.lower()
+        
+        # 根据路径自动添加测试类型标记
+        if '/unit/' in nodeid or '\\unit\\' in nodeid:
+            if 'unit' not in item.keywords:
+                item.add_marker(pytest.mark.unit)
+        elif '/integration/' in nodeid or '\\integration\\' in nodeid:
+            if 'integration' not in item.keywords:
+                item.add_marker(pytest.mark.integration)
+        elif '/performance/' in nodeid or '\\performance\\' in nodeid:
+            if 'performance' not in item.keywords:
+                item.add_marker(pytest.mark.performance)
+        
+        # 如果测试名称包含 'embedding' 或 'semantic'，自动添加 embedding 和 very_slow 标记
+        if any(keyword in nodeid for keyword in 
+               ['embedding', 'semantic', 'vector']):
             if 'embedding' not in item.keywords:
                 item.add_marker(pytest.mark.embedding)
+            if 'very_slow' not in item.keywords:
+                item.add_marker(pytest.mark.very_slow)
+        
+        # 如果测试名称包含 'search' 或 'suggest'，自动添加 slow 标记
+        if any(keyword in nodeid for keyword in 
+               ['search', 'suggest', 'query']):
+            if 'slow' not in item.keywords and 'very_slow' not in item.keywords:
+                item.add_marker(pytest.mark.slow)
         
         # 如果测试名称包含 'bulk' 或 'batch'，自动添加 slow 和 bulk 标记
-        if any(keyword in item.nodeid.lower() for keyword in 
+        if any(keyword in nodeid for keyword in 
                ['bulk', 'batch', 'large', 'many']):
             if 'slow' not in item.keywords:
                 item.add_marker(pytest.mark.slow)
