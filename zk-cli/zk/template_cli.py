@@ -74,7 +74,7 @@ def list_templates(
                     for t in custom_templates
                 ],
             }
-            console.print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         elif output_format == "table":
             if builtin_templates:
                 console.print("[bold]Built-in Templates:[/bold]")
@@ -145,7 +145,7 @@ def show_template(
                 "tags": template.tags,
                 "is_builtin": template.is_builtin,
             }
-            console.print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             builtin_tag = " (built-in)" if template.is_builtin else ""
             console.print(f"[bold]{template.name}{builtin_tag}[/bold]")
@@ -223,7 +223,7 @@ def create_template(
                     "note_type": template.note_type,
                 },
             }
-            console.print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             action = "updated" if existing else "created"
             console.print(f"[green]Template '{name}' {action} successfully[/green]")
@@ -318,7 +318,7 @@ def remove_template(
         if json_output:
             import json
             result = {"success": True, "deleted": name}
-            console.print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             console.print(f"[green]Template '{name}' deleted[/green]")
             
