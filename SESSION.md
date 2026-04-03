@@ -9,6 +9,10 @@
 
 ## Recent Sessions (最近5次)
 
+### Session 4 - 2026-04-03
+
+处理意外提交到 Git 的 worktree 文件问题。使用 git rm --cached 将 .worktrees/issue-39-skill 从 Git 跟踪中移除，并提交更改。本地 .worktrees/ 目录不受影响，仍可以继续使用。
+
 ### Session 3 - 2026-03-29
 
 本次会话完成了 GitHub Actions CI/CD 配置的搭建和测试覆盖率现状分析。
@@ -90,3 +94,7 @@
 ---
 
 *Total: 3 sessions | Last Updated: 2026-03-29*
+
+---
+
+*Total: 4 sessions | Last Updated: 2026-04-03*
