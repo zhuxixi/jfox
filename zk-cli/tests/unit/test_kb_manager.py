@@ -16,7 +16,7 @@ from zk.kb_manager import (
     KnowledgeBaseManager,
     get_kb_manager,
 )
-from zk.global_config import KnowledgeBaseEntry, GlobalConfig
+from zk.global_config import KnowledgeBaseEntry, GlobalConfig, DEFAULT_KB_PATH
 
 
 class TestKBStats:
@@ -90,14 +90,14 @@ class TestKnowledgeBaseManager:
         mock_config_manager.list_knowledge_bases.return_value = []
         mock_config_manager.add_knowledge_base.return_value = True
         mock_config_manager.set_default.return_value = True
-        
+
         with patch('zk.kb_manager.ZKConfig') as mock_zk_config:
             mock_config_instance = Mock()
             mock_zk_config.return_value = mock_config_instance
-            
+
             success, message = manager.create(
                 name="new_kb",
-                path=Path("/path/to/new_kb"),
+                path=DEFAULT_KB_PATH / "new_kb",
                 description="Test KB",
                 set_as_default=True
             )
@@ -117,14 +117,13 @@ class TestKnowledgeBaseManager:
         assert success is False
         assert "already exists" in message
     
-    def test_create_path_already_used(self, manager, mock_config_manager, tmp_path):
+    def test_create_path_already_used(self, manager, mock_config_manager):
         """测试使用已被占用的路径创建知识库"""
         mock_config_manager.kb_exists.return_value = False
-        
-        # 使用临时路径（跨平台兼容）
-        existing_path = tmp_path / "existing_kb"
-        existing_path.mkdir()
-        
+
+        # 使用管理目录下的路径
+        existing_path = DEFAULT_KB_PATH / "existing_kb"
+
         # 模拟返回已存在的知识库
         existing_entry = KnowledgeBaseEntry(
             name="other_kb",
@@ -132,12 +131,12 @@ class TestKnowledgeBaseManager:
             created="2024-01-01T00:00:00"
         )
         mock_config_manager.list_knowledge_bases.return_value = [existing_entry]
-        
+
         success, message = manager.create(
             name="new_kb",
             path=existing_path
         )
-        
+
         assert success is False
         assert "already used" in message.lower()
     
