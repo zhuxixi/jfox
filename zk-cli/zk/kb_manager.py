@@ -83,18 +83,6 @@ class KnowledgeBaseManager:
                 path = DEFAULT_KB_PATH
             else:
                 path = DEFAULT_KB_PATH / name
-        else:
-            # 用户显式指定路径时，验证必须在管理目录下
-            resolved = path.expanduser().resolve()
-            kb_root = DEFAULT_KB_PATH.resolve()
-            try:
-                resolved.relative_to(kb_root)
-            except ValueError:
-                return (
-                    False,
-                    f"Path '{resolved}' is outside managed directory "
-                    f"'{kb_root}'. All knowledge bases must be under {kb_root}/",
-                )
 
         path = path.expanduser().resolve()
         

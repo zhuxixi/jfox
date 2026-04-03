@@ -95,7 +95,28 @@ def init(
         
         # 确定路径
         path_obj = Path(path) if path else None
-        
+
+        # 用户显式指定路径时，验证必须在管理目录下
+        if path_obj is not None:
+            from zk.global_config import DEFAULT_KB_PATH
+            resolved = path_obj.expanduser().resolve()
+            kb_root = DEFAULT_KB_PATH.resolve()
+            try:
+                resolved.relative_to(kb_root)
+            except ValueError:
+                result = {
+                    "success": False,
+                    "error": (
+                        f"Path '{resolved}' is outside managed directory "
+                        f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
+                    ),
+                }
+                if json_output:
+                    print(output_json(result))
+                else:
+                    console.print(f"[red]✗[/red] {result['error']}")
+                raise typer.Exit(1)
+
         # 创建知识库
         success, message = manager.create(
             name=kb_name,
@@ -1535,6 +1556,21 @@ def kb(
                 raise typer.Exit(1)
             
             path_obj = Path(path) if path else None
+
+            # 用户显式指定路径时，验证必须在管理目录下
+            if path_obj is not None:
+                from zk.global_config import DEFAULT_KB_PATH
+                resolved = path_obj.expanduser().resolve()
+                kb_root = DEFAULT_KB_PATH.resolve()
+                try:
+                    resolved.relative_to(kb_root)
+                except ValueError:
+                    console.print(
+                        f"[red]✗[/red] Path '{resolved}' is outside managed directory "
+                        f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
+                    )
+                    raise typer.Exit(1)
+
             success, message = manager.create(
                 name=name,
                 path=path_obj,

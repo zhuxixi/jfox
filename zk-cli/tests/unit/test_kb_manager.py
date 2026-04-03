@@ -156,14 +156,19 @@ class TestKnowledgeBaseManager:
             call_args = mock_config_manager.add_knowledge_base.call_args
             assert call_args is not None
     
-    def test_create_rejects_path_outside_managed_dir(self, manager, mock_config_manager):
-        """测试拒绝管理目录外的显式路径"""
+    def test_create_with_explicit_path(self, manager, mock_config_manager):
+        """测试用户显式指定路径（CLI 层负责验证，create 不再拒绝）"""
         mock_config_manager.kb_exists.return_value = False
+        mock_config_manager.list_knowledge_bases.return_value = []
+        mock_config_manager.add_knowledge_base.return_value = True
 
-        success, message = manager.create(name="outside_kb", path=Path("/tmp/outside"))
+        with patch('zk.kb_manager.ZKConfig') as mock_zk_config:
+            mock_config_instance = Mock()
+            mock_zk_config.return_value = mock_config_instance
 
-        assert success is False
-        assert "outside" in message.lower() or "managed" in message.lower()
+            success, message = manager.create(name="custom_kb", path=Path("/tmp/custom"))
+
+        assert success is True
 
     def test_create_rejects_reserved_name(self, manager, mock_config_manager):
         """测试拒绝保留名称"""
