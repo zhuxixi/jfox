@@ -121,19 +121,92 @@ class TestHybridSearchEngine:
         assert SearchMode.KEYWORD.value == "keyword"
     
     def test_rrf_fusion_with_mock_data(self):
-        """测试 RRF 融合逻辑"""
-        # 这个测试需要实际的知识库数据，暂时跳过
-        pytest.skip("Requires actual knowledge base with notes")
-    
+        """测试 RRF 融合逻辑：两个搜索源都有结果时，正确融合排序"""
+        from unittest.mock import MagicMock
+
+        vs = MagicMock()
+        vs.search.return_value = [
+            {"id": "n1", "document": "doc1", "score": 0.9},
+            {"id": "n2", "document": "doc2", "score": 0.7},
+        ]
+        bm25 = MagicMock()
+        bm25.search.return_value = [
+            {"note_id": "n2", "score": 5.0},
+            {"note_id": "n3", "score": 3.0},
+        ]
+
+        # n3 只在 BM25 中，需要 mock load_note_by_id
+        import zk.note as note_module
+        original_load = note_module.load_note_by_id
+        mock_note = MagicMock()
+        mock_note.content = "n3 content"
+        mock_note.title = "N3 Note"
+        mock_note.type.value = "permanent"
+        note_module.load_note_by_id = lambda nid: mock_note if nid == "n3" else None
+
+        try:
+            engine = HybridSearchEngine(vector_store=vs, bm25_index=bm25, rrf_k=60)
+            results = engine.search("test", top_k=5, mode=SearchMode.HYBRID)
+
+            # 应该融合来自两个源的结果
+            ids = [r.get("id") or r.get("note_id") for r in results]
+            assert "n2" in ids  # n2 同时出现在两个源中，RRF 分数最高
+            assert "n1" in ids
+            assert "n3" in ids
+            # 所有结果都应标记为 hybrid
+            for r in results:
+                assert r["search_mode"] == "hybrid"
+        finally:
+            note_module.load_note_by_id = original_load
+
     def test_fallback_to_semantic(self):
-        """测试 BM25 失败时回退到语义搜索"""
-        # 这个测试需要实际的知识库数据，暂时跳过
-        pytest.skip("Requires actual knowledge base with notes")
-    
+        """测试 BM25 无结果时回退到语义搜索"""
+        from unittest.mock import MagicMock
+
+        vs = MagicMock()
+        vs.search.return_value = [
+            {"id": "n1", "document": "doc1", "score": 0.9},
+        ]
+        bm25 = MagicMock()
+        bm25.search.return_value = []  # BM25 无结果
+
+        engine = HybridSearchEngine(vector_store=vs, bm25_index=bm25)
+        results = engine.search("test", top_k=5, mode=SearchMode.HYBRID)
+
+        assert len(results) == 1
+        assert results[0]["id"] == "n1"
+        assert results[0]["search_mode"] == "semantic"
+
     def test_fallback_to_keyword(self):
-        """测试语义搜索失败时回退到关键词搜索"""
-        # 这个测试需要实际的知识库数据，暂时跳过
-        pytest.skip("Requires actual knowledge base with notes")
+        """测试语义搜索无结果时回退到关键词搜索"""
+        from unittest.mock import MagicMock
+
+        vs = MagicMock()
+        vs.search.return_value = []  # 语义搜索无结果
+        bm25 = MagicMock()
+        bm25.search.return_value = [
+            {"note_id": "n1", "score": 5.0},
+        ]
+
+        # _keyword_search 会调用 note_module.load_note_by_id，需要 mock
+        import zk.note as note_module
+        original_load = note_module.load_note_by_id
+
+        mock_note = MagicMock()
+        mock_note.content = "test content"
+        mock_note.title = "Test Note"
+        mock_note.type.value = "permanent"
+        note_module.load_note_by_id = lambda nid: mock_note if nid == "n1" else None
+
+        try:
+            engine = HybridSearchEngine(vector_store=vs, bm25_index=bm25)
+            results = engine.search("test", top_k=5, mode=SearchMode.HYBRID)
+
+            assert len(results) == 1
+            assert results[0]["id"] == "n1"
+            assert results[0]["search_mode"] == "keyword"
+        finally:
+            note_module.load_note_by_id = original_load
 
 
 class TestSearchIntegration:
