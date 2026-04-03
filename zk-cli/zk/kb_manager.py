@@ -61,7 +61,7 @@ class KnowledgeBaseManager:
         
         Args:
             name: 知识库名称
-            path: 存储路径（默认 ~/.zettelkasten-{name}）
+            path: 存储路径（默认 ~/.zettelkasten/<name>/）
             description: 描述
             set_as_default: 是否设为默认
             
@@ -72,13 +72,13 @@ class KnowledgeBaseManager:
         if self.config_manager.kb_exists(name):
             return False, f"Knowledge base '{name}' already exists"
         
-        # 确定路径
+        # 确定路径（统一管理到 ~/.zettelkasten/ 下）
         if path is None:
             if name == "default":
                 path = DEFAULT_KB_PATH
             else:
-                path = Path.home() / f".zettelkasten-{name}"
-        
+                path = DEFAULT_KB_PATH / name
+
         path = path.expanduser().resolve()
         
         # 检查路径是否已被其他知识库使用

@@ -169,21 +169,33 @@ class GlobalConfigManager:
         return name in config.knowledge_bases
     
     def add_knowledge_base(
-        self, 
-        name: str, 
-        path: Path, 
+        self,
+        name: str,
+        path: Path,
         description: Optional[str] = None
     ) -> bool:
         """添加新知识库"""
         config = self._load()
-        
+
         if name in config.knowledge_bases:
             logger.warning(f"Knowledge base '{name}' already exists")
             return False
-        
+
+        # 验证路径在统一管理目录 ~/.zettelkasten/ 下
+        resolved_path = path.expanduser().resolve()
+        kb_root = DEFAULT_KB_PATH.resolve()
+        try:
+            resolved_path.relative_to(kb_root)
+        except ValueError:
+            logger.error(
+                f"Knowledge base path '{resolved_path}' is outside "
+                f"managed directory '{kb_root}'"
+            )
+            return False
+
         kb = KnowledgeBaseEntry(
             name=name,
-            path=str(path.expanduser().resolve()),
+            path=str(resolved_path),
             created=datetime.now().isoformat(),
             description=description or f"Knowledge base: {name}",
         )

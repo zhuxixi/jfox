@@ -61,7 +61,7 @@ def output_json(data: dict) -> str:
 @app.command()
 def init(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="知识库名称（默认: default）"),
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten 或 ~/.zettelkasten-<name>）"),
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten/<name>/）"),
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
     set_default: bool = typer.Option(True, "--default/--no-default", help="设为默认知识库"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
