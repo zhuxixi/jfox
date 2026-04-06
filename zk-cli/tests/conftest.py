@@ -10,12 +10,20 @@ pytest 配置和 fixtures
 """
 
 import os
-import pytest
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 
 # 添加项目根目录到路径
-import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# 在导入 zk 模块之前设置测试 KB 根目录
+# 这样 DEFAULT_KB_PATH 会指向临时目录，路径验证在测试中自然通过
+_TEST_ROOT = Path(tempfile.mkdtemp(prefix="zk_test_root_"))
+os.environ['ZK_KB_ROOT'] = str(_TEST_ROOT)
+
+import pytest
 
 
 # ============================================================================
@@ -270,9 +278,18 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pytest.mark.slow)
         
         # 如果测试名称包含 'bulk' 或 'batch'，自动添加 slow 和 bulk 标记
-        if any(keyword in nodeid for keyword in 
+        if any(keyword in nodeid for keyword in
                ['bulk', 'batch', 'large', 'many']):
             if 'slow' not in item.keywords:
                 item.add_marker(pytest.mark.slow)
             if 'bulk' not in item.keywords:
                 item.add_marker(pytest.mark.bulk)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_test_root():
+    """会话结束时清理测试 KB 根目录"""
+    yield
+    test_root = Path(os.environ.get('ZK_KB_ROOT', ''))
+    if test_root.exists() and 'zk_test' in test_root.name:
+        shutil.rmtree(test_root, ignore_errors=True)

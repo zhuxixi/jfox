@@ -61,7 +61,7 @@ def output_json(data: dict) -> str:
 @app.command()
 def init(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="知识库名称（默认: default）"),
-    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten 或 ~/.zettelkasten-<name>）"),
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten/<name>/）"),
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
     set_default: bool = typer.Option(True, "--default/--no-default", help="设为默认知识库"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
@@ -73,8 +73,8 @@ def init(
     
     示例:
         zk init                          # 初始化默认知识库
-        zk init --name work              # 创建名为 work 的知识库
-        zk init --name personal --path ~/notes --desc "个人笔记"
+        zk init --name work              # 创建名为 work 的知识库（~/.zettelkasten/work/）
+        zk init --name personal --desc "个人笔记"
     """
     try:
         kb_name = name or "default"
@@ -95,7 +95,28 @@ def init(
         
         # 确定路径
         path_obj = Path(path) if path else None
-        
+
+        # 用户显式指定路径时，验证必须在管理目录下
+        if path_obj is not None:
+            from zk.global_config import DEFAULT_KB_PATH
+            resolved = path_obj.expanduser().resolve()
+            kb_root = DEFAULT_KB_PATH.resolve()
+            try:
+                resolved.relative_to(kb_root)
+            except ValueError:
+                result = {
+                    "success": False,
+                    "error": (
+                        f"Path '{resolved}' is outside managed directory "
+                        f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
+                    ),
+                }
+                if json_output:
+                    print(output_json(result))
+                else:
+                    console.print(f"[red]✗[/red] {result['error']}")
+                raise typer.Exit(1)
+
         # 创建知识库
         success, message = manager.create(
             name=kb_name,
@@ -1441,8 +1462,8 @@ def kb(
     
     示例:
         zk kb list                    # 列出所有知识库
-        zk kb create work             # 创建名为 work 的知识库
-        zk kb create work --path ~/work-notes --desc "工作笔记"
+        zk kb create work             # 创建名为 work 的知识库（~/.zettelkasten/work/）
+        zk kb create work --desc "工作笔记"
         zk kb switch work             # 切换到 work 知识库
         zk kb current                 # 显示当前知识库
         zk kb info work               # 查看 work 知识库详情
@@ -1535,6 +1556,21 @@ def kb(
                 raise typer.Exit(1)
             
             path_obj = Path(path) if path else None
+
+            # 用户显式指定路径时，验证必须在管理目录下
+            if path_obj is not None:
+                from zk.global_config import DEFAULT_KB_PATH
+                resolved = path_obj.expanduser().resolve()
+                kb_root = DEFAULT_KB_PATH.resolve()
+                try:
+                    resolved.relative_to(kb_root)
+                except ValueError:
+                    console.print(
+                        f"[red]✗[/red] Path '{resolved}' is outside managed directory "
+                        f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
+                    )
+                    raise typer.Exit(1)
+
             success, message = manager.create(
                 name=name,
                 path=path_obj,
