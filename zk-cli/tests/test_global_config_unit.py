@@ -322,14 +322,15 @@ class TestGlobalConfigManager:
     def test_add_knowledge_base_success(self, manager):
         """测试成功添加知识库"""
         manager._config = GlobalConfig()
-        
+
         with patch.object(manager, '_save', return_value=True):
-            result = manager.add_knowledge_base("new_kb", Path("/path/to/new"), "Description")
-        
+            kb_path = DEFAULT_KB_PATH / "new"
+            result = manager.add_knowledge_base("new_kb", kb_path, "Description")
+
         assert result is True
         assert "new_kb" in manager._config.knowledge_bases
         assert manager._config.knowledge_bases["new_kb"].description == "Description"
-    
+
     def test_add_knowledge_base_duplicate(self, manager):
         """测试添加重复知识库"""
         entry = KnowledgeBaseEntry(

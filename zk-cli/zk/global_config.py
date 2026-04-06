@@ -6,6 +6,7 @@
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG_PATH = Path.home() / ".zk_config.json"
 DEFAULT_KB_NAME = "default"
-DEFAULT_KB_PATH = Path.home() / ".zettelkasten"
+DEFAULT_KB_PATH = Path(os.environ.get('ZK_KB_ROOT', str(Path.home() / '.zettelkasten')))
 
 
 @dataclass
@@ -169,21 +170,23 @@ class GlobalConfigManager:
         return name in config.knowledge_bases
     
     def add_knowledge_base(
-        self, 
-        name: str, 
-        path: Path, 
+        self,
+        name: str,
+        path: Path,
         description: Optional[str] = None
     ) -> bool:
         """添加新知识库"""
         config = self._load()
-        
+
         if name in config.knowledge_bases:
             logger.warning(f"Knowledge base '{name}' already exists")
             return False
-        
+
+        resolved_path = path.expanduser().resolve()
+
         kb = KnowledgeBaseEntry(
             name=name,
-            path=str(path.expanduser().resolve()),
+            path=str(resolved_path),
             created=datetime.now().isoformat(),
             description=description or f"Knowledge base: {name}",
         )
