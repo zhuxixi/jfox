@@ -63,7 +63,7 @@ jobs:
       run: |
         # 运行非 embedding 测试（单进程避免知识库冲突）
         pytest tests/ -m "not embedding and not slow" --timeout=180 -v --tb=short
-      timeout-minutes: 20
+      timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 20 }}
       env:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
@@ -117,7 +117,7 @@ jobs:
       run: |
         # 只跑核心工作流测试，单进程避免模型加载冲突
         pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short
-      timeout-minutes: 25
+      timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 25 }}
       env:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
