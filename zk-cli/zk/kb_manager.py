@@ -85,7 +85,18 @@ class KnowledgeBaseManager:
                 path = DEFAULT_KB_PATH / name
 
         path = path.expanduser().resolve()
-        
+
+        # 校验路径必须在统一管理目录下
+        kb_root = DEFAULT_KB_PATH.resolve()
+        try:
+            path.relative_to(kb_root)
+        except ValueError:
+            return (
+                False,
+                f"Path '{path}' is outside managed directory '{kb_root}'. "
+                f"All knowledge bases must be under {kb_root}/",
+            )
+
         # 检查路径是否已被其他知识库使用
         for kb in self.config_manager.list_knowledge_bases():
             if Path(kb.path) == path:
