@@ -131,6 +131,5 @@ Four jobs in `.github/workflows/integration-test.yml`:
 
 ## Gotchas
 
-- `jinja2` is imported by `template.py` but not explicitly listed in `pyproject.toml` dependencies (pulled in transitively by another package)
 - `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
 - Test directory migration is partial: root-level `test_*_unit.py` files duplicate `tests/unit/` tests

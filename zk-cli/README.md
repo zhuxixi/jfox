@@ -28,10 +28,10 @@ cd jfox/zk-cli
 uv sync --extra dev
 
 # 或直接安装为全局工具
-uv tool install git+https://github.com/zhuxixi/jfox.git --directory zk-cli
+uv tool install "git+https://github.com/zhuxixi/jfox.git#subdirectory=zk-cli"
 
 # 免安装试用
-uvx --from git+https://github.com/zhuxixi/jfox.git --directory zk-cli zk --help
+uvx --from "git+https://github.com/zhuxixi/jfox.git#subdirectory=zk-cli" zk --help
 ```
 
 验证安装：
@@ -49,6 +49,10 @@ pip install -e ".[dev]"
 ### 卸载
 
 ```bash
+# uv 安装的用户
+uv tool uninstall zk-cli
+
+# pip 安装的用户
 pip uninstall zk-cli
 ```
 
@@ -557,8 +561,8 @@ chcp 65001
 ```bash
 git clone https://github.com/zhuxixi/jfox.git
 cd jfox/zk-cli
-pip install -e ".[dev]"
-pytest tests/
+uv sync --extra dev
+uv run pytest tests/
 ```
 
 ---
