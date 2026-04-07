@@ -90,7 +90,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 
 ## Testing Rules
 
-- **全量/集成测试（~50min）不要自主运行**，让用户手动执行。包括：`pytest tests/ -v`、`pytest tests/ -m "not embedding and not slow"`、`pytest tests/test_core_workflow.py` 等。改完代码后提供命令让用户跑。
+- **全量/集成测试（~50min）不要自主运行**，让用户手动执行。包括：`uv run pytest tests/ -v`、`uv run pytest tests/ -m "not embedding and not slow"`、`uv run pytest tests/test_core_workflow.py` 等。改完代码后提供命令让用户跑。
 - **快速单元测试（几秒内）可以自主运行**。如单个模块的纯逻辑测试，不涉及 embedding 或 ChromaDB 的。
 
 ## Conventions

@@ -63,11 +63,19 @@ pip uninstall zk-cli
 
 ### Windows PATH 问题
 
-如果在 Windows 上提示找不到 `zk` 命令，请确保 Python Scripts 目录在 PATH 中：
+如果在 Windows 上提示找不到 `zk` 命令：
 
+**uv 安装用户：**
+```powershell
+# 查看 uv 工具安装路径
+uv tool dir
+# 将对应的 bin 目录添加到 PATH
+```
+
+**pip 安装用户：**
 ```powershell
 # 查看安装位置
-pip show zk-cli | findstr Location
+pip show jfox-cli | findstr Location
 # 将对应的 Scripts 目录添加到 PATH，例如：
 # C:\Users\<用户名>\AppData\Local\Packages\PythonSoftwareFoundation.Python3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\Scripts
 ```
@@ -515,9 +523,15 @@ git commit -m "Backup $(date)"
 
 ### 问题：找不到命令 `zk`
 
+**uv 安装用户：**
+```bash
+uv tool dir  # 查看工具安装路径，确保 bin 目录在 PATH 中
+```
+
+**pip 安装用户：**
 ```bash
 # 确保 pip 安装路径在 PATH 中
-pip show zk-cli | grep Location
+pip show jfox-cli | grep Location
 # 将对应的 Scripts 目录添加到 PATH
 ```
 

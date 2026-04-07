@@ -55,6 +55,7 @@ jobs:
     - uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
+        enable-cache: true
 
     - name: Install dependencies
       run: uv sync --extra dev
@@ -103,6 +104,7 @@ jobs:
     - uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
+        enable-cache: true
 
     - name: Cache model
       uses: actions/cache@v4
@@ -156,6 +158,7 @@ jobs:
     - uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
+        enable-cache: true
 
     - name: Cache model
       uses: actions/cache@v4
@@ -205,6 +208,7 @@ jobs:
     - uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
+        enable-cache: true
 
     - name: Install dependencies
       run: uv sync --extra dev
