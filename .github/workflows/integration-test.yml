@@ -51,18 +51,19 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'zk-cli/pyproject.toml'
+
+    - uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+      run: uv sync --extra dev
 
     - name: Run fast tests (no embedding)
       run: |
         # 运行非 embedding 测试（单进程避免知识库冲突）
-        pytest tests/ -m "not embedding and not slow" --timeout=180 -v --tb=short
+        uv run pytest tests/ -m "not embedding and not slow" --timeout=180 -v --tb=short
       timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 20 }}
       env:
         PYTHONIOENCODING: utf-8
@@ -99,8 +100,11 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'zk-cli/pyproject.toml'
+
+    - uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
 
     - name: Cache model
       uses: actions/cache@v4
@@ -109,14 +113,12 @@ jobs:
         key: ${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+      run: uv sync --extra dev
 
     - name: Run core tests
       run: |
         # 只跑核心工作流测试，单进程避免模型加载冲突
-        pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short
+        uv run pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short
       timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 25 }}
       env:
         PYTHONIOENCODING: utf-8
@@ -152,8 +154,11 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'zk-cli/pyproject.toml'
+
+    - uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
 
     - name: Cache model
       uses: actions/cache@v4
@@ -162,14 +167,12 @@ jobs:
         key: ${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+      run: uv sync --extra dev
 
     - name: Run full test suite
       run: |
         # 全量测试，单进程（避免模型加载问题）
-        pytest tests/ -v --timeout=600 --tb=short
+        uv run pytest tests/ -v --timeout=600 --tb=short
       timeout-minutes: 60
       env:
         PYTHONIOENCODING: utf-8
@@ -201,17 +204,18 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        cache: 'pip'
-        cache-dependency-path: 'zk-cli/pyproject.toml'
+
+    - uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    
+      run: uv sync --extra dev
+
     - name: Run coverage
       run: |
-        pytest tests/ -m "not embedding and not slow" --cov=zk --cov-report=xml --cov-report=html -v --timeout=300
+        uv run pytest tests/ -m "not embedding and not slow" --cov=zk --cov-report=xml --cov-report=html -v --timeout=300
       timeout-minutes: 25
     
     - name: Upload coverage report

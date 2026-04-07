@@ -17,25 +17,31 @@ All commands should be run from `zk-cli/` directory:
 ```bash
 cd zk-cli
 
-# Install (editable mode with dev dependencies)
+# Install (using uv, recommended)
+uv sync --extra dev
+
+# Install (legacy pip fallback)
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                                    # All tests
-pytest tests/test_core_workflow.py -v               # Single file
-pytest tests/ -m "not slow"                         # Exclude slow tests
-pytest tests/ -m "not embedding and not slow"       # Fast tests (no model loading)
-pytest tests/ -m "integration"                      # Integration tests only
-pytest tests/ --keep-data                           # Keep test data for debugging
-pytest tests/ --cov=zk --cov-report=html            # With coverage
+uv run pytest tests/ -v                                # All tests
+uv run pytest tests/test_core_workflow.py -v           # Single file
+uv run pytest tests/ -m "not slow"                     # Exclude slow tests
+uv run pytest tests/ -m "not embedding and not slow"   # Fast tests (no model loading)
+uv run pytest tests/ -m "integration"                  # Integration tests only
+uv run pytest tests/ --keep-data                       # Keep test data for debugging
+uv run pytest tests/ --cov=zk --cov-report=html        # With coverage
 
 # Format and lint
-black zk/ tests/
-ruff check zk/ tests/
+uv run black zk/ tests/
+uv run ruff check zk/ tests/
+
+# Build
+uv build
 
 # Verify CLI
-zk --help
-zk --version
+uv run zk --help
+uv run zk --version
 ```
 
 Windows full test (from `zk-cli/`): `.\run_full_test.ps1` or `.\run_full_test.ps1 -KeepData`
@@ -84,7 +90,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 
 ## Testing Rules
 
-- **全量/集成测试（~50min）不要自主运行**，让用户手动执行。包括：`pytest tests/ -v`、`pytest tests/ -m "not embedding and not slow"`、`pytest tests/test_core_workflow.py` 等。改完代码后提供命令让用户跑。
+- **全量/集成测试（~50min）不要自主运行**，让用户手动执行。包括：`uv run pytest tests/ -v`、`uv run pytest tests/ -m "not embedding and not slow"`、`uv run pytest tests/test_core_workflow.py` 等。改完代码后提供命令让用户跑。
 - **快速单元测试（几秒内）可以自主运行**。如单个模块的纯逻辑测试，不涉及 embedding 或 ChromaDB 的。
 
 ## Conventions
@@ -125,6 +131,5 @@ Four jobs in `.github/workflows/integration-test.yml`:
 
 ## Gotchas
 
-- `jinja2` is imported by `template.py` but not explicitly listed in `pyproject.toml` dependencies (pulled in transitively by another package)
 - `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
 - Test directory migration is partial: root-level `test_*_unit.py` files duplicate `tests/unit/` tests

@@ -19,12 +19,19 @@
 
 ## 📦 安装
 
-### 从 GitHub 安装（推荐）
-
-安装后 `zk` 命令将全局可用：
+### 推荐方式（使用 uv）
 
 ```bash
-pip install git+https://github.com/zhuxixi/jfox.git@main#subdirectory=zk-cli
+# 从 GitHub 克隆并安装（本地开发）
+git clone https://github.com/zhuxixi/jfox.git
+cd jfox/zk-cli
+uv sync --extra dev
+
+# 或直接安装为全局工具
+uv tool install "git+https://github.com/zhuxixi/jfox.git#subdirectory=zk-cli"
+
+# 免安装试用
+uvx --from "git+https://github.com/zhuxixi/jfox.git#subdirectory=zk-cli" zk --help
 ```
 
 验证安装：
@@ -33,21 +40,19 @@ zk --help
 zk --version
 ```
 
-### 本地开发安装
-
-适合需要修改代码的开发者：
+### 传统方式（使用 pip）
 
 ```bash
-git clone https://github.com/zhuxixi/jfox.git
-cd jfox/zk-cli
-pip install -e .
+pip install -e ".[dev]"
 ```
-
-`-e` (editable) 模式表示开发时修改代码立即生效，无需重新安装。
 
 ### 卸载
 
 ```bash
+# uv 安装的用户
+uv tool uninstall zk-cli
+
+# pip 安装的用户
 pip uninstall zk-cli
 ```
 
@@ -58,13 +63,21 @@ pip uninstall zk-cli
 
 ### Windows PATH 问题
 
-如果在 Windows 上提示找不到 `zk` 命令，请确保 Python Scripts 目录在 PATH 中：
+如果在 Windows 上提示找不到 `zk` 命令：
 
+**uv 安装用户：**
+```powershell
+# 查看 uv 工具安装路径
+uv tool dir
+# 将对应的 bin 目录添加到 PATH
+```
+
+**pip 安装用户：**
 ```powershell
 # 查看安装位置
-pip show zk-cli | findstr Location
+pip show jfox-cli | findstr Location
 # 将对应的 Scripts 目录添加到 PATH，例如：
-# C:\Users\<用户名>\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\Scripts
+# C:\Users\<用户名>\AppData\Local\Packages\PythonSoftwareFoundation.Python3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\Scripts
 ```
 
 ---
@@ -510,9 +523,15 @@ git commit -m "Backup $(date)"
 
 ### 问题：找不到命令 `zk`
 
+**uv 安装用户：**
+```bash
+uv tool dir  # 查看工具安装路径，确保 bin 目录在 PATH 中
+```
+
+**pip 安装用户：**
 ```bash
 # 确保 pip 安装路径在 PATH 中
-pip show zk-cli | grep Location
+pip show jfox-cli | grep Location
 # 将对应的 Scripts 目录添加到 PATH
 ```
 
@@ -556,8 +575,8 @@ chcp 65001
 ```bash
 git clone https://github.com/zhuxixi/jfox.git
 cd jfox/zk-cli
-pip install -e ".[dev]"
-pytest tests/
+uv sync --extra dev
+uv run pytest tests/
 ```
 
 ---

@@ -144,7 +144,7 @@ function Run-Tests {
     }
     
     try {
-        python -m pytest @pytestArgs
+        uv run pytest @pytestArgs
         $exitCode = $LASTEXITCODE
     } catch {
         Write-Error "测试执行失败: $_"
