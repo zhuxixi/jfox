@@ -17,25 +17,31 @@ All commands should be run from `zk-cli/` directory:
 ```bash
 cd zk-cli
 
-# Install (editable mode with dev dependencies)
+# Install (using uv, recommended)
+uv sync --extra dev
+
+# Install (legacy pip fallback)
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v                                    # All tests
-pytest tests/test_core_workflow.py -v               # Single file
-pytest tests/ -m "not slow"                         # Exclude slow tests
-pytest tests/ -m "not embedding and not slow"       # Fast tests (no model loading)
-pytest tests/ -m "integration"                      # Integration tests only
-pytest tests/ --keep-data                           # Keep test data for debugging
-pytest tests/ --cov=zk --cov-report=html            # With coverage
+uv run pytest tests/ -v                                # All tests
+uv run pytest tests/test_core_workflow.py -v           # Single file
+uv run pytest tests/ -m "not slow"                     # Exclude slow tests
+uv run pytest tests/ -m "not embedding and not slow"   # Fast tests (no model loading)
+uv run pytest tests/ -m "integration"                  # Integration tests only
+uv run pytest tests/ --keep-data                       # Keep test data for debugging
+uv run pytest tests/ --cov=zk --cov-report=html        # With coverage
 
 # Format and lint
-black zk/ tests/
-ruff check zk/ tests/
+uv run black zk/ tests/
+uv run ruff check zk/ tests/
+
+# Build
+uv build
 
 # Verify CLI
-zk --help
-zk --version
+uv run zk --help
+uv run zk --version
 ```
 
 Windows full test (from `zk-cli/`): `.\run_full_test.ps1` or `.\run_full_test.ps1 -KeepData`
