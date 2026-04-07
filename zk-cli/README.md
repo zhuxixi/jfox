@@ -19,12 +19,19 @@
 
 ## 📦 安装
 
-### 从 GitHub 安装（推荐）
-
-安装后 `zk` 命令将全局可用：
+### 推荐方式（使用 uv）
 
 ```bash
-pip install git+https://github.com/zhuxixi/jfox.git@main#subdirectory=zk-cli
+# 从 GitHub 克隆并安装（本地开发）
+git clone https://github.com/zhuxixi/jfox.git
+cd jfox/zk-cli
+uv sync --extra dev
+
+# 或直接安装为全局工具
+uv tool install git+https://github.com/zhuxixi/jfox.git --directory zk-cli
+
+# 免安装试用
+uvx --from git+https://github.com/zhuxixi/jfox.git --directory zk-cli zk --help
 ```
 
 验证安装：
@@ -33,17 +40,11 @@ zk --help
 zk --version
 ```
 
-### 本地开发安装
-
-适合需要修改代码的开发者：
+### 传统方式（使用 pip）
 
 ```bash
-git clone https://github.com/zhuxixi/jfox.git
-cd jfox/zk-cli
-pip install -e .
+pip install -e ".[dev]"
 ```
-
-`-e` (editable) 模式表示开发时修改代码立即生效，无需重新安装。
 
 ### 卸载
 
@@ -64,7 +65,7 @@ pip uninstall zk-cli
 # 查看安装位置
 pip show zk-cli | findstr Location
 # 将对应的 Scripts 目录添加到 PATH，例如：
-# C:\Users\<用户名>\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\Scripts
+# C:\Users\<用户名>\AppData\Local\Packages\PythonSoftwareFoundation.Python3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\Scripts
 ```
 
 ---
