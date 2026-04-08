@@ -454,7 +454,7 @@ class TestFormatters:
 
 ### 已有测试工具
 - `tests/utils/temp_kb.py` - 临时知识库管理
-- `tests/utils/zk_cli.py` - CLI 命令封装
+- `tests/utils/jfox_cli.py` - CLI 命令封装
 - `tests/conftest.py` - pytest fixtures
 
 ### 需要添加

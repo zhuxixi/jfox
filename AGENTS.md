@@ -1,10 +1,10 @@
-# AGENTS.md - JFox / ZK CLI 项目指南
+# AGENTS.md - JFox 项目指南
 
 > 本文档面向 AI 编程助手。项目语言：中文（注释和文档主要使用中文）
 
 ## 项目概述
 
-**JFox**（又称 ZK CLI）是一个基于 Zettelkasten（卡片盒）方法的命令行知识管理工具。
+**JFox** 是一个基于 Zettelkasten（卡片盒）方法的命令行知识管理工具。
 
 - **项目定位**: 本地优先的个人知识库软件
 - **核心价值**: 通过双向链接、语义搜索和知识图谱，帮助用户构建可生长的知识网络
@@ -32,44 +32,42 @@
 
 ```
 jfox/
-├── zk-cli/                    # 主应用目录
-│   ├── pyproject.toml         # Python 项目配置
-│   ├── requirements.txt       # 依赖列表
-│   ├── README.md              # 详细文档（中文）
-│   ├── run_full_test.ps1      # 全量测试脚本（PowerShell）
-│   ├── zk/                    # 主包
-│   │   ├── __init__.py
-│   │   ├── __main__.py        # 入口点
-│   │   ├── cli.py             # CLI 主程序（所有命令）
-│   │   ├── models.py          # 数据模型（Note, NoteType）
-│   │   ├── config.py          # 配置管理（ZKConfig, use_kb）
-│   │   ├── global_config.py   # 全局配置管理（多知识库）
-│   │   ├── note.py            # 笔记 CRUD 操作
-│   │   ├── kb_manager.py      # 知识库管理器
-│   │   ├── embedding_backend.py  # 嵌入模型后端
-│   │   ├── vector_store.py    # ChromaDB 向量存储
-│   │   ├── bm25_index.py      # BM25 关键词索引
-│   │   ├── search_engine.py   # 混合搜索引擎（RRF 融合）
-│   │   ├── graph.py           # 知识图谱（NetworkX）
-│   │   ├── indexer.py         # 文件监控和索引
-│   │   ├── formatters.py      # 多格式输出（JSON/CSV/YAML/Tree）
-│   │   ├── template.py        # 模板系统
-│   │   ├── template_cli.py    # 模板 CLI 子命令
-│   │   └── performance.py     # 性能优化工具
-│   └── tests/                 # 测试目录
-│       ├── conftest.py        # pytest 配置和 fixtures
-│       ├── test_core_workflow.py
-│       ├── test_integration.py
-│       ├── test_hybrid_search.py
-│       ├── test_backlinks.py
-│       ├── test_formatters.py
-│       ├── test_suggest_links.py
-│       ├── test_kb_current.py
-│       ├── test_template.py
-│       └── utils/             # 测试工具
-│           ├── temp_kb.py     # 临时知识库管理
-│           ├── zk_cli.py      # CLI 命令封装
-│           └── note_generator.py  # 测试数据生成
+├── pyproject.toml             # Python 项目配置
+├── README.md                  # 详细文档（中文）
+├── run_full_test.ps1          # 全量测试脚本（PowerShell）
+├── jfox/                      # 主包
+│   ├── __init__.py
+│   ├── __main__.py            # 入口点
+│   ├── cli.py                 # CLI 主程序（所有命令）
+│   ├── models.py              # 数据模型（Note, NoteType）
+│   ├── config.py              # 配置管理（ZKConfig, use_kb）
+│   ├── global_config.py       # 全局配置管理（多知识库）
+│   ├── note.py                # 笔记 CRUD 操作
+│   ├── kb_manager.py          # 知识库管理器
+│   ├── embedding_backend.py   # 嵌入模型后端
+│   ├── vector_store.py        # ChromaDB 向量存储
+│   ├── bm25_index.py          # BM25 关键词索引
+│   ├── search_engine.py       # 混合搜索引擎（RRF 融合）
+│   ├── graph.py               # 知识图谱（NetworkX）
+│   ├── indexer.py             # 文件监控和索引
+│   ├── formatters.py          # 多格式输出（JSON/CSV/YAML/Tree）
+│   ├── template.py            # 模板系统
+│   ├── template_cli.py        # 模板 CLI 子命令
+│   └── performance.py         # 性能优化工具
+├── tests/                     # 测试目录
+│   ├── conftest.py            # pytest 配置和 fixtures
+│   ├── test_core_workflow.py
+│   ├── test_integration.py
+│   ├── test_hybrid_search.py
+│   ├── test_backlinks.py
+│   ├── test_formatters.py
+│   ├── test_suggest_links.py
+│   ├── test_kb_current.py
+│   ├── test_template.py
+│   └── utils/                 # 测试工具
+│       ├── temp_kb.py         # 临时知识库管理
+│       ├── jfox_cli.py        # CLI 命令封装
+│       └── note_generator.py  # 测试数据生成
 ├── skill/                     # Kimi Skill 定义
 │   ├── knowledge-base-notes/SKILL.md    # 笔记管理 Skill
 │   └── knowledge-base-workspace/SKILL.md # 知识库工作空间 Skill
@@ -83,15 +81,13 @@ jfox/
 ### 安装开发环境
 
 ```bash
-cd zk-cli
-
 # 创建虚拟环境（推荐）
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 .venv\Scripts\activate     # Windows
 
 # 开发模式安装
-pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ### 运行测试
@@ -121,10 +117,10 @@ pytest tests/ --keep-data
 
 ```bash
 # 使用 black 格式化
-black zk/ tests/
+black jfox/ tests/
 
 # 使用 ruff 检查
-ruff check zk/ tests/
+ruff check jfox/ tests/
 ```
 
 ### 本地安装和验证
@@ -134,8 +130,8 @@ ruff check zk/ tests/
 pip install -e .
 
 # 验证安装
-zk --help
-zk --version
+jfox --help
+jfox --version
 ```
 
 ## 代码组织
@@ -231,7 +227,7 @@ backlinks: ['20260321011550']  # 反向链接（自动生成）
 ### 测试工具
 
 - **临时知识库**: `tests/utils/temp_kb.py`
-- **CLI 封装**: `tests/utils/zk_cli.py`
+- **CLI 封装**: `tests/utils/jfox_cli.py`
 - **数据生成**: `tests/utils/note_generator.py`
 
 ### 测试 Fixture
@@ -255,7 +251,7 @@ def test_example(temp_kb, cli, generator):
 
 import pytest
 from tests.utils.temp_kb import temp_knowledge_base
-from tests.utils.zk_cli import ZKCLI
+from tests.utils.jfox_cli import ZKCLI
 
 
 class TestFeatureName:
@@ -349,7 +345,7 @@ def new_command(
 
 ## 相关资源
 
-- **详细 CLI 文档**: `zk-cli/README.md`
+- **详细 CLI 文档**: `README.md`
 - **开发计划**: `DEVELOPMENT_PLAN.md`
 - **会话历史**: `SESSION_SUMMARY.md`
 - **Kimi Skills**: `skill/` 目录
