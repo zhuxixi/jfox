@@ -4,12 +4,16 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'zk-cli/**'
+      - 'jfox/**'
+      - 'tests/**'
+      - 'pyproject.toml'
       - '.github/workflows/integration-test.yml'
   pull_request:
     branches: [ main, develop ]
     paths:
-      - 'zk-cli/**'
+      - 'jfox/**'
+      - 'tests/**'
+      - 'pyproject.toml'
   # 允许手动触发
   workflow_dispatch:
     inputs:
@@ -38,15 +42,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ['3.11']
-    
-    defaults:
-      run:
-        working-directory: ./zk-cli
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -68,15 +68,15 @@ jobs:
       env:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
-    
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-fast-${{ matrix.os }}-py${{ matrix.python-version }}
         path: |
-          zk-cli/.pytest_cache/
-          zk-cli/htmlcov/
+          .pytest_cache/
+          htmlcov/
 
   # ============ 核心测试（带 embedding，但只跑核心）============
   test-core:
@@ -87,15 +87,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ['3.10', '3.12']
-    
-    defaults:
-      run:
-        working-directory: ./zk-cli
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -123,14 +119,14 @@ jobs:
       env:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
-    
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-core-${{ matrix.os }}-py${{ matrix.python-version }}
         path: |
-          zk-cli/.pytest_cache/
+          .pytest_cache/
 
   # ============ 全量测试（仅 main 分支或手动触发）============
   test-full:
@@ -141,15 +137,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.10', '3.11', '3.12']
-    
-    defaults:
-      run:
-        working-directory: ./zk-cli
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -177,29 +169,25 @@ jobs:
       env:
         PYTHONIOENCODING: utf-8
         PYTHONUTF8: 1
-    
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-full-${{ matrix.os }}-py${{ matrix.python-version }}
         path: |
-          zk-cli/.pytest_cache/
+          .pytest_cache/
 
   # ============ 覆盖率报告汇总 ============
   coverage:
     runs-on: ubuntu-latest
     needs: [test-fast]
     if: always() && needs.test-fast.result == 'success'
-    
-    defaults:
-      run:
-        working-directory: ./zk-cli
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -215,13 +203,13 @@ jobs:
 
     - name: Run coverage
       run: |
-        uv run pytest tests/ -m "not embedding and not slow" --cov=zk --cov-report=xml --cov-report=html -v --timeout=300
+        uv run pytest tests/ -m "not embedding and not slow" --cov=jfox --cov-report=xml --cov-report=html -v --timeout=300
       timeout-minutes: 25
-    
+
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
         path: |
-          zk-cli/htmlcov/
-          zk-cli/coverage.xml
+          htmlcov/
+          coverage.xml

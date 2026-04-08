@@ -7,8 +7,6 @@ set -e
 
 echo "[pre-push] Running fast unit tests..."
 
-cd zk-cli
-
 # 只跑非 embedding 非 slow 的测试，排除已知的 template_cli 失败
 python -m pytest tests/unit/ -m "not embedding and not slow" \
     --timeout=30 -q --tb=short --no-header \

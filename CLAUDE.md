@@ -4,19 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-JFox (ZK CLI) is a local-first personal knowledge management CLI tool based on the Zettelkasten method. It supports bidirectional links (`[[note title]]`), semantic search (sentence-transformers + ChromaDB), knowledge graph analysis (NetworkX), and multi-knowledge-base management. Pure CPU, no GPU required.
+JFox is a local-first personal knowledge management CLI tool based on the Zettelkasten method. It supports bidirectional links (`[[note title]]`), semantic search (sentence-transformers + ChromaDB), knowledge graph analysis (NetworkX), and multi-knowledge-base management. Pure CPU, no GPU required.
 
 - **Language**: Python >= 3.10
-- **CLI entry point**: `zk` command → `zk.cli:app` (Typer)
+- **CLI entry point**: `jfox` command → `jfox.cli:app` (Typer)
 - **Project docs and comments are primarily in Chinese (中文)**
 
 ## Development Commands
 
-All commands should be run from `zk-cli/` directory:
-
 ```bash
-cd zk-cli
-
 # Install (using uv, recommended)
 uv sync --extra dev
 
@@ -30,21 +26,21 @@ uv run pytest tests/ -m "not slow"                     # Exclude slow tests
 uv run pytest tests/ -m "not embedding and not slow"   # Fast tests (no model loading)
 uv run pytest tests/ -m "integration"                  # Integration tests only
 uv run pytest tests/ --keep-data                       # Keep test data for debugging
-uv run pytest tests/ --cov=zk --cov-report=html        # With coverage
+uv run pytest tests/ --cov=jfox --cov-report=html      # With coverage
 
 # Format and lint
-uv run black zk/ tests/
-uv run ruff check zk/ tests/
+uv run black jfox/ tests/
+uv run ruff check jfox/ tests/
 
 # Build
 uv build
 
 # Verify CLI
-uv run zk --help
-uv run zk --version
+uv run jfox --help
+uv run jfox --version
 ```
 
-Windows full test (from `zk-cli/`): `.\run_full_test.ps1` or `.\run_full_test.ps1 -KeepData`
+Windows full test: `.\run_full_test.ps1` or `.\run_full_test.ps1 -KeepData`
 
 ## Architecture
 
@@ -104,7 +100,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 ## Test Infrastructure
 
 - **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `cli_fast` (ZKCLI with mocked embeddings), `generator` (NoteGenerator), `mock_embedding_backend`
-- **Test utils** (`tests/utils/`): `temp_kb.py`, `zk_cli.py` (CLI wrapper), `note_generator.py`
+- **Test utils** (`tests/utils/`): `temp_kb.py`, `jfox_cli.py` (CLI wrapper), `note_generator.py`
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
 - **Run single-process** to avoid ChromaDB/model loading conflicts

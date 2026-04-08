@@ -140,7 +140,7 @@ backlinks: []            # 反向链接（自动生成）
 
 ### Issue #10: 集成测试框架 ✅ 已完成
 - tests/utils/temp_kb.py - 临时知识库管理
-- tests/utils/zk_cli.py - CLI 命令封装
+- tests/utils/jfox_cli.py - CLI 命令封装
 - tests/utils/note_generator.py - 测试数据生成
 - tests/conftest.py - pytest fixtures
 - tests/test_integration.py - 集成测试
