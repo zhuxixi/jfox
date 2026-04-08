@@ -2,10 +2,18 @@
 
 import json
 import logging
+import sys
 import warnings
 from pathlib import Path
 from typing import Optional, List
 from datetime import datetime, timedelta
+
+# Windows 下强制 UTF-8 输出，避免中文乱码
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
 
 # 过滤 networkx 的 backend 警告
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="networkx backend defined more than once")
@@ -18,6 +26,7 @@ from rich.panel import Panel
 
 from .models import NoteType
 from .config import config, ZKConfig, get_config
+from . import __version__
 from . import note
 from .embedding_backend import get_backend
 from .graph import KnowledgeGraph
@@ -46,6 +55,23 @@ app = typer.Typer(
     help="JFox - Zettelkasten 知识管理 CLI",
     add_completion=False,
 )
+
+
+def _version_callback(value: bool):
+    if value:
+        print(f"jfox {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: bool = typer.Option(
+        None, "--version", "-V", help="显示版本号",
+        callback=_version_callback, is_eager=True,
+    ),
+):
+    pass
+
 
 # 添加子命令
 app.add_typer(template_app, name="template", help="Manage note templates")
