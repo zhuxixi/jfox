@@ -1,6 +1,6 @@
 ---
 name: jfox-init
-description: Use when user wants to initialize, create, or set up a Zettelkasten knowledge base with jfox CLI. Triggers on "初始化知识库", "创建知识库", "新建知识库", "setup jfox", "init knowledge base".
+description: Use when user wants to initialize, create, or set up a Zettelkasten knowledge base with jfox CLI. Triggers on "初始化知识库", "创建知识库", "新建知识库", "知识库初始化", "配置 jfox", "setup jfox", "init knowledge base", "create knowledge base", "new knowledge base", "jfox init", "start using jfox".
 ---
 
 # JFox Knowledge Base Initialization
@@ -84,7 +84,8 @@ jfox kb list                        # 列出所有知识库
 jfox kb switch <name>               # 切换知识库
 jfox kb info <name> --format json   # 查看详情
 jfox kb current --format json       # 当前知识库
-jfox kb remove <name> --force       # 删除知识库
+jfox kb remove <name> --force       # ⚠️ 删除知识库（含笔记文件，不可恢复）
+jfox kb remove <name>               # 仅注销知识库，保留笔记文件
 jfox kb rename <old> <new>          # 重命名
 ```
 
@@ -99,8 +100,9 @@ jfox kb rename <old> <new>          # 重命名
 ```bash
 # JSON backup
 jfox bulk-import /path/to/backup.json --type permanent --batch-size 32
+jfox bulk-import /path/to/backup.json --kb work --type permanent
 
-# Raw markdown files
-cp /path/to/notes/*.md ~/.zettelkasten/<kb-name>/notes/permanent/
+# Raw markdown files (default KB uses ~/.zettelkasten/default/, named KB uses ~/.zettelkasten/<name>/)
+cp /path/to/notes/*.md ~/.zettelkasten/default/notes/permanent/
 jfox index rebuild
 ```

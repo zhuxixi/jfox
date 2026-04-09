@@ -1,6 +1,6 @@
 ---
 name: jfox-organize
-description: Use when user wants to organize, tidy up, or review their Zettelkasten knowledge base. Triggers on "整理知识库", "清理", "看看inbox", "organize notes", "tidy up", "review inbox".
+description: Use when user wants to organize, tidy up, or review their Zettelkasten knowledge base. Triggers on "整理知识库", "整理笔记", "清理", "清理收件箱", "看看inbox", "处理临时笔记", "organize notes", "tidy up", "review inbox", "find orphans", "知识库维护".
 ---
 
 # JFox Knowledge Base Organization
@@ -31,7 +31,7 @@ List all fleeting (unprocessed) notes. For each note, decide:
 2. Help the user refine and expand the content into a well-structured permanent note
 3. Insert the refined note:
    ```bash
-   jfox add "<refined content>" --title "<title>" --type permanent --tag <tags>
+   jfox add "<refined content>" --title "<title>" --type permanent --tag <tag1> --tag <tag2>
    ```
 4. Delete the original fleeting note:
    ```bash
@@ -52,7 +52,7 @@ For each orphan:
    ```bash
    jfox suggest-links "<content>" --format json
    ```
-3. If good matches found (score >= 0.5), suggest adding `[[links]]` to connect the note
+3. If good matches found (score >= 0.6), suggest adding `[[links]]` to connect the note
 
 ### Step 3: Analyze Graph Connectivity
 

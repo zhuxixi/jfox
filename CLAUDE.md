@@ -81,7 +81,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/not
 ### Multi-Knowledge Base
 
 - Global config: `~/.zk_config.json`
-- Default KB: `~/.zettelkasten`, named KB: `~/.zettelkasten-{name}`
+- Default KB: `~/.zettelkasten/default/`, named KB: `~/.zettelkasten/<name>/`
 - Switch at runtime with `--kb` flag or `use_kb()` context manager
 
 ## Testing Rules

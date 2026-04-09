@@ -1,6 +1,6 @@
 ---
 name: jfox-health
-description: Use when user wants to check knowledge base health, detect stale or decayed knowledge, audit the Zettelkasten. Triggers on "检查知识库健康", "腐化检测", "知识库状态", "health check", "decay detection", "audit knowledge base".
+description: Use when user wants to check knowledge base health, detect stale or decayed knowledge, audit the Zettelkasten. Triggers on "检查知识库健康", "腐化检测", "知识库状态", "知识库体检", "知识库诊断", "health check", "decay detection", "audit knowledge base", "orphan detection", "knowledge graph health".
 ---
 
 # JFox Knowledge Base Health Check
@@ -13,22 +13,25 @@ This skill composes multiple jfox commands to produce a comprehensive health rep
 
 ## Data Collection
 
-Run these 5 commands to gather all metrics:
+Run these 6 commands to gather all metrics:
 
 ```bash
 # 1. Overall KB status
 jfox status --format json
 
-# 2. Graph metrics and orphans
-jfox graph --stats --orphans --json
+# 2. Graph metrics (note: --stats and --orphans are mutually exclusive, run separately)
+jfox graph --stats --json
 
-# 3. Index integrity
+# 3. Orphan list (separate from stats)
+jfox graph --orphans --json
+
+# 4. Index integrity
 jfox index verify
 
-# 4. Note inventory (for type distribution and date analysis)
+# 5. Note inventory (for type distribution and date analysis)
 jfox list --format json --limit 500
 
-# 5. Unprocessed inbox count
+# 6. Unprocessed inbox count
 jfox inbox --json --limit 100
 ```
 
@@ -42,7 +45,7 @@ Compute these metrics from the collected data:
 | **Avg degree** | `avg_degree` from graph stats | > 2.0 | 1.0-2.0 | < 1.0 |
 | **Inbox backlog** | Count of fleeting notes | < 10 | 10-30 | > 30 |
 | **Index integrity** | `jfox index verify` result | All valid | — | Any invalid |
-| **Cluster density** | `clusters / total_nodes` (if > 0) | > 0.1 | 0.05-0.1 | < 0.05 |
+| **Connectivity ratio** | `(total_nodes - isolated_nodes) / total_nodes` | > 0.8 | 0.6-0.8 | < 0.6 |
 | **Type balance** | fleeting vs permanent ratio | fleeting < 30% | 30-50% | > 50% |
 
 ## Decay Signal Detection
@@ -80,10 +83,10 @@ Compute an overall score (0-100):
 
 ```
 Score = 100
-- (orphan_ratio * 100)          # up to -40 points
-- (max(0, 2.0 - avg_degree) * 20)  # up to -20 points
-- (inbox_backlog > 10 ? (inbox - 10) : 0)  # up to -20 points
-- (index_issues * 20)            # up to -20 points
+- min(orphan_ratio * 100, 40)                        # up to -40 points
+- min(max(0, 2.0 - avg_degree) * 10, 20)             # up to -20 points
+- min(max(0, inbox_count - 10), 20)                   # up to -20 points
+- (0 if verify_result["healthy"] else 20)             # -20 if unhealthy
 ```
 
 Map score to grade:
@@ -114,7 +117,7 @@ Present the health report in this format:
 详细指标:
 - 集群数: {clusters}
 - Top hubs: {hub_list}
-- 集群密度: {density}
+- 连通率: {connectivity_ratio}
 
 建议操作:
 1. {最优先的操作}
@@ -131,12 +134,12 @@ Use emoji indicators:
 
 ```bash
 jfox status --format json                # KB 总体状态
-jfox graph --stats --orphans --json       # 图谱指标 + 孤立笔记
-jfox index verify                         # 索引完整性
-jfox index rebuild                        # 重建索引
-jfox list --format json --limit <N>       # 笔记列表
-jfox inbox --json --limit <N>             # 未处理笔记
-jfox daily --json                         # 今日笔记
+jfox graph --stats --json                # 图谱指标（与 --orphans 互斥，分开运行）
+jfox graph --orphans --json              # 孤立笔记列表
+jfox index verify                        # 索引完整性
+jfox index rebuild                       # 重建索引
+jfox list --format json --limit <N>      # 笔记列表
+jfox inbox --json --limit <N>            # 未处理笔记
 ```
 
 ## When to Run

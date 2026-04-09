@@ -80,7 +80,7 @@ class KnowledgeBaseManager:
         # 确定路径（统一管理到 ~/.zettelkasten/ 下）
         if path is None:
             if name == "default":
-                path = DEFAULT_KB_PATH
+                path = DEFAULT_KB_PATH / "default"
             else:
                 path = DEFAULT_KB_PATH / name
 

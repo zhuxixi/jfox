@@ -15,7 +15,7 @@ def get_default_kb_path() -> Path:
         from .global_config import get_global_config_manager
         return get_global_config_manager().get_default_kb_path()
     except Exception:
-        return Path.home() / ".zettelkasten"
+        return Path.home() / ".zettelkasten" / "default"
 
 
 @dataclass

@@ -31,3 +31,9 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Project specific
+.zk/
+chroma_db/
+*.sqlite3
+cache/
