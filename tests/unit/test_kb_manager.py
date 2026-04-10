@@ -266,7 +266,24 @@ class TestKnowledgeBaseManager:
         
         assert success is True  # 移除配置仍然成功
         assert "failed to delete data" in message
-    
+
+    def test_remove_default_kb_with_delete_data_protected(self, manager, mock_config_manager, tmp_path):
+        """测试删除 default KB 时保护数据目录不被删除"""
+        default_kb_path = tmp_path / "default"
+        default_kb_path.mkdir()
+        (default_kb_path / "notes").mkdir()
+
+        mock_config_manager.kb_exists.return_value = True
+        mock_config_manager.get_kb_path.return_value = default_kb_path
+        mock_config_manager.remove_knowledge_base.return_value = True
+
+        success, message = manager.remove(name="default", delete_data=True)
+
+        assert success is True
+        assert "cannot delete data" in message
+        # 数据目录应仍然存在
+        assert default_kb_path.exists()
+
     def test_rename_success(self, manager, mock_config_manager):
         """测试成功重命名知识库"""
         mock_config_manager.kb_exists.side_effect = lambda x: x == "old_name"
