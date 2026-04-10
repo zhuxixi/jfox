@@ -229,9 +229,44 @@ class ZKCLI:
         args = [note_id]
         if force:
             args.append("--force")
-        
+
         return self._run("delete", *args)
-    
+
+    def edit(
+        self,
+        note_id: str,
+        content: Optional[str] = None,
+        title: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        note_type: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> CLIResult:
+        """
+        编辑笔记
+
+        Args:
+            note_id: 笔记 ID
+            content: 新内容
+            title: 新标题
+            tags: 新标签列表（替换全部）
+            note_type: 新类型 (fleeting/literature/permanent)
+            source: 新来源
+        """
+        args = [note_id]
+        if content:
+            args.extend(["--content", content])
+        if title:
+            args.extend(["--title", title])
+        if tags:
+            for tag in tags:
+                args.extend(["--tag", tag])
+        if note_type:
+            args.extend(["--type", note_type])
+        if source:
+            args.extend(["--source", source])
+
+        return self._run("edit", *args)
+
     def status(self) -> CLIResult:
         """查看知识库状态"""
         return self._run("status")

@@ -200,6 +200,67 @@ def delete_note(note_id: str) -> bool:
         return False
 
 
+def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
+    """
+    更新已有笔记
+
+    处理：查找旧文件 → 更新 updated 时间戳 → 写入新文件 → 删除旧文件（如路径变化）→ 更新索引
+
+    Args:
+        note_obj: 已修改的 Note 对象（必须已有 id）
+        add_to_index: 是否更新搜索索引
+
+    Returns:
+        是否更新成功
+    """
+    # 查找当前文件路径（可能标题改了，按 ID 查）
+    old_filepath = find_note_file(config, note_obj.id)
+    if not old_filepath:
+        logger.warning(f"Note {note_obj.id} file not found on disk")
+        return False
+
+    try:
+        # 更新时间戳
+        note_obj.updated = datetime.now()
+
+        # 写入新文件（filepath 属性根据当前字段生成）
+        note_obj.filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(note_obj.filepath, 'w', encoding='utf-8') as f:
+            f.write(note_obj.to_markdown())
+
+        # 如果文件路径变了（标题修改导致重命名），删除旧文件
+        if old_filepath != note_obj.filepath and old_filepath.exists():
+            old_filepath.unlink()
+            logger.info(f"Renamed note file: {old_filepath} -> {note_obj.filepath}")
+
+        logger.info(f"Updated note {note_obj.id}")
+
+        # 更新索引
+        if add_to_index:
+            # 先删除旧索引，再添加新索引
+            try:
+                vector_store = get_vector_store()
+                vector_store.delete_note(note_obj.id)
+                vector_store.add_note(note_obj)
+            except Exception as e:
+                logger.warning(f"Failed to update vector store index: {e}")
+
+            try:
+                from .bm25_index import get_bm25_index
+                bm25_index = get_bm25_index()
+                bm25_index.remove_document(note_obj.id)
+                content = f"{note_obj.title} {note_obj.content}"
+                bm25_index.add_document(note_obj.id, content)
+            except Exception as e:
+                logger.warning(f"Failed to update BM25 index: {e}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to update note {note_obj.id}: {e}")
+        return False
+
+
 def get_stats(cfg: Optional[ZKConfig] = None) -> Dict[str, Any]:
     """
     获取知识库统计

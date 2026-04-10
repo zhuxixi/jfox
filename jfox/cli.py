@@ -890,6 +890,147 @@ def delete(
         raise typer.Exit(1)
 
 
+def _edit_impl(
+    note_id: str,
+    content: Optional[str],
+    title: Optional[str],
+    tags: Optional[List[str]],
+    note_type: Optional[str],
+    source: Optional[str],
+    json_output: bool,
+):
+    """编辑笔记的内部实现"""
+    # 验证：至少指定一个编辑字段
+    if all(v is None for v in [content, title, tags, note_type, source]):
+        raise ValueError("至少指定一个要编辑的字段 (--content, --title, --tags, --type, --source)")
+
+    # 加载笔记
+    n = note.load_note_by_id(note_id)
+    if not n:
+        raise ValueError(f"笔记不存在: {note_id}")
+
+    old_title = n.title
+    old_links = set(n.links)
+
+    # 更新字段
+    if content is not None:
+        n.content = content
+    if title is not None:
+        n.title = title
+    if tags is not None:
+        n.tags = tags
+    if source is not None:
+        n.source = source if source else None  # 空字符串清除 source
+    if note_type is not None:
+        try:
+            new_type = NoteType(note_type.lower())
+        except ValueError:
+            raise ValueError(
+                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent"
+            )
+        n.type = new_type
+
+    # 如果内容被更新，解析 wiki links
+    if content is not None:
+        wiki_links = extract_wiki_links(content)
+        resolved_links = []
+        unresolved = []
+
+        all_notes = note.list_notes() if wiki_links else []
+        for link_text in wiki_links:
+            target_id = find_note_id_by_title_or_id(link_text, all_notes=all_notes)
+            if target_id:
+                resolved_links.append(target_id)
+            else:
+                unresolved.append(link_text)
+
+        n.links = resolved_links
+    else:
+        unresolved = []
+
+    # 保存更新
+    if note.update_note(n):
+        # 更新反向链接
+        new_links = set(n.links)
+
+        # 新增的链接 → 添加反向链接
+        added_links = new_links - old_links
+        for target_id in added_links:
+            target_note = note.load_note_by_id(target_id)
+            if target_note and n.id not in target_note.backlinks:
+                target_note.backlinks.append(n.id)
+                note.save_note(target_note, add_to_index=False)
+
+        # 移除的链接 → 删除反向链接
+        removed_links = old_links - new_links
+        for target_id in removed_links:
+            target_note = note.load_note_by_id(target_id)
+            if target_note and n.id in target_note.backlinks:
+                target_note.backlinks.remove(n.id)
+                note.save_note(target_note, add_to_index=False)
+
+        result = {
+            "success": True,
+            "note": {
+                "id": n.id,
+                "title": n.title,
+                "type": n.type.value,
+                "filepath": str(n.filepath),
+            },
+        }
+        if old_title != n.title:
+            result["title_changed"] = {"old": old_title, "new": n.title}
+        if unresolved:
+            result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
+
+        if json_output:
+            print(output_json(result))
+        else:
+            console.print(f"[green]✓[/green] Note updated: {n.title}")
+            if old_title != n.title:
+                console.print(f"  Title: {old_title} → {n.title}")
+            if unresolved:
+                console.print(
+                    f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
+                )
+    else:
+        raise Exception("Failed to update note")
+
+
+@app.command()
+def edit(
+    note_id: str = typer.Argument(..., help="笔记 ID"),
+    content: Optional[str] = typer.Option(None, "--content", "-c", help="新内容"),
+    title: Optional[str] = typer.Option(None, "--title", "-t", help="新标题"),
+    tags: Optional[List[str]] = typer.Option(None, "--tag", help="新标签（替换全部）"),
+    note_type: Optional[str] = typer.Option(
+        None, "--type", help="新类型 (fleeting/literature/permanent)"
+    ),
+    source: Optional[str] = typer.Option(None, "--source", "-s", help="新来源"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """编辑已有笔记（保留 ID 和创建时间）"""
+    try:
+        if kb:
+            from .config import use_kb
+
+            with use_kb(kb):
+                _edit_impl(note_id, content, title, tags, note_type, source, json_output)
+        else:
+            _edit_impl(note_id, content, title, tags, note_type, source, json_output)
+    except Exception as e:
+        result = {
+            "success": False,
+            "error": str(e),
+        }
+        if json_output:
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
 def _query_impl(
     query_str: str,
     top: int,
