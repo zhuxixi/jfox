@@ -301,3 +301,89 @@ class TestEditImpl:
         target_loaded = load_note_by_id(target.id, cfg=cfg)
         assert target_loaded is not None
         assert source.id in target_loaded.backlinks
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_removes_backlink_when_link_removed(self, mock_global_config, mock_note_config, tmp_path):
+        """编辑内容移除 [[链接]] 时，反向链接也被移除"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        # 创建目标笔记
+        target = create_note("target note", title="TargetNote", note_type=NoteType.PERMANENT)
+        save_note(target, add_to_index=False)
+
+        # 创建源笔记，带链接
+        source = create_note(
+            "see [[TargetNote]] for details",
+            title="SourceNote",
+            note_type=NoteType.PERMANENT,
+            links=[target.id],
+        )
+        save_note(source, add_to_index=False)
+
+        # 给目标笔记添加反向链接
+        target.backlinks.append(source.id)
+        save_note(target, add_to_index=False)
+
+        # 编辑源笔记，移除链接
+        _edit_impl(
+            note_id=source.id,
+            content="no more links here",
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            json_output=True,
+        )
+
+        loaded = load_note_by_id(source.id, cfg=cfg)
+        assert loaded is not None
+        assert target.id not in loaded.links
+
+        # 验证反向链接也被移除
+        target_loaded = load_note_by_id(target.id, cfg=cfg)
+        assert target_loaded is not None
+        assert source.id not in target_loaded.backlinks
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_type_changes_directory(self, mock_global_config, mock_note_config, tmp_path):
+        """编辑笔记类型时文件移动到新目录"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        # 创建 literature 笔记
+        n = create_note("some content", title="DirMove", note_type=NoteType.LITERATURE)
+        save_note(n, add_to_index=False)
+
+        old_filepath = load_note_by_id(n.id, cfg=cfg).filepath
+        assert old_filepath.exists()
+        assert "literature" in str(old_filepath)
+
+        # 修改类型为 permanent
+        _edit_impl(
+            note_id=n.id,
+            content=None,
+            title=None,
+            tags=None,
+            note_type="permanent",
+            source=None,
+            json_output=True,
+        )
+
+        # 旧文件应该不存在
+        assert not old_filepath.exists()
+
+        # 新文件应该在 permanent 目录
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.type == NoteType.PERMANENT
+        assert "permanent" in str(loaded.filepath)
+        assert loaded.filepath.exists()

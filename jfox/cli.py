@@ -999,7 +999,7 @@ def _edit_impl(
 
 @app.command()
 def edit(
-    note_id: str = typer.Argument(..., help="笔记 ID 或标题"),
+    note_id: str = typer.Argument(..., help="笔记 ID"),
     content: Optional[str] = typer.Option(None, "--content", "-c", help="新内容"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="新标题"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="新标签（替换全部）"),
