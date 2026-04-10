@@ -486,6 +486,150 @@ class TestGlobalConfigManager:
         assert result is False
 
 
+class TestMigrateDefaultKbPath:
+    """测试 _migrate_default_kb_path 迁移逻辑"""
+
+    @pytest.fixture
+    def temp_config_path(self, tmp_path):
+        return tmp_path / "test_zk_config.json"
+
+    @pytest.fixture
+    def old_kb_root(self, tmp_path):
+        """模拟 ~/.zettelkasten/ 旧版目录"""
+        root = tmp_path / ".zettelkasten"
+        root.mkdir()
+        return root
+
+    def _make_manager_with_old_path(self, temp_config_path, old_kb_root):
+        """创建一个配置管理器，其 default KB 指向旧版路径"""
+        manager = GlobalConfigManager(config_path=temp_config_path)
+        kb = KnowledgeBaseEntry(
+            name=DEFAULT_KB_NAME,
+            path=str(old_kb_root),
+            created="2024-01-01T00:00:00",
+        )
+        manager._config = GlobalConfig(
+            default=DEFAULT_KB_NAME,
+            knowledge_bases={DEFAULT_KB_NAME: kb},
+        )
+        return manager
+
+    def test_migrate_success_moves_subdirs(self, temp_config_path, old_kb_root):
+        """测试成功迁移：notes/ 和 .zk/ 都被移到新路径"""
+        (old_kb_root / "notes").mkdir()
+        (old_kb_root / "notes" / "test.md").write_text("# test", encoding="utf-8")
+        (old_kb_root / ".zk").mkdir()
+        (old_kb_root / ".zk" / "index.json").write_text("{}", encoding="utf-8")
+
+        manager = self._make_manager_with_old_path(temp_config_path, old_kb_root)
+
+        with patch("jfox.global_config.DEFAULT_KB_PATH", old_kb_root):
+            manager._migrate_default_kb_path()
+
+        new_path = old_kb_root / "default"
+        assert (new_path / "notes" / "test.md").exists()
+        assert (new_path / ".zk" / "index.json").exists()
+        assert manager._config.knowledge_bases[DEFAULT_KB_NAME].path == str(new_path)
+
+    def test_migrate_no_old_path_skips(self, temp_config_path, tmp_path):
+        """测试旧路径不存在时跳过迁移，但仍然更新 config"""
+        old_kb_root = tmp_path / ".zettelkasten_nonexistent"
+        manager = self._make_manager_with_old_path(temp_config_path, old_kb_root)
+
+        with patch("jfox.global_config.DEFAULT_KB_PATH", old_kb_root):
+            manager._migrate_default_kb_path()
+
+        new_path = old_kb_root / "default"
+        assert not new_path.exists()
+        assert manager._config.knowledge_bases[DEFAULT_KB_NAME].path == str(new_path)
+
+    def test_migrate_new_path_already_exists_skips(self, temp_config_path, old_kb_root):
+        """测试新路径已存在时跳过文件迁移，但更新 config"""
+        new_path = old_kb_root / "default"
+        new_path.mkdir(parents=True)
+
+        manager = self._make_manager_with_old_path(temp_config_path, old_kb_root)
+
+        with patch("jfox.global_config.DEFAULT_KB_PATH", old_kb_root):
+            manager._migrate_default_kb_path()
+
+        assert manager._config.knowledge_bases[DEFAULT_KB_NAME].path == str(new_path)
+
+    def test_migrate_partial_failure_rolls_back(self, temp_config_path, old_kb_root):
+        """测试迁移中途失败时回滚已移动的文件"""
+        (old_kb_root / "notes").mkdir()
+        (old_kb_root / "notes" / "test.md").write_text("# test", encoding="utf-8")
+        (old_kb_root / ".zk").mkdir()
+
+        manager = self._make_manager_with_old_path(temp_config_path, old_kb_root)
+        original_path = manager._config.knowledge_bases[DEFAULT_KB_NAME].path
+
+        # 让 shutil.move 在第二次调用时失败（.zk 移动时）
+        import shutil as _shutil
+
+        original_move = _shutil.move
+        call_count = {"n": 0}
+
+        def failing_move(src, dst):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise OSError("模拟移动失败")
+            return original_move(src, dst)
+
+        with patch("jfox.global_config.DEFAULT_KB_PATH", old_kb_root), \
+             patch("shutil.move", side_effect=failing_move):
+            manager._migrate_default_kb_path()
+
+        new_path = old_kb_root / "default"
+        # 回滚：notes/ 应被移回旧路径
+        assert (old_kb_root / "notes" / "test.md").exists()
+        # new_path 下不应有残留的 notes/
+        assert not (new_path / "notes").exists()
+        # new_path 目录应被清理
+        assert not new_path.exists()
+        # config 不应被更新
+        assert manager._config.knowledge_bases[DEFAULT_KB_NAME].path == original_path
+
+    def test_migrate_no_default_kb_is_noop(self, temp_config_path):
+        """测试配置中没有 default KB 时不做任何操作"""
+        manager = GlobalConfigManager(config_path=temp_config_path)
+        manager._config = GlobalConfig()
+
+        manager._migrate_default_kb_path()
+
+        assert len(manager._config.knowledge_bases) == 0
+
+    def test_migrate_none_config_is_noop(self, temp_config_path):
+        """测试 _config 为 None 时不做任何操作"""
+        manager = GlobalConfigManager(config_path=temp_config_path)
+        manager._config = None
+
+        manager._migrate_default_kb_path()
+
+        assert manager._config is None
+
+    def test_migrate_already_new_path_is_noop(self, temp_config_path, tmp_path):
+        """测试 config 已经指向新路径时不做任何操作"""
+        new_path = tmp_path / ".zettelkasten" / "default"
+        manager = GlobalConfigManager(config_path=temp_config_path)
+        kb = KnowledgeBaseEntry(
+            name=DEFAULT_KB_NAME,
+            path=str(new_path),
+            created="2024-01-01T00:00:00",
+        )
+        manager._config = GlobalConfig(
+            default=DEFAULT_KB_NAME,
+            knowledge_bases={DEFAULT_KB_NAME: kb},
+        )
+
+        old_kb_root = tmp_path / ".zettelkasten"
+
+        with patch("jfox.global_config.DEFAULT_KB_PATH", old_kb_root):
+            manager._migrate_default_kb_path()
+
+        assert manager._config.knowledge_bases[DEFAULT_KB_NAME].path == str(new_path)
+
+
 class TestGetGlobalConfigManager:
     """测试 get_global_config_manager 函数"""
     

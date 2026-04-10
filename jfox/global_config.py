@@ -115,22 +115,53 @@ class GlobalConfigManager:
         try:
             current_resolved = Path(default_kb.path).expanduser().resolve()
             if current_resolved == old_path.resolve():
-                # 迁移：将旧目录内容移到新路径
                 if old_path.exists() and not new_path.exists():
                     import shutil
                     new_path.mkdir(parents=True, exist_ok=True)
-                    # 移动 notes/ 和 .zk/ 目录
-                    for subdir in ["notes", ".zk"]:
-                        src = old_path / subdir
-                        if src.exists():
-                            shutil.move(str(src), str(new_path / subdir))
+                    try:
+                        # 移动 notes/ 和 .zk/ 目录
+                        for subdir in ["notes", ".zk"]:
+                            src = old_path / subdir
+                            if src.exists():
+                                shutil.move(str(src), str(new_path / subdir))
+                    except Exception as move_error:
+                        # 回滚：移回已迁移的子目录
+                        rollback_errors = []
+                        for subdir in ["notes", ".zk"]:
+                            moved = new_path / subdir
+                            if moved.exists():
+                                try:
+                                    shutil.move(str(moved), str(old_path / subdir))
+                                except Exception as rb_err:
+                                    rollback_errors.append(
+                                        f"Failed to roll back {subdir}: {rb_err}"
+                                    )
+                        # 清理空的 new_path 目录
+                        try:
+                            new_path.rmdir()
+                        except OSError:
+                            logger.debug(
+                                f"Could not remove {new_path} during rollback"
+                            )
+                        if rollback_errors:
+                            logger.error(
+                                f"Migration failed ({move_error}) AND rollback had "
+                                f"errors: {'; '.join(rollback_errors)}"
+                            )
+                        raise
                     logger.info(f"Migrated default KB from {old_path} to {new_path}")
-                # 更新配置中的路径
-                default_kb.path = str(new_path)
-                self._save()
-                logger.info(f"Updated default KB path to {new_path}")
+                    # 仅在文件迁移成功后才更新 config
+                    default_kb.path = str(new_path)
+                    self._save()
+                else:
+                    # 旧路径已不存在或新路径已存在，仅更新 config 指向
+                    default_kb.path = str(new_path)
+                    self._save()
         except Exception as e:
-            logger.warning(f"Failed to migrate default KB path: {e}")
+            logger.error(
+                f"Failed to migrate default KB path from {old_path} to "
+                f"{new_path}: {e}", exc_info=True
+            )
 
     def _save(self) -> bool:
         """保存配置到文件"""
