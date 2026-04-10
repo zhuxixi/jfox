@@ -12,10 +12,11 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 
 from .global_config import (
-    GlobalConfigManager, 
-    KnowledgeBaseEntry, 
+    GlobalConfigManager,
+    KnowledgeBaseEntry,
     get_global_config_manager,
-    DEFAULT_KB_PATH
+    DEFAULT_KB_PATH,
+    DEFAULT_KB_NAME,
 )
 from .config import ZKConfig
 
@@ -149,7 +150,7 @@ class KnowledgeBaseManager:
         # 删除数据（如果需要）
         if delete_data and path and path.exists():
             # 禁止删除 default KB 的数据目录，因为其他命名 KB 也在其中
-            if path.resolve() == DEFAULT_KB_PATH.resolve():
+            if name == DEFAULT_KB_NAME:
                 return (
                     True,
                     f"Removed knowledge base '{name}' from config, "
