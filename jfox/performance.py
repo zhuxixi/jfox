@@ -188,6 +188,7 @@ def bulk_import_notes(
     from . import note as note_module
     from .embedding_backend import get_backend
     from .vector_store import get_vector_store
+    from .bm25_index import get_bm25_index
     
     nt = NoteType(note_type.lower())
     backend = get_backend()
@@ -264,6 +265,12 @@ def bulk_import_notes(
                     embeddings=embeddings,
                     metadatas=metadatas
                 )
+
+                # 批量添加到 BM25 索引
+                bm25 = get_bm25_index()
+                bm25_docs = [(n.id, f"{n.title} {n.content}") for n in notes]
+                bm25.add_documents_batch(bm25_docs)
+
             except Exception as e:
                 logger.warning(f"Failed to index batch: {e}")
             
