@@ -46,7 +46,7 @@ Windows full test: `.\run_full_test.ps1` or `.\run_full_test.ps1 -KeepData`
 
 ### Core Data Flow
 
-Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/notes/{type}/`. The system has three layers:
+Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb-name>/notes/{type}/`. The system has three layers:
 
 1. **Storage** (`note.py`, `models.py`) — CRUD on Markdown files with YAML frontmatter. Note IDs are timestamps (`YYYYMMDDHHMMSS`).
 2. **Search Index** (`search_engine.py`) — Hybrid search combining BM25 (`bm25_index.py`) + semantic embeddings (`vector_store.py` + `embedding_backend.py`) via Reciprocal Rank Fusion.
