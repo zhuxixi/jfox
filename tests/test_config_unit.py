@@ -33,7 +33,7 @@ class TestGetDefaultKBPath:
             
             result = get_default_kb_path()
             
-            assert result == Path.home() / ".zettelkasten"
+            assert result == Path.home() / ".zettelkasten" / "default"
 
 
 class TestZKConfig:
