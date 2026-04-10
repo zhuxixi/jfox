@@ -78,14 +78,38 @@ class TestAddDocumentsBatch:
         assert results[0]["note_id"] == "id1"
 
     def test_returns_false_on_error(self, bm25):
-        """异常时返回 False 并恢复索引状态"""
+        """异常时返回 False 并恢复索引状态（包括 bm25 对象）"""
         bm25.add_documents_batch([("id1", "first doc")])  # add something first
         count_before = len(bm25.doc_ids)
+        original_tokenize = bm25._tokenize
         bm25._tokenize = MagicMock(side_effect=RuntimeError("boom"))
         result = bm25.add_documents_batch([("id2", "test")])
         assert result is False
+        # 恢复原始 _tokenize 以便搜索正常工作
+        bm25._tokenize = original_tokenize
         # 状态应恢复到错误前
         assert len(bm25.doc_ids) == count_before
+        # bm25 对象也应恢复，搜索仍能正常工作
+        results = bm25.search("first doc", top_k=1)
+        assert len(results) == 1
+        assert results[0]["note_id"] == "id1"
+
+    def test_save_failure_rolls_back(self, bm25):
+        """_save 失败时，应回滚所有状态（包括 bm25 对象）"""
+        bm25.add_documents_batch([("id1", "alpha beta")])
+
+        # 让 _save 失败
+        bm25._save = MagicMock(return_value=False)
+        result = bm25.add_documents_batch([("id2", "gamma delta")])
+        assert result is False
+
+        # 索引应回滚到只有 id1 的状态
+        assert len(bm25.doc_ids) == 1
+        assert bm25.doc_ids == ["id1"]
+        # bm25 对象也应恢复，搜索仍能找到 id1
+        results = bm25.search("alpha", top_k=1)
+        assert len(results) == 1
+        assert results[0]["note_id"] == "id1"
 
     def test_appends_to_existing_index(self, bm25):
         """批量添加应追加到已有索引，不覆盖"""
@@ -155,7 +179,7 @@ class TestBulkImportBM25Integration:
     @patch("jfox.embedding_backend.get_backend")
     @patch("jfox.note.create_note")
     def test_bulk_import_bm25_failure_does_not_fail_import(
-        self, mock_create_note, mock_get_bm25, mock_get_backend, mock_get_vs, tmp_path
+        self, mock_create_note, mock_get_backend, mock_get_vs, mock_get_bm25, tmp_path
     ):
         """BM25 更新失败不应导致整个导入失败"""
         import numpy as np

@@ -269,6 +269,7 @@ class BM25Index:
         saved_docs = list(self.documents)
         saved_ids = list(self.doc_ids)
         saved_mapping = dict(self.doc_mapping)
+        saved_bm25 = self.bm25
 
         try:
             for note_id, content in documents:
@@ -296,8 +297,14 @@ class BM25Index:
             # 一次性重建索引
             self._rebuild_index()
 
-            # 一次性保存
-            self._save()
+            # 一次性保存，失败时回滚
+            if not self._save():
+                self.documents = saved_docs
+                self.doc_ids = saved_ids
+                self.doc_mapping = saved_mapping
+                self.bm25 = saved_bm25
+                logger.error("Failed to persist BM25 index after batch add, rolled back")
+                return False
 
             logger.info(f"Batch added {len(documents)} documents to BM25 index")
             return True
@@ -307,7 +314,11 @@ class BM25Index:
             self.documents = saved_docs
             self.doc_ids = saved_ids
             self.doc_mapping = saved_mapping
-            logger.error(f"Failed to batch add documents: {e}")
+            self.bm25 = saved_bm25
+            logger.error(
+                f"Failed to batch add {len(documents)} documents to BM25 index",
+                exc_info=True,
+            )
             return False
 
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
