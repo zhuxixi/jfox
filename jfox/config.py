@@ -120,6 +120,21 @@ def get_config() -> ZKConfig:
 config = get_config()
 
 
+def _reset_singletons():
+    """重置所有缓存的单例（搜索引擎、向量存储、BM25 索引）"""
+    import importlib
+    for module_name, fn_name in [
+        (".bm25_index", "reset_bm25_index"),
+        (".search_engine", "reset_search_engine"),
+        (".vector_store", "reset_vector_store"),
+    ]:
+        try:
+            module = importlib.import_module(module_name, package="jfox")
+            getattr(module, fn_name)()
+        except Exception:
+            pass
+
+
 @contextmanager
 def use_kb(kb_name: Optional[str] = None):
     """
@@ -161,16 +176,8 @@ def use_kb(kb_name: Optional[str] = None):
         config.chroma_dir = config.zk_dir / "chroma_db"
         
         # 重置索引和搜索引擎（使用新的知识库路径）
-        try:
-            from .bm25_index import reset_bm25_index
-            from .search_engine import reset_search_engine
-            from .vector_store import reset_vector_store
-            reset_bm25_index()
-            reset_search_engine()
-            reset_vector_store()
-        except Exception:
-            pass  # 忽略重置错误
-        
+        _reset_singletons()
+
         yield
     finally:
         # 恢复原始配置
@@ -178,3 +185,6 @@ def use_kb(kb_name: Optional[str] = None):
         config.notes_dir = original_notes_dir
         config.zk_dir = original_zk_dir
         config.chroma_dir = original_chroma_dir
+
+        # 重置单例，下次访问会用恢复后的配置重建
+        _reset_singletons()
