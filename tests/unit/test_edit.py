@@ -229,7 +229,7 @@ class TestEditImpl:
         mock_global_config.notes_dir = cfg.notes_dir
         mock_note_config.notes_dir = cfg.notes_dir
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="笔记不存在"):
             _edit_impl(
                 note_id="9999999999999999",
                 content="x",
