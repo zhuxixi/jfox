@@ -212,32 +212,41 @@ class TestUseKB:
     def test_use_kb_resets_search_indices(self):
         """测试 use_kb 重置搜索索引"""
         from jfox.config import config
-        
+
         with patch('jfox.kb_manager.get_kb_manager') as mock_get_manager:
             mock_manager = Mock()
             mock_manager.config_manager.kb_exists.return_value = True
             mock_manager.config_manager.get_kb_path.return_value = Path("/test/kb")
             mock_get_manager.return_value = mock_manager
-            
-            with patch('jfox.bm25_index.reset_bm25_index') as mock_reset_bm25:
-                with patch('jfox.search_engine.reset_search_engine') as mock_reset_search:
-                    with use_kb("test_kb"):
-                        pass
-                    
-                    mock_reset_bm25.assert_called_once()
-                    mock_reset_search.assert_called_once()
-    
+
+            with patch('jfox.bm25_index.reset_bm25_index') as mock_reset_bm25, \
+                 patch('jfox.search_engine.reset_search_engine') as mock_reset_search, \
+                 patch('jfox.vector_store.reset_vector_store') as mock_reset_vector:
+                with use_kb("test_kb"):
+                    pass
+
+                # entry 和 exit 各调用一次
+                assert mock_reset_bm25.call_count == 2
+                assert mock_reset_search.call_count == 2
+                assert mock_reset_vector.call_count == 2
+
     def test_use_kb_handles_reset_errors(self):
-        """测试 use_kb 处理重置索引错误"""
+        """测试 use_kb 处理重置索引错误（单个失败不影响其他）"""
         from jfox.config import config
-        
+
         with patch('jfox.kb_manager.get_kb_manager') as mock_get_manager:
             mock_manager = Mock()
             mock_manager.config_manager.kb_exists.return_value = True
             mock_manager.config_manager.get_kb_path.return_value = Path("/test/kb")
             mock_get_manager.return_value = mock_manager
-            
-            with patch('jfox.bm25_index.reset_bm25_index', side_effect=Exception("Reset error")):
+
+            with patch('jfox.bm25_index.reset_bm25_index', side_effect=Exception("Reset error")), \
+                 patch('jfox.search_engine.reset_search_engine') as mock_reset_search, \
+                 patch('jfox.vector_store.reset_vector_store') as mock_reset_vector:
                 # 应该不抛出异常
                 with use_kb("test_kb"):
                     pass
+
+                # 即使 bm25 重置失败，search_engine 和 vector_store 仍然被调用
+                assert mock_reset_search.call_count == 2
+                assert mock_reset_vector.call_count == 2
