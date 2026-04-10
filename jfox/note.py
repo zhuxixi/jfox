@@ -238,9 +238,12 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
         # 更新索引
         if add_to_index:
             # 先删除旧索引，再添加新索引
-            vector_store = get_vector_store()
-            vector_store.delete_note(note_obj.id)
-            vector_store.add_note(note_obj)
+            try:
+                vector_store = get_vector_store()
+                vector_store.delete_note(note_obj.id)
+                vector_store.add_note(note_obj)
+            except Exception as e:
+                logger.warning(f"Failed to update vector store index: {e}")
 
             try:
                 from .bm25_index import get_bm25_index
