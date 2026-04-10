@@ -120,3 +120,184 @@ class TestUpdateNote:
 
         updated = update_note(n, add_to_index=False)
         assert updated is False
+
+
+class TestEditImpl:
+    """测试 _edit_impl 内部实现"""
+
+    def _make_config(self, tmp_path):
+        """创建临时配置"""
+        cfg = ZKConfig(base_dir=tmp_path)
+        cfg.ensure_dirs()
+        return cfg
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_content(self, mock_global_config, mock_note_config, tmp_path):
+        """通过 --content 编辑笔记内容"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        # 创建笔记
+        n = create_note("original", title="EditMe", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        _edit_impl(
+            note_id=n.id,
+            content="updated content",
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            json_output=True,
+        )
+
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.content == "updated content"
+        assert loaded.id == n.id
+        assert loaded.title == "EditMe"
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_title(self, mock_global_config, mock_note_config, tmp_path):
+        """编辑笔记标题"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("content", title="OldTitle", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        _edit_impl(
+            note_id=n.id,
+            content=None,
+            title="NewTitle",
+            tags=None,
+            note_type=None,
+            source=None,
+            json_output=True,
+        )
+
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.title == "NewTitle"
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_multiple_fields(self, mock_global_config, mock_note_config, tmp_path):
+        """同时编辑多个字段"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("old content", title="Old", note_type=NoteType.LITERATURE, tags=["a"])
+        save_note(n, add_to_index=False)
+
+        _edit_impl(
+            note_id=n.id,
+            content="new content",
+            title="New Title",
+            tags=["x", "y"],
+            note_type="permanent",
+            source="book",
+            json_output=True,
+        )
+
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.content == "new content"
+        assert loaded.title == "New Title"
+        assert loaded.tags == ["x", "y"]
+        assert loaded.type == NoteType.PERMANENT
+        assert loaded.source == "book"
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_nonexistent_note_raises(self, mock_global_config, mock_note_config, tmp_path):
+        """编辑不存在的笔记抛出异常"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        with pytest.raises(Exception):
+            _edit_impl(
+                note_id="9999999999999999",
+                content="x",
+                title=None,
+                tags=None,
+                note_type=None,
+                source=None,
+                json_output=True,
+            )
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_no_fields_specified_raises(self, mock_global_config, mock_note_config, tmp_path):
+        """未指定任何编辑字段时抛出异常"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("content", title="NoEdit", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        with pytest.raises(ValueError, match="至少指定一个"):
+            _edit_impl(
+                note_id=n.id,
+                content=None,
+                title=None,
+                tags=None,
+                note_type=None,
+                source=None,
+                json_output=True,
+            )
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_with_wiki_links_resolves(self, mock_global_config, mock_note_config, tmp_path):
+        """编辑内容中的 [[链接]] 被解析"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        # 创建目标笔记
+        target = create_note("target note", title="TargetNote", note_type=NoteType.PERMANENT)
+        save_note(target, add_to_index=False)
+
+        # 创建源笔记
+        source = create_note("source note", title="SourceNote", note_type=NoteType.PERMANENT)
+        save_note(source, add_to_index=False)
+
+        # 编辑源笔记，添加 wiki link
+        _edit_impl(
+            note_id=source.id,
+            content="see [[TargetNote]] for details",
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            json_output=True,
+        )
+
+        loaded = load_note_by_id(source.id, cfg=cfg)
+        assert loaded is not None
+        assert target.id in loaded.links
+
+        # 验证反向链接
+        target_loaded = load_note_by_id(target.id, cfg=cfg)
+        assert target_loaded is not None
+        assert source.id in target_loaded.backlinks
