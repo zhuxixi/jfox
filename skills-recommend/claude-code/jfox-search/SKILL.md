@@ -1,6 +1,6 @@
 ---
 name: jfox-search
-description: Use when user wants to search notes, find information, look up knowledge in their Zettelkasten. Triggers on "搜索", "查找", "找一下", "search notes", "look up", "find".
+description: Use when user wants to search notes, find information, look up knowledge in their Zettelkasten. Triggers on "搜索", "查找", "找一下", "查一下", "搜一下", "帮我找", "有没有关于", "search notes", "look up", "find", "find related notes", "search knowledge base", "notes about".
 ---
 
 # JFox Knowledge Base Search
@@ -67,10 +67,10 @@ jfox refs --search "<title>" --format json
 
 To find notes that should be linked from given content:
 ```bash
-jfox suggest-links "<content>" --top 10 --threshold 0.5 --format json
+jfox suggest-links "<content>" --top 10 --threshold 0.6 --format json
 ```
 
-Lower `--threshold` (0.3-0.5) for broader suggestions, higher (0.6-0.8) for stricter matching.
+Default threshold is `0.6`. Lower to `0.3-0.5` for broader suggestions, raise to `0.7-0.8` for stricter matching.
 
 ## All Search Commands Reference
 
@@ -78,7 +78,7 @@ Lower `--threshold` (0.3-0.5) for broader suggestions, higher (0.6-0.8) for stri
 # Basic search
 jfox search "<query>" --mode <hybrid|keyword|semantic> --top <N> --format json
 
-# Filter by note type
+# Filter by note type (fleeting|literature|permanent)
 jfox search "<query>" --type permanent --format json
 
 # Graph query with traversal

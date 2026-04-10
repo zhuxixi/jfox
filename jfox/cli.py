@@ -98,7 +98,7 @@ def init(
     创建一个新的知识库并注册到全局配置。
     
     示例:
-        jfox init                          # 初始化默认知识库
+        jfox init                          # 初始化默认知识库（~/.zettelkasten/default/）
         jfox init --name work              # 创建名为 work 的知识库（~/.zettelkasten/work/）
         jfox init --name personal --desc "个人笔记"
     """
@@ -1812,6 +1812,7 @@ def bulk_import(
     file_path: str = typer.Argument(..., help="JSON 文件路径，包含笔记数据"),
     note_type: str = typer.Option("permanent", "--type", "-t", help="笔记类型"),
     batch_size: int = typer.Option(32, "--batch-size", "-b", help="批处理大小"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
 ):
     """
@@ -1827,23 +1828,34 @@ def bulk_import(
     
     示例:
         jfox bulk-import notes.json --type permanent --batch-size 32
+        jfox bulk-import notes.json --kb work --type permanent
     """
     try:
         import json
-        
+
         # 读取文件
         with open(file_path, 'r', encoding='utf-8') as f:
             notes_data = json.load(f)
-        
+
         console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
-        
-        # 批量导入
-        result = bulk_import_notes(
-            notes_data=notes_data,
-            note_type=note_type,
-            batch_size=batch_size,
-            show_progress=not json_output
-        )
+
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+            with use_kb(kb):
+                result = bulk_import_notes(
+                    notes_data=notes_data,
+                    note_type=note_type,
+                    batch_size=batch_size,
+                    show_progress=not json_output
+                )
+        else:
+            result = bulk_import_notes(
+                notes_data=notes_data,
+                note_type=note_type,
+                batch_size=batch_size,
+                show_progress=not json_output
+            )
         
         if json_output:
             print(output_json(result))

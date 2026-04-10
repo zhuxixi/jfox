@@ -264,7 +264,7 @@ class TestGlobalConfigManager:
         
         result = manager.get_default_kb_path()
         
-        assert result == DEFAULT_KB_PATH
+        assert result == DEFAULT_KB_PATH / "default"
     
     def test_get_kb_path_existing(self, manager):
         """测试获取存在的知识库路径"""

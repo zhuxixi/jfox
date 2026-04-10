@@ -85,21 +85,53 @@ class GlobalConfigManager:
         """加载配置，如果不存在则创建默认配置"""
         if self._config is not None:
             return self._config
-        
+
         if self.config_path.exists():
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 self._config = GlobalConfig.from_dict(data)
+                # 迁移旧版默认 KB 路径（~/.zettelkasten/ → ~/.zettelkasten/default/）
+                self._migrate_default_kb_path()
                 logger.debug(f"Loaded global config from {self.config_path}")
             except Exception as e:
                 logger.warning(f"Failed to load config: {e}, creating default")
                 self._config = self._create_default_config()
         else:
             self._config = self._create_default_config()
-        
+
         return self._config
-    
+
+    def _migrate_default_kb_path(self):
+        """迁移旧版默认 KB 路径：~/.zettelkasten/ → ~/.zettelkasten/default/"""
+        if self._config is None:
+            return
+        default_kb = self._config.knowledge_bases.get(DEFAULT_KB_NAME)
+        if default_kb is None:
+            return
+        old_path = DEFAULT_KB_PATH
+        new_path = DEFAULT_KB_PATH / "default"
+        # 检查当前路径是否是旧版路径（~/.zettelkasten/ 而非 ~/.zettelkasten/default/）
+        try:
+            current_resolved = Path(default_kb.path).expanduser().resolve()
+            if current_resolved == old_path.resolve():
+                # 迁移：将旧目录内容移到新路径
+                if old_path.exists() and not new_path.exists():
+                    import shutil
+                    new_path.mkdir(parents=True, exist_ok=True)
+                    # 移动 notes/ 和 .zk/ 目录
+                    for subdir in ["notes", ".zk"]:
+                        src = old_path / subdir
+                        if src.exists():
+                            shutil.move(str(src), str(new_path / subdir))
+                    logger.info(f"Migrated default KB from {old_path} to {new_path}")
+                # 更新配置中的路径
+                default_kb.path = str(new_path)
+                self._save()
+                logger.info(f"Updated default KB path to {new_path}")
+        except Exception as e:
+            logger.warning(f"Failed to migrate default KB path: {e}")
+
     def _save(self) -> bool:
         """保存配置到文件"""
         try:
@@ -116,7 +148,7 @@ class GlobalConfigManager:
         """创建默认配置"""
         default_kb = KnowledgeBaseEntry(
             name=DEFAULT_KB_NAME,
-            path=str(DEFAULT_KB_PATH),
+            path=str(DEFAULT_KB_PATH / "default"),
             created=datetime.now().isoformat(),
             description="Default knowledge base",
         )
@@ -150,7 +182,7 @@ class GlobalConfigManager:
             return Path(config.knowledge_bases[default_name].path)
         
         # 回退到默认路径
-        return DEFAULT_KB_PATH
+        return DEFAULT_KB_PATH / "default"
     
     def get_kb_path(self, name: str) -> Optional[Path]:
         """获取指定知识库的路径"""
