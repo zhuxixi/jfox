@@ -52,7 +52,11 @@ For each orphan:
    ```bash
    jfox suggest-links "<content>" --format json
    ```
-3. If good matches found (score >= 0.6), suggest adding `[[links]]` to connect the note
+3. If good matches found (score >= 0.6), suggest adding `[[links]]` to connect the note:
+   ```bash
+   # Edit the orphan note to add links
+   jfox edit <orphan_id> --content "原内容... [[相关笔记标题]]"
+   ```
 
 ### Step 3: Analyze Graph Connectivity
 
@@ -112,6 +116,7 @@ jfox suggest-links "<content>" --format json # 推荐链接
 jfox refs --search "<title>" --format json  # 查看引用关系
 jfox list --format json --limit <N>         # 列出笔记
 jfox add "<content>" --type permanent       # 添加精炼笔记
+jfox edit <id> --content "新内容"            # 编辑已有笔记（保留 ID 和时间戳）
 jfox delete <id> --force                    # 删除原始笔记
 jfox daily --json                           # 查看今天的笔记
 ```
@@ -120,5 +125,5 @@ jfox daily --json                           # 查看今天的笔记
 
 - **Process inbox weekly**: Don't let fleeting notes accumulate past 30.
 - **Link liberally**: The value of Zettelkasten is in connections, not volume.
-- **Convert, don't edit**: Instead of editing fleeting notes in-place, create a new permanent note and delete the fleeting original. This preserves the audit trail.
+- **Editing notes**: Use `jfox edit` to modify existing notes while preserving ID and creation time. Use `jfox add` + `jfox delete` only when converting note types (e.g. fleeting → permanent).
 - **Use tags for topics, links for ideas**: Tags group by topic; `[[links]]` connect by thought.
