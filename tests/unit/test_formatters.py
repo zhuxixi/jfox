@@ -8,6 +8,7 @@
 """
 
 import json
+
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
@@ -23,9 +24,19 @@ class TestOutputFormatter:
     def sample_data(self):
         """提供测试数据"""
         return [
-            {"id": "202403250001", "title": "测试笔记1", "type": "permanent", "tags": ["test", "demo"]},
+            {
+                "id": "202403250001",
+                "title": "测试笔记1",
+                "type": "permanent",
+                "tags": ["test", "demo"],
+            },
             {"id": "202403250002", "title": "测试笔记2", "type": "fleeting", "tags": ["temp"]},
-            {"id": "202403250003", "title": "测试笔记3", "type": "literature", "tags": ["book", "read"]},
+            {
+                "id": "202403250003",
+                "title": "测试笔记3",
+                "type": "literature",
+                "tags": ["book", "read"],
+            },
         ]
 
     @pytest.fixture
@@ -35,7 +46,7 @@ class TestOutputFormatter:
             "id": "202403250001",
             "title": "测试笔记",
             "type": "permanent",
-            "content": "这是测试内容"
+            "content": "这是测试内容",
         }
 
     # ==========================================================================
@@ -44,7 +55,7 @@ class TestOutputFormatter:
     def test_to_json_with_list(self, sample_data):
         """测试 JSON 格式 - 列表数据"""
         result = OutputFormatter.to_json(sample_data)
-        
+
         # 验证是有效的 JSON
         parsed = json.loads(result)
         assert len(parsed) == 3
@@ -54,7 +65,7 @@ class TestOutputFormatter:
     def test_to_json_with_dict(self, single_note):
         """测试 JSON 格式 - 字典数据"""
         result = OutputFormatter.to_json(single_note)
-        
+
         parsed = json.loads(result)
         assert parsed["id"] == "202403250001"
         assert parsed["title"] == "测试笔记"
@@ -63,7 +74,7 @@ class TestOutputFormatter:
         """测试 JSON 格式 - Unicode 支持"""
         data = {"title": "中文测试", "content": "日本語テスト"}
         result = OutputFormatter.to_json(data)
-        
+
         # 验证中文没有被转义
         assert "中文测试" in result
         assert "日本語テスト" in result
@@ -74,7 +85,7 @@ class TestOutputFormatter:
     def test_to_yaml_with_list(self, sample_data):
         """测试 YAML 格式 - 列表数据"""
         result = OutputFormatter.to_yaml(sample_data)
-        
+
         # 验证 YAML 包含关键内容（YAML 可能对字符串加引号）
         assert "202403250001" in result
         assert "title:" in result
@@ -83,7 +94,7 @@ class TestOutputFormatter:
     def test_to_yaml_with_dict(self, single_note):
         """测试 YAML 格式 - 字典数据"""
         result = OutputFormatter.to_yaml(single_note)
-        
+
         assert "202403250001" in result
         assert "title:" in result
 
@@ -93,7 +104,7 @@ class TestOutputFormatter:
     def test_to_csv_with_data(self, sample_data):
         """测试 CSV 格式 - 正常数据"""
         result = OutputFormatter.to_csv(sample_data)
-        
+
         lines = result.strip().split("\n")
         # 表头 + 3 行数据
         assert len(lines) == 4
@@ -110,7 +121,7 @@ class TestOutputFormatter:
     def test_to_csv_with_headers(self, sample_data):
         """测试 CSV 格式 - 自定义表头"""
         result = OutputFormatter.to_csv(sample_data, headers=["id", "title"])
-        
+
         lines = result.strip().split("\n")
         assert "id,title" in lines[0]
         assert len(lines) == 4
@@ -119,7 +130,7 @@ class TestOutputFormatter:
         """测试 CSV 格式 - 嵌套数据会被 JSON 序列化"""
         data = [{"id": "1", "tags": ["a", "b"], "meta": {"key": "value"}}]
         result = OutputFormatter.to_csv(data)
-        
+
         # 嵌套数据应该被转为 JSON 字符串（CSV 中可能有转义引号）
         assert "a" in result and "b" in result  # 数组内容存在
         assert "key" in result and "value" in result  # 字典内容存在
@@ -134,7 +145,7 @@ class TestOutputFormatter:
             {"filepath": "/path/to/note2.md", "title": "Note 2"},
         ]
         result = OutputFormatter.to_paths(data)
-        
+
         lines = result.split("\n")
         assert "/path/to/note1.md" in lines[0]
         assert "/path/to/note2.md" in lines[1]
@@ -143,7 +154,7 @@ class TestOutputFormatter:
         """测试 Paths 格式 - Path 对象列表"""
         data = [Path("/path/to/note1.md"), Path("/path/to/note2.md")]
         result = OutputFormatter.to_paths(data)
-        
+
         # Windows 路径可能使用反斜杠
         assert "path" in result and "note1.md" in result
         assert "path" in result and "note2.md" in result
@@ -152,7 +163,7 @@ class TestOutputFormatter:
         """测试 Paths 格式 - 字符串列表"""
         data = ["/path/to/note1.md", "/path/to/note2.md"]
         result = OutputFormatter.to_paths(data)
-        
+
         lines = result.split("\n")
         assert lines[0] == "/path/to/note1.md"
         assert lines[1] == "/path/to/note2.md"
@@ -166,7 +177,7 @@ class TestOutputFormatter:
         """测试 Paths 格式 - 自定义路径字段"""
         data = [{"path": "/custom/path.md", "title": "Test"}]
         result = OutputFormatter.to_paths(data, key="path")
-        
+
         assert "/custom/path.md" in result
 
     # ==========================================================================
@@ -175,7 +186,7 @@ class TestOutputFormatter:
     def test_to_table_with_data(self, sample_data):
         """测试 Table 格式 - 正常数据"""
         result = OutputFormatter.to_table(sample_data)
-        
+
         # 验证表格包含关键内容
         assert "测试笔记1" in result
         assert "permanent" in result
@@ -189,25 +200,25 @@ class TestOutputFormatter:
     def test_to_table_with_columns(self, sample_data):
         """测试 Table 格式 - 指定列"""
         result = OutputFormatter.to_table(sample_data, columns=["id", "title"])
-        
+
         assert "202403250001" in result
         assert "测试笔记1" in result
         # type 列不应该出现
         lines = result.split("\n")
-        header_line = [l for l in lines if "id" in l.lower()][0]
+        header_line = [line for line in lines if "id" in line.lower()][0]
         assert "type" not in header_line
 
     def test_to_table_with_title(self, sample_data):
         """测试 Table 格式 - 带标题"""
         result = OutputFormatter.to_table(sample_data, title="Test Table")
-        
+
         assert "Test Table" in result
 
     def test_to_table_nested_data(self):
         """测试 Table 格式 - 嵌套数据截断"""
         data = [{"id": "1", "tags": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]}]
         result = OutputFormatter.to_table(data)
-        
+
         # 长列表应该被截断
         assert result is not None
 
@@ -217,7 +228,7 @@ class TestOutputFormatter:
     def test_to_tree_with_data(self, sample_data):
         """测试 Tree 格式 - 正常数据"""
         result = OutputFormatter.to_tree(sample_data, group_by="type")
-        
+
         # 验证树结构包含分组
         assert "permanent" in result or "notes" in result
         assert "测试笔记1" in result or "测试笔记" in result
@@ -230,7 +241,7 @@ class TestOutputFormatter:
     def test_to_tree_custom_root(self, sample_data):
         """测试 Tree 格式 - 自定义根节点"""
         result = OutputFormatter.to_tree(sample_data, root_name="MyNotes")
-        
+
         assert "MyNotes" in result
 
     # ==========================================================================
@@ -273,7 +284,7 @@ class TestOutputFormatter:
         result1 = OutputFormatter.format(sample_data, "JSON")
         result2 = OutputFormatter.format(sample_data, "json")
         result3 = OutputFormatter.format(sample_data, "Json")
-        
+
         # 都应该返回有效的 JSON
         assert json.loads(result1) == json.loads(result2) == json.loads(result3)
 
@@ -281,7 +292,7 @@ class TestOutputFormatter:
         """测试 format 接口 - 无效格式"""
         with pytest.raises(ValueError) as exc_info:
             OutputFormatter.format(sample_data, "invalid")
-        
+
         assert "Unsupported format" in str(exc_info.value)
         assert "json, table, csv, yaml, paths, tree" in str(exc_info.value)
 

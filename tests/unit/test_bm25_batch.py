@@ -1,9 +1,10 @@
 """
 BM25Index.add_documents_batch() 单元测试
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 from jfox.bm25_index import BM25Index
 
@@ -11,7 +12,7 @@ from jfox.bm25_index import BM25Index
 @pytest.fixture
 def bm25(tmp_path):
     """提供干净的 BM25Index 实例，索引目录指向临时目录"""
-    with patch.object(BM25Index, '_load', return_value=False):
+    with patch.object(BM25Index, "_load", return_value=False):
         idx = BM25Index(index_dir=tmp_path)
     # 阻止自动保存，减少 IO
     idx._save = MagicMock(return_value=True)
@@ -135,8 +136,9 @@ class TestBulkImportBM25Integration:
     ):
         """bulk_import_notes 应调用 add_documents_batch 更新 BM25 索引"""
         import numpy as np
-        from jfox.performance import bulk_import_notes
+
         from jfox.models import Note, NoteType
+        from jfox.performance import bulk_import_notes
 
         # 准备 mock note
         mock_note = MagicMock(spec=Note)
@@ -166,7 +168,7 @@ class TestBulkImportBM25Integration:
         mock_get_bm25.return_value = mock_bm25
 
         notes_data = [{"title": "测试笔记", "content": "这是测试内容"}]
-        result = bulk_import_notes(notes_data, show_progress=False)
+        bulk_import_notes(notes_data, show_progress=False)
 
         # 验证 BM25 batch 被调用
         mock_bm25.add_documents_batch.assert_called_once()
@@ -183,8 +185,9 @@ class TestBulkImportBM25Integration:
     ):
         """BM25 更新失败不应导致整个导入失败"""
         import numpy as np
-        from jfox.performance import bulk_import_notes
+
         from jfox.models import Note, NoteType
+        from jfox.performance import bulk_import_notes
 
         mock_note = MagicMock(spec=Note)
         mock_note.id = "20260411120001"
@@ -225,8 +228,9 @@ class TestBulkImportBM25Integration:
     ):
         """多批次导入时，每批都应调用 BM25 batch 更新"""
         import numpy as np
-        from jfox.performance import bulk_import_notes
+
         from jfox.models import Note, NoteType
+        from jfox.performance import bulk_import_notes
 
         notes = []
         for i in range(5):
