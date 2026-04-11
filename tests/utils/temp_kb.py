@@ -4,15 +4,14 @@
 提供测试用的隔离知识库环境
 """
 
-import os
-import uuid
 import shutil
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator, Optional
 
-from jfox.kb_manager import KnowledgeBaseManager, get_kb_manager
-from jfox.global_config import DEFAULT_KB_PATH, get_global_config_manager
+from jfox.global_config import DEFAULT_KB_PATH
+from jfox.kb_manager import get_kb_manager
 
 
 @contextmanager
@@ -76,7 +75,7 @@ def temp_kb_registered(name: Optional[str] = None) -> Generator[str, None, None]
             name=kb_name,
             path=kb_path,
             description=f"Temporary KB for testing: {kb_name}",
-            set_as_default=False
+            set_as_default=False,
         )
 
         if not success:
@@ -120,6 +119,7 @@ class TemporaryKnowledgeBase:
 
         # 初始化知识库结构
         from jfox.config import ZKConfig
+
         config = ZKConfig(base_dir=self.path)
         config.ensure_dirs()
 

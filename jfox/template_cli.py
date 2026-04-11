@@ -2,16 +2,14 @@
 
 import os
 import subprocess
-from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from .config import config
-from .template import TemplateManager, TemplateError, TemplateNotFoundError
-
+from .template import TemplateManager
 
 console = Console()
 
@@ -32,16 +30,18 @@ def get_template_manager() -> TemplateManager:
 def list_templates(
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
-    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """列出所有可用模板"""
     try:
         from .config import use_kb
-        
+
         # 处理 --json 快捷方式
         if json_output:
             output_format = "json"
-        
+
         if kb:
             with use_kb(kb):
                 manager = get_template_manager()
@@ -49,13 +49,14 @@ def list_templates(
         else:
             manager = get_template_manager()
             templates = manager.list_templates()
-        
+
         # Separate built-in and custom templates
         builtin_templates = [t for t in templates if t.is_builtin]
         custom_templates = [t for t in templates if not t.is_builtin]
-        
+
         if output_format == "json":
             import json
+
             result = {
                 "builtin": [
                     {
@@ -82,19 +83,19 @@ def list_templates(
                 table.add_column("Name", style="cyan")
                 table.add_column("Description", style="white")
                 table.add_column("Type", style="green")
-                
+
                 for t in builtin_templates:
                     table.add_row(t.name, t.description, t.note_type)
                 console.print(table)
                 console.print()
-            
+
             if custom_templates:
                 console.print("[bold]Custom Templates:[/bold]")
                 table = Table()
                 table.add_column("Name", style="cyan")
                 table.add_column("Description", style="white")
                 table.add_column("Type", style="green")
-                
+
                 for t in custom_templates:
                     table.add_row(t.name, t.description, t.note_type)
                 console.print(table)
@@ -103,7 +104,7 @@ def list_templates(
         else:
             console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
             raise typer.Exit(1)
-                
+
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
@@ -118,7 +119,7 @@ def show_template(
     """查看模板详情"""
     try:
         from .config import use_kb
-        
+
         if kb:
             with use_kb(kb):
                 manager = get_template_manager()
@@ -126,16 +127,17 @@ def show_template(
         else:
             manager = get_template_manager()
             template = manager.get_template(name)
-        
+
         if not template:
             available = manager.get_available_templates()
             console.print(f"[red]Template '{name}' not found[/red]")
             if available:
                 console.print(f"[dim]Available: {', '.join(available)}[/dim]")
             raise typer.Exit(1)
-        
+
         if json_output:
             import json
+
             result = {
                 "name": template.name,
                 "description": template.description,
@@ -157,7 +159,7 @@ def show_template(
             console.print()
             console.print("[bold]Content:[/bold]")
             console.print(template.content)
-            
+
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
@@ -167,7 +169,9 @@ def show_template(
 def create_template(
     name: str = typer.Argument(..., help="模板名称"),
     description: Optional[str] = typer.Option(None, "--description", "-d", help="模板描述"),
-    note_type: str = typer.Option("fleeting", "--type", "-t", help="笔记类型 (fleeting/literature/permanent)"),
+    note_type: str = typer.Option(
+        "fleeting", "--type", "-t", help="笔记类型 (fleeting/literature/permanent)"
+    ),
     title_format: str = typer.Option("{{date}}-{{title}}", "--title-format", help="标题格式"),
     content: Optional[str] = typer.Option(None, "--content", "-c", help="模板内容"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="默认标签"),
@@ -178,32 +182,31 @@ def create_template(
     """创建新模板"""
     try:
         from .config import use_kb
-        
+
         if kb:
             with use_kb(kb):
                 manager = get_template_manager()
         else:
             manager = get_template_manager()
-        
+
         # Check if template exists
         existing = manager.get_template(name)
         if existing and not force:
             console.print(f"[red]Template '{name}' already exists[/red]")
             console.print("[dim]Use --force to overwrite[/dim]")
             raise typer.Exit(1)
-        
+
         # Interactive mode if not all required fields provided
         desc = description or typer.prompt("Description", default=f"Custom {name} template")
         content_str = content or typer.prompt(
-            "Content (use {{variable}} for variables)",
-            default="## {{title}}\n\n{{content}}"
+            "Content (use {{variable}} for variables)", default="## {{title}}\n\n{{content}}"
         )
-        
+
         # Validate note_type
         if note_type not in ["fleeting", "literature", "permanent"]:
             console.print(f"[red]Invalid note type: {note_type}[/red]")
             raise typer.Exit(1)
-        
+
         template = manager.create_template(
             name=name,
             description=desc,
@@ -212,9 +215,10 @@ def create_template(
             content=content_str,
             tags=tags or [],
         )
-        
+
         if json_output:
             import json
+
             result = {
                 "success": True,
                 "template": {
@@ -227,7 +231,7 @@ def create_template(
         else:
             action = "updated" if existing else "created"
             console.print(f"[green]Template '{name}' {action} successfully[/green]")
-            
+
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
@@ -241,7 +245,7 @@ def edit_template(
     """编辑模板（使用系统默认编辑器）"""
     try:
         from .config import use_kb
-        
+
         if kb:
             with use_kb(kb):
                 manager = get_template_manager()
@@ -249,28 +253,28 @@ def edit_template(
         else:
             manager = get_template_manager()
             template = manager.get_template(name)
-        
+
         if not template:
             console.print(f"[red]Template '{name}' not found[/red]")
             raise typer.Exit(1)
-        
+
         if template.is_builtin:
             console.print(f"[red]Cannot edit built-in template '{name}'[/red]")
             console.print("[dim]Create a custom template instead[/dim]")
             raise typer.Exit(1)
-        
+
         template_path = manager.get_template_path(name)
         if not template_path:
-            console.print(f"[red]Template file not found[/red]")
+            console.print("[red]Template file not found[/red]")
             raise typer.Exit(1)
-        
+
         # Get editor from environment
         editor = os.environ.get("EDITOR", "notepad" if os.name == "nt" else "vi")
-        
+
         # Open editor
         subprocess.run([editor, str(template_path)], check=True)
         console.print(f"[green]Template '{name}' updated[/green]")
-        
+
     except subprocess.CalledProcessError as e:
         console.print(f"[red]Editor failed: {e}[/red]")
         raise typer.Exit(1)
@@ -289,22 +293,22 @@ def remove_template(
     """删除自定义模板"""
     try:
         from .config import use_kb
-        
+
         if kb:
             with use_kb(kb):
                 manager = get_template_manager()
         else:
             manager = get_template_manager()
-        
+
         template = manager.get_template(name)
         if not template:
             console.print(f"[red]Template '{name}' not found[/red]")
             raise typer.Exit(1)
-        
+
         if template.is_builtin:
             console.print(f"[red]Cannot remove built-in template '{name}'[/red]")
             raise typer.Exit(1)
-        
+
         # Confirm deletion
         if not yes:
             if not json_output:
@@ -312,16 +316,17 @@ def remove_template(
                 if confirm.lower() != "y":
                     console.print("Cancelled")
                     raise typer.Exit(0)
-        
+
         manager.delete_template(name)
-        
+
         if json_output:
             import json
+
             result = {"success": True, "deleted": name}
             print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             console.print(f"[green]Template '{name}' deleted[/green]")
-            
+
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)

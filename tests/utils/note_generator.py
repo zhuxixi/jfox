@@ -5,13 +5,11 @@
 """
 
 import random
-import uuid
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from jfox.models import Note, NoteType
-
 
 # 预定义笔记模板
 NOTE_TEMPLATES = {
@@ -118,16 +116,16 @@ DETAILS = [
 @dataclass
 class GeneratedNote:
     """生成的笔记数据"""
+
     title: str
     content: str
     note_type: NoteType
     tags: List[str] = field(default_factory=list)
     links: List[str] = field(default_factory=list)
-    
+
     def to_note(self, note_id: Optional[str] = None) -> Note:
         """转换为 Note 对象"""
-        from datetime import datetime
-        
+
         now = datetime.now()
         return Note(
             id=note_id or datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -145,45 +143,42 @@ class GeneratedNote:
 class NoteGenerator:
     """
     笔记生成器
-    
+
     生成各种测试笔记数据
-    
+
     用法:
         generator = NoteGenerator(seed=42)
         notes = generator.generate(100, NoteType.PERMANENT)
         linked_notes = generator.generate_with_links(50)
     """
-    
+
     def __init__(self, seed: Optional[int] = None):
         """
         初始化生成器
-        
+
         Args:
             seed: 随机种子（用于可复现）
         """
         if seed is not None:
             random.seed(seed)
         self._generated_titles: List[str] = []
-    
+
     def generate(
-        self, 
-        count: int, 
-        note_type: NoteType = NoteType.PERMANENT,
-        category: Optional[str] = None
+        self, count: int, note_type: NoteType = NoteType.PERMANENT, category: Optional[str] = None
     ) -> List[GeneratedNote]:
         """
         生成笔记
-        
+
         Args:
             count: 生成数量
             note_type: 笔记类型
             category: 指定类别（tech/science/philosophy/productivity）
-            
+
         Returns:
             生成的笔记列表
         """
         notes = []
-        
+
         # 选择模板
         if category and category in NOTE_TEMPLATES:
             templates = NOTE_TEMPLATES[category]
@@ -192,86 +187,84 @@ class NoteGenerator:
             templates = []
             for cat_templates in NOTE_TEMPLATES.values():
                 templates.extend(cat_templates)
-        
+
         for i in range(count):
             # 随机选择模板
             template = random.choice(templates)
-            
+
             # 填充详情
             detail = random.choice(DETAILS)
             content = template["content"].format(detail=detail)
-            
+
             # 添加唯一标识避免重复标题
             title = template["title"]
             if count > len(templates):
                 title = f"{title} ({i+1})"
-            
+
             note = GeneratedNote(
                 title=title,
                 content=content,
                 note_type=note_type,
                 tags=template["tags"].copy(),
             )
-            
+
             notes.append(note)
             self._generated_titles.append(title)
-        
+
         return notes
-    
-    def generate_with_links(
-        self, 
-        count: int,
-        link_probability: float = 0.3
-    ) -> List[GeneratedNote]:
+
+    def generate_with_links(self, count: int, link_probability: float = 0.3) -> List[GeneratedNote]:
         """
         生成带链接的笔记
-        
+
         Args:
             count: 生成数量
             link_probability: 每条笔记包含链接的概率
-            
+
         Returns:
             生成的笔记列表（部分包含 links）
         """
         notes = self.generate(count, NoteType.PERMANENT)
-        
+
         # 为后面的笔记添加指向前面笔记的链接
         for i, note in enumerate(notes):
             if i > 0 and random.random() < link_probability:
                 # 随机选择之前生成的 1-3 个笔记作为链接目标
                 num_links = random.randint(1, min(3, i))
                 target_indices = random.sample(range(i), num_links)
-                
+
                 for idx in target_indices:
                     # 使用 [[标题]] 格式
                     target_title = notes[idx].title
                     note.content += f" 参考 [[{target_title}]]。"
-        
+
         return notes
-    
+
     def generate_fleeting(self, count: int) -> List[GeneratedNote]:
         """生成闪念笔记"""
         return self.generate(count, NoteType.FLEETING)
-    
+
     def generate_literature(self, count: int) -> List[GeneratedNote]:
         """生成文献笔记"""
         # 文献笔记通常有来源
         notes = self.generate(count, NoteType.LITERATURE)
         for note in notes:
-            note.content += f"\n\nSource: Book {random.randint(1, 100)}, Page {random.randint(1, 300)}"
+            note.content += (
+                f"\n\nSource: Book {random.randint(1, 100)}, Page {random.randint(1, 300)}"
+            )
         return notes
-    
+
     def generate_permanent(self, count: int) -> List[GeneratedNote]:
         """生成永久笔记"""
         return self.generate(count, NoteType.PERMANENT)
-    
+
     def generate_mixed(self, count: int) -> Dict[NoteType, List[GeneratedNote]]:
         """
         生成混合类型的笔记
-        
+
         Args:
             count: 总数量
-            
+
         Returns:
             按类型分类的笔记字典
         """
@@ -279,20 +272,20 @@ class NoteGenerator:
         p_count = int(count * 0.6)
         f_count = int(count * 0.3)
         l_count = count - p_count - f_count
-        
+
         return {
             NoteType.PERMANENT: self.generate_permanent(p_count),
             NoteType.FLEETING: self.generate_fleeting(f_count),
             NoteType.LITERATURE: self.generate_literature(l_count),
         }
-    
+
     def get_random_queries(self, count: int = 10) -> List[str]:
         """
         生成随机搜索查询
-        
+
         Args:
             count: 查询数量
-            
+
         Returns:
             查询字符串列表
         """
@@ -313,17 +306,17 @@ class NoteGenerator:
             "DNA structure",
             "relativity theory",
         ]
-        
+
         return random.sample(queries, min(count, len(queries)))
 
 
 def generate_test_dataset(size: str = "small") -> Dict[str, Any]:
     """
     生成标准测试数据集
-    
+
     Args:
         size: small (50), medium (200), large (1000)
-        
+
     Returns:
         测试数据集配置
     """
@@ -332,10 +325,10 @@ def generate_test_dataset(size: str = "small") -> Dict[str, Any]:
         "medium": 200,
         "large": 1000,
     }
-    
+
     count = sizes.get(size, 50)
     generator = NoteGenerator(seed=42)
-    
+
     return {
         "size": size,
         "count": count,

@@ -4,16 +4,15 @@
 预估耗时: < 1秒
 依赖要求: 无外部依赖
 """
+
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from datetime import datetime
+from unittest.mock import patch
 
-from jfox.models import Note, NoteType
-from jfox.note import update_note, create_note, save_note, load_note_by_id
 from jfox.config import ZKConfig
+from jfox.models import NoteType
+from jfox.note import create_note, load_note_by_id, save_note, update_note
 
 
 class TestUpdateNote:
@@ -57,9 +56,7 @@ class TestUpdateNote:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    def test_update_title_renames_file(
-        self, mock_global_config, mock_note_config, tmp_path
-    ):
+    def test_update_title_renames_file(self, mock_global_config, mock_note_config, tmp_path):
         """更新标题时重命名文件"""
         cfg = self._make_config(tmp_path)
         mock_global_config.notes_dir = cfg.notes_dir
@@ -93,9 +90,7 @@ class TestUpdateNote:
         mock_global_config.notes_dir = cfg.notes_dir
         mock_note_config.notes_dir = cfg.notes_dir
 
-        n = create_note(
-            "content", title="Test", note_type=NoteType.PERMANENT, tags=["old"]
-        )
+        n = create_note("content", title="Test", note_type=NoteType.PERMANENT, tags=["old"])
         save_note(n, add_to_index=False)
 
         n.tags = ["new1", "new2"]
@@ -304,7 +299,9 @@ class TestEditImpl:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    def test_edit_removes_backlink_when_link_removed(self, mock_global_config, mock_note_config, tmp_path):
+    def test_edit_removes_backlink_when_link_removed(
+        self, mock_global_config, mock_note_config, tmp_path
+    ):
         """编辑内容移除 [[链接]] 时，反向链接也被移除"""
         from jfox.cli import _edit_impl
 

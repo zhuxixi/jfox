@@ -3,13 +3,14 @@
 
 测试 init, add, delete, edit 命令的 --format/--json 参数支持
 """
-import json
-import pytest
-from unittest.mock import patch, MagicMock
-from pathlib import Path
 
-from jfox.models import Note, NoteType
+import json
+from unittest.mock import patch
+
+import pytest
+
 from jfox.config import ZKConfig
+from jfox.models import NoteType
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
@@ -106,6 +107,7 @@ class TestAddFormat:
     def test_add_cli_signature_has_format(self):
         """add CLI 函数应接受 --format 参数"""
         import inspect
+
         from jfox.cli import add
 
         sig = inspect.signature(add)
@@ -182,11 +184,10 @@ class TestDeleteFormat:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    def test_delete_cli_signature_has_format(
-        self, mock_global_config, mock_note_config, tmp_path
-    ):
+    def test_delete_cli_signature_has_format(self, mock_global_config, mock_note_config, tmp_path):
         """delete CLI 函数应接受 --format 参数"""
         import inspect
+
         from jfox.cli import delete
 
         sig = inspect.signature(delete)
@@ -209,7 +210,9 @@ class TestEditFormat:
     @patch("jfox.note.config")
     @patch("jfox.config.config")
     @patch("jfox.note.get_vector_store")
-    def test_edit_output_format_json(self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys):
+    def test_edit_output_format_json(
+        self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
+    ):
         """edit 命令 output_format='json' 应输出 JSON"""
         from jfox.cli import _edit_impl
         from jfox.note import create_note, save_note
@@ -222,8 +225,13 @@ class TestEditFormat:
         save_note(n, add_to_index=False)
 
         _edit_impl(
-            note_id=n.id, content="updated", title=None,
-            tags=None, note_type=None, source=None, output_format="json",
+            note_id=n.id,
+            content="updated",
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
         )
 
         captured = capsys.readouterr()
@@ -234,7 +242,9 @@ class TestEditFormat:
     @patch("jfox.note.config")
     @patch("jfox.config.config")
     @patch("jfox.note.get_vector_store")
-    def test_edit_output_format_table(self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys):
+    def test_edit_output_format_table(
+        self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
+    ):
         """edit 命令 output_format='table' 应输出紧凑表格"""
         from jfox.cli import _edit_impl
         from jfox.note import create_note, save_note
@@ -247,8 +257,13 @@ class TestEditFormat:
         save_note(n, add_to_index=False)
 
         _edit_impl(
-            note_id=n.id, content="new content", title="NewTitle",
-            tags=None, note_type=None, source=None, output_format="table",
+            note_id=n.id,
+            content="new content",
+            title="NewTitle",
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="table",
         )
 
         captured = capsys.readouterr()
@@ -260,6 +275,7 @@ class TestEditFormat:
     def test_edit_cli_signature_has_format(self, mock_global_config, mock_note_config, tmp_path):
         """edit CLI 函数应接受 --format 参数"""
         import inspect
+
         from jfox.cli import edit
 
         sig = inspect.signature(edit)
@@ -277,6 +293,7 @@ class TestInitFormat:
     def test_init_cli_signature_has_format(self):
         """init CLI 函数应接受 --format 参数"""
         import inspect
+
         from jfox.cli import init
 
         sig = inspect.signature(init)
@@ -290,6 +307,7 @@ class TestInitFormat:
     def test_init_cli_signature_json_backward_compat(self):
         """init CLI 函数应保留 --json 向后兼容"""
         import inspect
+
         from jfox.cli import init
 
         sig = inspect.signature(init)
