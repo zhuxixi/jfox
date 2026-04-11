@@ -117,9 +117,13 @@ def cli(temp_kb):
     """
     zk_cli = ZKCLI(temp_kb)
     zk_cli.init()
-    yield zk_cli
-    # 测试结束后清理
-    zk_cli.cleanup()
+    try:
+        yield zk_cli
+    finally:
+        try:
+            zk_cli.cleanup()
+        except Exception:
+            pass
 
 
 @pytest.fixture
@@ -146,8 +150,13 @@ def cli_fast(temp_kb, mock_embedding_backend):
     with unittest.mock.patch.object(embedding_backend, "get_backend", mock_get_backend):
         zk_cli = ZKCLI(temp_kb)
         zk_cli.init()
-        yield zk_cli
-        zk_cli.cleanup()
+        try:
+            yield zk_cli
+        finally:
+            try:
+                zk_cli.cleanup()
+            except Exception:
+                pass
 
 
 @pytest.fixture
@@ -264,9 +273,30 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _cleanup_test_root():
-    """会话结束时清理测试 KB 根目录"""
+def _cleanup_test_root(request):
+    """会话结束时清理测试 KB 根目录和全局配置中的残留注册"""
     yield
-    test_root = Path(os.environ.get("ZK_KB_ROOT", ""))
-    if test_root.exists() and "zk_test" in test_root.name:
-        shutil.rmtree(test_root, ignore_errors=True)
+    keep_data = request.config.getoption("--keep-data", default=False)
+
+    # 清理全局配置中的 test_* KB 注册（防止残留）
+    # 使用新实例而非单例，避免缓存过期导致读到旧数据
+    if not keep_data:
+        try:
+            from jfox.global_config import GlobalConfigManager
+
+            manager = GlobalConfigManager()
+            kbs = manager.list_knowledge_bases()
+            for kb in kbs:
+                if kb.name.startswith("test_") or kb.name.startswith("zk_test_"):
+                    try:
+                        manager.remove_knowledge_base(kb.name)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # 清理测试 KB 根目录
+    if not keep_data:
+        test_root = Path(os.environ.get("ZK_KB_ROOT", ""))
+        if test_root.exists() and "zk_test" in test_root.name:
+            shutil.rmtree(test_root, ignore_errors=True)
