@@ -100,6 +100,28 @@ jfox bulk-import <path-to-file.json> --type permanent --batch-size 32
 jfox bulk-import <path-to-file.json> --kb work --type permanent
 ```
 
+## Editing Existing Notes
+
+Modify existing notes while preserving ID and creation timestamp:
+
+```bash
+# Edit content
+jfox edit <note_id> --content "新内容"
+
+# Edit title
+jfox edit <note_id> --title "新标题"
+
+# Edit multiple fields at once
+jfox edit <note_id> --content "新内容" --title "新标题" --tag tag1 --tag tag2
+
+# Edit in a specific knowledge base
+jfox edit <note_id> --kb <kb-name> --content "新内容"
+```
+
+**Workflow**: Find note ID via `jfox list --format json` or `jfox inbox --json`, then edit.
+
+> **Note**: `jfox edit` uses `--json`/`--no-json` (default: on), NOT `--format json`.
+
 ## Command Reference
 
 ```bash
@@ -114,6 +136,9 @@ jfox add "<content>" --template <quick|meeting|literature>
 
 # Bulk
 jfox bulk-import <file.json> --type <type> --batch-size <N>
+
+# Edit existing note
+jfox edit <note_id> --content "新内容" --title "新标题" --tag <tag>
 
 # Link suggestions before insert
 jfox suggest-links "<content>" --top 5 --threshold 0.6 --format json
