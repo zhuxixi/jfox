@@ -100,7 +100,7 @@ class KnowledgeBaseManager:
 
         # 检查路径是否已被其他知识库使用
         for kb in self.config_manager.list_knowledge_bases():
-            if Path(kb.path) == path:
+            if Path(kb.path).resolve() == path:
                 return False, f"Path '{path}' is already used by another knowledge base"
         
         # 创建目录结构
