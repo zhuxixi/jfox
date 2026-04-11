@@ -123,3 +123,76 @@ class TestAddFormat:
             assert json_default.default is False
         else:
             assert json_default is False
+
+
+class TestDeleteFormat:
+    """测试 delete 命令的 --format 支持"""
+
+    def _make_config(self, tmp_path):
+        cfg = ZKConfig(base_dir=tmp_path)
+        cfg.ensure_dirs()
+        return cfg
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    @patch("jfox.note.get_vector_store")
+    def test_delete_output_format_json(
+        self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
+    ):
+        """delete 命令 output_format='json' 应输出 JSON"""
+        from jfox.cli import _delete_impl
+        from jfox.note import create_note, save_note
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("to delete", title="DeleteMe", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        _delete_impl(n.id, force=True, output_format="json")
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["success"] is True
+        assert data["deleted"] == n.id
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    @patch("jfox.note.get_vector_store")
+    def test_delete_output_format_table(
+        self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
+    ):
+        """delete 命令 output_format='table' 应输出紧凑表格"""
+        from jfox.cli import _delete_impl
+        from jfox.note import create_note, save_note
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("to delete", title="TableDel", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        _delete_impl(n.id, force=True, output_format="table")
+
+        captured = capsys.readouterr()
+        assert not captured.out.strip().startswith("{")
+        assert "TableDel" in captured.out
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_delete_cli_signature_has_format(
+        self, mock_global_config, mock_note_config, tmp_path
+    ):
+        """delete CLI 函数应接受 --format 参数"""
+        import inspect
+        from jfox.cli import delete
+
+        sig = inspect.signature(delete)
+        assert "output_format" in sig.parameters
+        param = sig.parameters["output_format"]
+        if hasattr(param.default, "default"):
+            assert param.default.default == "table"
+        else:
+            assert param.default == "table"

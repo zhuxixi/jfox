@@ -840,7 +840,7 @@ def refs(
 def _delete_impl(
     note_id: str,
     force: bool,
-    json_output: bool,
+    output_format: str,
 ):
     """删除笔记的内部实现"""
     # 先查找笔记
@@ -848,10 +848,10 @@ def _delete_impl(
     if not n:
         console.print(f"[red]Note not found: {note_id}[/red]")
         raise typer.Exit(1)
-    
+
     # 确认删除
     if not force:
-        if json_output:
+        if output_format == "json":
             console.print(f"Use --force to delete: {n.title}")
             raise typer.Exit(1)
         else:
@@ -860,7 +860,7 @@ def _delete_impl(
             if confirm.lower() != "y":
                 console.print("Cancelled")
                 raise typer.Exit(0)
-    
+
     # 执行删除
     if note.delete_note(note_id):
         result = {
@@ -868,11 +868,14 @@ def _delete_impl(
             "deleted": note_id,
             "title": n.title,
         }
-        
-        if json_output:
+
+        if output_format == "json":
             print(output_json(result))
         else:
-            console.print(f"[green]✓[/green] Deleted: {n.title}")
+            _print_action_table("deleted", {
+                "ID": note_id,
+                "Title": n.title,
+            })
     else:
         raise Exception("Failed to delete note")
 
@@ -882,24 +885,29 @@ def delete(
     note_id: str = typer.Argument(..., help="笔记 ID"),
     force: bool = typer.Option(False, "--force", "-f", help="强制删除不确认"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """删除笔记"""
     try:
+        # 向后兼容：--json 快捷方式
+        if json_output:
+            output_format = "json"
+
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _delete_impl(note_id, force, json_output)
+                _delete_impl(note_id, force, output_format)
         else:
-            _delete_impl(note_id, force, json_output)
-            
+            _delete_impl(note_id, force, output_format)
+
     except Exception as e:
         result = {
             "success": False,
             "error": str(e),
         }
-        if json_output:
+        if output_format == "json":
             print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
