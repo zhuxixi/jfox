@@ -187,6 +187,16 @@ def init(
         raise typer.Exit(1)
 
 
+def _print_action_table(action: str, fields: dict):
+    """打印紧凑的操作结果表格（单行）"""
+    table = Table(show_header=True, box=None, padding=(0, 2))
+    table.add_column("Action", style="green")
+    for key in fields:
+        table.add_column(key)
+    table.add_row(action, *[str(v) for v in fields.values()])
+    console.print(table)
+
+
 def extract_wiki_links(content: str) -> List[str]:
     """从内容中提取 [[...]] 格式的维基链接"""
     import re
@@ -226,7 +236,7 @@ def _add_note_impl(
     note_type: str,
     tags: Optional[List[str]],
     source: Optional[str],
-    json_output: bool,
+    output_format: str,
     template: Optional[str] = None,
 ):
     """添加笔记的内部实现"""
@@ -318,20 +328,21 @@ def _add_note_impl(
                 "links": resolved_links,
             },
         }
-        
+
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
-        
-        if json_output:
+
+        if output_format == "json":
             print(output_json(result))
         else:
-            console.print(f"[green]✓[/green] Note created: {new_note.title}")
-            console.print(f"  ID: {new_note.id}")
-            console.print(f"  Path: {new_note.filepath}")
-            if resolved_links:
-                console.print(f"  Links: {len(resolved_links)} connection(s)")
+            _print_action_table("created", {
+                "ID": new_note.id,
+                "Title": new_note.title,
+                "Type": new_note.type.value,
+                "Links": str(len(resolved_links)),
+            })
             if backlink_updated > 0:
-                console.print(f"  Backlinks updated: {backlink_updated} note(s)")
+                console.print(f"[dim]  Backlinks updated: {backlink_updated} note(s)[/dim]")
             if unresolved:
                 console.print(f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]")
     else:
@@ -347,24 +358,29 @@ def add(
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
     template: Optional[str] = typer.Option(None, "--template", "-T", help="使用模板创建笔记 (quick/meeting/literature)"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """添加新笔记（内容中可用 [[笔记标题]] 引用其他笔记）"""
     try:
+        # 向后兼容：--json 快捷方式
+        if json_output:
+            output_format = "json"
+
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
             with use_kb(kb):
-                _add_note_impl(content, title, note_type, tags, source, json_output, template)
+                _add_note_impl(content, title, note_type, tags, source, output_format, template)
         else:
-            _add_note_impl(content, title, note_type, tags, source, json_output, template)
-            
+            _add_note_impl(content, title, note_type, tags, source, output_format, template)
+
     except Exception as e:
         result = {
             "success": False,
             "error": str(e),
         }
-        if json_output:
+        if output_format == "json":
             print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")
