@@ -249,6 +249,78 @@ class BM25Index:
             logger.error(f"Failed to remove document {note_id}: {e}")
             return False
     
+    def add_documents_batch(self, documents: List[Tuple[str, str]]) -> bool:
+        """
+        批量添加文档到索引（高效版本）
+
+        与逐条调用 add_document() 不同，此方法收集所有文档后只执行一次索引重建和保存。
+        适用于批量导入场景。
+
+        Args:
+            documents: [(note_id, content), ...] 列表
+
+        Returns:
+            是否成功添加
+        """
+        if not documents:
+            return True
+
+        # 快照当前状态，失败时恢复
+        saved_docs = list(self.documents)
+        saved_ids = list(self.doc_ids)
+        saved_mapping = dict(self.doc_mapping)
+        saved_bm25 = self.bm25
+
+        try:
+            for note_id, content in documents:
+                # 如果已存在，先移除
+                if note_id in self.doc_mapping:
+                    # 内联移除逻辑，避免触发 rebuild/save
+                    idx = self.doc_mapping[note_id]
+                    self.documents.pop(idx)
+                    self.doc_ids.pop(idx)
+                    del self.doc_mapping[note_id]
+                    # 更新后续索引
+                    self.doc_mapping = {}
+                    for i, doc_id in enumerate(self.doc_ids):
+                        self.doc_mapping[doc_id] = i
+
+                # 分词并添加
+                tokens = self._tokenize(content)
+                if not tokens:
+                    continue  # 跳过分词结果为空的文档
+                idx = len(self.documents)
+                self.documents.append(tokens)
+                self.doc_ids.append(note_id)
+                self.doc_mapping[note_id] = idx
+
+            # 一次性重建索引
+            self._rebuild_index()
+
+            # 一次性保存，失败时回滚
+            if not self._save():
+                self.documents = saved_docs
+                self.doc_ids = saved_ids
+                self.doc_mapping = saved_mapping
+                self.bm25 = saved_bm25
+                logger.error("Failed to persist BM25 index after batch add, rolled back")
+                return False
+
+            logger.info(f"Batch added {len(documents)} documents to BM25 index")
+            return True
+
+        except Exception as e:
+            # 恢复到批次前的状态
+            self.documents = saved_docs
+            self.doc_ids = saved_ids
+            self.doc_mapping = saved_mapping
+            self.bm25 = saved_bm25
+            logger.error(
+                f"Failed to batch add {len(documents)} documents to BM25 index",
+                exc_info=True,
+            )
+            return False
+
     def search(self, query: str, top_k: int = 5) -> List[Dict]:
         """
         搜索文档
