@@ -921,7 +921,7 @@ def _edit_impl(
     tags: Optional[List[str]],
     note_type: Optional[str],
     source: Optional[str],
-    json_output: bool,
+    output_format: str,
 ):
     """编辑笔记的内部实现"""
     # 验证：至少指定一个编辑字段
@@ -1007,12 +1007,28 @@ def _edit_impl(
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
 
-        if json_output:
+        if output_format == "json":
             print(output_json(result))
         else:
-            console.print(f"[green]✓[/green] Note updated: {n.title}")
+            # 收集修改的字段名
+            changed = []
+            if content is not None:
+                changed.append("content")
+            if title is not None:
+                changed.append("title")
+            if tags is not None:
+                changed.append("tags")
+            if note_type is not None:
+                changed.append("type")
+            if source is not None:
+                changed.append("source")
+            _print_action_table("updated", {
+                "ID": n.id,
+                "Title": n.title,
+                "Fields": ", ".join(changed),
+            })
             if old_title != n.title:
-                console.print(f"  Title: {old_title} → {n.title}")
+                console.print(f"  [dim]Title: {old_title} → {n.title}[/dim]")
             if unresolved:
                 console.print(
                     f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
@@ -1032,23 +1048,28 @@ def edit(
     ),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="新来源"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """编辑已有笔记（保留 ID 和创建时间）"""
     try:
+        # 向后兼容：--json 快捷方式
+        if json_output:
+            output_format = "json"
+
         if kb:
             from .config import use_kb
 
             with use_kb(kb):
-                _edit_impl(note_id, content, title, tags, note_type, source, json_output)
+                _edit_impl(note_id, content, title, tags, note_type, source, output_format)
         else:
-            _edit_impl(note_id, content, title, tags, note_type, source, json_output)
+            _edit_impl(note_id, content, title, tags, note_type, source, output_format)
     except Exception as e:
         result = {
             "success": False,
             "error": str(e),
         }
-        if json_output:
+        if output_format == "json":
             print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")

@@ -196,3 +196,76 @@ class TestDeleteFormat:
             assert param.default.default == "table"
         else:
             assert param.default == "table"
+
+
+class TestEditFormat:
+    """测试 edit 命令的 --format 支持"""
+
+    def _make_config(self, tmp_path):
+        cfg = ZKConfig(base_dir=tmp_path)
+        cfg.ensure_dirs()
+        return cfg
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    @patch("jfox.note.get_vector_store")
+    def test_edit_output_format_json(self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys):
+        """edit 命令 output_format='json' 应输出 JSON"""
+        from jfox.cli import _edit_impl
+        from jfox.note import create_note, save_note
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("original", title="EditMe", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        _edit_impl(
+            note_id=n.id, content="updated", title=None,
+            tags=None, note_type=None, source=None, output_format="json",
+        )
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["success"] is True
+        assert data["note"]["title"] == "EditMe"
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    @patch("jfox.note.get_vector_store")
+    def test_edit_output_format_table(self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys):
+        """edit 命令 output_format='table' 应输出紧凑表格"""
+        from jfox.cli import _edit_impl
+        from jfox.note import create_note, save_note
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("original", title="TableEdit", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        _edit_impl(
+            note_id=n.id, content="new content", title="NewTitle",
+            tags=None, note_type=None, source=None, output_format="table",
+        )
+
+        captured = capsys.readouterr()
+        assert not captured.out.strip().startswith("{")
+        assert "NewTitle" in captured.out
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_cli_signature_has_format(self, mock_global_config, mock_note_config, tmp_path):
+        """edit CLI 函数应接受 --format 参数"""
+        import inspect
+        from jfox.cli import edit
+
+        sig = inspect.signature(edit)
+        assert "output_format" in sig.parameters
+        param = sig.parameters["output_format"]
+        if hasattr(param.default, "default"):
+            assert param.default.default == "table"
+        else:
+            assert param.default == "table"
