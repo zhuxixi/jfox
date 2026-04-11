@@ -311,3 +311,127 @@ class TestCLIFormat:
         data1 = json.loads(result1.stdout)
         data2 = json.loads(result2.stdout)
         assert len(data1) == len(data2)
+
+    # ==========================================================================
+    # Add 命令测试
+    # ==========================================================================
+    def test_add_format_json(self, cli):
+        """测试 add 命令 --format json"""
+        result = cli.run("add", "test content", "--title", "FormatTest", "--format", "json")
+
+        assert result.success
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+        assert data["note"]["title"] == "FormatTest"
+
+    def test_add_format_table(self, cli):
+        """测试 add 命令 --format table"""
+        result = cli.run("add", "test content", "--title", "TableTest", "--format", "table")
+
+        assert result.success
+        assert not result.stdout.strip().startswith("{")
+        assert "TableTest" in result.stdout
+
+    def test_add_json_flag_backward_compat(self, cli):
+        """测试 add 命令 --json 向后兼容"""
+        result = cli.run("add", "compat test", "--title", "JsonCompat", "--json")
+
+        assert result.success
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+
+    def test_add_default_is_table(self, cli):
+        """测试 add 命令默认输出为 table"""
+        result = cli.run("add", "default test", "--title", "DefaultFmt", "--format", "table")
+
+        assert result.success
+        assert not result.stdout.strip().startswith("{")
+
+    # ==========================================================================
+    # Delete 命令测试
+    # ==========================================================================
+    def test_delete_format_json(self, cli):
+        """测试 delete 命令 --format json"""
+        add_result = cli.add("to delete", title="DelFormat")
+        note_id = add_result.data["note"]["id"]
+
+        result = cli.run("delete", note_id, "--force", "--format", "json")
+
+        assert result.success
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+
+    def test_delete_format_table(self, cli):
+        """测试 delete 命令 --format table"""
+        add_result = cli.add("to delete table", title="DelTable")
+        note_id = add_result.data["note"]["id"]
+
+        result = cli.run("delete", note_id, "--force", "--format", "table")
+
+        assert result.success
+        assert not result.stdout.strip().startswith("{")
+
+    # ==========================================================================
+    # Edit 命令测试
+    # ==========================================================================
+    def test_edit_format_json(self, cli):
+        """测试 edit 命令 --format json"""
+        add_result = cli.add("original", title="EditFormat")
+        note_id = add_result.data["note"]["id"]
+
+        result = cli.run("edit", note_id, "--content", "updated", "--format", "json")
+
+        assert result.success
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+
+    def test_edit_format_table(self, cli):
+        """测试 edit 命令 --format table"""
+        add_result = cli.add("original", title="EditTable")
+        note_id = add_result.data["note"]["id"]
+
+        result = cli.run("edit", note_id, "--title", "NewTitle", "--format", "table")
+
+        assert result.success
+        assert not result.stdout.strip().startswith("{")
+        assert "NewTitle" in result.stdout
+
+    # ==========================================================================
+    # Init 命令测试
+    # ==========================================================================
+    def test_init_format_json(self, cli):
+        """测试 init 命令 --format json（已存在的 KB）"""
+        result = cli.run("init", "--format", "json")
+
+        # KB 已存在应失败，但输出应包含 JSON
+        assert result.stdout is not None
+        data = json.loads(result.stdout)
+        assert data["success"] is False
+
+    def test_init_format_table(self, cli):
+        """测试 init 命令 --format table（已存在的 KB）"""
+        result = cli.run("init", "--format", "table")
+
+        assert result.stdout is not None
+        assert not result.stdout.strip().startswith("{")
+
+    # ==========================================================================
+    # 变更类命令综合测试
+    # ==========================================================================
+    def test_all_mutation_commands_support_format(self, cli):
+        """测试所有变更类命令都支持 --format json"""
+        # add
+        result = cli.run("add", "format test", "--title", "FmtTest", "--format", "json")
+        assert result.success
+        data = json.loads(result.stdout)
+        note_id = data["note"]["id"]
+
+        # edit
+        result = cli.run("edit", note_id, "--content", "edited", "--format", "json")
+        assert result.success
+        json.loads(result.stdout)
+
+        # delete
+        result = cli.run("delete", note_id, "--force", "--format", "json")
+        assert result.success
+        json.loads(result.stdout)

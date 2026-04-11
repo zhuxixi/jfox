@@ -152,7 +152,7 @@ class TestEditImpl:
             tags=None,
             note_type=None,
             source=None,
-            json_output=True,
+            output_format="json",
         )
 
         loaded = load_note_by_id(n.id, cfg=cfg)
@@ -181,7 +181,7 @@ class TestEditImpl:
             tags=None,
             note_type=None,
             source=None,
-            json_output=True,
+            output_format="json",
         )
 
         loaded = load_note_by_id(n.id, cfg=cfg)
@@ -208,7 +208,7 @@ class TestEditImpl:
             tags=["x", "y"],
             note_type="permanent",
             source="book",
-            json_output=True,
+            output_format="json",
         )
 
         loaded = load_note_by_id(n.id, cfg=cfg)
@@ -237,7 +237,7 @@ class TestEditImpl:
                 tags=None,
                 note_type=None,
                 source=None,
-                json_output=True,
+                output_format="json",
             )
 
     @patch("jfox.note.config")
@@ -261,7 +261,7 @@ class TestEditImpl:
                 tags=None,
                 note_type=None,
                 source=None,
-                json_output=True,
+                output_format="json",
             )
 
     @patch("jfox.note.config")
@@ -290,7 +290,7 @@ class TestEditImpl:
             tags=None,
             note_type=None,
             source=None,
-            json_output=True,
+            output_format="json",
         )
 
         loaded = load_note_by_id(source.id, cfg=cfg)
@@ -337,7 +337,7 @@ class TestEditImpl:
             tags=None,
             note_type=None,
             source=None,
-            json_output=True,
+            output_format="json",
         )
 
         loaded = load_note_by_id(source.id, cfg=cfg)
@@ -375,7 +375,7 @@ class TestEditImpl:
             tags=None,
             note_type="permanent",
             source=None,
-            json_output=True,
+            output_format="json",
         )
 
         # 旧文件应该不存在
