@@ -182,6 +182,8 @@ def init(
                 console.print(f"[red]✗[/red] {message}")
             raise typer.Exit(1)
         
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {
             "success": False,
@@ -382,6 +384,8 @@ def add(
         else:
             _add_note_impl(content, title, note_type, tags, source, output_format, template)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {
             "success": False,
@@ -853,8 +857,7 @@ def _delete_impl(
     # 先查找笔记
     n = note.load_note_by_id(note_id)
     if not n:
-        console.print(f"[red]Note not found: {note_id}[/red]")
-        raise typer.Exit(1)
+        raise ValueError(f"Note not found: {note_id}")
 
     # 确认删除
     if not force:
@@ -909,6 +912,8 @@ def delete(
         else:
             _delete_impl(note_id, force, output_format)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {
             "success": False,
@@ -1071,6 +1076,8 @@ def edit(
                 _edit_impl(note_id, content, title, tags, note_type, source, output_format)
         else:
             _edit_impl(note_id, content, title, tags, note_type, source, output_format)
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {
             "success": False,

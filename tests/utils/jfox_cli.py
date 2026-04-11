@@ -5,7 +5,9 @@ CLI 命令封装
 """
 
 import json
+import os
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,7 +80,7 @@ class ZKCLI:
             CLIResult
         """
         # 构建命令
-        command = ["python", "-m", "jfox", cmd]
+        command = [sys.executable, "-m", "jfox", cmd]
         
         # 添加其他参数
         command.extend(args)
@@ -101,11 +103,14 @@ class ZKCLI:
             command.append("--json")
         
         # 运行命令
+        env = {**os.environ, "PYTHONUTF8": "1"}
         result = subprocess.run(
             command,
             capture_output=capture_output,
             text=True,
-            cwd=str(Path(__file__).parent.parent.parent)
+            encoding="utf-8",
+            cwd=str(Path(__file__).parent.parent.parent),
+            env=env,
         )
         
         # 解析输出

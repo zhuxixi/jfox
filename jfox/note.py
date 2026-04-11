@@ -116,15 +116,22 @@ def load_note_by_id(note_id: str, cfg: Optional[ZKConfig] = None) -> Optional[No
         Note 对象或 None
     """
     use_config = cfg or config
-    
+
     # 在所有类型目录中搜索
     for note_type in NoteType:
         dir_path = use_config.notes_dir / note_type.value
         if not dir_path.exists():
             continue
-        
+
+        # 尝试两种文件名模式：
+        # 1. {id}*.md — literature/permanent 笔记（{id}-{slug}.md）
+        # 2. {id[:8]}-{id[8:]}*.md — fleeting 笔记（YYYYMMDD-HHMMSSNNNN.md）
         for filepath in dir_path.glob(f"{note_id}*.md"):
             return load_note(filepath)
+        # fleeting 笔记文件名格式：YYYYMMDD-HHMMSSNNNN.md
+        if len(note_id) > 8:
+            for filepath in dir_path.glob(f"{note_id[:8]}-{note_id[8:]}*.md"):
+                return load_note(filepath)
     
     return None
 
@@ -491,10 +498,16 @@ def find_note_file(config_obj, note_id: str) -> Optional[Path]:
         dir_path = config_obj.notes_dir / note_type.value
         if not dir_path.exists():
             continue
-        
+
+        # 尝试两种文件名模式：
+        # 1. {id}*.md — literature/permanent 笔记（{id}-{slug}.md）
+        # 2. {id[:8]}-{id[8:]}*.md — fleeting 笔记（YYYYMMDD-HHMMSSNNNN.md）
         for filepath in dir_path.glob(f"{note_id}*.md"):
             return filepath
-    
+        if len(note_id) > 8:
+            for filepath in dir_path.glob(f"{note_id[:8]}-{note_id[8:]}*.md"):
+                return filepath
+
     return None
 
 
