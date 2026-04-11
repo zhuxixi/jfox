@@ -90,7 +90,8 @@ def init(
     path: Optional[str] = typer.Option(None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten/<name>/）"),
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
     set_default: bool = typer.Option(True, "--default/--no-default", help="设为默认知识库"),
-    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"),
 ):
     """
     初始化知识库
@@ -103,6 +104,10 @@ def init(
         jfox init --name personal --desc "个人笔记"
     """
     try:
+        # 向后兼容：--json 快捷方式
+        if json_output:
+            output_format = "json"
+
         kb_name = name or "default"
         manager = get_kb_manager()
         
@@ -112,7 +117,7 @@ def init(
                 "success": False,
                 "error": f"Knowledge base '{kb_name}' already exists. Use 'jfox kb list' to see all knowledge bases.",
             }
-            if json_output:
+            if output_format == "json":
                 print(output_json(result))
             else:
                 console.print(f"[red]✗[/red] Knowledge base '{kb_name}' already exists")
@@ -137,7 +142,7 @@ def init(
                         f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
                     ),
                 }
-                if json_output:
+                if output_format == "json":
                     print(output_json(result))
                 else:
                     console.print(f"[red]✗[/red] {result['error']}")
@@ -157,19 +162,21 @@ def init(
                 "message": message,
                 "name": kb_name,
             }
-            
-            if json_output:
+
+            if output_format == "json":
                 print(output_json(result))
             else:
-                console.print(f"[green]✓[/green] {message}")
+                _print_action_table("init", {
+                    "KB": kb_name,
+                })
                 if set_default:
-                    console.print(f"[dim]This is now your default knowledge base[/dim]")
+                    console.print(f"[dim]  This is now your default knowledge base[/dim]")
         else:
             result = {
                 "success": False,
                 "error": message,
             }
-            if json_output:
+            if output_format == "json":
                 print(output_json(result))
             else:
                 console.print(f"[red]✗[/red] {message}")
@@ -180,7 +187,7 @@ def init(
             "success": False,
             "error": str(e),
         }
-        if json_output:
+        if output_format == "json":
             print(output_json(result))
         else:
             console.print(f"[red]✗[/red] Error: {e}")

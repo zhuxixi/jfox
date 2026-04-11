@@ -269,3 +269,33 @@ class TestEditFormat:
             assert param.default.default == "table"
         else:
             assert param.default == "table"
+
+
+class TestInitFormat:
+    """测试 init 命令的 --format 支持"""
+
+    def test_init_cli_signature_has_format(self):
+        """init CLI 函数应接受 --format 参数"""
+        import inspect
+        from jfox.cli import init
+
+        sig = inspect.signature(init)
+        assert "output_format" in sig.parameters
+        param = sig.parameters["output_format"]
+        if hasattr(param.default, "default"):
+            assert param.default.default == "table"
+        else:
+            assert param.default == "table"
+
+    def test_init_cli_signature_json_backward_compat(self):
+        """init CLI 函数应保留 --json 向后兼容"""
+        import inspect
+        from jfox.cli import init
+
+        sig = inspect.signature(init)
+        assert "json_output" in sig.parameters
+        param = sig.parameters["json_output"]
+        if hasattr(param.default, "default"):
+            assert param.default.default is False
+        else:
+            assert param.default is False
