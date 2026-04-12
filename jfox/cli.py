@@ -1671,8 +1671,8 @@ def _index_impl(action: str, output_format: str):
             console.print(table)
 
     else:
-        from .vector_store import get_vector_store
         from .indexer import Indexer
+        from .vector_store import get_vector_store
 
         vector_store = get_vector_store()
         indexer = Indexer(config, vector_store)

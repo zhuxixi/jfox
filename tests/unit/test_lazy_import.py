@@ -73,9 +73,9 @@ class TestLazyImport:
 
     def test_hf_offline_env_set(self):
         """验证 HF 离线环境变量在导入 cli 后已设置"""
-        import jfox.cli  # noqa: F401
-
         import os
+
+        import jfox.cli  # noqa: F401
 
         # setdefault 会在用户未设置时生效
         assert os.environ.get("HF_HUB_OFFLINE") == "1", (
