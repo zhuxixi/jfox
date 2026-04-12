@@ -8,6 +8,7 @@ Provides:
 - Index status and statistics
 """
 
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -24,6 +25,31 @@ from .config import ZKConfig
 from .vector_store import VectorStore
 
 console = Console()
+
+
+def _extract_note_id_from_filename(filename_stem: str) -> Optional[str]:
+    """
+    从文件名 stem 提取笔记 ID（18位纯数字时间戳）。
+
+    支持的文件名格式：
+    - Fleeting:     YYYYMMDD-HHMMSSNNNN  → 去掉连字符
+    - 其他类型:     YYYYMMDDHHMMSSNNNN-slug → 取前18位
+    - 纯 ID（无 slug）: YYYYMMDDHHMMSSNNNN → 直接返回
+
+    Args:
+        filename_stem: 文件名去掉 .md 扩展名的部分
+
+    Returns:
+        18 位纯数字 ID，或 None（不匹配任何已知格式时）
+    """
+    # Fleeting: YYYYMMDD-HHMMSSNNNN（8位日期-10位时间+随机数）
+    if re.match(r"^\d{8}-\d{10}$", filename_stem):
+        return filename_stem.replace("-", "")
+    # Literature/Permanent: 18位ID 后跟可选的 -slug
+    match = re.match(r"^(\d{18})(?:-.*)?$", filename_stem)
+    if match:
+        return match.group(1)
+    return None
 
 
 @dataclass
