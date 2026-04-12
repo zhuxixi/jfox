@@ -180,18 +180,14 @@ def test_verify_index_matches_filenames_to_ids(isolated_config):
     note1 = note_module.create_note(
         content="Fleeting test", title="Fleeting Test", note_type=NoteType.FLEETING
     )
-    note1.set_filepath(
-        isolated_config.notes_dir / "fleeting" / f"{note1.id[:8]}-{note1.id[8:]}.md"
-    )
+    note1.set_filepath(isolated_config.notes_dir / "fleeting" / f"{note1.id[:8]}-{note1.id[8:]}.md")
     note_module.save_note(note1, add_to_index=False)
 
     # 创建一个 permanent 笔记（文件名含 slug）
     note2 = note_module.create_note(
         content="Permanent test", title="Test Slug", note_type=NoteType.PERMANENT
     )
-    note2.set_filepath(
-        isolated_config.notes_dir / "permanent" / f"{note2.id}-test-slug.md"
-    )
+    note2.set_filepath(isolated_config.notes_dir / "permanent" / f"{note2.id}-test-slug.md")
     note_module.save_note(note2, add_to_index=False)
 
     # 索引所有笔记
