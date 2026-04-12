@@ -2,9 +2,22 @@
 
 import sys
 
+import pytest
+
 
 class TestLazyImport:
     """验证 CLI 模块的延迟导入行为"""
+
+    @pytest.fixture(autouse=True)
+    def _preserve_sys_modules(self):
+        """保存并恢复 sys.modules，避免测试间的模块状态污染"""
+        original = sys.modules.copy()
+        yield
+        # 恢复：删除新增的模块，恢复被删除的模块
+        current = set(sys.modules.keys())
+        for mod in current - set(original.keys()):
+            del sys.modules[mod]
+        sys.modules.update(original)
 
     def test_note_module_no_chromadb_at_import(self):
         """导入 note 模块不应触发 chromadb 导入"""
