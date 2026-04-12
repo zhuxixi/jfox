@@ -962,6 +962,7 @@ def delete(
 def _edit_impl(
     note_id: str,
     content: Optional[str],
+    content_file: Optional[str],
     title: Optional[str],
     tags: Optional[List[str]],
     note_type: Optional[str],
@@ -969,9 +970,30 @@ def _edit_impl(
     output_format: str,
 ):
     """编辑笔记的内部实现"""
+    # 验证：--content 和 --content-file 互斥
+    if content is not None and content_file is not None:
+        raise ValueError("--content 和 --content-file 不能同时指定")
+
+    # 从文件读取内容
+    if content_file is not None:
+        p = Path(content_file)
+        if not p.exists():
+            raise ValueError(f"文件不存在: {content_file}")
+        if not p.is_file():
+            raise ValueError(f"路径不是文件: {content_file}")
+        try:
+            content = p.read_text(encoding="utf-8")
+        except PermissionError:
+            raise ValueError(f"无权限读取文件: {content_file}")
+        except UnicodeDecodeError:
+            raise ValueError(f"文件编码错误（需要 UTF-8）: {content_file}")
+
     # 验证：至少指定一个编辑字段
     if all(v is None for v in [content, title, tags, note_type, source]):
-        raise ValueError("至少指定一个要编辑的字段 (--content, --title, --tags, --type, --source)")
+        raise ValueError(
+            "至少指定一个要编辑的字段 "
+            "(--content, --content-file, --title, --tags, --type, --source)"
+        )
 
     # 加载笔记
     n = note.load_note_by_id(note_id)
@@ -1089,6 +1111,9 @@ def _edit_impl(
 def edit(
     note_id: str = typer.Argument(..., help="笔记 ID"),
     content: Optional[str] = typer.Option(None, "--content", "-c", help="新内容"),
+    content_file: Optional[str] = typer.Option(
+        None, "--content-file", help="从文件读取内容（支持长文本和特殊字符）"
+    ),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="新标题"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="新标签（替换全部）"),
     note_type: Optional[str] = typer.Option(
@@ -1111,9 +1136,13 @@ def edit(
             from .config import use_kb
 
             with use_kb(kb):
-                _edit_impl(note_id, content, title, tags, note_type, source, output_format)
+                _edit_impl(
+                    note_id, content, content_file, title, tags, note_type, source, output_format
+                )
         else:
-            _edit_impl(note_id, content, title, tags, note_type, source, output_format)
+            _edit_impl(
+                note_id, content, content_file, title, tags, note_type, source, output_format
+            )
     except typer.Exit:
         raise
     except Exception as e:

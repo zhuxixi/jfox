@@ -227,6 +227,7 @@ class TestEditFormat:
         _edit_impl(
             note_id=n.id,
             content="updated",
+            content_file=None,
             title=None,
             tags=None,
             note_type=None,
@@ -259,6 +260,7 @@ class TestEditFormat:
         _edit_impl(
             note_id=n.id,
             content="new content",
+            content_file=None,
             title="NewTitle",
             tags=None,
             note_type=None,
