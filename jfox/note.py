@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 from .config import ZKConfig, config
 from .models import Note, NoteType
-from .vector_store import get_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +71,8 @@ def save_note(note: Note, add_to_index: bool = True) -> bool:
 
         # 添加到向量索引
         if add_to_index:
+            from .vector_store import get_vector_store
+
             vector_store = get_vector_store()
             vector_store.add_note(note)
 
@@ -190,6 +191,8 @@ def delete_note(note_id: str) -> bool:
         logger.info(f"Deleted note file: {note.filepath}")
 
         # 从向量索引删除
+        from .vector_store import get_vector_store
+
         vector_store = get_vector_store()
         vector_store.delete_note(note_id)
 
@@ -248,6 +251,8 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
         if add_to_index:
             # 先删除旧索引，再添加新索引
             try:
+                from .vector_store import get_vector_store
+
                 vector_store = get_vector_store()
                 vector_store.delete_note(note_obj.id)
                 vector_store.add_note(note_obj)
@@ -299,6 +304,8 @@ def get_stats(cfg: Optional[ZKConfig] = None) -> Dict[str, Any]:
 
     # 向量存储统计
     try:
+        from .vector_store import get_vector_store
+
         vector_store = get_vector_store()
         stats["vector_store"] = vector_store.get_stats()
     except Exception as e:
