@@ -1724,9 +1724,7 @@ def _index_impl(action: str, output_format: str):
                 if bm25_success:
                     console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
                 else:
-                    console.print(
-                        "[yellow]⚠[/yellow] ChromaDB rebuilt, but BM25 rebuild failed"
-                    )
+                    console.print("[yellow]⚠[/yellow] ChromaDB rebuilt, but BM25 rebuild failed")
 
         elif action == "verify":
             verification = indexer.verify_index()
