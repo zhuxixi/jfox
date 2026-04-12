@@ -5,6 +5,8 @@
 依赖要求: 无外部依赖
 """
 
+import time
+
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
@@ -41,7 +43,8 @@ class TestUpdateNote:
         original_id = n.id
         original_created = n.created
 
-        # 更新内容
+        # 确保更新时间与创建时间不同（避免微秒级竞争）
+        time.sleep(0.001)
         n.content = "updated content"
         updated = update_note(n, add_to_index=False)
 
