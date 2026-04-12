@@ -143,6 +143,7 @@ class TestEditImpl:
         _edit_impl(
             note_id=n.id,
             content="updated content",
+            content_file=None,
             title=None,
             tags=None,
             note_type=None,
@@ -172,6 +173,7 @@ class TestEditImpl:
         _edit_impl(
             note_id=n.id,
             content=None,
+            content_file=None,
             title="NewTitle",
             tags=None,
             note_type=None,
@@ -199,6 +201,7 @@ class TestEditImpl:
         _edit_impl(
             note_id=n.id,
             content="new content",
+            content_file=None,
             title="New Title",
             tags=["x", "y"],
             note_type="permanent",
@@ -228,6 +231,7 @@ class TestEditImpl:
             _edit_impl(
                 note_id="9999999999999999",
                 content="x",
+                content_file=None,
                 title=None,
                 tags=None,
                 note_type=None,
@@ -252,6 +256,7 @@ class TestEditImpl:
             _edit_impl(
                 note_id=n.id,
                 content=None,
+                content_file=None,
                 title=None,
                 tags=None,
                 note_type=None,
@@ -281,6 +286,7 @@ class TestEditImpl:
         _edit_impl(
             note_id=source.id,
             content="see [[TargetNote]] for details",
+            content_file=None,
             title=None,
             tags=None,
             note_type=None,
@@ -330,6 +336,7 @@ class TestEditImpl:
         _edit_impl(
             note_id=source.id,
             content="no more links here",
+            content_file=None,
             title=None,
             tags=None,
             note_type=None,
@@ -368,6 +375,7 @@ class TestEditImpl:
         _edit_impl(
             note_id=n.id,
             content=None,
+            content_file=None,
             title=None,
             tags=None,
             note_type="permanent",
@@ -384,3 +392,160 @@ class TestEditImpl:
         assert loaded.type == NoteType.PERMANENT
         assert "permanent" in str(loaded.filepath)
         assert loaded.filepath.exists()
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_content_file_reads_content(self, mock_global_config, mock_note_config, tmp_path):
+        """通过 --content-file 编辑笔记内容"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        # 创建笔记
+        n = create_note("original", title="FileEdit", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        # 写入临时文件
+        content_file = tmp_path / "content.txt"
+        content_file.write_text("content from file", encoding="utf-8")
+
+        _edit_impl(
+            note_id=n.id,
+            content=None,
+            content_file=str(content_file),
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.content == "content from file"
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_content_file_not_exists_raises(
+        self, mock_global_config, mock_note_config, tmp_path
+    ):
+        """--content-file 指向不存在的文件时报错"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("content", title="NoFile", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        with pytest.raises(ValueError, match="文件不存在"):
+            _edit_impl(
+                note_id=n.id,
+                content=None,
+                content_file=str(tmp_path / "nonexistent.txt"),
+                title=None,
+                tags=None,
+                note_type=None,
+                source=None,
+                output_format="json",
+            )
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_content_and_content_file_exclusive(
+        self, mock_global_config, mock_note_config, tmp_path
+    ):
+        """--content 和 --content-file 不能同时指定"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("content", title="Exclusive", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        content_file = tmp_path / "content.txt"
+        content_file.write_text("from file", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="不能同时指定"):
+            _edit_impl(
+                note_id=n.id,
+                content="from arg",
+                content_file=str(content_file),
+                title=None,
+                tags=None,
+                note_type=None,
+                source=None,
+                output_format="json",
+            )
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_content_file_with_special_chars(
+        self, mock_global_config, mock_note_config, tmp_path
+    ):
+        """--content-file 正确处理反引号、换行、特殊字符"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("original", title="SpecialChars", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        special_content = (
+            "包含 `jfox rebuild` 命令\n" '还有 $variable 和 "引号"\n' "以及 [[WikiLink]]"
+        )
+        content_file = tmp_path / "special.txt"
+        content_file.write_text(special_content, encoding="utf-8")
+
+        _edit_impl(
+            note_id=n.id,
+            content=None,
+            content_file=str(content_file),
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.content == special_content
+
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_content_file_empty(self, mock_global_config, mock_note_config, tmp_path):
+        """--content-file 空文件将内容清空"""
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+
+        n = create_note("has content", title="EmptyFile", note_type=NoteType.PERMANENT)
+        save_note(n, add_to_index=False)
+
+        content_file = tmp_path / "empty.txt"
+        content_file.write_text("", encoding="utf-8")
+
+        _edit_impl(
+            note_id=n.id,
+            content=None,
+            content_file=str(content_file),
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        loaded = load_note_by_id(n.id, cfg=cfg)
+        assert loaded is not None
+        assert loaded.content == ""

@@ -237,6 +237,7 @@ class ZKCLI:
         self,
         note_id: str,
         content: Optional[str] = None,
+        content_file: Optional[str] = None,
         title: Optional[str] = None,
         tags: Optional[List[str]] = None,
         note_type: Optional[str] = None,
@@ -248,6 +249,7 @@ class ZKCLI:
         Args:
             note_id: 笔记 ID
             content: 新内容
+            content_file: 从文件读取内容
             title: 新标题
             tags: 新标签列表（替换全部）
             note_type: 新类型 (fleeting/literature/permanent)
@@ -256,6 +258,8 @@ class ZKCLI:
         args = [note_id]
         if content:
             args.extend(["--content", content])
+        if content_file:
+            args.extend(["--content-file", content_file])
         if title:
             args.extend(["--title", title])
         if tags:
