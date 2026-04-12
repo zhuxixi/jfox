@@ -2,8 +2,11 @@
 
 import textwrap
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from jfox.git_extractor import parse_git_log_output
+import pytest
+
+from jfox.git_extractor import commits_to_notes, extract_commits, parse_git_log_output
 
 
 class TestParseGitLogOutput:
@@ -102,3 +105,116 @@ class TestParseGitLogOutput:
         """)
         result = parse_git_log_output(raw)
         assert result[0]["body"] == "line 1\nline 2\nline 3"
+
+
+class TestExtractCommits:
+    """测试 git 仓库 commit 提取"""
+
+    @patch("jfox.git_extractor.subprocess.run")
+    def test_basic_extraction(self, mock_run):
+        """基本提取流程"""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="---COMMIT_START---\nHash: abc123\nSubject: feat: test\nAuthor: Alice\nDate: 2026-04-10\n\nbody\n",
+        )
+        result = extract_commits("/fake/repo", limit=10)
+        assert len(result) == 1
+        assert result[0]["hash"] == "abc123"
+        assert result[0]["subject"] == "feat: test"
+
+        call_args = mock_run.call_args
+        assert call_args[1]["encoding"] == "utf-8"
+        assert call_args[1]["errors"] == "replace"
+
+    @patch("jfox.git_extractor.subprocess.run")
+    def test_path_normalization(self, mock_run):
+        """路径规范化（resolve 处理）"""
+        mock_run.return_value = MagicMock(returncode=0, stdout="")
+        extract_commits("/c/Users/test/repo")
+        called_cmd = mock_run.call_args[0][0]
+        assert "-C" in called_cmd
+
+    @patch("jfox.git_extractor.subprocess.run")
+    def test_git_not_repo_error(self, mock_run):
+        """非 git 仓库应抛出 ValueError"""
+        mock_run.return_value = MagicMock(
+            returncode=128,
+            stderr="fatal: not a git repository",
+        )
+        with pytest.raises(ValueError, match="not a git repository"):
+            extract_commits("/not/a/repo")
+
+    @patch("jfox.git_extractor.subprocess.run")
+    def test_default_limit_50(self, mock_run):
+        """默认 limit 为 50"""
+        mock_run.return_value = MagicMock(returncode=0, stdout="")
+        extract_commits("/fake/repo")
+        called_cmd = mock_run.call_args[0][0]
+        assert "-50" in called_cmd
+
+
+class TestCommitsToNotes:
+    """测试 commit → note 转换"""
+
+    def test_basic_conversion(self):
+        """基本转换"""
+        commits = [
+            {
+                "hash": "abc123def456",
+                "subject": "feat: add login",
+                "author": "张三",
+                "date": "2026-04-10",
+                "body": "实现了 JWT 认证",
+            }
+        ]
+        result = commits_to_notes(commits, repo_name="my-app")
+        assert len(result) == 1
+        assert result[0]["title"] == "feat: add login"
+        assert "abc123d" in result[0]["content"]
+        assert "张三" in result[0]["content"]
+        assert "2026-04-10" in result[0]["content"]
+        assert "JWT" in result[0]["content"]
+        assert "source:my-app" in result[0]["tags"]
+        assert "source:git-log" in result[0]["tags"]
+
+    def test_empty_commits(self):
+        """空列表返回空列表"""
+        result = commits_to_notes([], repo_name="test")
+        assert result == []
+
+    def test_long_hash_truncated(self):
+        """hash 截断为短 hash"""
+        commits = [
+            {
+                "hash": "a" * 40,
+                "subject": "test",
+                "author": "A",
+                "date": "2026-01-01",
+                "body": "",
+            }
+        ]
+        result = commits_to_notes(commits, repo_name="test")
+        assert "a" * 7 in result[0]["content"]
+
+    def test_body_with_co_authored_by_stripped(self):
+        """body 末尾的 Co-authored-by 行被清理"""
+        commits = [
+            {
+                "hash": "abc1234",
+                "subject": "feat: something",
+                "author": "Alice",
+                "date": "2026-04-10",
+                "body": "real content\n\nCo-authored-by: Bob <bob@example.com>\nCo-authored-by: Claude <noreply@anthropic.com>",
+            }
+        ]
+        result = commits_to_notes(commits, repo_name="test")
+        assert "real content" in result[0]["content"]
+        assert "Co-authored-by" not in result[0]["content"]
+
+    def test_repo_name_from_path(self):
+        """repo_name=None 时从路径提取目录名"""
+        commits = [
+            {"hash": "abc1234", "subject": "test", "author": "A", "date": "2026-01-01", "body": ""}
+        ]
+        result = commits_to_notes(commits, repo_path="/home/user/my-project")
+        assert "source:my-project" in result[0]["tags"]
