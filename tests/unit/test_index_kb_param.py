@@ -1,4 +1,4 @@
-"""Tests for jfox index --kb parameter support (issue #104)"""
+"""jfox index --kb 参数支持测试（issue #104）"""
 
 import json
 
