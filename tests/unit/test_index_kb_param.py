@@ -1,6 +1,7 @@
 """jfox index --kb 参数支持测试（issue #104）"""
 
 import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -90,3 +91,43 @@ class TestIndexKbParamSuccess:
         self._reset_global_config_cache()
         result = runner.invoke(app, ["index", "status", "--json"])
         assert result.exit_code == 0
+
+
+class TestIndexRebuildIncludesBM25:
+    """验证 index rebuild 同时重建 BM25 索引"""
+
+    @patch("jfox.note.list_notes")
+    @patch("jfox.bm25_index.get_bm25_index")
+    @patch("jfox.indexer.Indexer")
+    @patch("jfox.vector_store.get_vector_store")
+    def test_rebuild_calls_bm25_rebuild(
+        self, mock_get_vs, mock_indexer_cls, mock_get_bm25, mock_list_notes, tmp_path
+    ):
+        """index rebuild 应在 ChromaDB 重建后调用 BM25 rebuild_from_notes"""
+        from jfox.cli import _index_impl
+
+        # mock vector store
+        mock_vs = MagicMock()
+        mock_get_vs.return_value = mock_vs
+
+        # mock indexer
+        mock_indexer = MagicMock()
+        mock_indexer.index_all.return_value = 10
+        mock_indexer_cls.return_value = mock_indexer
+
+        # mock note.list_notes
+        mock_notes = [MagicMock() for _ in range(3)]
+        mock_list_notes.return_value = mock_notes
+
+        # mock BM25
+        mock_bm25 = MagicMock()
+        mock_bm25.rebuild_from_notes.return_value = True
+        mock_get_bm25.return_value = mock_bm25
+
+        _index_impl("rebuild", "text")
+
+        # 验证 ChromaDB 重建被调用
+        mock_indexer.index_all.assert_called_once()
+        # 验证 BM25 重建也被调用
+        mock_get_bm25.assert_called_once()
+        mock_bm25.rebuild_from_notes.assert_called_once_with(mock_notes)
