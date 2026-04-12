@@ -28,15 +28,10 @@ from rich.tree import Tree
 
 from . import __version__, note
 from .config import config
-from .embedding_backend import get_backend
-from .graph import KnowledgeGraph
-from .indexer import Indexer
 from .kb_manager import get_kb_manager
 from .models import NoteType
-from .performance import ModelCache, bulk_import_notes, get_perf_monitor
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
 from .template_cli import template_app
-from .vector_store import get_vector_store
 
 # 配置日志
 logging.basicConfig(
@@ -553,6 +548,8 @@ def _status_impl(output_format: str, json_output: bool):
     stats = note.get_stats()
 
     # 获取 NPU 状态
+    from .embedding_backend import get_backend
+
     backend = get_backend()
 
     result = {
@@ -1168,6 +1165,8 @@ def _query_impl(
     vector_results = note.search_notes(query_str, top_k=top)
 
     # 2. 构建知识图谱并查找相关笔记
+    from .graph import KnowledgeGraph
+
     graph = KnowledgeGraph(config).build()
 
     # 3. 为每个搜索结果查找图谱关联
@@ -1269,6 +1268,8 @@ def _graph_impl(
     json_output: bool,
 ):
     """知识图谱可视化和分析的内部实现"""
+    from .graph import KnowledgeGraph
+
     kg = KnowledgeGraph(config).build()
 
     if stats:
@@ -1663,6 +1664,9 @@ def _index_impl(action: str, output_format: str):
             console.print(table)
 
     else:
+        from .indexer import Indexer
+        from .vector_store import get_vector_store
+
         vector_store = get_vector_store()
         indexer = Indexer(config, vector_store)
 
@@ -2183,6 +2187,8 @@ def bulk_import(
 
         console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
 
+        from .performance import bulk_import_notes
+
         # 如果指定了知识库，临时切换
         if kb:
             from .config import use_kb
@@ -2231,6 +2237,8 @@ def perf(
     """
     try:
         if action == "report":
+            from .performance import get_perf_monitor
+
             monitor = get_perf_monitor()
             report = monitor.report()
 
@@ -2255,6 +2263,8 @@ def perf(
             console.print(table)
 
         elif action == "clear-cache":
+            from .performance import ModelCache
+
             ModelCache.clear()
             console.print("[green]✓[/green] Model cache cleared")
 
@@ -2271,6 +2281,13 @@ def perf(
 # 入口点
 def main():
     """CLI 入口点"""
+    import os
+
+    # 离线模式：跳过 HuggingFace 网络请求，节省 0.5-2s
+    # 仅在 CLI 入口设置，不影响测试环境
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
     app()
 
 

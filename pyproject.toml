@@ -50,7 +50,7 @@ dev = [
 ]
 
 [project.scripts]
-jfox = "jfox.cli:app"
+jfox = "jfox.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/zhuxixi/jfox"

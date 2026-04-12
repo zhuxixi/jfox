@@ -1,0 +1,90 @@
+"""测试延迟导入：轻量命令不应加载重依赖模块"""
+
+import sys
+
+import pytest
+
+
+class TestLazyImport:
+    """验证 CLI 模块的延迟导入行为"""
+
+    @pytest.fixture(autouse=True)
+    def _preserve_sys_modules(self):
+        """保存并恢复 sys.modules，避免测试间的模块状态污染"""
+        original = sys.modules.copy()
+        yield
+        # 恢复：删除新增的模块，恢复被删除的模块
+        current = set(sys.modules.keys())
+        for mod in current - set(original.keys()):
+            del sys.modules[mod]
+        sys.modules.update(original)
+
+    def test_note_module_no_chromadb_at_import(self):
+        """导入 note 模块不应触发 chromadb 导入"""
+        # 移除可能已缓存的模块
+        for mod in list(sys.modules.keys()):
+            if "chromadb" in mod:
+                del sys.modules[mod]
+
+        # 重新导入 note
+        if "jfox.note" in sys.modules:
+            del sys.modules["jfox.note"]
+        if "jfox.vector_store" in sys.modules:
+            del sys.modules["jfox.vector_store"]
+
+        import jfox.note  # noqa: F401
+
+        # chromadb 不应被导入
+        assert (
+            "chromadb" not in sys.modules
+        ), "chromadb should not be imported when importing jfox.note"
+
+    def test_cli_module_no_heavy_deps_at_import(self):
+        """导入 cli 模块不应触发 chromadb/networkx/watchdog 导入"""
+        # 移除可能已缓存的模块
+        for mod in list(sys.modules.keys()):
+            if any(
+                pkg in mod for pkg in ("chromadb", "networkx", "watchdog", "sentence_transformers")
+            ):
+                del sys.modules[mod]
+
+        # 重新导入相关模块
+        for mod in list(sys.modules.keys()):
+            if mod.startswith("jfox.") and mod not in (
+                "jfox",
+                "jfox.__init__",
+                "jfox.__main__",
+            ):
+                del sys.modules[mod]
+
+        import jfox.cli  # noqa: F401
+
+        # 重依赖不应被导入
+        assert (
+            "chromadb" not in sys.modules
+        ), "chromadb should not be imported at jfox.cli module level"
+        assert (
+            "networkx" not in sys.modules
+        ), "networkx should not be imported at jfox.cli module level"
+        assert (
+            "watchdog" not in sys.modules
+        ), "watchdog should not be imported at jfox.cli module level"
+
+    def test_hf_offline_env_set_by_main(self):
+        """验证 HF 离线环境变量在调用 main() 前设置"""
+        # main() 内部设置 HF 环境变量，验证函数定义存在且包含 setdefault 调用
+        import inspect
+        import os
+
+        from jfox.cli import main
+
+        source = inspect.getsource(main)
+        assert "HF_HUB_OFFLINE" in source, "main() should set HF_HUB_OFFLINE environment variable"
+        assert (
+            "TRANSFORMERS_OFFLINE" in source
+        ), "main() should set TRANSFORMERS_OFFLINE environment variable"
+
+        # 同时验证导入 cli 模块本身不会设置环境变量（不影响测试环境）
+        assert (
+            os.environ.get("HF_HUB_OFFLINE") is None
+        ), "HF_HUB_OFFLINE should NOT be set at module import time (only in main())"
