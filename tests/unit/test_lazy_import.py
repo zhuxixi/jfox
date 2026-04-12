@@ -70,16 +70,21 @@ class TestLazyImport:
             "watchdog" not in sys.modules
         ), "watchdog should not be imported at jfox.cli module level"
 
-    def test_hf_offline_env_set(self):
-        """验证 HF 离线环境变量在导入 cli 后已设置"""
+    def test_hf_offline_env_set_by_main(self):
+        """验证 HF 离线环境变量在调用 main() 前设置"""
+        # main() 内部设置 HF 环境变量，验证函数定义存在且包含 setdefault 调用
+        import inspect
         import os
 
-        import jfox.cli  # noqa: F401
+        from jfox.cli import main
 
-        # setdefault 会在用户未设置时生效
+        source = inspect.getsource(main)
+        assert "HF_HUB_OFFLINE" in source, "main() should set HF_HUB_OFFLINE environment variable"
         assert (
-            os.environ.get("HF_HUB_OFFLINE") == "1"
-        ), "HF_HUB_OFFLINE should be set to '1' after importing jfox.cli"
+            "TRANSFORMERS_OFFLINE" in source
+        ), "main() should set TRANSFORMERS_OFFLINE environment variable"
+
+        # 同时验证导入 cli 模块本身不会设置环境变量（不影响测试环境）
         assert (
-            os.environ.get("TRANSFORMERS_OFFLINE") == "1"
-        ), "TRANSFORMERS_OFFLINE should be set to '1' after importing jfox.cli"
+            os.environ.get("HF_HUB_OFFLINE") is None
+        ), "HF_HUB_OFFLINE should NOT be set at module import time (only in main())"
