@@ -15,24 +15,26 @@ This skill composes multiple jfox commands to produce a comprehensive health rep
 
 Run these 6 commands to gather all metrics:
 
+> 如果用户指定了目标知识库名称，在以下所有命令中追加 `--kb <name>` 参数。未指定时省略，使用当前默认知识库。
+
 ```bash
 # 1. Overall KB status
-jfox status --format json
+jfox status --format json [--kb <name>]
 
 # 2. Graph metrics (note: --stats and --orphans are mutually exclusive, run separately)
-jfox graph --stats --json
+jfox graph --stats --json [--kb <name>]
 
 # 3. Orphan list (separate from stats)
-jfox graph --orphans --json
+jfox graph --orphans --json [--kb <name>]
 
 # 4. Index integrity
-jfox index verify
+jfox index verify [--kb <name>]
 
 # 5. Note inventory (for type distribution and date analysis)
-jfox list --format json --limit 500
+jfox list --format json --limit 500 [--kb <name>]
 
 # 6. Unprocessed inbox count
-jfox inbox --json --limit 100
+jfox inbox --json --limit 100 [--kb <name>]
 ```
 
 ## Health Indicators
@@ -104,7 +106,7 @@ Map score to grade:
 Present the health report in this format:
 
 ```
-📊 知识库健康报告
+📊 知识库健康报告[KB: {kb_name}]
 
 总体评分: {grade} ({score}/100)
 
@@ -125,6 +127,8 @@ Present the health report in this format:
 3. {可选优化}
 ```
 
+When using the default KB, show `[KB: default]`.
+
 Use emoji indicators:
 - ✅ Healthy / passing
 - ⚠️ Warning / needs attention
@@ -132,14 +136,16 @@ Use emoji indicators:
 
 ## Command Reference
 
+All commands support `--kb <name>` to target a specific knowledge base. Omit to use the current default KB.
+
 ```bash
-jfox status --format json                # KB 总体状态
-jfox graph --stats --json                # 图谱指标（与 --orphans 互斥，分开运行）
-jfox graph --orphans --json              # 孤立笔记列表
-jfox index verify                        # 索引完整性
-jfox index rebuild                       # 重建索引
-jfox list --format json --limit <N>      # 笔记列表
-jfox inbox --json --limit <N>            # 未处理笔记
+jfox status --format json [--kb <name>]     # KB 总体状态
+jfox graph --stats --json [--kb <name>]     # 图谱指标（与 --orphans 互斥，分开运行）
+jfox graph --orphans --json [--kb <name>]   # 孤立笔记列表
+jfox index verify [--kb <name>]             # 索引完整性
+jfox index rebuild [--kb <name>]            # 重建索引
+jfox list --format json --limit <N> [--kb <name>]  # 笔记列表
+jfox inbox --json --limit <N> [--kb <name>]        # 未处理笔记
 ```
 
 ## When to Run
