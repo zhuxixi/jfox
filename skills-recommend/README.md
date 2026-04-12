@@ -7,11 +7,10 @@
 ```
 skills-recommend/
 └── claude-code/          # Claude Code 专用 SKILL.md 格式
-    ├── jfox-init/        # 知识库初始化
-    ├── jfox-search/      # 知识库搜索
-    ├── jfox-insert/      # 知识库插入笔记
-    ├── jfox-organize/    # 知识库整理
-    └── jfox-health/      # 知识库健康检查 / 腐化检测
+    ├── jfox-ingest/      # 数据导入（git log / GitHub PR / Issues）
+    ├── jfox-organize/    # 知识库整理与提炼（fleeting → permanent）
+    ├── jfox-search/      # 知识库搜索与图谱查询
+    └── jfox-common/      # 知识库管理 + 健康检查
 ```
 
 ## 使用方法
@@ -29,11 +28,10 @@ cp -r skills-recommend/claude-code/jfox-search ~/.claude/skills/
 ```
 
 复制后即可通过斜杠命令调用：
-- `/jfox-init` — 初始化知识库
-- `/jfox-search` — 搜索笔记
-- `/jfox-insert` — 添加笔记
-- `/jfox-organize` — 整理知识库
-- `/jfox-health` — 健康检查
+- `/jfox-common` — 创建/管理知识库、健康检查
+- `/jfox-ingest` — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
+- `/jfox-organize` — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
+- `/jfox-search` — 搜索笔记、图谱查询、链接推荐
 
 ### OpenCode / Codex / Kimi CLI 等
 

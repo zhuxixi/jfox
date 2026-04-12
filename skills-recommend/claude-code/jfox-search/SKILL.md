@@ -78,7 +78,7 @@ Default threshold is `0.6`. Lower to `0.3-0.5` for broader suggestions, raise to
 # Basic search
 jfox search "<query>" --mode <hybrid|keyword|semantic> --top <N> --format json
 
-# Filter by note type (fleeting|literature|permanent)
+# Filter by note type (fleeting|permanent)
 jfox search "<query>" --type permanent --format json
 
 # Graph query with traversal
