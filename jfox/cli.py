@@ -1702,15 +1702,29 @@ def _index_impl(action: str, output_format: str):
             console.print("[yellow]Rebuilding index...[/yellow]")
             count = indexer.index_all()
 
+            # 同时重建 BM25 索引
+            from . import note as note_module
+            from .bm25_index import get_bm25_index
+
+            bm25_index = get_bm25_index()
+            notes = note_module.list_notes(limit=10000)
+            bm25_success = bm25_index.rebuild_from_notes(notes)
+
             result = {
                 "success": True,
                 "indexed": count,
+                "bm25_rebuilt": bm25_success,
+                "bm25_indexed": len(notes),
             }
 
             if output_format == "json":
                 print(output_json(result))
             else:
                 console.print(f"[green]✓[/green] Indexed {count} notes")
+                if bm25_success:
+                    console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
+                else:
+                    console.print("[yellow]⚠[/yellow] ChromaDB rebuilt, but BM25 rebuild failed")
 
         elif action == "verify":
             verification = indexer.verify_index()
