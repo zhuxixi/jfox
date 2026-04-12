@@ -265,3 +265,59 @@ class TestBulkImportBM25Integration:
         # batch_size=3, 5 notes = 2 batches
         assert result["imported"] == 5
         assert mock_bm25.add_documents_batch.call_count == 2
+
+    @patch("jfox.bm25_index.get_bm25_index")
+    @patch("jfox.embedding_backend.get_backend")
+    @patch("jfox.note.create_note")
+    def test_bulk_import_with_uninitialized_vectorstore(
+        self, mock_create_note, mock_get_backend, mock_get_bm25, tmp_path
+    ):
+        """bulk_import_notes 应在 collection.add() 前自动初始化 VectorStore"""
+        import numpy as np
+
+        from jfox.models import Note, NoteType
+        from jfox.performance import bulk_import_notes
+
+        # 准备 mock note
+        mock_note = MagicMock(spec=Note)
+        mock_note.id = "20260413120000"
+        mock_note.title = "测试初始化"
+        mock_note.content = "内容"
+        mock_note.type = NoteType.PERMANENT
+        mock_note.tags = []
+        mock_note.filepath = tmp_path / "notes" / "permanent" / "test.md"
+        mock_note.to_markdown.return_value = "# 测试初始化\n内容"
+        mock_create_note.return_value = mock_note
+
+        # mock embedding backend
+        mock_backend = MagicMock()
+        mock_backend.model = MagicMock()
+        mock_backend.encode.return_value = np.array([[0.1] * 384])
+        mock_get_backend.return_value = mock_backend
+
+        # mock BM25
+        mock_bm25 = MagicMock()
+        mock_bm25.add_documents_batch.return_value = True
+        mock_get_bm25.return_value = mock_bm25
+
+        # 不 mock get_vector_store，让真实的 VectorStore 被创建
+        # 但 patch 掉 VectorStore.init 来验证它被调用了
+        with patch("jfox.vector_store.get_vector_store") as mock_get_vs:
+            mock_vs = MagicMock()
+            # 关键：collection 初始为 None，模拟真实场景
+            mock_vs.collection = None
+
+            # init() 会设置 collection
+            def fake_init():
+                mock_vs.collection = MagicMock()
+
+            mock_vs.init.side_effect = fake_init
+            mock_get_vs.return_value = mock_vs
+
+            notes_data = [{"title": "测试初始化", "content": "内容"}]
+            result = bulk_import_notes(notes_data, show_progress=False)
+
+            # 验证 init 被调用了
+            mock_vs.init.assert_called()
+            # 导入成功
+            assert result["imported"] == 1

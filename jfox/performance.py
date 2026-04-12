@@ -251,6 +251,10 @@ def bulk_import_notes(
                 documents = [f"{n.title}\n{n.content}" for n in notes]
                 embeddings = backend.encode(documents).tolist()
 
+                # 确保 VectorStore 已初始化
+                if vector_store.collection is None:
+                    vector_store.init()
+
                 # 批量添加到 ChromaDB
                 ids = [n.id for n in notes]
                 metadatas = [
