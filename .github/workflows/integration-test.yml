@@ -88,6 +88,7 @@ jobs:
       run: uv sync --extra dev
 
     - name: Run fast tests (no embedding)
+      shell: bash
       run: |
         # 运行非 embedding 测试（单进程避免知识库冲突）
         ARGS="-m 'not embedding and not slow' --timeout=180 -v --tb=short"
