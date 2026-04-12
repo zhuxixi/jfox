@@ -264,8 +264,41 @@ jobs:
 
     - name: Run coverage
       run: |
-        uv run pytest tests/ -m "not embedding and not slow" --cov=jfox --cov-report=xml --cov-report=html -v --timeout=300
+        uv run pytest tests/ -m "not embedding and not slow" --cov=jfox --cov-report=xml --cov-report=html --cov-report=term -v --timeout=300
       timeout-minutes: 25
+
+    - name: Post coverage comment on PR
+      if: github.event_name == 'pull_request'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        python -c "
+        import xml.etree.ElementTree as ET
+        import subprocess
+
+        tree = ET.parse('coverage.xml')
+        root = tree.getroot()
+        rate = float(root.attrib['line-rate'])
+        lines_covered = int(root.attrib['lines-covered'])
+        lines_valid = int(root.attrib['lines-valid'])
+
+        rows = []
+        for cls in root.iter('class'):
+            name = cls.attrib['filename']
+            r = float(cls.attrib['line-rate'])
+            rows.append((name, r))
+        rows.sort(key=lambda x: x[1])
+
+        comment = '## Test Coverage\n\n'
+        comment += '**Overall: {:.1f}%** ({}/{} lines)\n\n'.format(rate * 100, lines_covered, lines_valid)
+        comment += '| Module | Coverage | Status |\n|--------|----------|--------|\n'
+        for name, r in rows:
+            icon = ':green_circle:' if r >= 0.8 else ':yellow_circle:' if r >= 0.5 else ':red_circle:'
+            comment += '| {} | {:.1f}% | {} |\n'.format(name, r * 100, icon)
+
+        pr = '${{ github.event.pull_request.number }}'
+        subprocess.run(['gh', 'pr', 'comment', pr, '--body', comment])
+        "
 
     - name: Upload coverage report
       uses: actions/upload-artifact@v4
