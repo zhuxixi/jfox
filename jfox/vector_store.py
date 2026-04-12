@@ -183,6 +183,29 @@ class VectorStore:
             logger.error(f"Failed to get stats: {e}")
             return {"total_notes": 0, "error": str(e)}
 
+    def clear(self) -> bool:
+        """
+        清空向量存储中的所有数据
+
+        用于 index rebuild 时先清除旧数据，确保干净重建。
+
+        Returns:
+            是否成功清空
+        """
+        if self.collection is None:
+            self.init()
+
+        try:
+            result = self.collection.get(include=[])
+            ids = result.get("ids", [])
+            if ids:
+                self.collection.delete(ids=ids)
+            logger.info(f"Cleared vector store ({len(ids)} notes removed)")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear vector store: {e}")
+            return False
+
 
 # 全局向量存储实例
 _vector_store: Optional[VectorStore] = None
