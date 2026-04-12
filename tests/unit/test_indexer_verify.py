@@ -4,8 +4,6 @@
 Issue #103: index verify 误报 missing/orphaned（文件名 slug 与索引 ID 不匹配）
 """
 
-import pytest
-
 from jfox.indexer import _extract_note_id_from_filename
 
 
