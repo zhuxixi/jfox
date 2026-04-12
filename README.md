@@ -106,7 +106,7 @@ jfox init --name personal --path ~/my-notes --desc "个人笔记"
 jfox kb list
 
 # 切换默认知识库
-jfox kb switch work
+jfox kb use work
 
 # 查看知识库详情
 jfox kb info work
@@ -170,7 +170,7 @@ jfox query "卢曼的方法论"
 | `jfox init` | 初始化知识库 | `jfox init --name work --desc "工作笔记"` |
 | `jfox kb list` | 列出所有知识库 | `jfox kb list` |
 | `jfox kb create <name>` | 创建知识库 | `jfox kb create work --desc "工作笔记"` |
-| `jfox kb switch <name>` | 切换默认知识库 | `jfox kb switch work` |
+| `jfox kb use <name>` | 切换默认知识库 | `jfox kb use work` |
 | `jfox kb info [name]` | 查看知识库详情 | `jfox kb info work` |
 | `jfox kb rename <old> <new>` | 重命名知识库 | `jfox kb rename work job` |
 | `jfox kb remove <name>` | 删除知识库 | `jfox kb remove temp --force` |
@@ -284,7 +284,7 @@ $ jfox kb list
 
 ```bash
 # 切换到 work 知识库
-jfox kb switch work
+jfox kb use work
 
 # 之后的所有操作都在 work 知识库上进行
 jfox add "新项目想法" --title "项目A"

@@ -1764,7 +1764,7 @@ def index(
 @app.command()
 def kb(
     action: str = typer.Argument(
-        "list", help="操作: list, create, switch, remove, info, current, rename"
+        "list", help="操作: list, create, switch/use, remove, info, current, rename"
     ),
     name: Optional[str] = typer.Argument(None, help="知识库名称"),
     new_name: Optional[str] = typer.Argument(None, help="新名称（仅 rename 使用）"),
@@ -1786,7 +1786,7 @@ def kb(
         jfox kb list                    # 列出所有知识库
         jfox kb create work             # 创建名为 work 的知识库（~/.zettelkasten/work/）
         jfox kb create work --desc "工作笔记"
-        jfox kb switch work             # 切换到 work 知识库
+        jfox kb use work                # 切换到 work 知识库（或 jfox kb switch work）
         jfox kb current                 # 显示当前知识库
         jfox kb info work               # 查看 work 知识库详情
         jfox kb remove temp --force     # 强制删除 temp 知识库
@@ -1927,9 +1927,9 @@ def kb(
                     console.print(f"[red]✗[/red] {message}")
                     raise typer.Exit(1)
 
-        elif action == "switch":
+        elif action in ("switch", "use"):
             if not name:
-                console.print("[red]Error: name is required for switch[/red]")
+                console.print("[red]Error: name is required for switch/use[/red]")
                 raise typer.Exit(1)
 
             success, message = manager.switch(name)
@@ -2103,7 +2103,9 @@ def kb(
 
         else:
             console.print(f"[red]Unknown action: {action}[/red]")
-            console.print("Available actions: list, create, switch, remove, info, current, rename")
+            console.print(
+                "Available actions: list, create, switch/use, remove, info, current, rename"
+            )
             raise typer.Exit(1)
 
     except Exception as e:
