@@ -2156,6 +2156,99 @@ def kb(
 
 
 @app.command()
+def ingest_log(
+    repo_path: str = typer.Argument(..., help="本地 Git 仓库路径"),
+    limit: int = typer.Option(50, "--limit", "-n", help="提取 commit 数量"),
+    note_type: str = typer.Option("fleeting", "--type", "-t", help="笔记类型"),
+    batch_size: int = typer.Option(32, "--batch-size", "-b", help="批处理大小"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    json_output: bool = typer.Option(True, "--json/--no-json", help="JSON 输出"),
+):
+    """
+    从 Git 仓库提取 commit 历史并导入为笔记
+
+    使用 block 分隔符格式提取 git log，自动处理 UTF-8 编码和路径规范化。
+
+    示例:
+        jfox ingest-log ./my-project --limit 50
+        jfox ingest-log ./my-project --kb work --type permanent
+    """
+    try:
+        from .git_extractor import commits_to_notes, extract_commits
+
+        # 提取 commits
+        commits = extract_commits(repo_path, limit=limit)
+
+        if not commits:
+            result = {
+                "success": True,
+                "imported": 0,
+                "total": 0,
+                "message": "没有找到 commit 记录",
+            }
+            if json_output:
+                print(output_json(result))
+            else:
+                console.print("[yellow]![/yellow] 没有找到 commit 记录")
+            return
+
+        # 转换为笔记格式
+        notes_data = commits_to_notes(commits, repo_path=repo_path)
+
+        console.print(f"[yellow]提取了 {len(notes_data)} 条 commit，正在导入...[/yellow]")
+
+        # 批量导入
+        from .performance import bulk_import_notes
+
+        if kb:
+            from .config import use_kb
+
+            with use_kb(kb):
+                import_result = bulk_import_notes(
+                    notes_data=notes_data,
+                    note_type=note_type,
+                    batch_size=batch_size,
+                    show_progress=not json_output,
+                )
+        else:
+            import_result = bulk_import_notes(
+                notes_data=notes_data,
+                note_type=note_type,
+                batch_size=batch_size,
+                show_progress=not json_output,
+            )
+
+        result = {
+            "success": True,
+            "repo_path": str(Path(repo_path).resolve()),
+            "commits_extracted": len(commits),
+            **import_result,
+        }
+
+        if json_output:
+            print(output_json(result))
+        else:
+            console.print(f"[green]✓[/green] 导入: {import_result['imported']}")
+            console.print(f"[red]✗[/red] 失败: {import_result['failed']}")
+            console.print(f"总计: {import_result['total']}")
+
+    except ValueError as e:
+        result = {"success": False, "error": str(e)}
+        if json_output:
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if json_output:
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
 def bulk_import(
     file_path: str = typer.Argument(..., help="JSON 文件路径，包含笔记数据"),
     note_type: str = typer.Option("permanent", "--type", "-t", help="笔记类型"),

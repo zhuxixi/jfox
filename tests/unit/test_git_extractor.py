@@ -218,3 +218,53 @@ class TestCommitsToNotes:
         ]
         result = commits_to_notes(commits, repo_path="/home/user/my-project")
         assert "source:my-project" in result[0]["tags"]
+
+
+class TestIngestLogCommand:
+    """测试 ingest-log CLI 命令"""
+
+    @patch("jfox.performance.bulk_import_notes")
+    @patch("jfox.git_extractor.extract_commits")
+    def test_ingest_log_basic(self, mock_extract, mock_import, tmp_path):
+        """基本 ingest-log 流程"""
+        mock_extract.return_value = [
+            {
+                "hash": "abc123def456",
+                "subject": "feat: test feature",
+                "author": "Alice",
+                "date": "2026-04-10",
+                "body": "test body",
+            }
+        ]
+        mock_import.return_value = {"imported": 1, "failed": 0, "total": 1}
+
+        from typer.testing import CliRunner
+
+        from jfox.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["ingest-log", str(tmp_path)], catch_exceptions=False)
+
+        assert result.exit_code == 0
+        mock_extract.assert_called_once()
+        mock_import.assert_called_once()
+
+        # 验证传入 bulk_import 的 notes 格式
+        notes_data = mock_import.call_args[1]["notes_data"]
+        assert len(notes_data) == 1
+        assert notes_data[0]["title"] == "feat: test feature"
+        assert "abc123d" in notes_data[0]["content"]
+
+    @patch("jfox.git_extractor.extract_commits")
+    def test_ingest_log_empty_repo(self, mock_extract, tmp_path):
+        """空仓库不导入"""
+        mock_extract.return_value = []
+
+        from typer.testing import CliRunner
+
+        from jfox.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["ingest-log", str(tmp_path)], catch_exceptions=False)
+
+        assert result.exit_code == 0
