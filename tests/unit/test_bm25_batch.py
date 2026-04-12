@@ -300,8 +300,7 @@ class TestBulkImportBM25Integration:
         mock_bm25.add_documents_batch.return_value = True
         mock_get_bm25.return_value = mock_bm25
 
-        # 不 mock get_vector_store，让真实的 VectorStore 被创建
-        # 但 patch 掉 VectorStore.init 来验证它被调用了
+        # 使用 context manager 代替 decorator mock，精细控制 collection 的初始状态
         with patch("jfox.vector_store.get_vector_store") as mock_get_vs:
             mock_vs = MagicMock()
             # 关键：collection 初始为 None，模拟真实场景
