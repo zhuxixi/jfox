@@ -2155,6 +2155,115 @@ def kb(
 # =============================================================================
 
 
+def _ingest_log_impl(
+    repo_path: str,
+    limit: int,
+    note_type: str,
+    batch_size: int,
+    output_format: str,
+    json_output: bool,
+):
+    """从 Git 仓库提取 commit 历史并导入为笔记"""
+    from .git_extractor import commits_to_notes, extract_commits
+    from .performance import bulk_import_notes
+
+    # 提取 commits
+    commits = extract_commits(repo_path, limit=limit)
+
+    if not commits:
+        result = {
+            "success": True,
+            "imported": 0,
+            "total": 0,
+            "message": "没有找到 commit 记录",
+        }
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print("[yellow]![/yellow] 没有找到 commit 记录")
+        return
+
+    # 转换为笔记格式
+    notes_data = commits_to_notes(commits, repo_path=repo_path)
+
+    if output_format != "json":
+        console.print(f"[yellow]提取了 {len(notes_data)} 条 commit，正在导入...[/yellow]")
+
+    import_result = bulk_import_notes(
+        notes_data=notes_data,
+        note_type=note_type,
+        batch_size=batch_size,
+        show_progress=output_format != "json",
+    )
+
+    result = {
+        "success": True,
+        "repo_path": str(Path(repo_path).resolve()),
+        "commits_extracted": len(commits),
+        **import_result,
+    }
+
+    if output_format == "json":
+        print(output_json(result))
+    else:
+        console.print(f"[green]✓[/green] 导入: {import_result['imported']}")
+        console.print(f"[red]✗[/red] 失败: {import_result['failed']}")
+        console.print(f"总计: {import_result['total']}")
+
+
+@app.command()
+def ingest_log(
+    repo_path: str = typer.Argument(..., help="本地 Git 仓库路径"),
+    limit: int = typer.Option(50, "--limit", "-n", help="提取 commit 数量"),
+    note_type: str = typer.Option("fleeting", "--type", "-t", help="笔记类型"),
+    batch_size: int = typer.Option(32, "--batch-size", "-b", help="批处理大小"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+):
+    """
+    从 Git 仓库提取 commit 历史并导入为笔记
+
+    使用 block 分隔符格式提取 git log，自动处理 UTF-8 编码和路径规范化。
+
+    示例:
+        jfox ingest-log ./my-project --limit 50
+        jfox ingest-log ./my-project --kb work --type permanent
+    """
+    try:
+        # 处理 --json 快捷方式
+        if json_output:
+            output_format = "json"
+
+        # 如果指定了知识库，临时切换
+        if kb:
+            from .config import use_kb
+
+            with use_kb(kb):
+                _ingest_log_impl(
+                    repo_path, limit, note_type, batch_size, output_format, json_output
+                )
+        else:
+            _ingest_log_impl(repo_path, limit, note_type, batch_size, output_format, json_output)
+
+    except ValueError as e:
+        result = {"success": False, "error": str(e)}
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
 @app.command()
 def bulk_import(
     file_path: str = typer.Argument(..., help="JSON 文件路径，包含笔记数据"),
