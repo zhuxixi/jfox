@@ -323,7 +323,11 @@ class Indexer:
 
         # Get all note files
         note_files = list(notes_dir.rglob("*.md"))
-        file_ids = {f.stem for f in note_files}
+        file_ids = set()
+        for f in note_files:
+            note_id = _extract_note_id_from_filename(f.stem)
+            if note_id:
+                file_ids.add(note_id)
 
         # Get all indexed notes
         indexed_ids = set(self.vector_store.get_all_ids())

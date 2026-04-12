@@ -167,5 +167,47 @@ def test_daily_inbox_commands(isolated_config):
     assert len(daily_notes) == 2, "Should have 2 notes for today"
 
 
+def test_verify_index_matches_filenames_to_ids(isolated_config):
+    """验证 verify_index 正确匹配文件名和索引 ID（不误报 missing/orphaned）
+
+    Issue #103: 文件名含 slug 或 fleeting 连字符，索引 ID 为纯数字，格式不匹配导致全部误报
+    """
+    vector_store = VectorStore(isolated_config.chroma_dir)
+    vector_store.init()
+    indexer = Indexer(isolated_config, vector_store)
+
+    # 创建一个 fleeting 笔记（文件名含连字符）
+    note1 = note_module.create_note(
+        content="Fleeting test", title="Fleeting Test", note_type=NoteType.FLEETING
+    )
+    note1.set_filepath(
+        isolated_config.notes_dir / "fleeting" / f"{note1.id[:8]}-{note1.id[8:]}.md"
+    )
+    note_module.save_note(note1, add_to_index=False)
+
+    # 创建一个 permanent 笔记（文件名含 slug）
+    note2 = note_module.create_note(
+        content="Permanent test", title="Test Slug", note_type=NoteType.PERMANENT
+    )
+    note2.set_filepath(
+        isolated_config.notes_dir / "permanent" / f"{note2.id}-test-slug.md"
+    )
+    note_module.save_note(note2, add_to_index=False)
+
+    # 索引所有笔记
+    indexer.index_all()
+
+    # verify 应报告 healthy
+    result = indexer.verify_index()
+    assert result["healthy"] is True, (
+        f"Expected healthy=True, got missing={result['missing_from_index']}, "
+        f"orphaned={result['orphaned_in_index']}"
+    )
+    assert result["missing_from_index"] == []
+    assert result["orphaned_in_index"] == []
+    assert result["total_files"] == 2
+    assert result["total_indexed"] == 2
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
