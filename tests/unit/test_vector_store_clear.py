@@ -7,7 +7,6 @@
 from unittest.mock import MagicMock
 
 import chromadb
-import pytest
 
 
 class TestVectorStoreClear:

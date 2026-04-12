@@ -8,8 +8,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestIndexerClearBeforeRebuild:
     """Indexer.index_all() 应先清除旧索引再重建"""
