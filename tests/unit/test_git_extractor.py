@@ -134,7 +134,6 @@ class TestExtractCommits:
         assert len(result) == 1
         assert result[0]["hash"] == "abc123"
         assert result[0]["subject"] == "feat: test"
-
         call_args = mock_run.call_args
         assert call_args[1]["encoding"] == "utf-8"
         assert call_args[1]["errors"] == "replace"
