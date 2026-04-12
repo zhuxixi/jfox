@@ -126,6 +126,10 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - Set `PYTHONUTF8=1` and `chcp 65001` for encoding
 - HuggingFace mirror for China: `export HF_ENDPOINT=https://hf-mirror.com`
 
+## Branch Rules
+
+- **main 是保护分支**，不能直接 commit 或 push。所有改动必须通过新分支 + PR 合入。
+
 ## Gotchas
 
 - `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
