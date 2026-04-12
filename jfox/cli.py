@@ -2195,7 +2195,8 @@ def ingest_log(
         # 转换为笔记格式
         notes_data = commits_to_notes(commits, repo_path=repo_path)
 
-        console.print(f"[yellow]提取了 {len(notes_data)} 条 commit，正在导入...[/yellow]")
+        if not json_output:
+            console.print(f"[yellow]提取了 {len(notes_data)} 条 commit，正在导入...[/yellow]")
 
         # 批量导入
         from .performance import bulk_import_notes

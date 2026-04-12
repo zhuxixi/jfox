@@ -105,6 +105,20 @@ class TestParseGitLogOutput:
         result = parse_git_log_output(raw)
         assert result[0]["body"] == "line 1\nline 2\nline 3"
 
+    def test_delimiter_in_body_ignored(self):
+        """commit body 包含分隔符文本不应产生幻影 commit"""
+        raw = textwrap.dedent("""\
+            ---COMMIT_START---
+            Hash: abc123
+            Subject: feat: something
+            Author: Alice
+            Date: 2026-04-10
+
+            ---COMMIT_START--- this is just body text
+        """)
+        result = parse_git_log_output(raw)
+        assert len(result) == 1
+
 
 class TestExtractCommits:
     """测试 git 仓库 commit 提取"""
@@ -254,9 +268,10 @@ class TestIngestLogCommand:
         assert notes_data[0]["title"] == "feat: test feature"
         assert "abc123d" in notes_data[0]["content"]
 
+    @patch("jfox.performance.bulk_import_notes")
     @patch("jfox.git_extractor.extract_commits")
-    def test_ingest_log_empty_repo(self, mock_extract, tmp_path):
-        """空仓库不导入"""
+    def test_ingest_log_empty_repo(self, mock_extract, mock_import, tmp_path):
+        """空仓库不导入，bulk_import_notes 不应被调用"""
         mock_extract.return_value = []
 
         from typer.testing import CliRunner
@@ -267,3 +282,4 @@ class TestIngestLogCommand:
         result = runner.invoke(app, ["ingest-log", str(tmp_path)], catch_exceptions=False)
 
         assert result.exit_code == 0
+        mock_import.assert_not_called()
