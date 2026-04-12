@@ -1,7 +1,6 @@
 """git_extractor 单元测试"""
 
 import textwrap
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
