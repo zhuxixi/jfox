@@ -1,5 +1,12 @@
 """CLI 主程序"""
 
+import os
+
+# 离线模式：跳过 HuggingFace 网络请求，节省 0.5-2s
+# 首次安装需 HF_HUB_OFFLINE=0 jfox status 下载模型
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 import json
 import logging
 import sys
