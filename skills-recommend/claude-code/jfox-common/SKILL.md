@@ -255,7 +255,7 @@ jfox list --format json --limit <N>         # 笔记列表
 jfox inbox --json --limit <N>               # 未处理笔记
 ```
 
-> 搜索、添加、整理等高频操作命令见对应技能文档（jfox-search、jfox-insert、jfox-organize）。
+> 搜索、导入、整理等高频操作命令见对应技能文档（jfox-search、jfox-ingest、jfox-organize）。
 
 ## 错误处理
 
