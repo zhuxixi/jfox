@@ -23,7 +23,7 @@ class TestAddFormat:
         cfg.ensure_dirs()
         return cfg
 
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     @patch("jfox.note.config")
     @patch("jfox.config.config")
     def test_add_output_format_json(
@@ -50,7 +50,7 @@ class TestAddFormat:
         assert data["success"] is True
         assert data["note"]["title"] == "TestTitle"
 
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     @patch("jfox.note.config")
     @patch("jfox.config.config")
     def test_add_output_format_table(
@@ -78,7 +78,7 @@ class TestAddFormat:
         # 应包含关键字段
         assert "TableTest" in captured.out
 
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     @patch("jfox.note.config")
     @patch("jfox.config.config")
     def test_add_output_format_default_is_table(
@@ -137,7 +137,7 @@ class TestDeleteFormat:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     def test_delete_output_format_json(
         self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
     ):
@@ -161,7 +161,7 @@ class TestDeleteFormat:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     def test_delete_output_format_table(
         self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
     ):
@@ -209,7 +209,7 @@ class TestEditFormat:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     def test_edit_output_format_json(
         self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
     ):
@@ -242,7 +242,7 @@ class TestEditFormat:
 
     @patch("jfox.note.config")
     @patch("jfox.config.config")
-    @patch("jfox.note.get_vector_store")
+    @patch("jfox.vector_store.get_vector_store")
     def test_edit_output_format_table(
         self, mock_vs, mock_global_config, mock_note_config, tmp_path, capsys
     ):
