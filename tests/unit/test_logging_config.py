@@ -18,9 +18,9 @@ def test_third_party_loggers_suppressed():
     ]
     for lib in noisy_libs:
         lib_logger = logging.getLogger(lib)
-        assert lib_logger.level >= logging.WARNING, (
-            f"{lib} logger level is {lib_logger.level}, expected >= {logging.WARNING}"
-        )
+        assert (
+            lib_logger.level >= logging.WARNING
+        ), f"{lib} logger level is {lib_logger.level}, expected >= {logging.WARNING}"
 
 
 def test_jfox_own_logger_unchanged():
@@ -29,6 +29,6 @@ def test_jfox_own_logger_unchanged():
 
     jfox_logger = logging.getLogger("jfox")
     # jfox logger 未被显式设为 WARNING，保持 NOTSET 并继承 root 的 INFO
-    assert jfox_logger.level < logging.WARNING, (
-        f"jfox logger level is {jfox_logger.level}, should NOT be suppressed to WARNING"
-    )
+    assert (
+        jfox_logger.level < logging.WARNING
+    ), f"jfox logger level is {jfox_logger.level}, should NOT be suppressed to WARNING"
