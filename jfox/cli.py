@@ -956,6 +956,26 @@ def delete(
         raise typer.Exit(1)
 
 
+def _read_content_file(content_file: str) -> str:
+    """从文件或 stdin 读取内容（--content-file 共用逻辑）"""
+    if content_file == "-":
+        import sys
+
+        return sys.stdin.read()
+
+    p = Path(content_file)
+    if not p.exists():
+        raise ValueError(f"文件不存在: {content_file}")
+    if not p.is_file():
+        raise ValueError(f"路径不是文件: {content_file}")
+    try:
+        return p.read_text(encoding="utf-8")
+    except PermissionError:
+        raise ValueError(f"无权限读取文件: {content_file}")
+    except UnicodeDecodeError:
+        raise ValueError(f"文件编码错误（需要 UTF-8）: {content_file}")
+
+
 def _edit_impl(
     note_id: str,
     content: Optional[str],
@@ -973,17 +993,7 @@ def _edit_impl(
 
     # 从文件读取内容
     if content_file is not None:
-        p = Path(content_file)
-        if not p.exists():
-            raise ValueError(f"文件不存在: {content_file}")
-        if not p.is_file():
-            raise ValueError(f"路径不是文件: {content_file}")
-        try:
-            content = p.read_text(encoding="utf-8")
-        except PermissionError:
-            raise ValueError(f"无权限读取文件: {content_file}")
-        except UnicodeDecodeError:
-            raise ValueError(f"文件编码错误（需要 UTF-8）: {content_file}")
+        content = _read_content_file(content_file)
 
     # 验证：至少指定一个编辑字段
     if all(v is None for v in [content, title, tags, note_type, source]):
