@@ -91,7 +91,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 ## Conventions
 
-- **Version bump**: 发版时必须同时修改 `pyproject.toml` 和 `jfox/__init__.py` 两处版本号（曾有 #88 遗漏 `__init__.py` 的教训）
+- **Version bump**: 发版时必须同时修改 `pyproject.toml`、`jfox/__init__.py` 和 `uv.lock` 三处版本号。先改前两个文件，再跑 `uv lock` 更新 lock 文件（曾有 #88 遗漏 `__init__.py` 的教训）
 - **Line length**: 100 chars (black + ruff configured in `pyproject.toml`)
 - **Comments/docs**: Chinese (中文)
 - **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support

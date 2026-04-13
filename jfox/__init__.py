@@ -1,5 +1,5 @@
 """JFox - Zettelkasten 知识管理工具"""
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 __author__ = "User"
 __email__ = "user@example.com"
