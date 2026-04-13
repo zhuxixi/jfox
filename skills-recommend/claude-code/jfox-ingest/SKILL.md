@@ -80,7 +80,7 @@ feat: add user authentication module
 实现了 JWT 认证，支持 refresh token 机制。
 ```
 
-> **注意**: `jfox ingest-log` 使用 `--json`（默认关闭）/`--format`（默认 table）控制输出。JSON 模式用 `--json`，不要用 `--format json`。
+> **约定**：`jfox ingest-log` 支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。
 
 ### Step 4: 采集 GitHub PRs
 
@@ -176,7 +176,7 @@ jfox search "repo-name" --format json
 jfox bulk-import temp-file.json --type fleeting --kb name
 ```
 
-> **注意**: `jfox bulk-import` 使用 `--json`（默认开启）/`--no-json` 控制输出。不要使用 `--format json`。
+> **约定**：`jfox bulk-import` 默认输出 JSON。使用 `--no-json` 切换为 table 格式，或 `--format table` 显式指定。
 
 ### Step 7: 确认报告
 
@@ -197,7 +197,7 @@ jfox bulk-import temp-file.json --type fleeting --kb name
 jfox add "<content>" --title "<title>" --type fleeting --tag <tags> [--kb <name>]
 ```
 
-> **注意**: `jfox add` 使用 `--json`（默认关闭）/`--format`（默认 table）控制输出。JSON 模式用 `--json`，不要用 `--format json`。
+> **约定**：`jfox add` 支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。
 
 ## 笔记格式规范
 
