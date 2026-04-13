@@ -365,7 +365,7 @@ def _add_note_impl(
 
 @app.command()
 def add(
-    content: str = typer.Argument(..., help="笔记内容（支持 [[笔记标题]] 格式链接）"),
+    content: Optional[str] = typer.Argument(None, help="笔记内容（支持 [[笔记标题]] 格式链接）"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="笔记标题"),
     note_type: str = typer.Option(
         "fleeting", "--type", help="笔记类型 (fleeting/literature/permanent)"
@@ -374,6 +374,9 @@ def add(
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
     template: Optional[str] = typer.Option(
         None, "--template", "-T", help="使用模板创建笔记 (quick/meeting/literature)"
+    ),
+    content_file: Optional[str] = typer.Option(
+        None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
     ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
@@ -386,6 +389,18 @@ def add(
         # 向后兼容：--json 快捷方式
         if json_output:
             output_format = "json"
+
+        # content 和 --content-file 互斥
+        if content is not None and content_file is not None:
+            raise ValueError("不能同时指定内容参数和 --content-file，请选择其一")
+
+        # 从文件读取内容
+        if content_file is not None:
+            content = _read_content_file(content_file)
+
+        # 至少提供一种内容来源
+        if not content:
+            raise ValueError("请提供笔记内容（位置参数或 --content-file）")
 
         # 如果指定了知识库，临时切换
         if kb:
