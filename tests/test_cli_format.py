@@ -324,6 +324,55 @@ class TestCLIFormat:
     # ==========================================================================
     # Add 命令测试
     # ==========================================================================
+    def test_add_content_file(self, cli, tmp_path):
+        """测试 add 命令 --content-file 从文件读取内容"""
+        content_file = tmp_path / "note.md"
+        content_file.write_text("从文件读取的笔记内容", encoding="utf-8")
+
+        result = cli.run("add", "--content-file", str(content_file), "--title", "FileContent")
+
+        assert result.success
+        data = result.data
+        assert data["success"] is True
+        assert data["note"]["title"] == "FileContent"
+
+    def test_add_content_file_mutual_exclusive(self, cli, tmp_path):
+        """测试 add 命令 content 参数和 --content-file 不能同时指定"""
+        content_file = tmp_path / "note.md"
+        content_file.write_text("file content", encoding="utf-8")
+
+        result = cli.run("add", "直接内容", "--content-file", str(content_file))
+
+        assert not result.success
+        assert "不能同时指定" in result.stderr or "不能同时指定" in result.stdout
+
+    def test_add_content_file_not_found(self, cli):
+        """测试 add 命令 --content-file 文件不存在时报错"""
+        result = cli.run("add", "--content-file", "/nonexistent/file.md")
+
+        assert not result.success
+        assert "文件不存在" in result.stderr or "文件不存在" in result.stdout
+
+    def test_add_content_file_empty(self, cli):
+        """测试 add 命令不提供内容时报错"""
+        result = cli.run("add")
+
+        assert not result.success
+
+    def test_add_content_file_with_wiki_links(self, cli, tmp_path):
+        """测试 add 命令 --content-file 内容中的 [[wiki链接]] 正常解析"""
+        # 先创建一个目标笔记
+        cli.add("目标笔记内容", title="目标笔记")
+
+        content_file = tmp_path / "linked.md"
+        content_file.write_text("引用 [[目标笔记]] 的内容", encoding="utf-8")
+
+        result = cli.run("add", "--content-file", str(content_file), "--title", "带链接的笔记")
+
+        assert result.success
+        data = result.data
+        assert data["note"]["links"]
+
     def test_add_format_json(self, cli):
         """测试 add 命令 --format json"""
         result = cli.run("add", "test content", "--title", "FormatTest", "--format", "json")
