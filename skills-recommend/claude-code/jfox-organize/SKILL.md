@@ -62,7 +62,7 @@ jfox inbox --json --limit 50
    jfox delete <原始-id> --force
    ```
 
-> **注意**：`jfox add` 和 `jfox delete` 使用 `--json`/`--no-json`（默认开启），不要用 `--format json`。
+> **约定**：所有命令均支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。
 
 ### 提炼策略表
 
@@ -91,9 +91,12 @@ jfox graph --orphans --json
 3. 如果有匹配度 >= 0.6 的结果，建议添加链接：
    ```bash
    jfox edit <孤立笔记_id> --content "原内容... [[相关笔记标题]]"
+
+   # 使用文件内容编辑（适合长文本）
+   jfox edit <孤立笔记_id> --content-file updated.md
    ```
 
-> **注意**：`jfox edit` 使用 `--json`/`--no-json`（默认开启），不要用 `--format json`。
+> **约定**：`jfox edit` 支持 `--format json`，也可使用快捷方式 `--json`（两者等价）。
 
 ### 确认改善
 
@@ -117,6 +120,12 @@ jfox graph --stats --json
 **创建笔记**：
 ```bash
 jfox add "<内容>" --title "<标题>" --type <fleeting|permanent> --tag <tags> [--kb <name>]
+
+# 从文件读取内容（适合长文本，避免 shell 转义问题）
+jfox add --content-file notes/draft.md --title "<标题>" --type permanent --tag <tags> [--kb <name>]
+
+# 从 stdin 读取
+echo "内容" | jfox add --content-file - --title "<标题>" --type fleeting
 ```
 
 对于 permanent 笔记，先运行 `jfox suggest-links` 查找 `[[wiki links]]` 再插入。
@@ -151,6 +160,7 @@ jfox graph --orphans --json                   # 查找孤立笔记
 jfox graph --stats --json                     # 图谱统计指标
 jfox list --format json --limit <N>           # 列出笔记
 jfox daily --json                             # 查看今天的笔记
+jfox daily --date 2026-04-01 --json           # 查看指定日期的笔记
 ```
 
 ## 错误处理
@@ -158,7 +168,7 @@ jfox daily --json                             # 查看今天的笔记
 - **收件箱为空** → 告知用户 "收件箱为空，无需整理"，可跳到 Step 3 图谱优化
 - **`jfox suggest-links` 返回低匹配度**（score < 0.6）→ 跳过链接推荐，不强制添加
 - **`jfox delete` 目标 ID 不存在** → 报告错误，跳过继续处理其他笔记
-- **`jfox add` / `jfox edit` / `jfox delete` 使用 `--json`/`--no-json`**，不要用 `--format json`
+- **`jfox add` / `jfox edit` / `jfox delete`** 支持 `--format json`，也可使用快捷方式 `--json`
 
 ## 使用建议
 
