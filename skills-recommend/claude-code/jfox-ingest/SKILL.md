@@ -57,17 +57,19 @@ git -C <path> remote get-url origin
 
 ### Step 3: 采集 git log
 
+使用 `jfox ingest-log` 命令（基于 `jfox/git_extractor.py` 模块），一行完成提取 + 转换 + 导入：
+
 ```bash
-git -C <path> log --format="%H|%s|%b|%an|%ad" --date=short -50
+jfox ingest-log path/to/repo --limit 50 --kb name --type fleeting
 ```
 
-解析每条 commit，转化为笔记结构：
+该命令会：
+- 调用 `git log` 提取 commit 历史
+- 自动解析为结构化数据（hash, subject, author, date, body）
+- 转换为 fleeting 笔记并批量导入知识库
+- 自动添加标签：`source:repo-name`, `source:git-log`
 
-- **title**: commit subject（第一行 `%s`）
-- **content**: 包含 commit hash、完整 body、作者、日期
-- **tags**: `source:<repo-name>`, `source:git-log`
-
-示例笔记内容：
+生成笔记示例：
 ```
 Commit: a1b2c3d
 Author: 张三
@@ -77,6 +79,8 @@ feat: add user authentication module
 
 实现了 JWT 认证，支持 refresh token 机制。
 ```
+
+> **注意**: `jfox ingest-log` 使用 `--json`（默认关闭）/`--format`（默认 table）控制输出。JSON 模式用 `--json`，不要用 `--format json`。
 
 ### Step 4: 采集 GitHub PRs
 
@@ -139,38 +143,40 @@ Comments:
 - @zhangsan: 已修复，请验证
 ```
 
-### Step 6: 去重与导入
+### Step 6: 导入 GitHub 数据（git-log 已在 Step 3 完成）
+
+git-log 数据已通过 `jfox ingest-log` 完成导入，此步骤仅处理 GitHub PR/Issues 数据。
 
 **去重检查**：导入前检查知识库中是否已有该仓库的数据：
 ```bash
-jfox search "<repo-name>" --format json
+jfox search "repo-name" --format json
 ```
 
-如果已有记录，只导入新增的条目（通过 commit hash、PR 编号、Issue 编号判断）。
+如果已有记录，只导入新增的条目（通过 PR 编号、Issue 编号判断）。
 
-**生成临时 JSON 文件**：将所有待导入记录组装为 JSON 数组：
+**生成临时 JSON 文件**：将 PR/Issues 数据组装为 JSON 数组（仅 GitHub 数据）：
 
 ```json
 [
   {
-    "title": "feat: add user authentication module",
-    "content": "Commit: a1b2c3d\nAuthor: 张三\nDate: 2026-04-10\n\n实现了 JWT 认证，支持 refresh token 机制。",
-    "tags": ["source:my-app", "source:git-log"]
-  },
-  {
     "title": "Add user authentication",
     "content": "PR #42: Add user authentication\nState: merged\nAuthor: zhangsan\n...",
     "tags": ["source:my-app", "source:pr"]
+  },
+  {
+    "title": "Login page crashes on mobile",
+    "content": "Issue #15: Login page crashes on mobile\nState: closed\n...",
+    "tags": ["source:my-app", "source:issue"]
   }
 ]
 ```
 
 保存到临时文件（使用跨平台路径），然后执行导入：
 ```bash
-jfox bulk-import <temp-file.json> --type fleeting [--kb <name>]
+jfox bulk-import temp-file.json --type fleeting --kb name
 ```
 
-> **注意**: `jfox bulk-import` 使用 `--json`/`--no-json`（默认开启），不要使用 `--format json`。
+> **注意**: `jfox bulk-import` 使用 `--json`（默认开启）/`--no-json` 控制输出。不要使用 `--format json`。
 
 ### Step 7: 确认报告
 
@@ -191,9 +197,11 @@ jfox bulk-import <temp-file.json> --type fleeting [--kb <name>]
 jfox add "<content>" --title "<title>" --type fleeting --tag <tags> [--kb <name>]
 ```
 
-> **注意**: `jfox add` 使用 `--json`/`--no-json`（默认开启），不要使用 `--format json`。
+> **注意**: `jfox add` 使用 `--json`（默认关闭）/`--format`（默认 table）控制输出。JSON 模式用 `--json`，不要用 `--format json`。
 
 ## 笔记格式规范
+
+> git-log 格式由 `jfox ingest-log` 自动处理，以下规范主要供理解输出结构参考，以及手动处理 GitHub PR/Issues 数据时使用。
 
 | 数据源 | title 来源 | content 内容 | 额外标签 |
 |--------|-----------|-------------|---------|
@@ -212,26 +220,30 @@ jfox add "<content>" --title "<title>" --type fleeting --tag <tags> [--kb <name>
 
 ```bash
 # 检测仓库类型
-git -C <path> remote get-url origin
+git -C path/to/repo remote get-url origin
 gh auth status
 
-# 采集数据
-git -C <path> log --format="%H|%s|%b|%an|%ad" --date=short -50
-gh pr list --repo <owner/repo> --state all --limit 20 --json number,title,body,state,author,createdAt,updatedAt,labels
-gh pr view <number> --repo <owner/repo> --json comments
-gh issue list --repo <owner/repo> --state all --limit 30 --json number,title,body,state,author,createdAt,labels,comments
+# 采集 git log（一行完成提取+导入）
+jfox ingest-log path/to/repo --limit 50 --kb name --type fleeting
+
+# 采集 GitHub 数据
+gh pr list --repo owner/repo --state all --limit 20 --json number,title,body,state,author,createdAt,updatedAt,labels
+gh pr view number --repo owner/repo --json comments
+gh issue list --repo owner/repo --state all --limit 30 --json number,title,body,state,author,createdAt,labels,comments
 
 # 去重检查
-jfox search "<repo-name>" --format json
+jfox search "repo-name" --format json
 
-# 导入
-jfox bulk-import <file.json> --type fleeting [--kb <name>]
-jfox add "<content>" --title "<title>" --type fleeting [--kb <name>]
+# 导入 GitHub 数据
+jfox bulk-import file.json --type fleeting --kb name
+
+# 手动添加单条笔记
+jfox add "content" --title "title" --type fleeting --kb name
 ```
 
 ## 错误处理
 
-- **"Not a git repository"**: 提示用户提供正确的仓库路径
-- **`gh: not found`** 或 `gh auth status` 失败: 跳过 GitHub PR/Issues 导入，仅导入 git log
+- **"Not a git repository"**: `jfox ingest-log` 会报错，提示用户提供正确的仓库路径
+- **`gh: not found`** 或 `gh auth status` 失败: 跳过 GitHub PR/Issues 导入，仅用 `jfox ingest-log` 导入 git log
 - **"Knowledge base not found"**: 提示用户先运行 `/jfox-common` 创建知识库
 - **Bulk import 部分失败**: 报告成功/失败数量，失败记录不重试
