@@ -37,6 +37,19 @@ from .template_cli import template_app
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+
+# 抑制第三方库的 INFO/DEBUG 日志，避免污染 CLI 输出
+for _lib in (
+    "sentence_transformers",
+    "torch",
+    "chromadb",
+    "tqdm",
+    "urllib3",
+    "watchdog",
+    "PIL",
+):
+    logging.getLogger(_lib).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # 创建应用
