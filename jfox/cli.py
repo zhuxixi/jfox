@@ -2439,6 +2439,88 @@ def perf(
         raise typer.Exit(1)
 
 
+@app.command()
+def daemon(
+    action: str = typer.Argument("status", help="操作: start, stop, status"),
+    port: int = typer.Option(18700, "--port", "-p", help="Daemon 监听端口"),
+):
+    """
+    管理嵌入模型守护进程
+
+    启动后台 daemon 可避免每次 CLI 调用重复加载模型（节省 ~5-15 秒）。
+    daemon 仅持有 embedding 模型，不持有知识库数据。
+
+    示例:
+
+        jfox daemon start       # 启动 daemon
+        jfox daemon status      # 查看状态
+        jfox daemon stop        # 停止 daemon
+    """
+    from .daemon.process import (
+        get_daemon_status,
+        is_daemon_running,
+        start_daemon,
+        stop_daemon,
+    )
+
+    try:
+        if action == "start":
+            console.print("[yellow]正在启动 embedding daemon...[/yellow]")
+            ok = start_daemon(port=port)
+            if ok:
+                info = get_daemon_status()
+                if info:
+                    table = Table(title="Embedding Daemon")
+                    table.add_column("属性", style="cyan")
+                    table.add_column("值", style="green")
+                    table.add_row("状态", "[green]运行中[/green]")
+                    table.add_row("PID", str(info["pid"]))
+                    table.add_row("端口", str(info["port"]))
+                    table.add_row("模型", info["model"])
+                    table.add_row("维度", str(info["dimension"]))
+                    console.print(table)
+                else:
+                    console.print("[green]✓ Daemon 已启动[/green]")
+            else:
+                console.print("[red]✗ Daemon 启动失败[/red]")
+                raise typer.Exit(1)
+
+        elif action == "stop":
+            if not is_daemon_running():
+                console.print("[dim]Daemon 未运行[/dim]")
+                return
+            console.print("[yellow]正在停止 daemon...[/yellow]")
+            stop_daemon()
+            console.print("[green]✓ Daemon 已停止[/green]")
+
+        elif action == "status":
+            info = get_daemon_status()
+            if info:
+                table = Table(title="Embedding Daemon")
+                table.add_column("属性", style="cyan")
+                table.add_column("值", style="green")
+                table.add_row("状态", "[green]运行中[/green]")
+                table.add_row("PID", str(info["pid"]))
+                table.add_row("端口", str(info["port"]))
+                table.add_row("模型", info.get("model", "unknown"))
+                table.add_row("维度", str(info.get("dimension", "unknown")))
+                console.print(table)
+            else:
+                console.print("[dim]Daemon 未运行[/dim]")
+                console.print("提示: 运行 [cyan]jfox daemon start[/cyan] 启动")
+
+        else:
+            console.print(f"[red]未知操作: {action}[/red]")
+            console.print("可用操作: start, stop, status")
+            raise typer.Exit(1)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]✗[/red] 错误: {e}")
+        raise typer.Exit(1)
+
+
 # 入口点
 def main():
     """CLI 入口点"""
