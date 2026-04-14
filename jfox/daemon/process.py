@@ -193,12 +193,15 @@ def stop_daemon() -> bool:
     # 等待进程退出
     for _ in range(10):
         if _http_health_check(host, port) is None:
-            break
+            _remove_pid_file()
+            logger.info(f"Daemon 已停止 (PID: {pid})")
+            return True
         time.sleep(0.5)
 
+    # 超时未退出
+    logger.warning(f"Daemon 停止超时 (PID: {pid})")
     _remove_pid_file()
-    logger.info(f"Daemon 已停止 (PID: {pid})")
-    return True
+    return False
 
 
 def get_daemon_status() -> Optional[dict]:

@@ -29,8 +29,12 @@ def _load_model():
     from ..embedding_backend import EmbeddingBackend
 
     _backend = EmbeddingBackend()
-    _backend.load()
-    logger.info(f"Daemon: 模型已加载 ({_backend.model_name})")
+    try:
+        _backend.load()
+        logger.info(f"Daemon: 模型已加载 ({_backend.model_name})")
+    except Exception as e:
+        logger.error(f"Daemon: 模型加载失败，进程退出: {e}")
+        os._exit(1)
 
 
 # =============================================================================
