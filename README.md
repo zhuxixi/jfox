@@ -67,7 +67,7 @@ graph TB
     note --> models --> md
     se --> vs & bm
     vs --> emb
-    emb -.->|"fallback"| daemon
+    emb -.->|"preferred"| daemon
     idx --> vs
 ```
 
