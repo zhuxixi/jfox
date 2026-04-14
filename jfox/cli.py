@@ -746,6 +746,48 @@ def list(
         raise typer.Exit(1)
 
 
+def _show_impl(note_ref: str):
+    """查看笔记完整内容的内部实现"""
+    # 通过 ID 或标题定位笔记
+    note_id = find_note_id_by_title_or_id(note_ref)
+    if not note_id:
+        raise ValueError(f"笔记不存在: {note_ref}")
+
+    # 加载笔记
+    n = note.load_note_by_id(note_id)
+    if not n:
+        raise ValueError(f"笔记不存在: {note_id}")
+
+    # 输出原始 Markdown 内容
+    content = n.filepath.read_text(encoding="utf-8")
+    print(content)
+
+
+@app.command()
+def show(
+    note_ref: str = typer.Argument(..., help="笔记 ID 或标题"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+):
+    """
+    查看笔记完整内容
+
+    输出原始 Markdown（含 YAML frontmatter），只读不修改。
+    支持通过笔记 ID 或标题定位。
+    """
+    try:
+        if kb:
+            from .config import use_kb
+
+            with use_kb(kb):
+                _show_impl(note_ref)
+        else:
+            _show_impl(note_ref)
+
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
 def _refs_impl(
     note_id: Optional[str],
     search: Optional[str],
