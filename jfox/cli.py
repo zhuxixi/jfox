@@ -2457,10 +2457,10 @@ def daemon(
         jfox daemon stop        # 停止 daemon
     """
     from .daemon.process import (
-        start_daemon,
-        stop_daemon,
         get_daemon_status,
         is_daemon_running,
+        start_daemon,
+        stop_daemon,
     )
 
     try:
