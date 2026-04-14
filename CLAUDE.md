@@ -66,7 +66,8 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `models.py` | `Note` data model with frontmatter serialization |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
 | `bm25_index.py` | BM25 keyword search index |
-| `embedding_backend.py` | Sentence-transformers embedding backend |
+| `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理） |
+| `daemon/` | Embedding 模型 HTTP 守护进程（可选依赖 `[daemon]`），`jfox daemon start/stop/status` |
 | `vector_store.py` | ChromaDB vector store for semantic search |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
