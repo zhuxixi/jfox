@@ -49,10 +49,10 @@ class TestShowCommand:
         mock_note.filepath.read_text.return_value = "---\nid: test\n---\n笔记内容"
         mock_load.return_value = mock_note
 
-        from jfox.cli import _show_impl
-
         import io
         import sys
+
+        from jfox.cli import _show_impl
 
         captured = io.StringIO()
         sys.stdout = captured
