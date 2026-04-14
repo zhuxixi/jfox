@@ -56,13 +56,13 @@ graph TB
         emb[embedding_backend.py<br/>all-MiniLM-L6-v2]
     end
     subgraph Analysis ["Analysis Layer"]
-        graph[graph.py<br/>NetworkX DiGraph]
+        gph["graph.py<br/>NetworkX DiGraph"]
     end
     subgraph Watcher ["File Watcher"]
         idx[indexer.py<br/>watchdog]
     end
 
-    cmd --> note & se & graph
+    cmd --> note & se & gph
     note --> models --> md
     se --> vs & bm
     vs --> emb
