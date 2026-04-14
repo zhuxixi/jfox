@@ -56,7 +56,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 | Module | Role |
 |--------|------|
-| `cli.py` | All CLI commands (~1800 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
+| `cli.py` | All CLI commands (~2500 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
 | `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
 | `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json` |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
@@ -98,6 +98,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
 - **Modifying data models**: Update `Note` class in `models.py`, update `to_markdown()`/`from_markdown()`, consider backward compat
+- **Viewing note content**: `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，只读输出完整 Markdown
 
 ## Test Infrastructure
 
