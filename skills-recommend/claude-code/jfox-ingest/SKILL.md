@@ -239,6 +239,13 @@ jfox bulk-import file.json --type fleeting --kb name
 
 # 手动添加单条笔记
 jfox add "content" --title "title" --type fleeting --kb name
+
+# 查看导入结果
+jfox show <note_id> --format json --kb name
+
+# 批量导入加速（可选，需安装 [daemon] 依赖）
+jfox daemon start                                # 启动 embedding 守护进程
+jfox daemon stop                                 # 完成后停止
 ```
 
 ## 错误处理

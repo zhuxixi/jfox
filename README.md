@@ -54,6 +54,7 @@ graph TB
         vs[vector_store.py<br/>ChromaDB]
         bm[bm25_index.py<br/>BM25Okapi]
         emb[embedding_backend.py<br/>all-MiniLM-L6-v2]
+        daemon["daemon/<br/>HTTP Server (可选)"]
     end
     subgraph Analysis ["Analysis Layer"]
         gph["graph.py<br/>NetworkX DiGraph"]
@@ -66,6 +67,7 @@ graph TB
     note --> models --> md
     se --> vs & bm
     vs --> emb
+    emb -.->|"fallback"| daemon
     idx --> vs
 ```
 
@@ -73,7 +75,7 @@ graph TB
 
 | Module | Role |
 |--------|------|
-| `cli.py` | All CLI commands (~2400 lines). Each command delegates to a `_xxx_impl()` helper |
+| `cli.py` | All CLI commands (~2500 lines). Each command delegates to a `_xxx_impl()` helper |
 | `config.py` | Per-KB config (`ZKConfig`) + `use_kb()` context manager for KB switching |
 | `global_config.py` | Multi-KB registry in `~/.zk_config.json` |
 | `kb_manager.py` | KB lifecycle: create, rename, remove, switch |
@@ -83,6 +85,7 @@ graph TB
 | `vector_store.py` | ChromaDB wrapper with cosine similarity search |
 | `bm25_index.py` | BM25 keyword index with Chinese/English tokenizer |
 | `embedding_backend.py` | Lazy-loaded SentenceTransformer (`all-MiniLM-L6-v2`, 384-dim vectors) |
+| `daemon/` | Embedding HTTP 守护进程（可选依赖 `[daemon]`），常驻模型避免重复加载 |
 | `graph.py` | NetworkX DiGraph built from links + wiki links; BFS, clusters, hubs |
 | `indexer.py` | File watcher (watchdog) with debounce for incremental ChromaDB updates |
 | `formatters.py` | Output in JSON, CSV, YAML, Table, Paths, Tree formats |
@@ -271,6 +274,7 @@ jfox query "Luhmann's methodology" --depth 2
 | `jfox suggest-links "content"` | Suggest notes to link from content |
 | `jfox bulk-import notes.json` | Bulk import from JSON (optimized) |
 | `jfox ingest-log` | Import git commit history as notes |
+| `jfox show NOTE_ID` | View full note content in terminal |
 
 ### Search & Analysis
 
@@ -311,6 +315,14 @@ jfox query "Luhmann's methodology" --depth 2
 |---------|-------------|
 | `jfox perf report` | Show performance metrics |
 | `jfox perf clear-cache` | Clear embedding model cache |
+
+### Daemon
+
+| Command | Description |
+|---------|-------------|
+| `jfox daemon start` | Start embedding daemon (background process) |
+| `jfox daemon stop` | Stop embedding daemon |
+| `jfox daemon status` | Show daemon PID, port, model info |
 
 ### Global Options
 

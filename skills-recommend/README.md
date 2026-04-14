@@ -10,6 +10,7 @@ skills-recommend/
     ├── jfox-ingest/      # 数据导入（git log / GitHub PR / Issues）
     ├── jfox-organize/    # 知识库整理与提炼（fleeting → permanent）
     ├── jfox-search/      # 知识库搜索与图谱查询
+    ├── jfox-session-summary/  # 会话总结写入知识库
     └── jfox-common/      # 知识库管理 + 健康检查
 ```
 
@@ -32,6 +33,7 @@ cp -r skills-recommend/claude-code/jfox-search ~/.claude/skills/
 - `/jfox-ingest` — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
 - `/jfox-organize` — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
 - `/jfox-search` — 搜索笔记、图谱查询、链接推荐
+- `/jfox-session-summary` — 将会话总结写入知识库作为 fleeting 笔记
 
 ### OpenCode / Codex / Kimi CLI 等
 
