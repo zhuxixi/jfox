@@ -1,4 +1,4 @@
-"""Unit tests for show command"""
+"""测试类型: 单元测试 / 目标模块: jfox.cli (show 命令)"""
 
 from unittest.mock import MagicMock, patch
 
