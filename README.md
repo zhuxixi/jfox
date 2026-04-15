@@ -54,7 +54,7 @@ graph TB
         vs[vector_store.py<br/>ChromaDB]
         bm[bm25_index.py<br/>BM25Okapi]
         emb[embedding_backend.py<br/>all-MiniLM-L6-v2]
-        daemon["daemon/<br/>HTTP Server (可选)"]
+        daemon["daemon/<br/>HTTP Server"]
     end
     subgraph Analysis ["Analysis Layer"]
         gph["graph.py<br/>NetworkX DiGraph"]
@@ -85,7 +85,7 @@ graph TB
 | `vector_store.py` | ChromaDB wrapper with cosine similarity search |
 | `bm25_index.py` | BM25 keyword index with Chinese/English tokenizer |
 | `embedding_backend.py` | Lazy-loaded SentenceTransformer (`all-MiniLM-L6-v2`, 384-dim vectors) |
-| `daemon/` | Embedding HTTP 守护进程（可选依赖 `[daemon]`），常驻模型避免重复加载 |
+| `daemon/` | Embedding HTTP 守护进程，常驻模型避免重复加载 |
 | `graph.py` | NetworkX DiGraph built from links + wiki links; BFS, clusters, hubs |
 | `indexer.py` | File watcher (watchdog) with debounce for incremental ChromaDB updates |
 | `formatters.py` | Output in JSON, CSV, YAML, Table, Paths, Tree formats |

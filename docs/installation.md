@@ -41,7 +41,7 @@ pip uninstall jfox-cli
 ## Requirements
 
 - Python >= 3.10
-- Dependencies: typer, rich, sentence-transformers, chromadb, networkx, watchdog, pyyaml
+- Dependencies: typer, rich, sentence-transformers, chromadb, networkx, watchdog, pyyaml, fastapi, uvicorn
 
 ## Windows PATH
 
