@@ -339,7 +339,7 @@ jfox index rebuild                           # 重建索引
 jfox inbox --json --limit <N>                # 未处理笔记
 ```
 
-### Daemon（可选）
+### Daemon
 
 ```bash
 jfox daemon start                               # 启动 embedding 守护进程
