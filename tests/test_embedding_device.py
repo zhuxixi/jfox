@@ -70,3 +70,41 @@ class TestModelSelection:
                 backend = EmbeddingBackend(model_name="auto", device="cuda")
                 resolved_model = backend._resolve_model_name("cuda")
                 assert resolved_model == "BAAI/bge-m3"
+
+
+class TestGetBackend:
+    """测试 get_backend() 从 config 读取配置"""
+
+    def test_reads_config_device(self):
+        """get_backend() 从 config.device 读取"""
+        from jfox.embedding_backend import get_backend, reset_backend
+
+        reset_backend()
+        with patch("jfox.config.config") as mock_config:
+            mock_config.embedding_model = "BAAI/bge-m3"
+            mock_config.device = "cuda"
+            backend = get_backend()
+            assert backend.device == "cuda"
+            assert backend.model_name == "BAAI/bge-m3"
+        reset_backend()
+
+    def test_auto_model_resolves_to_none(self):
+        """config.embedding_model='auto' 传 None 给 EmbeddingBackend"""
+        from jfox.embedding_backend import get_backend, reset_backend
+
+        reset_backend()
+        with patch("jfox.config.config") as mock_config:
+            mock_config.embedding_model = "auto"
+            mock_config.device = "cpu"
+            backend = get_backend()
+            assert backend.model_name is None  # None = auto-select
+        reset_backend()
+
+    def test_reset_backend_clears_singleton(self):
+        """reset_backend() 清除全局单例"""
+        from jfox.embedding_backend import reset_backend
+
+        reset_backend()
+        import jfox.embedding_backend as eb
+
+        assert eb._backend is None

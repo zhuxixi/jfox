@@ -62,9 +62,13 @@ def mock_embedding_backend():
     import numpy as np
 
     class MockEmbeddingBackend:
-        """Mock embedding backend - 返回随机向量"""
+        """Mock embedding backend - 返回随机向量（适配 GPU 接口）"""
 
         def __init__(self):
+            self.model_name = "mock-model"
+            self.device = "cpu"
+            self._resolved_device = "cpu"
+            self._resolved_dim = 384
             self.dimension = 384
 
         def encode(self, texts, **kwargs):
@@ -76,6 +80,12 @@ def mock_embedding_backend():
         def encode_batch(self, texts, batch_size=32):
             """批量编码"""
             return self.encode(texts)
+
+        def _resolve_device(self):
+            return "cpu"
+
+        def _resolve_model_name(self, resolved_device):
+            return "mock-model"
 
     return MockEmbeddingBackend()
 
