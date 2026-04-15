@@ -163,7 +163,7 @@ jfox daily --json                             # 查看今天的笔记
 jfox daily --date 2026-04-01 --json           # 查看指定日期的笔记
 jfox show <id_or_title> --format json           # 查看笔记完整内容（整理前预览）
 
-# 批量整理加速（可选，需安装 [daemon] 依赖）
+# 批量整理加速（可选）
 jfox daemon start                                # 启动 embedding 守护进程
 jfox daemon stop                                 # 完成后停止
 ```
