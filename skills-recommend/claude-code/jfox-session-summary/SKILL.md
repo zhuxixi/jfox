@@ -1,7 +1,7 @@
 ---
 name: jfox-session-summary
 description: |
-  Use when user wants to save the current conversation/session summary into their Zettelkasten as a fleeting note. Triggers on "保存会话", "总结到知识库", "记录这次对话", "写入知识库", "save session", "summarize to knowledge base", "log this conversation".
+  Use when user wants to save the current conversation/session summary into their Zettelkasten. Triggers on "保存会话", "总结到知识库", "记录这次对话", "写入知识库", "save session", "summarize to knowledge base", "log this conversation".
 ---
 
 # JFox Session Summary
