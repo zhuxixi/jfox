@@ -6,7 +6,7 @@ description: |
 
 # JFox Session Summary
 
-将当前 Claude Code 会话的总结写入 jfox 知识库作为 fleeting 笔记。
+将当前 Claude Code 会话的总结写入 jfox 知识库（支持用户确认和笔记类型选择）。
 
 ## 前置条件
 
@@ -39,12 +39,35 @@ description: |
 - [后续步骤]
 ```
 
-### Step 2: 写入知识库
+### Step 2: 用户确认
+
+将生成的总结用普通文本输出，供用户阅读。然后使用 `AskUserQuestion` 询问：
+
+- 问题：`笔记内容是否 OK？`
+- 选项：
+  - `内容没问题` → 继续 Step 3
+  - `需要修改` → 用户在 "Other" 中输入修改意见，根据意见调整总结后回到 Step 2 重新展示和确认
+
+循环直到用户满意为止。
+
+### Step 3: 选择笔记类型
+
+用户确认内容后，使用 `AskUserQuestion` 询问笔记类型：
+
+- 问题：`选择笔记类型`
+- 选项：
+  - `fleeting`（推荐）— 会话记录是临时性笔记，后续可提炼为 permanent
+  - `literature` — 如果会话有明确的参考资料来源
+  - `permanent` — 如果总结已经是成熟的知识
+
+### Step 4: 写入知识库
+
+使用 Step 3 选定的笔记类型执行写入：
 
 ```bash
 jfox add "<markdown-escaped-summary>" \
   --title "Session: <topic>" \
-  --type fleeting \
+  --type <Step 3 选定的类型> \
   --tag session \
   --kb <kb-name> \
   --format json
@@ -52,11 +75,11 @@ jfox add "<markdown-escaped-summary>" \
 
 **注意**：
 - 标题格式统一为 `Session: <简短主题>`
-- 类型使用 `fleeting`（会话记录是临时性笔记，后续可提炼为 permanent）
+- 类型使用 Step 3 的选择结果，不再硬编码 `fleeting`
 - 标签统一使用 `session`
 - 内容中的双引号需要转义，或使用 `--content-file` 从临时文件读取
 
-### Step 3: 处理长内容
+### Step 5: 处理长内容
 
 如果总结超过 500 字或包含特殊字符，优先使用 `--content-file`：
 
@@ -69,7 +92,7 @@ EOF
 # 从文件导入
 jfox add --content-file /tmp/session-summary.md \
   --title "Session: <topic>" \
-  --type fleeting \
+  --type <Step 3 选定的类型> \
   --tag session \
   --kb <kb-name> \
   --format json
@@ -79,10 +102,10 @@ jfox add --content-file /tmp/session-summary.md \
 
 ```bash
 # 直接添加（短内容）
-jfox add "<summary>" --title "Session: <topic>" --type fleeting --tag session --kb <name>
+jfox add "<summary>" --title "Session: <topic>" --type <type> --tag session --kb <name>
 
 # 从文件添加（长内容或含特殊字符）
-jfox add --content-file <path> --title "Session: <topic>" --type fleeting --tag session --kb <name>
+jfox add --content-file <path> --title "Session: <topic>" --type <type> --tag session --kb <name>
 
 # 验证写入
 jfox show <note_id> --format json
