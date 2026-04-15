@@ -347,7 +347,7 @@ jfox daemon stop                                # 停止守护进程
 jfox daemon status                              # 查看 PID、端口、模型信息
 ```
 
-注意：daemon 是可选依赖 `[daemon]`，未安装时自动 fallback 到本地模型加载。
+注意：daemon 依赖（fastapi、uvicorn）已作为必选依赖安装，`jfox daemon start` 可直接使用。
 
 > 搜索、导入、整理等高频操作命令见对应技能文档（jfox-search、jfox-ingest、jfox-organize）。
 

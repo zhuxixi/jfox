@@ -105,4 +105,4 @@ jfox search "<query>" --kb work --format json
 
 - **"Index not found"**: Run `jfox index rebuild` to build the search index.
 - **Empty results**: Try broader query, switch mode to `hybrid`, or lower `--threshold`.
-- **Slow search**: First search loads embedding model (30-60s). Subsequent searches are fast. 可通过 `jfox daemon start`（需安装 `[daemon]` 依赖）启动守护进程避免重复加载。
+- **Slow search**: First search loads embedding model (30-60s). Subsequent searches are fast. 可通过 `jfox daemon start` 启动守护进程避免重复加载。
