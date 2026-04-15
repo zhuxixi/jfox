@@ -29,9 +29,9 @@ class ZKConfig:
     chroma_dir: Path = field(init=False)
 
     # NPU 配置
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimension: int = 384
-    device: str = "auto"  # auto / npu / gpu / cpu
+    embedding_model: str = "auto"  # auto = 根据 device 自动选择模型
+    embedding_dimension: int = 0  # 0 = 动态，由模型决定
+    device: str = "auto"  # auto / cuda / cpu
     batch_size: int = 32
 
     # 检索配置
