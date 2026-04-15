@@ -222,5 +222,6 @@ def get_daemon_status() -> Optional[dict]:
         "port": port,
         "model": health.get("model", "unknown"),
         "dimension": health.get("dimension", 384),
+        "device": health.get("device", "unknown"),
         "started_at": data.get("started_at") if data else None,
     }
