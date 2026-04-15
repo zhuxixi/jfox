@@ -690,8 +690,9 @@ def _status_impl(output_format: str, json_output: bool):
         },
         "stats": stats,
         "backend": {
-            "type": "CPU",
-            "model": backend.model_name if backend.model else "not loaded",
+            "type": backend._resolved_device or "未加载",
+            "model": backend.model_name or "auto (未加载)",
+            "dimension": backend.dimension,
         },
     }
 
@@ -715,8 +716,9 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
         table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
         table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-        table.add_row("Backend", "CPU")
-        table.add_row("Model", backend.model_name)
+        table.add_row("Backend", backend._resolved_device or "未加载")
+        table.add_row("Model", backend.model_name or "auto (未加载)")
+        table.add_row("Dimension", str(backend.dimension))
 
         console.print(table)
     else:
