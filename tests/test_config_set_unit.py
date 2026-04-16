@@ -1,4 +1,5 @@
 """Unit tests for 'jfox config set' command"""
+
 from unittest.mock import patch
 
 import pytest

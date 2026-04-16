@@ -1,4 +1,5 @@
 """Tests for EmbeddingBackend device detection and model selection"""
+
 from unittest.mock import patch
 
 from jfox.embedding_backend import EmbeddingBackend
@@ -55,9 +56,7 @@ class TestModelSelection:
 
     def test_explicit_model_overrides_auto(self):
         """手动指定模型时优先使用手动值"""
-        backend = EmbeddingBackend(
-            model_name="BAAI/bge-large-zh-v1.5", device="cpu"
-        )
+        backend = EmbeddingBackend(model_name="BAAI/bge-large-zh-v1.5", device="cpu")
         resolved_model = backend._resolve_model_name("cpu")
         assert resolved_model == "BAAI/bge-large-zh-v1.5"
 

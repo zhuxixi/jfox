@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cp \"C:/Users/zhuzh/.claude/skills/jfox-ingest/SKILL.md\" \"skills-recommend/claude-code/jfox-ingest/SKILL.md\")",
+      "Bash(cp \"C:/Users/zhuzh/.claude/skills/jfox-organize/SKILL.md\" \"skills-recommend/claude-code/jfox-organize/SKILL.md\")",
+      "Bash(cp \"C:/Users/zhuzh/.claude/skills/jfox-common/SKILL.md\" \"skills-recommend/claude-code/jfox-common/SKILL.md\")"
+    ]
+  }
+}
