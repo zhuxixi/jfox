@@ -1,7 +1,5 @@
 """Tests for EmbeddingBackend device detection and model selection"""
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from jfox.embedding_backend import EmbeddingBackend
 
