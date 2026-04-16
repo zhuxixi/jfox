@@ -46,8 +46,8 @@ class TestZKConfig:
         with patch("jfox.config.get_default_kb_path", return_value=Path("/default")):
             config = ZKConfig()
 
-            assert config.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
-            assert config.embedding_dimension == 384
+            assert config.embedding_model == "auto"
+            assert config.embedding_dimension == 0
             assert config.device == "auto"
             assert config.batch_size == 32
             assert config.default_semantic_top == 5
@@ -91,7 +91,7 @@ class TestZKConfig:
         with open(config_file, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
-        assert data["embedding_model"] == "sentence-transformers/all-MiniLM-L6-v2"
+        assert data["embedding_model"] == "auto"
         assert data["batch_size"] == 32
 
     def test_save_with_custom_path(self, tmp_path):
@@ -145,7 +145,7 @@ class TestZKConfig:
         with patch("jfox.config.get_default_kb_path", return_value=tmp_path):
             config = ZKConfig.load()
 
-        assert config.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
+        assert config.embedding_model == "auto"
         assert config.base_dir == tmp_path
 
     def test_for_kb_classmethod(self):

@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import yaml
+
 # Windows 下强制 UTF-8 输出，避免中文乱码
 if sys.platform == "win32":
     if hasattr(sys.stdout, "reconfigure"):
@@ -51,6 +53,9 @@ for _lib in (
     logging.getLogger(_lib).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+# config set 支持的配置项
+_VALID_CONFIG_KEYS = {"device", "embedding_model", "batch_size"}
 
 # 创建应用
 app = typer.Typer(
@@ -569,6 +574,104 @@ def search(
         raise typer.Exit(1)
 
 
+def _warn_dimension_change(new_model: str):
+    """切换 embedding 模型时警告用户重建索引"""
+    if new_model == "auto":
+        return  # auto 模式不需要警告
+    try:
+        import chromadb
+
+        chroma_path = config.chroma_dir
+        if not chroma_path.exists():
+            return
+        client = chromadb.PersistentClient(path=str(chroma_path))
+        collection = client.get_collection("notes")
+        if collection.count() == 0:
+            return  # 空索引，无需警告
+    except Exception:
+        return
+
+    # 有已有索引 + 换了模型 = 需要重建
+    console.print(
+        f"\n[yellow]⚠ 模型已更改为 {new_model}[/yellow]\n"
+        f"[yellow]  如果检索结果异常，请重建索引:[/yellow]\n"
+        f"  jfox index rebuild\n"
+    )
+
+
+def _config_set_impl(key: str, value: str):
+    """设置知识库配置项"""
+    if key not in _VALID_CONFIG_KEYS:
+        raise ValueError(f"不支持的配置项: {key}，可选值: {', '.join(sorted(_VALID_CONFIG_KEYS))}")
+
+    config_path = config.zk_dir / "config.yaml"
+
+    # 读取现有配置
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    else:
+        data = {}
+
+    # 类型转换
+    if key == "batch_size":
+        value = int(value)
+
+    # 写入配置
+    data[key] = value
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+    # 同步更新内存中的 config 对象
+    setattr(config, key, value if key != "batch_size" else int(value))
+
+    # 重置 backend 单例，让新配置在下次使用时生效
+    from .embedding_backend import reset_backend
+
+    reset_backend()
+
+    console.print(f"[green]✓ {key} = {value}[/green]")
+
+    # 切换模型时检查维度
+    if key == "embedding_model":
+        _warn_dimension_change(value)
+
+
+@app.command(name="config")
+def config_cmd(
+    action: str = typer.Argument(..., help="操作: set"),
+    key: str = typer.Argument(None, help="配置项名称"),
+    value: str = typer.Argument(None, help="配置值"),
+):
+    """
+    查看/修改知识库配置
+
+    示例:
+
+        jfox config set device cuda
+        jfox config set device auto
+        jfox config set embedding_model BAAI/bge-m3
+        jfox config set embedding_model auto
+    """
+    try:
+        if action == "set":
+            if key is None:
+                console.print("[red]✗ 缺少配置项名称[/red]")
+                raise typer.Exit(1)
+            if value is None:
+                console.print("[red]✗ 缺少配置值[/red]")
+                raise typer.Exit(1)
+            _config_set_impl(key, value)
+        else:
+            console.print(f"[red]✗ 未知操作: {action}[/red]")
+            console.print("  可用操作: set")
+            raise typer.Exit(1)
+    except ValueError as e:
+        console.print(f"[red]✗ {e}[/red]")
+        raise typer.Exit(1)
+
+
 def _status_impl(output_format: str, json_output: bool):
     """查看知识库状态的内部实现"""
     from .formatters import OutputFormatter
@@ -587,8 +690,9 @@ def _status_impl(output_format: str, json_output: bool):
         },
         "stats": stats,
         "backend": {
-            "type": "CPU",
-            "model": backend.model_name if backend.model else "not loaded",
+            "type": backend.resolved_device,
+            "model": backend.model_name or "auto (未加载)",
+            "dimension": backend.dimension,
         },
     }
 
@@ -612,8 +716,9 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
         table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
         table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-        table.add_row("Backend", "CPU")
-        table.add_row("Model", backend.model_name)
+        table.add_row("Backend", backend.resolved_device)
+        table.add_row("Model", backend.model_name or "auto (未加载)")
+        table.add_row("Dimension", str(backend.dimension))
 
         console.print(table)
     else:
@@ -2520,6 +2625,7 @@ def daemon(
                     table.add_row("端口", str(info["port"]))
                     table.add_row("模型", info["model"])
                     table.add_row("维度", str(info["dimension"]))
+                    table.add_row("设备", info.get("device", "unknown"))
                     console.print(table)
                 else:
                     console.print("[green]✓ Daemon 已启动[/green]")
@@ -2546,6 +2652,7 @@ def daemon(
                 table.add_row("端口", str(info["port"]))
                 table.add_row("模型", info.get("model", "unknown"))
                 table.add_row("维度", str(info.get("dimension", "unknown")))
+                table.add_row("设备", info.get("device", "unknown"))
                 console.print(table)
             else:
                 console.print("[dim]Daemon 未运行[/dim]")

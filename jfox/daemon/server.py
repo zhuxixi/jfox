@@ -26,12 +26,17 @@ def _load_model():
     """启动时加载模型（标记为 daemon 进程，防止自引用）"""
     global _backend
     os.environ["JFOX_DAEMON_PROCESS"] = "1"
+    from ..config import config
     from ..embedding_backend import EmbeddingBackend
 
-    _backend = EmbeddingBackend()
+    model_name = config.embedding_model if config.embedding_model != "auto" else None
+    _backend = EmbeddingBackend(device=config.device, model_name=model_name)
     try:
         _backend.load()
-        logger.info(f"Daemon: 模型已加载 ({_backend.model_name})")
+        logger.info(
+            f"Daemon: 模型已加载 {_backend.model_name} "
+            f"(device={_backend._resolved_device}, dimension={_backend._resolved_dim})"
+        )
     except Exception as e:
         logger.error(f"Daemon: 模型加载失败，进程退出: {e}")
         os._exit(1)
@@ -46,6 +51,7 @@ class HealthResponse(BaseModel):
     status: str
     model: str
     dimension: int
+    device: str  # 实际使用的设备
     pid: int
 
 
@@ -80,6 +86,7 @@ def health():
         status="ok",
         model=_backend.model_name,
         dimension=_backend.dimension,
+        device=_backend.resolved_device,
         pid=os.getpid(),
     )
 
