@@ -41,3 +41,45 @@ class TestGetPythonwExecutable:
             mock_sys.executable = "/usr/bin/python3"
             result = _get_pythonw_executable()
             assert result == "/usr/bin/python3"
+
+
+class TestStartDaemonWindowsExecutable:
+    """测试 start_daemon 在 Windows 上使用 pythonw.exe"""
+
+    @patch("jfox.daemon.process.subprocess.Popen")
+    @patch("jfox.daemon.process._http_health_check")
+    def test_uses_pythonw_on_windows(self, mock_health, mock_popen):
+        """Windows 上 start_daemon 使用 pythonw.exe 启动子进程"""
+        if sys.platform != "win32":
+            pytest.skip("Windows only")
+
+        from jfox.daemon.process import start_daemon
+
+        # daemon 未运行 → 启动新进程
+        mock_health.side_effect = [None, {"pid": 9999}]
+        mock_popen.return_value.pid = 1234
+
+        start_daemon()
+
+        call_args = mock_popen.call_args
+        cmd = call_args[0][0]
+        assert cmd[0].endswith("pythonw.exe"), f"Expected pythonw.exe, got {cmd[0]}"
+
+    @patch("jfox.daemon.process.subprocess.Popen")
+    @patch("jfox.daemon.process._http_health_check")
+    def test_creationflags_present(self, mock_health, mock_popen):
+        """Windows 上 creationflags 包含 CREATE_NO_WINDOW"""
+        if sys.platform != "win32":
+            pytest.skip("Windows only")
+
+        from jfox.daemon.process import start_daemon
+
+        mock_health.side_effect = [None, {"pid": 9999}]
+        mock_popen.return_value.pid = 1234
+
+        start_daemon()
+
+        kwargs = mock_popen.call_args[1]
+        flags = kwargs.get("creationflags", 0)
+        CREATE_NO_WINDOW = 0x08000000
+        assert flags & CREATE_NO_WINDOW, "CREATE_NO_WINDOW flag not set"
