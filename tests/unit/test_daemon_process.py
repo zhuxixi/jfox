@@ -16,7 +16,7 @@ class TestGetPythonwExecutable:
         from jfox.daemon.process import _get_pythonw_executable
 
         result = _get_pythonw_executable()
-        assert result.endswith("pythonw.exe") or result.endswith("python.exe")
+        assert result.endswith("pythonw.exe"), f"Expected pythonw.exe, got {result}"
 
     def test_fallback_when_pythonw_missing(self):
         """pythonw.exe 不存在时回退到 python.exe"""

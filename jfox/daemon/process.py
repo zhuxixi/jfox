@@ -125,7 +125,12 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         return True
 
     # 构建启动命令（Windows 使用 pythonw.exe 避免控制台窗口）
-    cmd = [_get_pythonw_executable(), "-m", "jfox.daemon.server", "--host", host, "--port", str(port)]
+    cmd = [
+        _get_pythonw_executable(),
+        "-m", "jfox.daemon.server",
+        "--host", host,
+        "--port", str(port),
+    ]
 
     kwargs = {}
     if sys.platform == "win32":
