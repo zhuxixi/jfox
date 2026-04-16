@@ -16,6 +16,23 @@ from typing import Optional
 
 from . import DEFAULT_HOST, DEFAULT_PORT
 
+
+def _get_pythonw_executable() -> str:
+    """获取 pythonw.exe 路径（Windows 无控制台入口）
+
+    Windows 上优先使用 pythonw.exe 避免 daemon 子进程弹出控制台窗口。
+    如果 pythonw.exe 不存在则回退到 sys.executable。
+    非 Windows 平台直接返回 sys.executable。
+    """
+    if sys.platform != "win32":
+        return sys.executable
+
+    pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+    if pythonw != sys.executable and Path(pythonw).exists():
+        return pythonw
+    return sys.executable
+
+
 logger = logging.getLogger(__name__)
 
 STARTUP_TIMEOUT = 60  # 模型加载可能较慢
@@ -107,8 +124,16 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         )
         return True
 
-    # 构建启动命令
-    cmd = [sys.executable, "-m", "jfox.daemon.server", "--host", host, "--port", str(port)]
+    # 构建启动命令（Windows 使用 pythonw.exe 避免控制台窗口）
+    cmd = [
+        _get_pythonw_executable(),
+        "-m",
+        "jfox.daemon.server",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
 
     kwargs = {}
     if sys.platform == "win32":
