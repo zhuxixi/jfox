@@ -28,7 +28,7 @@ class ZKConfig:
     zk_dir: Path = field(init=False)
     chroma_dir: Path = field(init=False)
 
-    # NPU 配置
+    # Embedding 配置
     embedding_model: str = "auto"  # auto = 根据 device 自动选择模型
     embedding_dimension: int = 0  # 0 = 动态，由模型决定
     device: str = "auto"  # auto / cuda / cpu
@@ -122,13 +122,14 @@ config = get_config()
 
 
 def _reset_singletons():
-    """重置所有缓存的单例（搜索引擎、向量存储、BM25 索引）"""
+    """重置所有缓存的单例（搜索引擎、向量存储、BM25 索引、embedding 后端）"""
     import importlib
 
     for module_name, fn_name in [
         (".bm25_index", "reset_bm25_index"),
         (".search_engine", "reset_search_engine"),
         (".vector_store", "reset_vector_store"),
+        (".embedding_backend", "reset_backend"),
     ]:
         try:
             module = importlib.import_module(module_name, package="jfox")

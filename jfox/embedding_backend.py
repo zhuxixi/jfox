@@ -143,6 +143,11 @@ class EmbeddingBackend:
                 return 1024
         return 384  # 默认 MiniLM 维度
 
+    @property
+    def resolved_device(self) -> str:
+        """实际使用的设备（auto 解析后）"""
+        return self._resolved_device or "unknown"
+
 
 # Global backend instance
 _backend: Optional[EmbeddingBackend] = None

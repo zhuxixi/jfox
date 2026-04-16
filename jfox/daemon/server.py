@@ -86,7 +86,7 @@ def health():
         status="ok",
         model=_backend.model_name,
         dimension=_backend.dimension,
-        device=_backend._resolved_device or "unknown",
+        device=_backend.resolved_device,
         pid=os.getpid(),
     )
 

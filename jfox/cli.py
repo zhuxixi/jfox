@@ -598,7 +598,7 @@ def _warn_dimension_change(new_model: str):
         console.print(
             f"\n[yellow]⚠ 模型维度变化: {old_dim} → {new_dim}[/yellow]\n"
             f"[yellow]  现有向量索引与新模型不兼容，请重建索引:[/yellow]\n"
-            f"  jfox rebuild --force\n"
+            f"  jfox index rebuild\n"
         )
 
 
@@ -625,6 +625,9 @@ def _config_set_impl(key: str, value: str):
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+    # 同步更新内存中的 config 对象
+    setattr(config, key, value if key != "batch_size" else int(value))
 
     # 重置 backend 单例，让新配置在下次使用时生效
     from .embedding_backend import reset_backend
@@ -690,7 +693,7 @@ def _status_impl(output_format: str, json_output: bool):
         },
         "stats": stats,
         "backend": {
-            "type": backend._resolved_device or "未加载",
+            "type": backend.resolved_device,
             "model": backend.model_name or "auto (未加载)",
             "dimension": backend.dimension,
         },
@@ -716,7 +719,7 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
         table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
         table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-        table.add_row("Backend", backend._resolved_device or "未加载")
+        table.add_row("Backend", backend.resolved_device)
         table.add_row("Model", backend.model_name or "auto (未加载)")
         table.add_row("Dimension", str(backend.dimension))
 
