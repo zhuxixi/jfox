@@ -81,21 +81,23 @@ class EmbeddingBackend:
         """加载模型（支持 device 自动检测和 GPU 加速）"""
         if self.model is not None:
             return
+
+        # 解析 device 和 model（即使 daemon 模式也需要，用于 status 显示）
+        if self._resolved_device is None:
+            self._resolved_device = self._resolve_device()
+        if self.model_name is None or self.model_name == "auto":
+            self.model_name = self._resolve_model_name(self._resolved_device)
+
         if self._check_daemon():
             return  # daemon 已持有模型，无需本地加载
-
-        # 解析 device 和 model
-        self._resolved_device = self._resolve_device()
-        actual_model_name = self._resolve_model_name(self._resolved_device)
-        self.model_name = actual_model_name  # 更新为实际模型名
 
         try:
             from sentence_transformers import SentenceTransformer
 
-            self.model = SentenceTransformer(actual_model_name, device=self._resolved_device)
+            self.model = SentenceTransformer(self.model_name, device=self._resolved_device)
             self._resolved_dim = self.model.get_sentence_embedding_dimension()
             logger.info(
-                f"模型已加载: {actual_model_name} "
+                f"模型已加载: {self.model_name} "
                 f"(device={self._resolved_device}, dimension={self._resolved_dim})"
             )
         except Exception as e:

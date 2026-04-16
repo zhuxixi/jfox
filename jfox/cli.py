@@ -575,7 +575,9 @@ def search(
 
 
 def _warn_dimension_change(new_model: str):
-    """切换 embedding 模型时检查维度是否变化，若有变化则警告"""
+    """切换 embedding 模型时警告用户重建索引"""
+    if new_model == "auto":
+        return  # auto 模式不需要警告
     try:
         import chromadb
 
@@ -584,22 +586,17 @@ def _warn_dimension_change(new_model: str):
             return
         client = chromadb.PersistentClient(path=str(chroma_path))
         collection = client.get_collection("notes")
-        old_dim = collection.metadata.get("dimension", 0) if collection.metadata else 0
+        if collection.count() == 0:
+            return  # 空索引，无需警告
     except Exception:
-        return  # 无法读取旧维度，跳过警告
+        return
 
-    # 估算新模型维度
-    if any(k in new_model.lower() for k in ("bge-m3", "bge-large")):
-        new_dim = 1024
-    else:
-        new_dim = 384
-
-    if old_dim and old_dim != new_dim:
-        console.print(
-            f"\n[yellow]⚠ 模型维度变化: {old_dim} → {new_dim}[/yellow]\n"
-            f"[yellow]  现有向量索引与新模型不兼容，请重建索引:[/yellow]\n"
-            f"  jfox index rebuild\n"
-        )
+    # 有已有索引 + 换了模型 = 需要重建
+    console.print(
+        f"\n[yellow]⚠ 模型已更改为 {new_model}[/yellow]\n"
+        f"[yellow]  如果检索结果异常，请重建索引:[/yellow]\n"
+        f"  jfox index rebuild\n"
+    )
 
 
 def _config_set_impl(key: str, value: str):
