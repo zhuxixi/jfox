@@ -1,6 +1,7 @@
 """ChromaDB 向量存储封装"""
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -82,7 +83,28 @@ class VectorStore:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to add note {note.id}: {e}")
+            error_msg = str(e)
+            if "dimension" in error_msg.lower() and "expecting" in error_msg.lower():
+                # 维度不匹配：模型已切换，提示用户 rebuild
+                dim_match = re.search(
+                    r"dimension of (\d+).*got (\d+)", error_msg
+                )
+                if dim_match:
+                    old_dim, new_dim = dim_match.group(1), dim_match.group(2)
+                    logger.error(
+                        f"Embedding 维度不匹配（collection: {old_dim}, "
+                        f"当前模型: {new_dim}）。"
+                        f"可能是模型已切换，请执行 jfox index rebuild "
+                        f"重建索引。原始错误: {error_msg}"
+                    )
+                else:
+                    logger.error(
+                        f"Embedding 维度不匹配，可能是模型已切换。"
+                        f"请执行 jfox index rebuild 重建索引。"
+                        f"原始错误: {error_msg}"
+                    )
+            else:
+                logger.error(f"Failed to add note {note.id}: {error_msg}")
             return False
 
     def search(

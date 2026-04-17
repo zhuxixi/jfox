@@ -4,7 +4,8 @@
 验证 rebuild 前清除旧数据的逻辑
 """
 
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 
 import chromadb
 
@@ -133,3 +134,79 @@ class TestVectorStoreResetCollection:
         result = store.reset_collection()
 
         assert result is False
+
+
+class TestVectorStoreDimensionMismatch:
+    """add_note() 维度不匹配时应给出友好提示"""
+
+    def test_add_note_dimension_mismatch_friendly_message(self):
+        """维度不匹配时 logger.error 应包含 rebuild 提示"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        client = chromadb.EphemeralClient()
+        store.client = client
+        store.collection = client.create_collection(
+            name="test_dim_mismatch", metadata={"hnsw:space": "cosine"}
+        )
+
+        # 创建一个假笔记
+        note = MagicMock()
+        note.id = "20260412120000"
+        note.title = "Test"
+        note.content = "Test content"
+        note.type = MagicMock(value="permanent")
+        note.tags = []
+        note.filepath = MagicMock()
+
+        # mock collection.add 抛出维度不匹配异常
+        store.collection.add = MagicMock(
+            side_effect=Exception(
+                "Collection expecting embedding with dimension of 384, got 1024"
+            )
+        )
+
+        with patch("jfox.embedding_backend.get_backend") as mock_backend:
+            mock_backend.return_value.encode_single.return_value.tolist.return_value = [
+                0.1
+            ] * 1024
+            with patch.object(
+                logging.getLogger("jfox.vector_store"), "error"
+            ) as mock_error:
+                result = store.add_note(note)
+
+        assert result is False
+        # 验证错误信息包含 rebuild 提示
+        error_msg = mock_error.call_args[0][0]
+        assert "jfox index rebuild" in error_msg
+        assert "384" in error_msg
+        assert "1024" in error_msg
+
+    def test_add_note_non_dimension_exception_unchanged(self):
+        """非维度不匹配的异常仍使用原始错误信息格式"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        store.collection = MagicMock()
+        store.collection.add.side_effect = Exception("Some other error")
+
+        note = MagicMock()
+        note.id = "20260412120000"
+        note.title = "Test"
+        note.content = "Content"
+        note.type = MagicMock(value="permanent")
+        note.tags = []
+        note.filepath = MagicMock()
+
+        with patch("jfox.embedding_backend.get_backend") as mock_backend:
+            mock_backend.return_value.encode_single.return_value.tolist.return_value = [
+                0.1
+            ] * 384
+            with patch.object(
+                logging.getLogger("jfox.vector_store"), "error"
+            ) as mock_error:
+                result = store.add_note(note)
+
+        assert result is False
+        error_msg = mock_error.call_args[0][0]
+        assert "rebuild" not in error_msg.lower()
