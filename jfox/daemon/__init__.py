@@ -3,9 +3,10 @@
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 18700
 
-from .process import get_daemon_status, is_daemon_running, start_daemon, stop_daemon
+from .process import DAEMON_LOG_FILE, get_daemon_status, is_daemon_running, start_daemon, stop_daemon
 
 __all__ = [
+    "DAEMON_LOG_FILE",
     "DEFAULT_HOST",
     "DEFAULT_PORT",
     "start_daemon",
