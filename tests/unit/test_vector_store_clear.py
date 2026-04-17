@@ -74,3 +74,62 @@ class TestVectorStoreClear:
         result = store.clear()
 
         assert result is False
+
+
+class TestVectorStoreResetCollection:
+    """VectorStore.reset_collection() 单元测试"""
+
+    def test_reset_collection_recreates_collection(self):
+        """reset_collection() 应删除旧 collection 并创建新的（维度重置）"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        client = chromadb.EphemeralClient()
+        store.client = client
+        store.collection = client.create_collection(
+            name="notes", metadata={"hnsw:space": "cosine"}
+        )
+
+        # 插入 384 维数据
+        store.collection.add(
+            ids=["note_001"],
+            documents=["doc1"],
+            embeddings=[[0.1] * 384],
+            metadatas=[{"title": "t1", "type": "permanent", "filepath": "/a", "tags": ""}],
+        )
+        assert store.collection.count() == 1
+
+        # reset 后 collection 应为空
+        result = store.reset_collection()
+
+        assert result is True
+        assert store.collection.count() == 0
+
+    def test_reset_collection_on_nonexistent_collection(self):
+        """reset_collection() 在 collection 不存在时应正常创建新的"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        client = chromadb.EphemeralClient()
+        store.client = client
+        # 不创建 collection，client 上没有 "notes" collection
+
+        result = store.reset_collection()
+
+        assert result is True
+        assert store.collection is not None
+        assert store.collection.count() == 0
+
+    def test_reset_collection_returns_false_on_failure(self):
+        """reset_collection() 在 init 失败时返回 False"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        store.client = MagicMock()
+        # Mock get_or_create_collection 抛异常
+        store.client.delete_collection.return_value = None  # 模拟删除成功（可能不存在）
+        store.client.get_or_create_collection.side_effect = Exception("DB error")
+
+        result = store.reset_collection()
+
+        assert result is False

@@ -206,6 +206,36 @@ class VectorStore:
             logger.error(f"Failed to clear vector store: {e}")
             return False
 
+    def reset_collection(self) -> bool:
+        """
+        彻底删除并重建 collection（用于 index rebuild）
+
+        与 clear() 不同，reset_collection() 会删除整个 collection 结构再重建，
+        确保 embedding dimension 等元信息也被重置。
+        适用于切换模型后需要 rebuild 的场景。
+
+        Returns:
+            是否成功重建
+        """
+        if self.client is None:
+            self.init()
+
+        try:
+            self.client.delete_collection("notes")
+            logger.info("Deleted old collection 'notes'")
+        except Exception:
+            pass  # collection 可能不存在
+
+        try:
+            self.collection = self.client.get_or_create_collection(
+                name="notes", metadata={"hnsw:space": "cosine"}
+            )
+            logger.info("Recreated collection 'notes'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to recreate collection: {e}")
+            return False
+
 
 # 全局向量存储实例
 _vector_store: Optional[VectorStore] = None
