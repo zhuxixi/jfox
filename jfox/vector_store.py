@@ -87,7 +87,7 @@ class VectorStore:
             if "dimension" in error_msg.lower() and "expecting" in error_msg.lower():
                 # 维度不匹配：模型已切换，提示用户 rebuild
                 dim_match = re.search(
-                    r"dimension of (\d+).*got (\d+)", error_msg
+                    r"dimension of (\d+).*got (\d+)", error_msg, re.IGNORECASE
                 )
                 if dim_match:
                     old_dim, new_dim = dim_match.group(1), dim_match.group(2)
@@ -245,8 +245,8 @@ class VectorStore:
         try:
             self.client.delete_collection("notes")
             logger.info("Deleted old collection 'notes'")
-        except Exception:
-            pass  # collection 可能不存在
+        except Exception as e:
+            logger.debug(f"delete_collection skipped: {e}")
 
         try:
             self.collection = self.client.get_or_create_collection(

@@ -156,8 +156,9 @@ def _check_model_cache() -> dict:
             "model_name": model_name,
             "size_hint": size_hint,
         }
-    except Exception:
-        return {"needs_download": False, "model_name": "unknown", "size_hint": ""}
+    except Exception as e:
+        logger.debug(f"Model cache check failed, assuming download needed: {e}")
+        return {"needs_download": True, "model_name": "unknown", "size_hint": ""}
 
 
 def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
