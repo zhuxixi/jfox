@@ -114,7 +114,7 @@ def _check_model_cache() -> dict:
     """
     try:
         from ..config import config as _cfg
-        from ..embedding_backend import _GPU_DEFAULT_MODEL, _CPU_DEFAULT_MODEL
+        from ..embedding_backend import _CPU_DEFAULT_MODEL, _GPU_DEFAULT_MODEL
 
         # 确定目标模型名
         model_name = _cfg.embedding_model
