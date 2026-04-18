@@ -2613,6 +2613,7 @@ def daemon(
     try:
         if action == "start":
             from .daemon.process import DAEMON_LOG_FILE
+
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
             console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
             ok = start_daemon(port=port)

@@ -142,11 +142,9 @@ class TestDaemonModelCacheCheck:
     @patch("jfox.daemon.process._check_model_cache")
     @patch("jfox.daemon.process.subprocess.Popen")
     @patch("jfox.daemon.process._http_health_check")
-    def test_first_run_uses_extended_timeout(
-        self, mock_health, mock_popen, mock_cache
-    ):
+    def test_first_run_uses_extended_timeout(self, mock_health, mock_popen, mock_cache):
         """首次下载模型时应使用 FIRST_RUN_TIMEOUT"""
-        from jfox.daemon.process import FIRST_RUN_TIMEOUT, start_daemon
+        from jfox.daemon.process import start_daemon
 
         mock_health.side_effect = [None, {"pid": 9999}]
         mock_popen.return_value.pid = 1234

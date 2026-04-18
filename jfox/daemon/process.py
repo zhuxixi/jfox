@@ -130,15 +130,9 @@ def _check_model_cache() -> dict:
                 model_name = _CPU_DEFAULT_MODEL
 
         # 检查 HuggingFace 缓存
-        hf_home = os.environ.get(
-            "HF_HOME", str(Path.home() / ".cache" / "huggingface")
-        )
-        hub_cache = os.environ.get(
-            "HUGGINGFACE_HUB_CACHE", str(Path(hf_home) / "hub")
-        )
-        model_cache_dir = (
-            Path(hub_cache) / f"models--{model_name.replace('/', '--')}"
-        )
+        hf_home = os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
+        hub_cache = os.environ.get("HUGGINGFACE_HUB_CACHE", str(Path(hf_home) / "hub"))
+        model_cache_dir = Path(hub_cache) / f"models--{model_name.replace('/', '--')}"
 
         size_hint = "2GB" if "bge-m3" in model_name else "90MB"
 
@@ -187,8 +181,7 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
     cache_info = _check_model_cache()
     if cache_info["needs_download"]:
         logger.info(
-            f"首次启动需要下载模型 {cache_info['model_name']}"
-            f"（约 {cache_info['size_hint']}）"
+            f"首次启动需要下载模型 {cache_info['model_name']}" f"（约 {cache_info['size_hint']}）"
         )
         timeout = FIRST_RUN_TIMEOUT
 
@@ -208,9 +201,7 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         CREATE_NEW_PROCESS_GROUP = 0x00000200
         DETACHED_PROCESS = 0x00000008
         CREATE_NO_WINDOW = 0x08000000
-        kwargs["creationflags"] = (
-            CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW
-        )
+        kwargs["creationflags"] = CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_NO_WINDOW
     else:
         kwargs["start_new_session"] = True
 
@@ -250,9 +241,7 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
                 logger.info(f"Daemon 已就绪 (PID: {real_pid}, port: {port})")
                 return True
 
-        logger.warning(
-            f"Daemon 启动超时（{timeout}秒），日志见 {DAEMON_LOG_FILE}"
-        )
+        logger.warning(f"Daemon 启动超时（{timeout}秒），日志见 {DAEMON_LOG_FILE}")
         return False
     finally:
         log_file.close()

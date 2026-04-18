@@ -87,9 +87,7 @@ class TestVectorStoreResetCollection:
         store = VectorStore()
         client = chromadb.EphemeralClient()
         store.client = client
-        store.collection = client.create_collection(
-            name="notes", metadata={"hnsw:space": "cosine"}
-        )
+        store.collection = client.create_collection(name="notes", metadata={"hnsw:space": "cosine"})
 
         # 插入 384 维数据
         store.collection.add(
@@ -161,18 +159,12 @@ class TestVectorStoreDimensionMismatch:
 
         # mock collection.add 抛出维度不匹配异常
         store.collection.add = MagicMock(
-            side_effect=Exception(
-                "Collection expecting embedding with dimension of 384, got 1024"
-            )
+            side_effect=Exception("Collection expecting embedding with dimension of 384, got 1024")
         )
 
         with patch("jfox.embedding_backend.get_backend") as mock_backend:
-            mock_backend.return_value.encode_single.return_value.tolist.return_value = [
-                0.1
-            ] * 1024
-            with patch.object(
-                logging.getLogger("jfox.vector_store"), "error"
-            ) as mock_error:
+            mock_backend.return_value.encode_single.return_value.tolist.return_value = [0.1] * 1024
+            with patch.object(logging.getLogger("jfox.vector_store"), "error") as mock_error:
                 result = store.add_note(note)
 
         assert result is False
@@ -199,12 +191,8 @@ class TestVectorStoreDimensionMismatch:
         note.filepath = MagicMock()
 
         with patch("jfox.embedding_backend.get_backend") as mock_backend:
-            mock_backend.return_value.encode_single.return_value.tolist.return_value = [
-                0.1
-            ] * 384
-            with patch.object(
-                logging.getLogger("jfox.vector_store"), "error"
-            ) as mock_error:
+            mock_backend.return_value.encode_single.return_value.tolist.return_value = [0.1] * 384
+            with patch.object(logging.getLogger("jfox.vector_store"), "error") as mock_error:
                 result = store.add_note(note)
 
         assert result is False
