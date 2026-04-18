@@ -243,8 +243,9 @@ class VectorStore:
         try:
             self.client.delete_collection("notes")
             logger.info("Deleted old collection 'notes'")
-        except Exception as e:
-            logger.debug(f"delete_collection skipped: {e}")
+        except ValueError:
+            # ChromaDB 对不存在的 collection 抛 ValueError，这是正常情况
+            logger.debug("Collection 'notes' did not exist, skipping delete")
 
         try:
             self.collection = self.client.get_or_create_collection(

@@ -119,19 +119,32 @@ class TestVectorStoreResetCollection:
         assert store.collection is not None
         assert store.collection.count() == 0
 
-    def test_reset_collection_returns_false_on_failure(self):
-        """reset_collection() 在 init 失败时返回 False"""
+    def test_reset_collection_returns_false_on_recreate_failure(self):
+        """get_or_create_collection 失败时返回 False"""
         from jfox.vector_store import VectorStore
 
         store = VectorStore()
         store.client = MagicMock()
-        # Mock get_or_create_collection 抛异常
-        store.client.delete_collection.return_value = None  # 模拟删除成功（可能不存在）
+        store.client.delete_collection.return_value = None
         store.client.get_or_create_collection.side_effect = Exception("DB error")
 
         result = store.reset_collection()
 
         assert result is False
+
+    def test_reset_collection_propagates_delete_failure(self):
+        """delete_collection 非预期异常应向上冒泡（如文件锁、磁盘错误）"""
+        import pytest
+
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        store.client = MagicMock()
+        # 非 ValueError 的异常（如文件锁）不应被静默吞掉
+        store.client.delete_collection.side_effect = RuntimeError("file locked")
+
+        with pytest.raises(RuntimeError, match="file locked"):
+            store.reset_collection()
 
 
 class TestVectorStoreDimensionMismatch:
