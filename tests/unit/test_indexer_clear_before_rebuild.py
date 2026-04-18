@@ -1,7 +1,7 @@
 """
-测试 Indexer.index_all() 在重建前清除旧数据
+测试 Indexer.index_all() 在重建前重置 collection
 
-验证 rebuild 流程：先 clear 再 index
+验证 rebuild 流程：先 reset_collection 再 index
 """
 
 import tempfile
@@ -9,11 +9,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-class TestIndexerClearBeforeRebuild:
-    """Indexer.index_all() 应先清除旧索引再重建"""
+class TestIndexerResetBeforeRebuild:
+    """Indexer.index_all() 应先重置 collection 再重建"""
 
-    def test_index_all_calls_vector_store_clear(self):
-        """index_all() 应在索引笔记前调用 vector_store.clear()"""
+    def test_index_all_calls_vector_store_reset_collection(self):
+        """index_all() 应在索引笔记前调用 vector_store.reset_collection()"""
         from jfox.indexer import Indexer
 
         mock_config = MagicMock()
@@ -29,10 +29,10 @@ class TestIndexerClearBeforeRebuild:
             count = indexer.index_all()
 
             assert count == 0
-            mock_vector_store.clear.assert_called_once()
+            mock_vector_store.reset_collection.assert_called_once()
 
-    def test_index_all_clear_before_add(self):
-        """clear() 必须在 add_or_update_note() 之前调用"""
+    def test_index_all_reset_before_add(self):
+        """reset_collection() 必须在 add_or_update_note() 之前调用"""
         from jfox.indexer import Indexer
 
         mock_config = MagicMock()
@@ -59,11 +59,11 @@ class TestIndexerClearBeforeRebuild:
 
             # 验证调用顺序
             calls = mock_vector_store.method_calls
-            clear_indices = [i for i, c in enumerate(calls) if c[0] == "clear"]
+            reset_indices = [i for i, c in enumerate(calls) if c[0] == "reset_collection"]
             add_indices = [i for i, c in enumerate(calls) if c[0] == "add_or_update_note"]
 
-            if clear_indices and add_indices:
-                assert clear_indices[0] < add_indices[0], (
-                    f"clear() (call #{clear_indices[0]}) must be before "
+            if reset_indices and add_indices:
+                assert reset_indices[0] < add_indices[0], (
+                    f"reset_collection() (call #{reset_indices[0]}) must be before "
                     f"add_or_update_note() (call #{add_indices[0]})"
                 )

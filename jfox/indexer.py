@@ -249,8 +249,8 @@ class Indexer:
         if not notes_dir.exists():
             return 0
 
-        # 清除旧索引数据，确保干净重建
-        self.vector_store.clear()
+        # 彻底重建 collection（删除旧结构 + 重建，解决模型切换后维度不匹配）
+        self.vector_store.reset_collection()
 
         # Find all note files
         note_files = list(notes_dir.rglob("*.md"))

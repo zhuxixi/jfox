@@ -4,7 +4,8 @@
 验证 rebuild 前清除旧数据的逻辑
 """
 
-from unittest.mock import MagicMock
+import logging
+from unittest.mock import MagicMock, patch
 
 import chromadb
 
@@ -74,3 +75,139 @@ class TestVectorStoreClear:
         result = store.clear()
 
         assert result is False
+
+
+class TestVectorStoreResetCollection:
+    """VectorStore.reset_collection() 单元测试"""
+
+    def test_reset_collection_recreates_collection(self):
+        """reset_collection() 应删除旧 collection 并创建新的（维度重置）"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        client = chromadb.EphemeralClient()
+        store.client = client
+        store.collection = client.create_collection(name="notes", metadata={"hnsw:space": "cosine"})
+
+        # 插入 384 维数据
+        store.collection.add(
+            ids=["note_001"],
+            documents=["doc1"],
+            embeddings=[[0.1] * 384],
+            metadatas=[{"title": "t1", "type": "permanent", "filepath": "/a", "tags": ""}],
+        )
+        assert store.collection.count() == 1
+
+        # reset 后 collection 应为空
+        result = store.reset_collection()
+
+        assert result is True
+        assert store.collection.count() == 0
+
+    def test_reset_collection_on_nonexistent_collection(self):
+        """reset_collection() 在 collection 不存在时应正常创建新的"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        client = chromadb.EphemeralClient()
+        store.client = client
+        # 不创建 collection，client 上没有 "notes" collection
+
+        result = store.reset_collection()
+
+        assert result is True
+        assert store.collection is not None
+        assert store.collection.count() == 0
+
+    def test_reset_collection_returns_false_on_recreate_failure(self):
+        """get_or_create_collection 失败时返回 False"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        store.client = MagicMock()
+        store.client.delete_collection.return_value = None
+        store.client.get_or_create_collection.side_effect = Exception("DB error")
+
+        result = store.reset_collection()
+
+        assert result is False
+
+    def test_reset_collection_propagates_delete_failure(self):
+        """delete_collection 非预期异常应向上冒泡（如文件锁、磁盘错误）"""
+        import pytest
+
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        store.client = MagicMock()
+        # 非 ValueError 的异常（如文件锁）不应被静默吞掉
+        store.client.delete_collection.side_effect = RuntimeError("file locked")
+
+        with pytest.raises(RuntimeError, match="file locked"):
+            store.reset_collection()
+
+
+class TestVectorStoreDimensionMismatch:
+    """add_note() 维度不匹配时应给出友好提示"""
+
+    def test_add_note_dimension_mismatch_friendly_message(self):
+        """维度不匹配时 logger.error 应包含 rebuild 提示"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        client = chromadb.EphemeralClient()
+        store.client = client
+        store.collection = client.create_collection(
+            name="test_dim_mismatch", metadata={"hnsw:space": "cosine"}
+        )
+
+        # 创建一个假笔记
+        note = MagicMock()
+        note.id = "20260412120000"
+        note.title = "Test"
+        note.content = "Test content"
+        note.type = MagicMock(value="permanent")
+        note.tags = []
+        note.filepath = MagicMock()
+
+        # mock collection.add 抛出维度不匹配异常
+        store.collection.add = MagicMock(
+            side_effect=Exception("Collection expecting embedding with dimension of 384, got 1024")
+        )
+
+        with patch("jfox.embedding_backend.get_backend") as mock_backend:
+            mock_backend.return_value.encode_single.return_value.tolist.return_value = [0.1] * 1024
+            with patch.object(logging.getLogger("jfox.vector_store"), "error") as mock_error:
+                result = store.add_note(note)
+
+        assert result is False
+        # 验证错误信息包含 rebuild 提示
+        error_msg = mock_error.call_args[0][0]
+        assert "jfox index rebuild" in error_msg
+        assert "384" in error_msg
+        assert "1024" in error_msg
+
+    def test_add_note_non_dimension_exception_unchanged(self):
+        """非维度不匹配的异常仍使用原始错误信息格式"""
+        from jfox.vector_store import VectorStore
+
+        store = VectorStore()
+        store.collection = MagicMock()
+        store.collection.add.side_effect = Exception("Some other error")
+
+        note = MagicMock()
+        note.id = "20260412120000"
+        note.title = "Test"
+        note.content = "Content"
+        note.type = MagicMock(value="permanent")
+        note.tags = []
+        note.filepath = MagicMock()
+
+        with patch("jfox.embedding_backend.get_backend") as mock_backend:
+            mock_backend.return_value.encode_single.return_value.tolist.return_value = [0.1] * 384
+            with patch.object(logging.getLogger("jfox.vector_store"), "error") as mock_error:
+                result = store.add_note(note)
+
+        assert result is False
+        error_msg = mock_error.call_args[0][0]
+        assert "rebuild" not in error_msg.lower()

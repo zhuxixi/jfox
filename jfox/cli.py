@@ -2612,7 +2612,10 @@ def daemon(
 
     try:
         if action == "start":
+            from .daemon.process import DAEMON_LOG_FILE
+
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
+            console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
             ok = start_daemon(port=port)
             if ok:
                 info = get_daemon_status()
@@ -2631,6 +2634,7 @@ def daemon(
                     console.print("[green]✓ Daemon 已启动[/green]")
             else:
                 console.print("[red]✗ Daemon 启动失败[/red]")
+                console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
                 raise typer.Exit(1)
 
         elif action == "stop":

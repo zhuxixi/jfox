@@ -36,6 +36,8 @@ def _get_pythonw_executable() -> str:
 logger = logging.getLogger(__name__)
 
 STARTUP_TIMEOUT = 60  # 模型加载可能较慢
+FIRST_RUN_TIMEOUT = 300  # 首次下载模型超时（秒）
+DAEMON_LOG_FILE = Path.home() / ".jfox_daemon.log"
 PID_FILE = Path.home() / ".jfox_daemon.pid"
 
 
@@ -103,6 +105,56 @@ def is_daemon_running() -> bool:
     return False
 
 
+def _check_model_cache() -> dict:
+    """
+    检查当前模型是否已缓存
+
+    Returns:
+        dict: {"needs_download": bool, "model_name": str, "size_hint": str}
+    """
+    try:
+        from ..config import config as _cfg
+        from ..embedding_backend import _CPU_DEFAULT_MODEL, _GPU_DEFAULT_MODEL
+
+        # 确定目标模型名
+        model_name = _cfg.embedding_model
+        if model_name == "auto" or not model_name:
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    model_name = _GPU_DEFAULT_MODEL
+                else:
+                    model_name = _CPU_DEFAULT_MODEL
+            except Exception:
+                model_name = _CPU_DEFAULT_MODEL
+
+        # 检查 HuggingFace 缓存
+        hf_home = os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
+        hub_cache = os.environ.get("HUGGINGFACE_HUB_CACHE", str(Path(hf_home) / "hub"))
+        model_cache_dir = Path(hub_cache) / f"models--{model_name.replace('/', '--')}"
+
+        size_hint = "2GB" if "bge-m3" in model_name else "90MB"
+
+        if model_cache_dir.exists():
+            snapshots_dir = model_cache_dir / "snapshots"
+            has_files = snapshots_dir.exists() and any(snapshots_dir.iterdir())
+            return {
+                "needs_download": not has_files,
+                "model_name": model_name,
+                "size_hint": size_hint,
+            }
+
+        return {
+            "needs_download": True,
+            "model_name": model_name,
+            "size_hint": size_hint,
+        }
+    except Exception as e:
+        logger.debug(f"Model cache check failed, assuming download needed: {e}")
+        return {"needs_download": True, "model_name": "unknown", "size_hint": ""}
+
+
 def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
     """
     启动 daemon 后台进程
@@ -124,6 +176,15 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         )
         return True
 
+    # 首次启动预检：检查模型缓存是否存在
+    timeout = STARTUP_TIMEOUT
+    cache_info = _check_model_cache()
+    if cache_info["needs_download"]:
+        logger.info(
+            f"首次启动需要下载模型 {cache_info['model_name']}" f"（约 {cache_info['size_hint']}）"
+        )
+        timeout = FIRST_RUN_TIMEOUT
+
     # 构建启动命令（Windows 使用 pythonw.exe 避免控制台窗口）
     cmd = [
         _get_pythonw_executable(),
@@ -137,7 +198,6 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
 
     kwargs = {}
     if sys.platform == "win32":
-        # Windows: 后台分离进程，不弹窗
         CREATE_NEW_PROCESS_GROUP = 0x00000200
         DETACHED_PROCESS = 0x00000008
         CREATE_NO_WINDOW = 0x08000000
@@ -145,39 +205,46 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
     else:
         kwargs["start_new_session"] = True
 
+    # 子进程日志落盘（stdout/stderr → 日志文件）
+    log_file = open(DAEMON_LOG_FILE, "a", encoding="utf-8")
+
     try:
         proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=log_file,
             stdin=subprocess.DEVNULL,
             **kwargs,
         )
         logger.info(f"Daemon 进程已启动 (PID: {proc.pid})")
+        logger.info(f"Daemon 日志文件: {DAEMON_LOG_FILE}")
     except Exception as e:
+        log_file.close()
         logger.error(f"启动 daemon 失败: {e}")
         return False
 
     # 等待 daemon 就绪（用 HTTP 健康检查判断，不用 PID）
-    for i in range(STARTUP_TIMEOUT):
-        time.sleep(1)
-        health = _http_health_check(host, port)
-        if health is not None:
-            # 从 daemon 自身获取真实 PID
-            real_pid = health.get("pid", proc.pid)
-            _write_pid_file(
-                {
-                    "pid": real_pid,
-                    "host": host,
-                    "port": port,
-                    "started_at": time.time(),
-                }
-            )
-            logger.info(f"Daemon 已就绪 (PID: {real_pid}, port: {port})")
-            return True
+    try:
+        for i in range(timeout):
+            time.sleep(1)
+            health = _http_health_check(host, port)
+            if health is not None:
+                real_pid = health.get("pid", proc.pid)
+                _write_pid_file(
+                    {
+                        "pid": real_pid,
+                        "host": host,
+                        "port": port,
+                        "started_at": time.time(),
+                    }
+                )
+                logger.info(f"Daemon 已就绪 (PID: {real_pid}, port: {port})")
+                return True
 
-    logger.warning("Daemon 启动超时")
-    return False
+        logger.warning(f"Daemon 启动超时（{timeout}秒），日志见 {DAEMON_LOG_FILE}")
+        return False
+    finally:
+        log_file.close()
 
 
 def stop_daemon() -> bool:

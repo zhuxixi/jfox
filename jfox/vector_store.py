@@ -1,6 +1,7 @@
 """ChromaDB 向量存储封装"""
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -82,7 +83,26 @@ class VectorStore:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to add note {note.id}: {e}")
+            error_msg = str(e)
+            if "dimension" in error_msg.lower() and "expecting" in error_msg.lower():
+                # 维度不匹配：模型已切换，提示用户 rebuild
+                dim_match = re.search(r"dimension of (\d+).*got (\d+)", error_msg, re.IGNORECASE)
+                if dim_match:
+                    old_dim, new_dim = dim_match.group(1), dim_match.group(2)
+                    logger.error(
+                        f"Embedding 维度不匹配（collection: {old_dim}, "
+                        f"当前模型: {new_dim}）。"
+                        f"可能是模型已切换，请执行 jfox index rebuild "
+                        f"重建索引。原始错误: {error_msg}"
+                    )
+                else:
+                    logger.error(
+                        f"Embedding 维度不匹配，可能是模型已切换。"
+                        f"请执行 jfox index rebuild 重建索引。"
+                        f"原始错误: {error_msg}"
+                    )
+            else:
+                logger.error(f"Failed to add note {note.id}: {error_msg}")
             return False
 
     def search(
@@ -204,6 +224,37 @@ class VectorStore:
             return True
         except Exception as e:
             logger.error(f"Failed to clear vector store: {e}")
+            return False
+
+    def reset_collection(self) -> bool:
+        """
+        彻底删除并重建 collection（用于 index rebuild）
+
+        与 clear() 不同，reset_collection() 会删除整个 collection 结构再重建，
+        确保 embedding dimension 等元信息也被重置。
+        适用于切换模型后需要 rebuild 的场景。
+
+        Returns:
+            是否成功重建
+        """
+        if self.client is None:
+            self.init()
+
+        try:
+            self.client.delete_collection("notes")
+            logger.info("Deleted old collection 'notes'")
+        except ValueError:
+            # ChromaDB 对不存在的 collection 抛 ValueError，这是正常情况
+            logger.debug("Collection 'notes' did not exist, skipping delete")
+
+        try:
+            self.collection = self.client.get_or_create_collection(
+                name="notes", metadata={"hnsw:space": "cosine"}
+            )
+            logger.info("Recreated collection 'notes'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to recreate collection: {e}")
             return False
 
 
