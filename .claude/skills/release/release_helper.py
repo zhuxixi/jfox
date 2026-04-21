@@ -143,8 +143,10 @@ def parse_commits(last_tag: str) -> list[dict]:
     else:
         range_spec = "HEAD"
 
+    # -c core.quotepath=false 确保 git 输出中文不被转义
     result = subprocess.run(
-        ["git", "log", range_spec, "--format=%s"],
+        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8",
+         "log", range_spec, "--format=%s"],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
@@ -281,7 +283,9 @@ def summarize_entries(entries: list[dict]) -> str:
     parts = []
     for label in ("feature", "fix", "change"):
         if label in counts:
-            parts.append(f"{counts[label]} {label}{'s' if counts[label] > 1 else ''}")
+            plural = {"feature": "features", "fix": "fixes", "change": "changes"}
+            name = plural[label] if counts[label] > 1 else label
+            parts.append(f"{counts[label]} {name}")
     return ", ".join(parts) if parts else "0 changes"
 
 
