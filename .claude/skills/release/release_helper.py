@@ -39,6 +39,8 @@ def output_error(msg: str):
 
 def read_current_version() -> str:
     """从 pyproject.toml 读取当前版本号"""
+    if not PYPROJECT_TOML.exists():
+        output_error(f"未找到 {PYPROJECT_TOML}")
     content = PYPROJECT_TOML.read_text(encoding="utf-8")
     match = re.search(r'^version\s*=\s*"(\d+\.\d+\.\d+)"', content, re.MULTILINE)
     if not match:
@@ -77,26 +79,33 @@ def parse_bump(arg: str, current: str) -> str:
 
 def update_files(new_version: str, current_version: str):
     """更新 pyproject.toml、__init__.py、uv.lock"""
-    # pyproject.toml
-    content = PYPROJECT_TOML.read_text(encoding="utf-8")
-    content = re.sub(
+    if not PYPROJECT_TOML.exists():
+        output_error(f"未找到 {PYPROJECT_TOML}")
+    if not INIT_PY.exists():
+        output_error(f"未找到 {INIT_PY}")
+
+    # 先读取备份
+    toml_content = PYPROJECT_TOML.read_text(encoding="utf-8")
+    init_content = INIT_PY.read_text(encoding="utf-8")
+
+    # 更新 pyproject.toml
+    new_toml = re.sub(
         r'^version\s*=\s*"\d+\.\d+\.\d+"',
         f'version = "{new_version}"',
-        content,
+        toml_content,
         flags=re.MULTILINE,
     )
-    PYPROJECT_TOML.write_text(content, encoding="utf-8")
+    PYPROJECT_TOML.write_text(new_toml, encoding="utf-8")
 
-    # __init__.py
-    content = INIT_PY.read_text(encoding="utf-8")
-    content = re.sub(
+    # 更新 __init__.py
+    new_init = re.sub(
         r'__version__\s*=\s*"\d+\.\d+\.\d+"',
         f'__version__ = "{new_version}"',
-        content,
+        init_content,
     )
-    INIT_PY.write_text(content, encoding="utf-8")
+    INIT_PY.write_text(new_init, encoding="utf-8")
 
-    # uv.lock
+    # uv.lock — 如果失败则回滚
     result = subprocess.run(
         ["uv", "lock"],
         cwd=str(PROJECT_ROOT),
@@ -106,7 +115,10 @@ def update_files(new_version: str, current_version: str):
         errors="replace",
     )
     if result.returncode != 0:
-        output_error(f"uv lock 失败: {result.stderr}")
+        # 回滚
+        PYPROJECT_TOML.write_text(toml_content, encoding="utf-8")
+        INIT_PY.write_text(init_content, encoding="utf-8")
+        output_error(f"uv lock 失败，已回滚文件变更: {result.stderr}")
 
 
 def get_last_tag() -> str:
@@ -132,7 +144,7 @@ def parse_commits(last_tag: str) -> list[dict]:
         range_spec = "HEAD"
 
     result = subprocess.run(
-        ["git", "log", range_spec, "--oneline", "--format=%s"],
+        ["git", "log", range_spec, "--format=%s"],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
@@ -190,15 +202,15 @@ def parse_commits(last_tag: str) -> list[dict]:
     return entries
 
 
-def generate_changelog(new_version: str, current_version: str, entries: list[dict]) -> str:
+def generate_changelog(new_version: str, current_version: str, entries: list[dict], last_tag: str = "") -> str:
     """生成 CHANGELOG Markdown 内容"""
     today = date.today().isoformat()
-    last_tag = get_last_tag()
 
     # 按 type 分类
     features = [e for e in entries if e["type"] == "feat"]
     fixes = [e for e in entries if e["type"] == "fix"]
-    changes = [e for e in entries if e["type"] not in ("feat", "fix")]
+    perfs = [e for e in entries if e["type"] == "perf"]
+    changes = [e for e in entries if e["type"] not in ("feat", "fix", "perf")]
 
     lines = [f"## [{new_version}] - {today}", ""]
 
@@ -215,6 +227,11 @@ def generate_changelog(new_version: str, current_version: str, entries: list[dic
     if fixes:
         lines.append("### Fixes")
         lines.extend(format_entry(e) for e in fixes)
+        lines.append("")
+
+    if perfs:
+        lines.append("### Performance")
+        lines.extend(format_entry(e) for e in perfs)
         lines.append("")
 
     if changes:
@@ -286,18 +303,20 @@ def main():
     entries = parse_commits(last_tag)
 
     # 4. 生成 CHANGELOG
-    changelog = generate_changelog(new_version, current_version, entries)
+    changelog = generate_changelog(new_version, current_version, entries, last_tag)
+
+    result = {
+        "current_version": current_version,
+        "new_version": new_version,
+        "last_tag": last_tag,
+        "changelog_preview": changelog,
+        "changelog_entries": entries,
+        "changelog_summary": summarize_entries(entries),
+        "files_modified": ["pyproject.toml", "jfox/__init__.py", "uv.lock", "CHANGELOG.md"],
+    }
 
     if dry_run:
-        output_json({
-            "current_version": current_version,
-            "new_version": new_version,
-            "last_tag": last_tag,
-            "changelog_preview": changelog,
-            "changelog_entries": entries,
-            "changelog_summary": summarize_entries(entries),
-            "files_modified": ["pyproject.toml", "jfox/__init__.py", "uv.lock", "CHANGELOG.md"],
-        })
+        output_json(result)
         return
 
     # 5. 更新文件
@@ -307,15 +326,7 @@ def main():
     update_changelog_file(changelog)
 
     # 7. 输出结果
-    output_json({
-        "current_version": current_version,
-        "new_version": new_version,
-        "last_tag": last_tag,
-        "changelog_preview": changelog,
-        "changelog_entries": entries,
-        "changelog_summary": summarize_entries(entries),
-        "files_modified": ["pyproject.toml", "jfox/__init__.py", "uv.lock", "CHANGELOG.md"],
-    })
+    output_json(result)
 
 
 if __name__ == "__main__":
