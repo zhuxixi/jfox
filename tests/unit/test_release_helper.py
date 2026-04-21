@@ -1,4 +1,5 @@
 """release_helper.py 单元测试"""
+
 import json
 import os
 import subprocess
