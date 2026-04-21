@@ -4,8 +4,6 @@ import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 # 被测模块路径
 HELPER = str(
     Path(__file__).resolve().parents[2] / ".claude" / "skills" / "release" / "release_helper.py"
