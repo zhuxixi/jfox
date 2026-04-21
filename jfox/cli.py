@@ -787,7 +787,7 @@ def _list_impl(
 
         for n in notes:
             created_str = n.created.strftime("%Y-%m-%d") if n.created else ""
-            table.add_row(n.id[:14], n.title[:40], n.type.value, created_str)
+            table.add_row(n.id, n.title[:40], n.type.value, created_str)
 
         console.print(table)
     elif output_format == "tree":
