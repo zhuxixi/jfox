@@ -95,7 +95,7 @@ class EmbeddingBackend:
             from sentence_transformers import SentenceTransformer
 
             self.model = SentenceTransformer(self.model_name, device=self._resolved_device)
-            self._resolved_dim = self.model.get_sentence_embedding_dimension()
+            self._resolved_dim = self.model.get_embedding_dimension()
             logger.info(
                 f"模型已加载: {self.model_name} "
                 f"(device={self._resolved_device}, dimension={self._resolved_dim})"
@@ -135,7 +135,7 @@ class EmbeddingBackend:
         if self._resolved_dim is not None:
             return self._resolved_dim
         if self.model is not None:
-            return self.model.get_sentence_embedding_dimension()
+            return self.model.get_embedding_dimension()
         # daemon 模式下从 daemon client 获取维度
         if self._daemon_client is not None:
             return self._daemon_client.dimension

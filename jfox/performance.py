@@ -141,7 +141,7 @@ class BatchProcessor:
                 except Exception as e:
                     logger.warning(f"Failed to encode batch {i}: {e}")
                     # 失败时返回零向量
-                    dim = backend.model.get_sentence_embedding_dimension()
+                    dim = backend.dimension
                     results.extend([[0.0] * dim] * len(batch))
 
                 if progress and task is not None:
