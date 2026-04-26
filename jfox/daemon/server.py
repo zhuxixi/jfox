@@ -8,6 +8,7 @@
 import argparse
 import logging
 import os
+from contextlib import asynccontextmanager
 from typing import List
 
 from fastapi import FastAPI
@@ -15,13 +16,10 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="JFox Embedding Daemon")
-
 # 全局 embedding 后端（模型加载后常驻内存）
 _backend = None
 
 
-@app.on_event("startup")
 def _load_model():
     """启动时加载模型（标记为 daemon 进程，防止自引用）"""
     global _backend
@@ -40,6 +38,15 @@ def _load_model():
     except Exception as e:
         logger.error(f"Daemon: 模型加载失败，进程退出: {e}")
         os._exit(1)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    _load_model()
+    yield
+
+
+app = FastAPI(title="JFox Embedding Daemon", lifespan=lifespan)
 
 
 # =============================================================================
