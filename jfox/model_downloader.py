@@ -152,7 +152,7 @@ class ModelDownloader:
             return False
 
         # 构建镜像站 URL（对模型名进行 URL 编码，防止特殊字符破坏 URL）
-        encoded_name = quote(self.model_name, safe="")
+        encoded_name = quote(self.model_name, safe="/")
         base_url = f"{_HF_MIRROR}/{encoded_name}/resolve/main"
 
         with tempfile.TemporaryDirectory() as tmpdir:
