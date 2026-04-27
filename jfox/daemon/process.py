@@ -185,6 +185,16 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         )
         timeout = FIRST_RUN_TIMEOUT
 
+        # 自动下载模型（内网降级重试）
+        try:
+            from ..model_downloader import ModelDownloader
+            downloader = ModelDownloader(cache_info["model_name"])
+            if not downloader.ensure_cached():
+                logger.error("模型自动下载失败")
+                # 不阻断启动，让 daemon 自己去尝试加载（会暴露更详细的错误日志）
+        except Exception as e:
+            logger.warning(f"模型下载检查异常: {e}")
+
     # 构建启动命令（Windows 使用 pythonw.exe 避免控制台窗口）
     cmd = [
         _get_pythonw_executable(),
