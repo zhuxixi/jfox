@@ -2674,6 +2674,56 @@ def daemon(
         raise typer.Exit(1)
 
 
+@app.command()
+def model_download(
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m",
+        help="模型名（默认从配置读取，auto 则按设备自动选择）"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f",
+        help="强制重新下载（覆盖已有缓存）"
+    ),
+):
+    """
+    手动下载 embedding 模型
+
+    自动尝试 3 种下载方式（huggingface_hub → 镜像站 → curl）。
+    通常不需要手动调用，daemon start 会自动执行。
+
+    示例:
+
+        jfox model download                    # 下载默认模型
+        jfox model download --model bge-m3     # 下载指定模型
+        jfox model download --force            # 强制重新下载
+    """
+    from .model_downloader import ModelDownloader
+    from .embedding_backend import EmbeddingBackend
+
+    # 解析模型名
+    if model is None or model == "auto":
+        backend = EmbeddingBackend()
+        device = backend._resolve_device()
+        model = backend._resolve_model_name(device)
+
+    console.print(f"[yellow]准备下载模型: {model}[/yellow]")
+
+    downloader = ModelDownloader(model)
+
+    if force and downloader._check_cached():
+        console.print("[yellow]强制重新下载，清理旧缓存...[/yellow]")
+        import shutil
+        shutil.rmtree(downloader._model_cache, ignore_errors=True)
+
+    ok = downloader.ensure_cached()
+    if ok:
+        console.print(f"[green]✓ 模型下载完成: {model}[/green]")
+    else:
+        console.print(f"[red]✗ 模型下载失败[/red]")
+        console.print(Panel(downloader.get_manual_instructions(), title="手动下载"))
+        raise typer.Exit(1)
+
+
 # 入口点
 def main():
     """CLI 入口点"""
