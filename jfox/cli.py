@@ -88,6 +88,10 @@ def _main(
 # 添加子命令
 app.add_typer(template_app, name="template", help="Manage note templates")
 
+# Model 下载子命令
+model_app = typer.Typer(name="model", help="模型管理")
+app.add_typer(model_app, name="model", help="模型管理")
+
 console = Console(legacy_windows=False)
 
 
@@ -2674,8 +2678,8 @@ def daemon(
         raise typer.Exit(1)
 
 
-@app.command()
-def model_download(
+@model_app.command("download")
+def download(
     model: Optional[str] = typer.Option(
         None, "--model", "-m",
         help="模型名（默认从配置读取，auto 则按设备自动选择）"
