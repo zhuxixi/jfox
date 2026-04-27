@@ -1,6 +1,5 @@
 """模型下载器 - 支持内网自动降级下载"""
 
-import json
 import logging
 import os
 import shutil
