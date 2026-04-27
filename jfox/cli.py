@@ -2678,16 +2678,47 @@ def daemon(
         raise typer.Exit(1)
 
 
+def _download_impl(
+    model: Optional[str],
+    force: bool = False,
+) -> dict:
+    """下载模型实现（可复用）"""
+    from .embedding_backend import EmbeddingBackend
+    from .model_downloader import ModelDownloader
+
+    # 解析模型名
+    if model is None or model == "auto":
+        backend = EmbeddingBackend()
+        device = backend._resolve_device()
+        model = backend._resolve_model_name(device)
+
+    downloader = ModelDownloader(model)
+
+    if force and downloader._check_cached():
+        import shutil
+
+        shutil.rmtree(downloader._model_cache, ignore_errors=True)
+
+    ok = downloader.ensure_cached()
+    return {
+        "model": model,
+        "success": ok,
+        "cache_dir": str(downloader._model_cache),
+        "instructions": downloader.get_manual_instructions() if not ok else "",
+    }
+
+
 @model_app.command("download")
 def download(
     model: Optional[str] = typer.Option(
-        None, "--model", "-m",
-        help="模型名（默认从配置读取，auto 则按设备自动选择）"
+        None, "--model", "-m", help="模型名（默认从配置读取，auto 则按设备自动选择）"
     ),
-    force: bool = typer.Option(
-        False, "--force", "-f",
-        help="强制重新下载（覆盖已有缓存）"
+    force: bool = typer.Option(False, "--force", "-f", help="强制重新下载（覆盖已有缓存）"),
+    kb: Optional[str] = typer.Option(
+        None, "--kb", "-k", help="目标知识库名称（模型下载不依赖知识库）"
     ),
+    output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出快捷方式"),
 ):
     """
     手动下载 embedding 模型
@@ -2700,31 +2731,28 @@ def download(
         jfox model download                    # 下载默认模型
         jfox model download --model bge-m3     # 下载指定模型
         jfox model download --force            # 强制重新下载
+        jfox model download --json             # JSON 输出
     """
-    from .model_downloader import ModelDownloader
-    from .embedding_backend import EmbeddingBackend
+    # kb 参数保持 CLI 一致性（模型下载不依赖知识库）
+    _ = kb
 
-    # 解析模型名
-    if model is None or model == "auto":
-        backend = EmbeddingBackend()
-        device = backend._resolve_device()
-        model = backend._resolve_model_name(device)
+    if json_output:
+        output_format = "json"
 
-    console.print(f"[yellow]准备下载模型: {model}[/yellow]")
+    console.print(f"[yellow]准备下载模型: {model or 'auto'}[/yellow]")
 
-    downloader = ModelDownloader(model)
+    result = _download_impl(model=model, force=force)
 
-    if force and downloader._check_cached():
-        console.print("[yellow]强制重新下载，清理旧缓存...[/yellow]")
-        import shutil
-        shutil.rmtree(downloader._model_cache, ignore_errors=True)
-
-    ok = downloader.ensure_cached()
-    if ok:
-        console.print(f"[green]✓ 模型下载完成: {model}[/green]")
+    if output_format == "json":
+        console.print(output_json(result))
     else:
-        console.print(f"[red]✗ 模型下载失败[/red]")
-        console.print(Panel(downloader.get_manual_instructions(), title="手动下载"))
+        if result["success"]:
+            console.print(f"[green]✓ 模型下载完成: {result['model']}[/green]")
+        else:
+            console.print("[red]✗ 模型下载失败[/red]")
+            console.print(Panel(result["instructions"], title="手动下载"))
+
+    if not result["success"]:
         raise typer.Exit(1)
 
 

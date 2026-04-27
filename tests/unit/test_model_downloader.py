@@ -1,12 +1,11 @@
 """ModelDownloader 单元测试"""
 
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jfox.model_downloader import ModelDownloader, _HF_MIRROR
+from jfox.model_downloader import _HF_MIRROR, ModelDownloader
 
 
 class TestModelDownloader:
@@ -28,11 +27,7 @@ class TestModelDownloader:
 
     def test_check_cached_when_exists(self, downloader):
         """缓存存在时返回 True"""
-        snapshot = (
-            downloader._model_cache
-            / "snapshots"
-            / "abc123"
-        )
+        snapshot = downloader._model_cache / "snapshots" / "abc123"
         snapshot.mkdir(parents=True)
         (snapshot / "model.safetensors").write_text("fake")
         assert downloader._check_cached() is True
@@ -57,9 +52,7 @@ class TestModelDownloader:
 
     def test_ensure_cached_step1_succeeds(self, downloader):
         """Step 1 成功，后续步骤不执行"""
-        with patch.object(
-            downloader, "_try_hf_hub_download", side_effect=[True, False]
-        ) as mock_hf:
+        with patch.object(downloader, "_try_hf_hub_download", side_effect=[True, False]) as mock_hf:
             with patch.object(downloader, "_try_curl_download") as mock_curl:
                 result = downloader.ensure_cached()
                 assert result is True
@@ -68,9 +61,7 @@ class TestModelDownloader:
 
     def test_ensure_cached_step1_fails_step2_succeeds(self, downloader):
         """Step 1 失败，Step 2 成功"""
-        with patch.object(
-            downloader, "_try_hf_hub_download", side_effect=[False, True]
-        ) as mock_hf:
+        with patch.object(downloader, "_try_hf_hub_download", side_effect=[False, True]) as mock_hf:
             with patch.object(downloader, "_try_curl_download") as mock_curl:
                 result = downloader.ensure_cached()
                 assert result is True
@@ -79,12 +70,8 @@ class TestModelDownloader:
 
     def test_ensure_cached_step1_2_fail_step3_succeeds(self, downloader):
         """Step 1/2 失败，Step 3 成功"""
-        with patch.object(
-            downloader, "_try_hf_hub_download", return_value=False
-        ) as mock_hf:
-            with patch.object(
-                downloader, "_try_curl_download", return_value=True
-            ) as mock_curl:
+        with patch.object(downloader, "_try_hf_hub_download", return_value=False) as mock_hf:
+            with patch.object(downloader, "_try_curl_download", return_value=True) as mock_curl:
                 result = downloader.ensure_cached()
                 assert result is True
                 assert mock_hf.call_count == 2
@@ -92,12 +79,8 @@ class TestModelDownloader:
 
     def test_ensure_cached_all_fail(self, downloader):
         """全部失败，返回 False"""
-        with patch.object(
-            downloader, "_try_hf_hub_download", return_value=False
-        ):
-            with patch.object(
-                downloader, "_try_curl_download", return_value=False
-            ):
+        with patch.object(downloader, "_try_hf_hub_download", return_value=False):
+            with patch.object(downloader, "_try_curl_download", return_value=False):
                 result = downloader.ensure_cached()
                 assert result is False
 
@@ -105,9 +88,7 @@ class TestModelDownloader:
         """验证镜像模式设置了 HF_ENDPOINT 环境变量"""
         env_before = os.environ.get("HF_ENDPOINT")
 
-        with patch(
-            "huggingface_hub.hf_hub_download"
-        ) as mock_download:
+        with patch("huggingface_hub.hf_hub_download") as mock_download:
             mock_download.side_effect = Exception("network")
             downloader._try_hf_hub_download(endpoint=_HF_MIRROR)
 
@@ -125,5 +106,6 @@ class TestModelDownloader:
         with patch("jfox.model_downloader.shutil.which", return_value="curl"):
             with patch("jfox.model_downloader.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
-                downloader._try_curl_download()
-                # TemporaryDirectory 在上下文退出时自动清理
+                result = downloader._try_curl_download()
+                # curl 未实际下载文件，返回 False；TemporaryDirectory 自动清理
+                assert result is False

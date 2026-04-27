@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,9 @@ class ModelDownloader:
     def __init__(self, model_name: str):
         self.model_name = model_name
         self._hf_hub_cache = self._get_hf_hub_cache()
-        self._model_cache = self._hf_hub_cache / f"models--{model_name.replace('/', '--')}"
+        # 同时替换正反斜杠，防止路径遍历
+        safe_name = model_name.replace("/", "--").replace("\\", "--")
+        self._model_cache = self._hf_hub_cache / f"models--{safe_name}"
 
     def _get_hf_hub_cache(self) -> Path:
         """获取 HuggingFace Hub 缓存目录"""
@@ -41,7 +44,7 @@ class ModelDownloader:
             import huggingface_hub.constants
 
             return Path(huggingface_hub.constants.HUGGINGFACE_HUB_CACHE)
-        except Exception:
+        except ImportError:
             hf_home = os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
             return Path(hf_home) / "hub"
 
@@ -87,10 +90,14 @@ class ModelDownloader:
         if not snapshots_dir.exists():
             return False
         # 检查至少有一个 snapshot 且包含 model.safetensors
-        for snapshot in snapshots_dir.iterdir():
-            if snapshot.is_dir():
-                if (snapshot / "model.safetensors").exists():
-                    return True
+        try:
+            for snapshot in snapshots_dir.iterdir():
+                if snapshot.is_dir():
+                    if (snapshot / "model.safetensors").exists():
+                        return True
+        except OSError:
+            logger.warning(f"无法遍历缓存目录: {snapshots_dir}")
+            return False
         return False
 
     def _try_hf_hub_download(self, endpoint: Optional[str] = None) -> bool:
@@ -122,7 +129,7 @@ class ModelDownloader:
                         cache_dir=str(self._hf_hub_cache),
                         local_files_only=False,
                     )
-                except Exception:
+                except (OSError, ValueError):
                     pass  # 非核心文件，缺失不影响基本功能
 
             return True
@@ -144,8 +151,9 @@ class ModelDownloader:
             logger.warning("系统未安装 curl，跳过步骤 3")
             return False
 
-        # 构建镜像站 URL
-        base_url = f"{_HF_MIRROR}/{self.model_name}/resolve/main"
+        # 构建镜像站 URL（对模型名进行 URL 编码，防止特殊字符破坏 URL）
+        encoded_name = quote(self.model_name, safe="")
+        base_url = f"{_HF_MIRROR}/{encoded_name}/resolve/main"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -158,10 +166,17 @@ class ModelDownloader:
                 try:
                     result = subprocess.run(
                         [
-                            "curl", "-L", "-f", "-s", "-S",
-                            "--connect-timeout", "10",
-                            "--max-time", str(_TIMEOUT_CURL),
-                            "-o", str(dest),
+                            "curl",
+                            "-L",
+                            "-f",
+                            "-s",
+                            "-S",
+                            "--connect-timeout",
+                            "10",
+                            "--max-time",
+                            str(_TIMEOUT_CURL),
+                            "-o",
+                            str(dest),
                             url,
                         ],
                         capture_output=True,
@@ -172,7 +187,7 @@ class ModelDownloader:
                         downloaded.append(fname)
                     else:
                         logger.debug(f"{fname} 下载失败或为空，跳过")
-                except Exception as e:
+                except (OSError, subprocess.TimeoutExpired) as e:
                     logger.debug(f"{fname} 下载异常: {e}")
 
             if "model.safetensors" not in downloaded:
