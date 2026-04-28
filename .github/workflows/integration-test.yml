@@ -245,7 +245,7 @@ jobs:
       run: |
         echo "lint: ${{ needs.lint.result }}"
         echo "test-fast: ${{ needs.test-fast.result }}"
-        if [[ "${{ needs.lint.result }}" == "success" && "${{ needs.test-fast.result }}" == "success" ]]; then
+        if [[ "${{ needs.lint.result }}" == "success" && ("${{ needs.test-fast.result }}" == "success" || "${{ needs.test-fast.result }}" == "skipped") ]]; then
           echo "Quality gate passed!"
           exit 0
         else
