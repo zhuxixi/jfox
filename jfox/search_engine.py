@@ -168,14 +168,17 @@ class HybridSearchEngine:
             logger.warning(f"BM25 search failed in hybrid mode: {e}")
 
         # 对 BM25 结果做 tags 过滤
+        bm25_notes_cache: Dict[str, Any] = {}
         if tags and bm25_results:
             from . import note as note_module
 
             filtered = []
             for r in bm25_results:
                 note = note_module.load_note_by_id(r["note_id"])
-                if note and all(t in note.tags for t in tags):
-                    filtered.append(r)
+                if note:
+                    bm25_notes_cache[r["note_id"]] = note
+                    if all(t in note.tags for t in tags):
+                        filtered.append(r)
             bm25_results = filtered
 
         # 如果一种搜索失败，回退到另一种
@@ -206,9 +209,11 @@ class HybridSearchEngine:
                 fused_scores[note_id] = fused_scores.get(note_id, 0) + 1 / (self.rrf_k + rank)
                 # 如果没有语义搜索结果，使用 BM25 的数据
                 if note_id not in result_data:
-                    from . import note as note_module
+                    note = bm25_notes_cache.get(note_id)
+                    if note is None:
+                        from . import note as note_module
 
-                    note = note_module.load_note_by_id(note_id)
+                        note = note_module.load_note_by_id(note_id)
                     if note:
                         result_data[note_id] = {
                             "id": note_id,
