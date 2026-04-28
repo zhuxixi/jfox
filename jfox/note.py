@@ -142,6 +142,7 @@ def list_notes(
     note_type: Optional[NoteType] = None,
     limit: Optional[int] = None,
     cfg: Optional[ZKConfig] = None,
+    tags: Optional[List[str]] = None,
 ) -> List[Note]:
     """
     列出笔记
@@ -150,6 +151,7 @@ def list_notes(
         note_type: 笔记类型筛选
         limit: 数量限制
         cfg: 可选的配置对象，默认使用全局 config
+        tags: 标签筛选列表（AND 逻辑）
 
     Returns:
         笔记列表
@@ -169,11 +171,13 @@ def list_notes(
             if note:
                 notes.append(note)
 
-            if limit and len(notes) >= limit:
-                break
+    # 标签过滤（AND 逻辑）—— 先过滤再截断，避免 limit + tags 组合时数量不足
+    if tags:
+        notes = [n for n in notes if all(t in n.tags for t in tags)]
 
-        if limit and len(notes) >= limit:
-            break
+    # 截断到 limit
+    if limit:
+        notes = notes[:limit]
 
     return notes
 
@@ -320,6 +324,7 @@ def search_notes(
     top_k: int = 5,
     note_type: Optional[str] = None,
     mode: str = "hybrid",
+    tags: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     搜索笔记
@@ -329,6 +334,7 @@ def search_notes(
         top_k: 返回结果数量
         note_type: 笔记类型筛选
         mode: 搜索模式 - "hybrid"(混合), "semantic"(语义), "keyword"(关键词)
+        tags: 标签筛选列表（AND 逻辑）
 
     Returns:
         搜索结果列表
@@ -345,7 +351,9 @@ def search_notes(
     }
     search_mode = mode_map.get(mode.lower(), SearchMode.HYBRID)
 
-    return search_engine.search(query, top_k=top_k, mode=search_mode, note_type=note_type)
+    return search_engine.search(
+        query, top_k=top_k, mode=search_mode, note_type=note_type, tags=tags
+    )
 
 
 def extract_keywords(content: str, max_keywords: int = 10) -> List[str]:

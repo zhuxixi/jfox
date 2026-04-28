@@ -106,7 +106,11 @@ class VectorStore:
             return False
 
     def search(
-        self, query: str, top_k: int = 5, note_type: Optional[str] = None
+        self,
+        query: str,
+        top_k: int = 5,
+        note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """语义搜索"""
         if self.collection is None:
@@ -123,6 +127,17 @@ class VectorStore:
             where = {}
             if note_type:
                 where["type"] = note_type
+
+            if tags:
+                tag_clauses = [{"tags": {"$contains": t}} for t in tags]
+                if where:
+                    # 已有 note_type 条件，合并到 $and
+                    combined = [where] + tag_clauses
+                    where = {"$and": combined}
+                elif len(tag_clauses) > 1:
+                    where = {"$and": tag_clauses}
+                else:
+                    where = tag_clauses[0]
 
             # 搜索
             results = self.collection.query(
