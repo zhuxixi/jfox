@@ -28,8 +28,6 @@ class TestListNotesTagFilter:
         cfg = ZKConfig(base_dir=temp_kb)
         cfg.ensure_dirs()
 
-        from jfox.note import save_note
-
         notes = [
             Note(
                 id="20260428001",
@@ -70,7 +68,11 @@ class TestListNotesTagFilter:
         ]
 
         for n in notes:
-            save_note(n, cfg=cfg)
+            # 直接写入文件（save_note 不接受 cfg 参数）
+            note_dir = cfg.notes_dir / n.type.value
+            note_dir.mkdir(parents=True, exist_ok=True)
+            note_file = note_dir / f"{n.id}.md"
+            note_file.write_text(n.to_markdown(), encoding="utf-8")
 
         return cfg
 

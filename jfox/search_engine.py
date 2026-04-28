@@ -94,7 +94,9 @@ class HybridSearchEngine:
             logger.error(f"Semantic search failed: {e}")
             return []
 
-    def _keyword_search(self, query: str, top_k: int, tags: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    def _keyword_search(
+        self, query: str, top_k: int, tags: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
         """纯关键词搜索 (BM25)"""
         try:
             bm25_results = self.bm25_index.search(query, top_k=top_k)
@@ -153,7 +155,9 @@ class HybridSearchEngine:
         bm25_results = []
 
         try:
-            semantic_results = self.vector_store.search(query, top_k=search_k, note_type=note_type, tags=tags)
+            semantic_results = self.vector_store.search(
+                query, top_k=search_k, note_type=note_type, tags=tags
+            )
         except Exception as e:
             logger.warning(f"Semantic search failed in hybrid mode: {e}")
 

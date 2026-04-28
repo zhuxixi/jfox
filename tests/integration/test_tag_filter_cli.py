@@ -7,8 +7,6 @@
 测试 CLI 层面的 --tag 标签过滤功能
 """
 
-import json
-
 import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.fast]

@@ -532,7 +532,9 @@ def search(
     query: str = typer.Argument(..., help="搜索查询"),
     top: int = typer.Option(5, "--top", "-n", help="返回结果数量"),
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
-    tags: Optional[List[str]] = typer.Option(None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"),
+    tags: Optional[List[str]] = typer.Option(
+        None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"
+    ),
     search_mode: str = typer.Option(
         "hybrid", "--mode", "-m", help="搜索模式: hybrid, semantic, keyword"
     ),
@@ -795,7 +797,9 @@ def _list_impl(
 
         for n in notes:
             created_str = n.created.strftime("%Y-%m-%d") if n.created else ""
-            table.add_row(n.id, n.title[:40], n.type.value, ", ".join(n.tags) if n.tags else "", created_str)
+            table.add_row(
+                n.id, n.title[:40], n.type.value, ", ".join(n.tags) if n.tags else "", created_str
+            )
 
         console.print(table)
     elif output_format == "tree":
@@ -803,7 +807,9 @@ def _list_impl(
     elif output_format in ["csv", "yaml", "paths"]:
         # 对于 csv, yaml, paths，只输出 notes 列表
         if output_format == "csv":
-            console.print(OutputFormatter.to_csv(data, headers=["id", "title", "type", "tags", "created"]))
+            console.print(
+                OutputFormatter.to_csv(data, headers=["id", "title", "type", "tags", "created"])
+            )
         elif output_format == "yaml":
             print(OutputFormatter.to_yaml(result))
         elif output_format == "paths":
@@ -815,7 +821,9 @@ def _list_impl(
 @app.command()
 def list(
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
-    tags: Optional[List[str]] = typer.Option(None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"),
+    tags: Optional[List[str]] = typer.Option(
+        None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"
+    ),
     limit: int = typer.Option(10, "--limit", "-n", help="显示数量"),
     output_format: str = typer.Option(
         "table", "--format", "-f", help="输出格式: json, table, csv, yaml, paths, tree"

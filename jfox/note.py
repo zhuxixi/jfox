@@ -353,7 +353,9 @@ def search_notes(
     }
     search_mode = mode_map.get(mode.lower(), SearchMode.HYBRID)
 
-    return search_engine.search(query, top_k=top_k, mode=search_mode, note_type=note_type, tags=tags)
+    return search_engine.search(
+        query, top_k=top_k, mode=search_mode, note_type=note_type, tags=tags
+    )
 
 
 def extract_keywords(content: str, max_keywords: int = 10) -> List[str]:
