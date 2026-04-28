@@ -1,4 +1,4 @@
-"""ChromaDB 向量存储封装 """
+"""ChromaDB 向量存储封装"""
 
 import logging
 import re
@@ -106,7 +106,11 @@ class VectorStore:
             return False
 
     def search(
-        self, query: str, top_k: int = 5, note_type: Optional[str] = None, tags: Optional[List[str]] = None
+        self,
+        query: str,
+        top_k: int = 5,
+        note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """语义搜索"""
         if self.collection is None:

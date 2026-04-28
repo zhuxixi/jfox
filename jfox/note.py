@@ -171,15 +171,13 @@ def list_notes(
             if note:
                 notes.append(note)
 
-            if limit and len(notes) >= limit:
-                break
-
-        if limit and len(notes) >= limit:
-            break
-
     # 标签过滤（AND 逻辑）
     if tags:
         notes = [n for n in notes if all(t in n.tags for t in tags)]
+
+    # 在过滤后截断，确保 limit 条均匹配筛选条件
+    if limit:
+        notes = notes[:limit]
 
     return notes
 
@@ -353,7 +351,13 @@ def search_notes(
     }
     search_mode = mode_map.get(mode.lower(), SearchMode.HYBRID)
 
-    return search_engine.search(query, top_k=top_k, mode=search_mode, note_type=note_type, tags=tags)
+    return search_engine.search(
+        query,
+        top_k=top_k,
+        mode=search_mode,
+        note_type=note_type,
+        tags=tags,
+    )
 
 
 def extract_keywords(content: str, max_keywords: int = 10) -> List[str]:

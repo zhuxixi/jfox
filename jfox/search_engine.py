@@ -54,6 +54,7 @@ class HybridSearchEngine:
         top_k: int = 5,
         mode: SearchMode = SearchMode.HYBRID,
         note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         执行搜索
@@ -63,26 +64,28 @@ class HybridSearchEngine:
             top_k: 返回结果数量
             mode: 搜索模式
             note_type: 笔记类型筛选
+            tags: 标签筛选（AND 逻辑）
 
         Returns:
             搜索结果列表
         """
         if mode == SearchMode.SEMANTIC:
-            return self._semantic_search(query, top_k, note_type)
+            return self._semantic_search(query, top_k, note_type, tags)
         elif mode == SearchMode.KEYWORD:
             return self._keyword_search(query, top_k)
         else:  # HYBRID
-            return self._hybrid_search(query, top_k, note_type)
+            return self._hybrid_search(query, top_k, note_type, tags)
 
     def _semantic_search(
         self,
         query: str,
         top_k: int,
         note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """纯语义搜索"""
         try:
-            results = self.vector_store.search(query, top_k=top_k, note_type=note_type)
+            results = self.vector_store.search(query, top_k=top_k, note_type=note_type, tags=tags)
             # 添加搜索模式标记
             for r in results:
                 r["search_mode"] = "semantic"
@@ -131,6 +134,7 @@ class HybridSearchEngine:
         query: str,
         top_k: int,
         note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         混合搜索：RRF 融合
@@ -144,7 +148,9 @@ class HybridSearchEngine:
         bm25_results = []
 
         try:
-            semantic_results = self.vector_store.search(query, top_k=search_k, note_type=note_type)
+            semantic_results = self.vector_store.search(
+                query, top_k=search_k, note_type=note_type, tags=tags
+            )
         except Exception as e:
             logger.warning(f"Semantic search failed in hybrid mode: {e}")
 
