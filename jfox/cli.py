@@ -451,13 +451,14 @@ def _search_impl(
     query: str,
     top: int,
     note_type: Optional[str],
+    tags: Optional[List[str]],
     search_mode: str,
     output_format: str,
 ):
     """搜索笔记的内部实现"""
     from .formatters import OutputFormatter
 
-    results = note.search_notes(query, top_k=top, note_type=note_type, mode=search_mode)
+    results = note.search_notes(query, top_k=top, note_type=note_type, tags=tags, mode=search_mode)
 
     result = {
         "query": query,
@@ -531,6 +532,7 @@ def search(
     query: str = typer.Argument(..., help="搜索查询"),
     top: int = typer.Option(5, "--top", "-n", help="返回结果数量"),
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
+    tags: Optional[List[str]] = typer.Option(None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"),
     search_mode: str = typer.Option(
         "hybrid", "--mode", "-m", help="搜索模式: hybrid, semantic, keyword"
     ),
@@ -562,9 +564,9 @@ def search(
             from .config import use_kb
 
             with use_kb(kb):
-                _search_impl(query, top, note_type, search_mode, output_format)
+                _search_impl(query, top, note_type, tags, search_mode, output_format)
         else:
-            _search_impl(query, top, note_type, search_mode, output_format)
+            _search_impl(query, top, note_type, tags, search_mode, output_format)
 
     except Exception as e:
         result = {
@@ -758,6 +760,7 @@ def status(
 
 def _list_impl(
     note_type: Optional[str],
+    tags: Optional[List[str]],
     limit: int,
     output_format: str,
 ):
@@ -772,7 +775,7 @@ def _list_impl(
         except ValueError:
             raise ValueError(f"Invalid note type: {note_type}")
 
-    notes = note.list_notes(note_type=nt, limit=limit)
+    notes = note.list_notes(note_type=nt, tags=tags, limit=limit)
     data = [n.to_dict() for n in notes]
 
     result = {
@@ -811,6 +814,7 @@ def _list_impl(
 @app.command()
 def list(
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
+    tags: Optional[List[str]] = typer.Option(None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"),
     limit: int = typer.Option(10, "--limit", "-n", help="显示数量"),
     output_format: str = typer.Option(
         "table", "--format", "-f", help="输出格式: json, table, csv, yaml, paths, tree"
@@ -839,9 +843,9 @@ def list(
             from .config import use_kb
 
             with use_kb(kb):
-                _list_impl(note_type, limit, output_format)
+                _list_impl(note_type, tags, limit, output_format)
         else:
-            _list_impl(note_type, limit, output_format)
+            _list_impl(note_type, tags, limit, output_format)
 
     except Exception as e:
         result = {
