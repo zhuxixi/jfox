@@ -54,6 +54,7 @@ class HybridSearchEngine:
         top_k: int = 5,
         mode: SearchMode = SearchMode.HYBRID,
         note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         执行搜索
@@ -63,26 +64,28 @@ class HybridSearchEngine:
             top_k: 返回结果数量
             mode: 搜索模式
             note_type: 笔记类型筛选
+            tags: 标签筛选
 
         Returns:
             搜索结果列表
         """
         if mode == SearchMode.SEMANTIC:
-            return self._semantic_search(query, top_k, note_type)
+            return self._semantic_search(query, top_k, note_type, tags)
         elif mode == SearchMode.KEYWORD:
-            return self._keyword_search(query, top_k)
+            return self._keyword_search(query, top_k, tags)
         else:  # HYBRID
-            return self._hybrid_search(query, top_k, note_type)
+            return self._hybrid_search(query, top_k, note_type, tags)
 
     def _semantic_search(
         self,
         query: str,
         top_k: int,
         note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """纯语义搜索"""
         try:
-            results = self.vector_store.search(query, top_k=top_k, note_type=note_type)
+            results = self.vector_store.search(query, top_k=top_k, note_type=note_type, tags=tags)
             # 添加搜索模式标记
             for r in results:
                 r["search_mode"] = "semantic"
@@ -91,7 +94,7 @@ class HybridSearchEngine:
             logger.error(f"Semantic search failed: {e}")
             return []
 
-    def _keyword_search(self, query: str, top_k: int) -> List[Dict[str, Any]]:
+    def _keyword_search(self, query: str, top_k: int, tags: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """纯关键词搜索 (BM25)"""
         try:
             bm25_results = self.bm25_index.search(query, top_k=top_k)
@@ -104,6 +107,10 @@ class HybridSearchEngine:
 
                 note = note_module.load_note_by_id(r["note_id"])
                 if note:
+                    # 如果有标签筛选，检查是否匹配所有标签
+                    if tags and not all(t in note.tags for t in tags):
+                        continue
+
                     results.append(
                         {
                             "id": r["note_id"],
@@ -115,6 +122,7 @@ class HybridSearchEngine:
                             "metadata": {
                                 "title": note.title,
                                 "type": note.type.value,
+                                "tags": ",".join(note.tags),
                             },
                             "score": r["score"],
                             "search_mode": "keyword",
@@ -131,6 +139,7 @@ class HybridSearchEngine:
         query: str,
         top_k: int,
         note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         混合搜索：RRF 融合
@@ -144,7 +153,7 @@ class HybridSearchEngine:
         bm25_results = []
 
         try:
-            semantic_results = self.vector_store.search(query, top_k=search_k, note_type=note_type)
+            semantic_results = self.vector_store.search(query, top_k=search_k, note_type=note_type, tags=tags)
         except Exception as e:
             logger.warning(f"Semantic search failed in hybrid mode: {e}")
 
@@ -157,13 +166,27 @@ class HybridSearchEngine:
         if not semantic_results and not bm25_results:
             return []
         elif not semantic_results:
-            return self._keyword_search(query, top_k)
+            return self._keyword_search(query, top_k, tags)
         elif not bm25_results:
             for r in semantic_results[:top_k]:
                 r["search_mode"] = "semantic"
             return semantic_results[:top_k]
 
-        # 2. RRF 融合
+        # 2. 如果有标签筛选，过滤 BM25 结果
+        if tags:
+            filtered_bm25_results = []
+            from . import note as note_module
+
+            for result in bm25_results:
+                note_id = result.get("note_id")
+                if note_id:
+                    note = note_module.load_note_by_id(note_id)
+                    if note and all(t in note.tags for t in tags):
+                        filtered_bm25_results.append(result)
+
+            bm25_results = filtered_bm25_results
+
+        # 3. RRF 融合
         fused_scores: Dict[str, float] = {}
         result_data: Dict[str, Dict] = {}
 
@@ -195,6 +218,7 @@ class HybridSearchEngine:
                             "metadata": {
                                 "title": note.title,
                                 "type": note.type.value,
+                                "tags": ",".join(note.tags),
                             },
                         }
 
