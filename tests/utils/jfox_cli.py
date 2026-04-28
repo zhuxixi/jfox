@@ -207,21 +207,40 @@ class ZKCLI:
 
         return self._run("add", *args)
 
-    def list(self, note_type: Optional[str] = None, limit: Optional[int] = None) -> CLIResult:
+    def list(
+        self,
+        *,
+        note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> CLIResult:
         """列出笔记"""
         args = []
         if note_type:
             args.extend(["--type", note_type])
+        if tags:
+            for tag in tags:
+                args.extend(["--tag", tag])
         if limit:
             args.extend(["--limit", str(limit)])
 
         return self._run("list", *args)
 
-    def search(self, query: str, top: int = 5, note_type: Optional[str] = None) -> CLIResult:
+    def search(
+        self,
+        query: str,
+        *,
+        top: int = 5,
+        note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+    ) -> CLIResult:
         """语义搜索"""
         args = [query, "--top", str(top)]
         if note_type:
             args.extend(["--type", note_type])
+        if tags:
+            for tag in tags:
+                args.extend(["--tag", tag])
 
         return self._run("search", *args)
 
