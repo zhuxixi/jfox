@@ -171,15 +171,13 @@ def list_notes(
             if note:
                 notes.append(note)
 
-            if limit and len(notes) >= limit:
-                break
-
-        if limit and len(notes) >= limit:
-            break
-
-    # 标签过滤（AND 逻辑）
+    # 标签过滤（AND 逻辑）—— 先过滤再截断，避免 limit + tags 组合时数量不足
     if tags:
         notes = [n for n in notes if all(t in n.tags for t in tags)]
+
+    # 截断到 limit
+    if limit:
+        notes = notes[:limit]
 
     return notes
 

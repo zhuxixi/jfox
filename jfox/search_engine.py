@@ -99,7 +99,9 @@ class HybridSearchEngine:
     ) -> List[Dict[str, Any]]:
         """纯关键词搜索 (BM25)"""
         try:
-            bm25_results = self.bm25_index.search(query, top_k=top_k)
+            # 请求更多结果以补偿标签过滤后的数量损失
+            search_k = top_k * 3 if tags else top_k
+            bm25_results = self.bm25_index.search(query, top_k=search_k)
 
             # 转换为与语义搜索一致的格式
             results = []

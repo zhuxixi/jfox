@@ -112,3 +112,14 @@ class TestListNotesTagFilter:
         )
         assert len(results) == 1
         assert results[0].title == "Python 基础"
+
+    def test_filter_with_limit_returns_correct_count(self, kb_with_tagged_notes):
+        """limit + tags 组合：先过滤标签再截断，确保数量正确"""
+        # 共 4 条笔记，"编程" 标签有 2 条（Python 基础、Java 入门）
+        # limit=5 应返回 2 条（不过度截断）
+        results = list_notes(tags=["编程"], limit=5, cfg=kb_with_tagged_notes)
+        assert len(results) == 2
+
+        # limit=1 应返回 1 条
+        results = list_notes(tags=["编程"], limit=1, cfg=kb_with_tagged_notes)
+        assert len(results) == 1
