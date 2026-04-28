@@ -790,11 +790,12 @@ def _list_impl(
         table.add_column("ID", style="dim")
         table.add_column("Title", style="cyan")
         table.add_column("Type", style="green")
+        table.add_column("Tags", style="yellow")
         table.add_column("Created", style="dim")
 
         for n in notes:
             created_str = n.created.strftime("%Y-%m-%d") if n.created else ""
-            table.add_row(n.id, n.title[:40], n.type.value, created_str)
+            table.add_row(n.id, n.title[:40], n.type.value, ", ".join(n.tags) if n.tags else "", created_str)
 
         console.print(table)
     elif output_format == "tree":
@@ -802,7 +803,7 @@ def _list_impl(
     elif output_format in ["csv", "yaml", "paths"]:
         # 对于 csv, yaml, paths，只输出 notes 列表
         if output_format == "csv":
-            console.print(OutputFormatter.to_csv(data, headers=["id", "title", "type", "created"]))
+            console.print(OutputFormatter.to_csv(data, headers=["id", "title", "type", "tags", "created"]))
         elif output_format == "yaml":
             print(OutputFormatter.to_yaml(result))
         elif output_format == "paths":
