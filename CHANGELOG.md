@@ -2,6 +2,16 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.4.3] - 2026-04-28
+
+### Features
+- 内网模型自动下载（3步降级重试链） (#173)
+
+### Fixes
+- **daemon**: eliminate deprecation warnings in daemon log (#171)
+
+[0.4.3]: https://github.com/zhuxixi/jfox/compare/v0.4.2...v0.4.3
+
 ## [0.4.2] - 2026-04-22
 
 ### Features
