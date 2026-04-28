@@ -171,6 +171,13 @@ def list_notes(
             if note:
                 notes.append(note)
 
+            # 无标签过滤时可提前截断，避免全量遍历
+            if limit and not tags and len(notes) >= limit:
+                break
+
+        if limit and not tags and len(notes) >= limit:
+            break
+
     # 标签过滤（AND 逻辑）
     if tags:
         notes = [n for n in notes if all(t in n.tags for t in tags)]

@@ -72,7 +72,7 @@ class HybridSearchEngine:
         if mode == SearchMode.SEMANTIC:
             return self._semantic_search(query, top_k, note_type, tags)
         elif mode == SearchMode.KEYWORD:
-            return self._keyword_search(query, top_k)
+            return self._keyword_search(query, top_k, tags)
         else:  # HYBRID
             return self._hybrid_search(query, top_k, note_type, tags)
 
@@ -94,7 +94,12 @@ class HybridSearchEngine:
             logger.error(f"Semantic search failed: {e}")
             return []
 
-    def _keyword_search(self, query: str, top_k: int) -> List[Dict[str, Any]]:
+    def _keyword_search(
+        self,
+        query: str,
+        top_k: int,
+        tags: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
         """纯关键词搜索 (BM25)"""
         try:
             bm25_results = self.bm25_index.search(query, top_k=top_k)
@@ -107,6 +112,9 @@ class HybridSearchEngine:
 
                 note = note_module.load_note_by_id(r["note_id"])
                 if note:
+                    # tags 过滤
+                    if tags and not all(t in note.tags for t in tags):
+                        continue
                     results.append(
                         {
                             "id": r["note_id"],
@@ -159,11 +167,22 @@ class HybridSearchEngine:
         except Exception as e:
             logger.warning(f"BM25 search failed in hybrid mode: {e}")
 
+        # 对 BM25 结果做 tags 过滤
+        if tags and bm25_results:
+            from . import note as note_module
+
+            filtered = []
+            for r in bm25_results:
+                note = note_module.load_note_by_id(r["note_id"])
+                if note and all(t in note.tags for t in tags):
+                    filtered.append(r)
+            bm25_results = filtered
+
         # 如果一种搜索失败，回退到另一种
         if not semantic_results and not bm25_results:
             return []
         elif not semantic_results:
-            return self._keyword_search(query, top_k)
+            return self._keyword_search(query, top_k, tags)
         elif not bm25_results:
             for r in semantic_results[:top_k]:
                 r["search_mode"] = "semantic"
