@@ -209,6 +209,7 @@ class ZKCLI:
 
     def list(
         self,
+        *,
         note_type: Optional[str] = None,
         tags: Optional[List[str]] = None,
         limit: Optional[int] = None,
@@ -228,6 +229,7 @@ class ZKCLI:
     def search(
         self,
         query: str,
+        *,
         top: int = 5,
         note_type: Optional[str] = None,
         tags: Optional[List[str]] = None,
