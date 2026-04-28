@@ -40,9 +40,9 @@ def temp_knowledge_base(prefix: str = "zk_test_") -> Generator[Path, None, None]
     try:
         yield kb_path
     finally:
-        # 清理临时目录
+        # 清理临时目录（Windows 上 ChromaDB 可能持有文件锁，忽略错误）
         if test_dir.exists():
-            shutil.rmtree(test_dir)
+            shutil.rmtree(test_dir, ignore_errors=True)
 
 
 @contextmanager
@@ -128,7 +128,7 @@ class TemporaryKnowledgeBase:
     def cleanup(self):
         """清理临时知识库"""
         if self.temp_dir and self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
         self.temp_dir = None
         self.path = None
 

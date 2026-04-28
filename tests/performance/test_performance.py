@@ -127,9 +127,7 @@ class TestBatchProcessor:
         """测试嵌入错误处理"""
 
         mock_backend = Mock()
-        mock_model = Mock()
-        mock_model.get_sentence_embedding_dimension.return_value = 384
-        mock_backend.model = mock_model
+        mock_backend.dimension = 384
         mock_backend.encode.side_effect = ValueError("Encode error")
 
         texts = ["text1", "text2"]
