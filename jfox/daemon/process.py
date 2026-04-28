@@ -47,7 +47,7 @@ def _read_pid_file() -> Optional[dict]:
         return None
     try:
         return json.loads(PID_FILE.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -84,7 +84,7 @@ def _http_health_check(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> Op
 
         resp = urllib.request.urlopen(f"http://{host}:{port}/health", timeout=2)
         return json.loads(resp.read().decode("utf-8"))
-    except Exception:
+    except (OSError, ValueError):
         return None
 
 
@@ -126,7 +126,7 @@ def _check_model_cache() -> dict:
                     model_name = _GPU_DEFAULT_MODEL
                 else:
                     model_name = _CPU_DEFAULT_MODEL
-            except Exception:
+            except (ImportError, OSError):
                 model_name = _CPU_DEFAULT_MODEL
 
         # 检查 HuggingFace 缓存
@@ -150,7 +150,7 @@ def _check_model_cache() -> dict:
             "model_name": model_name,
             "size_hint": size_hint,
         }
-    except Exception as e:
+    except (ImportError, OSError, ValueError) as e:
         logger.debug(f"Model cache check failed, assuming download needed: {e}")
         return {"needs_download": True, "model_name": "unknown", "size_hint": ""}
 
@@ -185,6 +185,17 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         )
         timeout = FIRST_RUN_TIMEOUT
 
+        # 自动下载模型（内网降级重试）
+        try:
+            from ..model_downloader import ModelDownloader
+
+            downloader = ModelDownloader(cache_info["model_name"])
+            if not downloader.ensure_cached():
+                logger.error("模型自动下载失败")
+                # 不阻断启动，让 daemon 自己去尝试加载（会暴露更详细的错误日志）
+        except (ImportError, OSError) as e:
+            logger.warning(f"模型下载检查异常: {e}")
+
     # 构建启动命令（Windows 使用 pythonw.exe 避免控制台窗口）
     cmd = [
         _get_pythonw_executable(),
@@ -218,7 +229,7 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         )
         logger.info(f"Daemon 进程已启动 (PID: {proc.pid})")
         logger.info(f"Daemon 日志文件: {DAEMON_LOG_FILE}")
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         log_file.close()
         logger.error(f"启动 daemon 失败: {e}")
         return False
@@ -280,7 +291,7 @@ def stop_daemon() -> bool:
                 )
             else:
                 os.kill(pid, 15)  # SIGTERM
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError) as e:
             logger.warning(f"停止 daemon 失败: {e}")
 
     # 等待进程退出

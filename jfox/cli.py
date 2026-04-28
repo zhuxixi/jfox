@@ -88,6 +88,10 @@ def _main(
 # 添加子命令
 app.add_typer(template_app, name="template", help="Manage note templates")
 
+# Model 下载子命令
+model_app = typer.Typer(name="model", help="模型管理")
+app.add_typer(model_app, name="model", help="模型管理")
+
 console = Console(legacy_windows=False)
 
 
@@ -2671,6 +2675,84 @@ def daemon(
         raise
     except Exception as e:
         console.print(f"[red]✗[/red] 错误: {e}")
+        raise typer.Exit(1)
+
+
+def _download_impl(
+    model: Optional[str],
+    force: bool = False,
+) -> dict:
+    """下载模型实现（可复用）"""
+    from .embedding_backend import EmbeddingBackend
+    from .model_downloader import ModelDownloader
+
+    # 解析模型名
+    if model is None or model == "auto":
+        backend = EmbeddingBackend()
+        device = backend._resolve_device()
+        model = backend._resolve_model_name(device)
+
+    downloader = ModelDownloader(model)
+
+    if force and downloader._check_cached():
+        import shutil
+
+        shutil.rmtree(downloader._model_cache, ignore_errors=True)
+
+    ok = downloader.ensure_cached()
+    return {
+        "model": model,
+        "success": ok,
+        "cache_dir": str(downloader._model_cache),
+        "instructions": downloader.get_manual_instructions() if not ok else "",
+    }
+
+
+@model_app.command("download")
+def download(
+    model: Optional[str] = typer.Option(
+        None, "--model", "-m", help="模型名（默认从配置读取，auto 则按设备自动选择）"
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="强制重新下载（覆盖已有缓存）"),
+    kb: Optional[str] = typer.Option(
+        None, "--kb", "-k", help="目标知识库名称（模型下载不依赖知识库）"
+    ),
+    output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出快捷方式"),
+):
+    """
+    手动下载 embedding 模型
+
+    自动尝试 3 种下载方式（huggingface_hub → 镜像站 → curl）。
+    通常不需要手动调用，daemon start 会自动执行。
+
+    示例:
+
+        jfox model download                    # 下载默认模型
+        jfox model download --model bge-m3     # 下载指定模型
+        jfox model download --force            # 强制重新下载
+        jfox model download --json             # JSON 输出
+    """
+    # kb 参数保持 CLI 一致性（模型下载不依赖知识库）
+    _ = kb
+
+    if json_output:
+        output_format = "json"
+
+    console.print(f"[yellow]准备下载模型: {model or 'auto'}[/yellow]")
+
+    result = _download_impl(model=model, force=force)
+
+    if output_format == "json":
+        console.print(output_json(result))
+    else:
+        if result["success"]:
+            console.print(f"[green]✓ 模型下载完成: {result['model']}[/green]")
+        else:
+            console.print("[red]✗ 模型下载失败[/red]")
+            console.print(Panel(result["instructions"], title="手动下载"))
+
+    if not result["success"]:
         raise typer.Exit(1)
 
 
