@@ -37,3 +37,13 @@ Thumbs.db
 chroma_db/
 *.sqlite3
 cache/
+
+# Claude Code runtime files
+.claude/scheduled_tasks.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# Temporary analysis files
+analysis_report.md
+kimi-export-*.md
+review_body*.md
