@@ -2659,8 +2659,11 @@ def daemon(
                 console.print("[dim]Daemon 未运行[/dim]")
                 return
             console.print("[yellow]正在停止 daemon...[/yellow]")
-            stop_daemon()
-            console.print("[green]✓ Daemon 已停止[/green]")
+            if stop_daemon():
+                console.print("[green]✓ Daemon 已停止[/green]")
+            else:
+                console.print("[red]✗ Daemon 停止失败，请手动终止进程[/red]")
+                raise typer.Exit(1)
 
         elif action == "status":
             info = get_daemon_status()

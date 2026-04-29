@@ -88,6 +88,19 @@ def _http_health_check(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> Op
         return None
 
 
+def _http_shutdown(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
+    """请求 daemon 通过 /shutdown endpoint 自行停止"""
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(f"http://{host}:{port}/shutdown", method="POST", data=b"")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        return result.get("status") == "shutting_down"
+    except (OSError, ValueError):
+        return False
+
+
 def is_daemon_running() -> bool:
     """检查 daemon 是否在运行（以 HTTP 健康检查为准）"""
     # 先尝试 PID 文件记录的地址
@@ -276,11 +289,32 @@ def stop_daemon() -> bool:
         port = data.get("port", DEFAULT_PORT)
 
     # 先检查是否真的在跑
-    if _http_health_check(host, port) is None:
+    health = _http_health_check(host, port)
+    if health is None:
         _remove_pid_file()
         return True
 
-    # 尝试停止
+    # 1. 优先通过 HTTP /shutdown 让 daemon 自行退出
+    logger.info("正在通过 /shutdown 请求 daemon 停止...")
+    shutdown_ok = _http_shutdown(host, port)
+
+    if shutdown_ok:
+        # 等待 daemon 自行退出（最多 3 秒）
+        for _ in range(6):
+            if _http_health_check(host, port) is None:
+                _remove_pid_file()
+                logger.info("Daemon 已通过 /shutdown 停止")
+                return True
+            time.sleep(0.5)
+
+    # 2. /shutdown 失败或超时，从 /health 获取真实 PID 后尝试 taskkill/kill
+    if pid == 0:
+        health = _http_health_check(host, port)
+        if health:
+            pid = health.get("pid", 0)
+            if not isinstance(pid, int):
+                pid = 0
+
     if pid > 0:
         try:
             if sys.platform == "win32":
@@ -294,7 +328,7 @@ def stop_daemon() -> bool:
         except (OSError, subprocess.SubprocessError) as e:
             logger.warning(f"停止 daemon 失败: {e}")
 
-    # 等待进程退出
+    # 等待进程退出（最多 5 秒）
     for _ in range(10):
         if _http_health_check(host, port) is None:
             _remove_pid_file()
@@ -302,9 +336,8 @@ def stop_daemon() -> bool:
             return True
         time.sleep(0.5)
 
-    # 超时未退出
+    # 超时未退出 — 不删 PID 文件，保留追踪信息
     logger.warning(f"Daemon 停止超时 (PID: {pid})")
-    _remove_pid_file()
     return False
 
 
