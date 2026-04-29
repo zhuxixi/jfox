@@ -79,6 +79,10 @@ class EncodeSingleRequest(BaseModel):
     text: str
 
 
+class ShutdownResponse(BaseModel):
+    status: str
+
+
 class EncodeSingleResponse(BaseModel):
     embedding: List[float]
     dimension: int
@@ -101,13 +105,12 @@ def health():
     )
 
 
-@app.post("/shutdown")
+@app.post("/shutdown", response_model=ShutdownResponse)
 def shutdown():
     """请求 daemon 自行停止"""
-    global _server
     if _server:
         _server.should_exit = True
-    return {"status": "shutting_down"}
+    return ShutdownResponse(status="shutting_down")
 
 
 @app.post("/encode", response_model=EncodeResponse)
