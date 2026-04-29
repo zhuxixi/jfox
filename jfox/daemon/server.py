@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # 全局 embedding 后端（模型加载后常驻内存）
 _backend = None
 
+# uvicorn Server 实例（用于 graceful shutdown）
+_server = None
+
 
 def _load_model():
     """启动时加载模型（标记为 daemon 进程，防止自引用）"""
@@ -98,6 +101,15 @@ def health():
     )
 
 
+@app.post("/shutdown")
+def shutdown():
+    """请求 daemon 自行停止"""
+    global _server
+    if _server:
+        _server.should_exit = True
+    return {"status": "shutting_down"}
+
+
 @app.post("/encode", response_model=EncodeResponse)
 def encode(req: EncodeRequest):
     """批量文本编码"""
@@ -133,7 +145,10 @@ def main():
 
     import uvicorn
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    global _server
+    config = uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")
+    _server = uvicorn.Server(config)
+    _server.run()
 
 
 if __name__ == "__main__":
