@@ -296,21 +296,24 @@ def stop_daemon() -> bool:
 
     # 1. 优先通过 HTTP /shutdown 让 daemon 自行退出
     logger.info("正在通过 /shutdown 请求 daemon 停止...")
-    _http_shutdown(host, port)
+    shutdown_ok = _http_shutdown(host, port)
 
-    # 等待 daemon 自行退出（最多 3 秒）
-    for _ in range(6):
-        if _http_health_check(host, port) is None:
-            _remove_pid_file()
-            logger.info("Daemon 已通过 /shutdown 停止")
-            return True
-        time.sleep(0.5)
+    if shutdown_ok:
+        # 等待 daemon 自行退出（最多 3 秒）
+        for _ in range(6):
+            if _http_health_check(host, port) is None:
+                _remove_pid_file()
+                logger.info("Daemon 已通过 /shutdown 停止")
+                return True
+            time.sleep(0.5)
 
-    # 2. /shutdown 失败，从 /health 获取真实 PID 后尝试 taskkill/kill
+    # 2. /shutdown 失败或超时，从 /health 获取真实 PID 后尝试 taskkill/kill
     if pid == 0:
         health = _http_health_check(host, port)
         if health:
             pid = health.get("pid", 0)
+            if not isinstance(pid, int):
+                pid = 0
 
     if pid > 0:
         try:
