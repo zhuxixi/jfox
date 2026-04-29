@@ -2,6 +2,24 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.5.0] - 2026-04-29
+
+### Features
+- 支持通过标签召回笔记 (#170) (#177)
+- **cli**: show tags column in list table output
+- **note**: add tags parameter to list_notes() and search_notes()
+- **vector_store**: add tags parameter to search() for ChromaDB filtering
+
+### Fixes
+- **test**: resolve CI test-full failures (#175)
+
+### Changes
+- add superpowers plans and specs docs, update .gitignore (#178)
+- add tag filtering implementation plan for #170
+- add tag filtering design spec for #170
+
+[0.5.0]: https://github.com/zhuxixi/jfox/compare/v0.4.3...v0.5.0
+
 ## [0.4.3] - 2026-04-28
 
 ### Features
