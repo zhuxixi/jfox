@@ -93,9 +93,7 @@ def _http_shutdown(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
     try:
         import urllib.request
 
-        req = urllib.request.Request(
-            f"http://{host}:{port}/shutdown", method="POST", data=b""
-        )
+        req = urllib.request.Request(f"http://{host}:{port}/shutdown", method="POST", data=b"")
         resp = urllib.request.urlopen(req, timeout=3)
         result = json.loads(resp.read().decode("utf-8"))
         return result.get("status") == "shutting_down"
