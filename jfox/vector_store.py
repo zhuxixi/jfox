@@ -1,4 +1,4 @@
-"""ChromaDB 向量存储封装 """
+"""ChromaDB 向量存储封装"""
 
 import logging
 import re
