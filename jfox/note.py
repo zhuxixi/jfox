@@ -178,11 +178,11 @@ def list_notes(
         if limit and not tags and len(notes) >= limit:
             break
 
-    # 标签过滤（AND 逻辑）
+    # 标签过滤（AND 逻辑）—— 先过滤再截断，避免 limit + tags 组合时数量不足
     if tags:
         notes = [n for n in notes if all(t in n.tags for t in tags)]
 
-    # 在过滤后截断，确保 limit 条均匹配筛选条件
+    # 截断到 limit
     if limit:
         notes = notes[:limit]
 
@@ -359,11 +359,7 @@ def search_notes(
     search_mode = mode_map.get(mode.lower(), SearchMode.HYBRID)
 
     return search_engine.search(
-        query,
-        top_k=top_k,
-        mode=search_mode,
-        note_type=note_type,
-        tags=tags,
+        query, top_k=top_k, mode=search_mode, note_type=note_type, tags=tags
     )
 
 

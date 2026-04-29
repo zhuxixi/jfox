@@ -64,7 +64,7 @@ class HybridSearchEngine:
             top_k: 返回结果数量
             mode: 搜索模式
             note_type: 笔记类型筛选
-            tags: 标签筛选（AND 逻辑）
+            tags: 标签筛选
 
         Returns:
             搜索结果列表
@@ -95,14 +95,13 @@ class HybridSearchEngine:
             return []
 
     def _keyword_search(
-        self,
-        query: str,
-        top_k: int,
-        tags: Optional[List[str]] = None,
+        self, query: str, top_k: int, tags: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """纯关键词搜索 (BM25)"""
         try:
-            bm25_results = self.bm25_index.search(query, top_k=top_k)
+            # 请求更多结果以补偿标签过滤后的数量损失
+            search_k = top_k * 3 if tags else top_k
+            bm25_results = self.bm25_index.search(query, top_k=search_k)
 
             # 转换为与语义搜索一致的格式
             results = []
@@ -112,7 +111,7 @@ class HybridSearchEngine:
 
                 note = note_module.load_note_by_id(r["note_id"])
                 if note:
-                    # tags 过滤
+                    # 如果有标签筛选，检查是否匹配所有标签
                     if tags and not all(t in note.tags for t in tags):
                         continue
                     results.append(
@@ -126,6 +125,7 @@ class HybridSearchEngine:
                             "metadata": {
                                 "title": note.title,
                                 "type": note.type.value,
+                                "tags": ",".join(note.tags),
                             },
                             "score": r["score"],
                             "search_mode": "keyword",
@@ -225,6 +225,7 @@ class HybridSearchEngine:
                             "metadata": {
                                 "title": note.title,
                                 "type": note.type.value,
+                                "tags": ",".join(note.tags),
                             },
                         }
 
