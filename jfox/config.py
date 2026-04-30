@@ -1,11 +1,15 @@
 """配置管理"""
 
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import yaml
+from rich.console import Console
+
+_console = Console()
 
 
 def get_default_kb_path() -> Path:
@@ -154,9 +158,16 @@ def use_kb(kb_name: Optional[str] = None):
     Raises:
         ValueError: 知识库不存在
     """
+    resolved_from_env = False
+
     if not kb_name:
-        yield
-        return
+        env_kb = os.environ.get("JFOX_KB")
+        if env_kb:
+            kb_name = env_kb
+            resolved_from_env = True
+        else:
+            yield
+            return
 
     from .kb_manager import get_kb_manager
 
@@ -181,6 +192,12 @@ def use_kb(kb_name: Optional[str] = None):
 
         # 重置索引和搜索引擎（使用新的知识库路径）
         _reset_singletons()
+
+        if resolved_from_env:
+            _console.print(
+                f"Using knowledge base '{kb_name}' (from JFOX_KB environment variable)",
+                style="dim",
+            )
 
         yield
     finally:
