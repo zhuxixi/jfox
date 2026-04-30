@@ -42,11 +42,7 @@ def list_templates(
         if json_output:
             output_format = "json"
 
-        if kb:
-            with use_kb(kb):
-                manager = get_template_manager()
-                templates = manager.list_templates()
-        else:
+        with use_kb(kb):
             manager = get_template_manager()
             templates = manager.list_templates()
 
@@ -120,11 +116,7 @@ def show_template(
     try:
         from .config import use_kb
 
-        if kb:
-            with use_kb(kb):
-                manager = get_template_manager()
-                template = manager.get_template(name)
-        else:
+        with use_kb(kb):
             manager = get_template_manager()
             template = manager.get_template(name)
 
@@ -183,10 +175,7 @@ def create_template(
     try:
         from .config import use_kb
 
-        if kb:
-            with use_kb(kb):
-                manager = get_template_manager()
-        else:
+        with use_kb(kb):
             manager = get_template_manager()
 
         # Check if template exists
@@ -246,11 +235,7 @@ def edit_template(
     try:
         from .config import use_kb
 
-        if kb:
-            with use_kb(kb):
-                manager = get_template_manager()
-                template = manager.get_template(name)
-        else:
+        with use_kb(kb):
             manager = get_template_manager()
             template = manager.get_template(name)
 
@@ -294,10 +279,7 @@ def remove_template(
     try:
         from .config import use_kb
 
-        if kb:
-            with use_kb(kb):
-                manager = get_template_manager()
-        else:
+        with use_kb(kb):
             manager = get_template_manager()
 
         template = manager.get_template(name)

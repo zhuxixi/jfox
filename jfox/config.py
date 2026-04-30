@@ -152,6 +152,10 @@ def use_kb(kb_name: Optional[str] = None):
             # 在这个上下文中，操作都在 work 知识库上
             note = create_note(...)
 
+    优先级: --kb > JFOX_KB > 全局配置 default
+    当 kb_name 为 None 时，会先检查 JFOX_KB 环境变量，
+    若未设置则使用全局配置中的默认知识库。
+
     Args:
         kb_name: 知识库名称，None 表示使用当前默认知识库
 

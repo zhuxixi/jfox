@@ -424,13 +424,9 @@ def add(
         if not content:
             raise ValueError("请提供笔记内容（位置参数或 --content-file）")
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _add_note_impl(content, title, note_type, tags, source, output_format, template)
-        else:
+        with use_kb(kb):
             _add_note_impl(content, title, note_type, tags, source, output_format, template)
 
     except typer.Exit:
@@ -561,13 +557,9 @@ def search(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _search_impl(query, top, note_type, tags, search_mode, output_format)
-        else:
+        with use_kb(kb):
             _search_impl(query, top, note_type, tags, search_mode, output_format)
 
     except Exception as e:
@@ -746,13 +738,9 @@ def status(
 ):
     """查看知识库状态"""
     try:
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _status_impl(output_format, json_output)
-        else:
+        with use_kb(kb):
             _status_impl(output_format, json_output)
 
     except Exception as e:
@@ -847,13 +835,9 @@ def list(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _list_impl(note_type, tags, limit, output_format)
-        else:
+        with use_kb(kb):
             _list_impl(note_type, tags, limit, output_format)
 
     except Exception as e:
@@ -897,12 +881,9 @@ def show(
     支持通过笔记 ID 或标题定位。
     """
     try:
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _show_impl(note_ref)
-        else:
+        with use_kb(kb):
             _show_impl(note_ref)
 
     except Exception as e:
@@ -1046,13 +1027,9 @@ def refs(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _refs_impl(note_id, search, output_format, json_output)
-        else:
+        with use_kb(kb):
             _refs_impl(note_id, search, output_format, json_output)
 
     except Exception as e:
@@ -1125,13 +1102,9 @@ def delete(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _delete_impl(note_id, force, output_format)
-        else:
+        with use_kb(kb):
             _delete_impl(note_id, force, output_format)
 
     except typer.Exit:
@@ -1331,14 +1304,9 @@ def edit(
         if json_output:
             output_format = "json"
 
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _edit_impl(
-                    note_id, content, content_file, title, tags, note_type, source, output_format
-                )
-        else:
+        with use_kb(kb):
             _edit_impl(
                 note_id, content, content_file, title, tags, note_type, source, output_format
             )
@@ -1443,13 +1411,9 @@ def query(
 ):
     """语义搜索 + 知识图谱联合查询"""
     try:
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _query_impl(query_str, top, graph_depth, json_output)
-        else:
+        with use_kb(kb):
             _query_impl(query_str, top, graph_depth, json_output)
 
     except Exception as e:
@@ -1579,13 +1543,9 @@ def graph(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _graph_impl(note_id, depth, stats, orphans, output_format, json_output)
-        else:
+        with use_kb(kb):
             _graph_impl(note_id, depth, stats, orphans, output_format, json_output)
 
     except Exception as e:
@@ -1654,13 +1614,9 @@ def daily(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _daily_impl(date, output_format, json_output)
-        else:
+        with use_kb(kb):
             _daily_impl(date, output_format, json_output)
 
     except Exception as e:
@@ -1766,13 +1722,9 @@ def suggest_links(
         output_format = "json"
 
     try:
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _suggest_links_impl(content, top_k, threshold, output_format, json_output)
-        else:
+        with use_kb(kb):
             _suggest_links_impl(content, top_k, threshold, output_format, json_output)
 
     except Exception as e:
@@ -1799,13 +1751,9 @@ def inbox(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _inbox_impl(limit, output_format, json_output)
-        else:
+        with use_kb(kb):
             _inbox_impl(limit, output_format, json_output)
 
     except Exception as e:
@@ -1985,13 +1933,9 @@ def index(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _index_impl(action, output_format)
-        else:
+        with use_kb(kb):
             _index_impl(action, output_format)
 
     except typer.Exit:
@@ -2453,15 +2397,9 @@ def ingest_log(
         if json_output:
             output_format = "json"
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
+        from .config import use_kb
 
-            with use_kb(kb):
-                _ingest_log_impl(
-                    repo_path, limit, note_type, batch_size, output_format, json_output
-                )
-        else:
+        with use_kb(kb):
             _ingest_log_impl(repo_path, limit, note_type, batch_size, output_format, json_output)
 
     except ValueError as e:
@@ -2512,20 +2450,10 @@ def bulk_import(
 
         console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
 
+        from .config import use_kb
         from .performance import bulk_import_notes
 
-        # 如果指定了知识库，临时切换
-        if kb:
-            from .config import use_kb
-
-            with use_kb(kb):
-                result = bulk_import_notes(
-                    notes_data=notes_data,
-                    note_type=note_type,
-                    batch_size=batch_size,
-                    show_progress=not json_output,
-                )
-        else:
+        with use_kb(kb):
             result = bulk_import_notes(
                 notes_data=notes_data,
                 note_type=note_type,
