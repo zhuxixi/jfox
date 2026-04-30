@@ -9,7 +9,7 @@ from typing import Optional
 import yaml
 from rich.console import Console
 
-_console = Console()
+_console = Console(stderr=True)
 
 
 def get_default_kb_path() -> Path:
@@ -165,7 +165,7 @@ def use_kb(kb_name: Optional[str] = None):
     resolved_from_env = False
 
     if not kb_name:
-        env_kb = os.environ.get("JFOX_KB")
+        env_kb = os.environ.get("JFOX_KB", "").strip()
         if env_kb:
             kb_name = env_kb
             resolved_from_env = True
