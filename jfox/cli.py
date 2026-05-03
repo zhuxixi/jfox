@@ -2700,6 +2700,109 @@ def download(
         raise typer.Exit(1)
 
 
+# =============================================================================
+# 知识库健康检查
+# =============================================================================
+
+
+def _check_impl(clean: bool = False, output_format: str = "table"):
+    """check 命令的内部实现"""
+    from .config import config
+    from .models import NoteType
+    from .note import load_note
+
+    issues = []
+
+    for note_type in NoteType:
+        dir_path = config.notes_dir / note_type.value
+        if not dir_path.exists():
+            continue
+
+        for filepath in sorted(dir_path.glob("*.md")):
+            file_size = filepath.stat().st_size
+            if file_size == 0:
+                issues.append(
+                    {
+                        "file": str(filepath.relative_to(config.base_dir)),
+                        "issue": "empty",
+                        "size": 0,
+                    }
+                )
+            elif load_note(filepath) is None:
+                issues.append(
+                    {
+                        "file": str(filepath.relative_to(config.base_dir)),
+                        "issue": "corrupt",
+                        "size": file_size,
+                    }
+                )
+
+    # --clean: 删除空文件
+    if clean:
+        empty_files = [i for i in issues if i["issue"] == "empty"]
+        if empty_files:
+            count = len(empty_files)
+            confirm = typer.confirm(f"Delete {count} empty file(s)?")
+            if confirm:
+                for issue in empty_files:
+                    full_path = config.base_dir / issue["file"]
+                    full_path.unlink()
+                if output_format != "json":
+                    console.print(f"Deleted {count} empty file(s).")
+                issues = [i for i in issues if i["issue"] != "empty"]
+
+    # 输出结果
+    if output_format == "json":
+        print(output_json({"total": len(issues), "issues": issues}))
+    else:
+        if not issues:
+            console.print("No issues found. Knowledge base is clean.")
+        else:
+            console.print(f"\n Found {len(issues)} issue(s) in knowledge base\n")
+            table = Table()
+            table.add_column("File", style="cyan")
+            table.add_column("Issue", style="yellow")
+            table.add_column("Size", style="dim")
+
+            for issue in issues:
+                size_str = "0 B" if issue["size"] == 0 else f"{issue['size']} B"
+                table.add_row(str(issue["file"]), issue["issue"], size_str)
+
+            console.print(table)
+
+    if issues:
+        raise typer.Exit(1)
+
+
+@app.command()
+def check(
+    clean: bool = typer.Option(False, "--clean", help="删除空文件（需确认）"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+):
+    """检查知识库中的空文件和损坏文件"""
+    try:
+        if json_output:
+            output_format = "json"
+
+        from .config import use_kb
+
+        with use_kb(kb):
+            _check_impl(clean=clean, output_format=output_format)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        if output_format == "json":
+            print(output_json({"success": False, "error": str(e)}))
+        else:
+            console.print(f"[red]X[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
 # 入口点
 def main():
     """CLI 入口点"""
