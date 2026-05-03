@@ -108,7 +108,13 @@ class NoteIndex:
                     )
 
                     self._by_id[meta.id] = meta
-                    self._by_title[meta.title.lower()] = meta
+                    lower_title = meta.title.lower()
+                    if lower_title in self._by_title:
+                        logger.debug(
+                            f"Duplicate title '{meta.title}': "
+                            f"overwriting {self._by_title[lower_title].id} with {meta.id}"
+                        )
+                    self._by_title[lower_title] = meta
                     self._by_type[meta.type].append(meta)
 
                 except (ValueError, KeyError):
