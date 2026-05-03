@@ -2758,15 +2758,19 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
             else:
                 confirm = typer.confirm(f"Delete {count} empty file(s)?")
             if confirm:
+                deleted = []
                 for issue in empty_files:
                     full_path = config.base_dir / issue["file"]
                     try:
                         full_path.unlink()
+                        deleted.append(issue)
                     except OSError:
                         pass
                 if output_format != "json":
-                    console.print(f"Deleted {count} empty file(s).")
-                issues = [i for i in issues if i["issue"] != "empty"]
+                    console.print(f"Deleted {len(deleted)} empty file(s).")
+                # 只从 issues 中移除成功删除的文件
+                for d in deleted:
+                    issues.remove(d)
 
     # 输出结果
     if output_format == "json":
