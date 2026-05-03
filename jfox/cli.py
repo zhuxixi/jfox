@@ -2739,11 +2739,15 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
                     )
             except OSError:
                 # 单文件 IO 错误不中断整个扫描，归类为 corrupt
+                try:
+                    file_size = filepath.stat().st_size
+                except OSError:
+                    file_size = 0
                 issues.append(
                     {
                         "file": str(filepath.relative_to(config.base_dir)),
                         "issue": "corrupt",
-                        "size": -1,
+                        "size": file_size,
                     }
                 )
 
