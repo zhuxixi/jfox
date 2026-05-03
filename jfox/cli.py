@@ -919,12 +919,15 @@ def _refs_impl(
     """查看笔记引用关系的内部实现"""
     if search:
         # 搜索笔记
-        all_notes = note.list_notes()
-        matches = [n for n in all_notes if search.lower() in n.title.lower()]
+        from .note_index import get_note_index
+
+        idx = get_note_index()
+        all_meta = idx.get_all_meta()
+        matches = [m for m in all_meta if search.lower() in m.title.lower()]
 
         result = {
             "query": search,
-            "matches": [{"id": n.id, "title": n.title, "type": n.type.value} for n in matches],
+            "matches": [{"id": m.id, "title": m.title, "type": m.type.value} for m in matches],
         }
 
         if output_format == "json":
@@ -932,10 +935,10 @@ def _refs_impl(
         else:
             console.print(f"[bold]Search:[/bold] '{search}'\n")
             if matches:
-                for n in matches:
-                    console.print(f"- [{n.type.value}] {n.title}")
-                    console.print(f"  ID: {n.id}")
-                    console.print(f"  引用此笔记: {len(n.backlinks)} 处")
+                for m in matches:
+                    console.print(f"- [{m.type.value}] {m.title}")
+                    console.print(f"  ID: {m.id}")
+                    console.print(f"  引用此笔记: {len(m.backlinks)} 处")
                     console.print()
             else:
                 console.print("[dim]No matches found[/dim]")
@@ -997,16 +1000,19 @@ def _refs_impl(
 
     else:
         # 显示所有笔记及其链接统计
-        all_notes = note.list_notes()
+        from .note_index import get_note_index
+
+        idx = get_note_index()
+        all_meta = idx.get_all_meta()
         notes_with_links = []
-        for n in all_notes:
+        for m in all_meta:
             notes_with_links.append(
                 {
-                    "id": n.id,
-                    "title": n.title,
-                    "type": n.type.value,
-                    "outgoing": len(n.links),
-                    "incoming": len(n.backlinks),
+                    "id": m.id,
+                    "title": m.title,
+                    "type": m.type.value,
+                    "outgoing": len(m.links),
+                    "incoming": len(m.backlinks),
                 }
             )
 
@@ -1589,20 +1595,23 @@ def _daily_impl(
     date_str = target_date.strftime("%Y%m%d")
 
     # 查找当天的笔记
-    all_notes = note.list_notes()
-    daily_notes = [n for n in all_notes if n.id.startswith(date_str)]
+    from .note_index import get_note_index
+
+    idx = get_note_index()
+    all_meta = idx.get_all_meta()
+    daily_notes = [m for m in all_meta if m.id.startswith(date_str)]
 
     result = {
         "date": target_date.strftime("%Y-%m-%d"),
         "total": len(daily_notes),
         "notes": [
             {
-                "id": n.id,
-                "title": n.title,
-                "type": n.type.value,
-                "created": n.created.isoformat() if n.created else None,
+                "id": m.id,
+                "title": m.title,
+                "type": m.type.value,
+                "created": m.created,
             }
-            for n in daily_notes
+            for m in daily_notes
         ],
     }
 
@@ -1611,8 +1620,8 @@ def _daily_impl(
     else:
         console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
         if daily_notes:
-            for n in daily_notes:
-                console.print(f"- [{n.type.value}] {n.title}")
+            for m in daily_notes:
+                console.print(f"- [{m.type.value}] {m.title}")
         else:
             console.print("[dim]No notes found for this date.[/dim]")
 
@@ -1652,18 +1661,21 @@ def _inbox_impl(
     json_output: bool,
 ):
     """查看临时笔记的内部实现"""
-    fleeting_notes = note.list_notes(note_type=NoteType.FLEETING, limit=limit)
+    from .note_index import get_note_index
+
+    idx = get_note_index()
+    fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING, limit=limit)
 
     result = {
         "total": len(fleeting_notes),
         "notes": [
             {
-                "id": n.id,
-                "title": n.title,
-                "created": n.created.isoformat() if n.created else None,
-                "filepath": str(n.filepath) if n.filepath else None,
+                "id": m.id,
+                "title": m.title,
+                "created": m.created,
+                "filepath": m.filepath if m.filepath else None,
             }
-            for n in fleeting_notes
+            for m in fleeting_notes
         ],
     }
 
@@ -1671,9 +1683,9 @@ def _inbox_impl(
         print(output_json(result))
     else:
         console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
-        for n in fleeting_notes:
-            time_str = n.created.strftime("%H:%M") if n.created else ""
-            console.print(f"- [{time_str}] {n.title}")
+        for m in fleeting_notes:
+            time_str = m.created[11:16] if m.created and len(m.created) >= 16 else ""
+            console.print(f"- [{time_str}] {m.title}")
 
 
 def _suggest_links_impl(
