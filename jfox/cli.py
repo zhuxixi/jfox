@@ -2738,11 +2738,11 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
                         }
                     )
             except OSError:
-                # 单文件 IO 错误不中断整个扫描
+                # 单文件 IO 错误不中断整个扫描，归类为 corrupt
                 issues.append(
                     {
                         "file": str(filepath.relative_to(config.base_dir)),
-                        "issue": "error",
+                        "issue": "corrupt",
                         "size": -1,
                     }
                 )
