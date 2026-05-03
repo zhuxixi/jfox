@@ -3,9 +3,9 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import yaml
-from typing import Any, Dict, List, Optional
 
 from .config import ZKConfig, config
 from .models import Note, NoteType
