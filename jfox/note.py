@@ -3,6 +3,8 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+
+import yaml
 from typing import Any, Dict, List, Optional
 
 from .config import ZKConfig, config
@@ -101,6 +103,9 @@ def load_note(filepath: Path) -> Optional[Note]:
 
         return Note.from_markdown(content, filepath)
 
+    except (ValueError, yaml.YAMLError) as e:
+        logger.warning(f"Failed to load note from {filepath}: {e}")
+        return None
     except Exception as e:
         logger.error(f"Failed to load note from {filepath}: {e}")
         return None
@@ -726,6 +731,9 @@ def load_note_static(filepath: Path) -> Optional[Note]:
 
         return Note.from_markdown(content, filepath)
 
+    except (ValueError, yaml.YAMLError) as e:
+        logger.warning(f"Failed to load note from {filepath}: {e}")
+        return None
     except Exception as e:
         logger.error(f"Failed to load note from {filepath}: {e}")
         return None
