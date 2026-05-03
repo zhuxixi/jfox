@@ -2719,21 +2719,31 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
             continue
 
         for filepath in sorted(dir_path.glob("*.md")):
-            file_size = filepath.stat().st_size
-            if file_size == 0:
+            try:
+                file_size = filepath.stat().st_size
+                if file_size == 0:
+                    issues.append(
+                        {
+                            "file": str(filepath.relative_to(config.base_dir)),
+                            "issue": "empty",
+                            "size": 0,
+                        }
+                    )
+                elif load_note(filepath) is None:
+                    issues.append(
+                        {
+                            "file": str(filepath.relative_to(config.base_dir)),
+                            "issue": "corrupt",
+                            "size": file_size,
+                        }
+                    )
+            except OSError:
+                # 单文件 IO 错误不中断整个扫描
                 issues.append(
                     {
                         "file": str(filepath.relative_to(config.base_dir)),
-                        "issue": "empty",
-                        "size": 0,
-                    }
-                )
-            elif load_note(filepath) is None:
-                issues.append(
-                    {
-                        "file": str(filepath.relative_to(config.base_dir)),
-                        "issue": "corrupt",
-                        "size": file_size,
+                        "issue": "error",
+                        "size": -1,
                     }
                 )
 
@@ -2742,11 +2752,18 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
         empty_files = [i for i in issues if i["issue"] == "empty"]
         if empty_files:
             count = len(empty_files)
-            confirm = typer.confirm(f"Delete {count} empty file(s)?")
+            if output_format == "json":
+                # JSON 模式下自动确认，避免交互式提示破坏输出
+                confirm = True
+            else:
+                confirm = typer.confirm(f"Delete {count} empty file(s)?")
             if confirm:
                 for issue in empty_files:
                     full_path = config.base_dir / issue["file"]
-                    full_path.unlink()
+                    try:
+                        full_path.unlink()
+                    except OSError:
+                        pass
                 if output_format != "json":
                     console.print(f"Deleted {count} empty file(s).")
                 issues = [i for i in issues if i["issue"] != "empty"]

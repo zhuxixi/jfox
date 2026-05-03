@@ -37,16 +37,17 @@ def _setup_temp_kb(temp_kb):
     config.zk_dir = cfg.zk_dir
     config.chroma_dir = cfg.chroma_dir
 
-    with patch("jfox.config.use_kb") as mock_use_kb:
-        mock_use_kb.return_value.__enter__ = MagicMock(return_value=None)
-        mock_use_kb.return_value.__exit__ = MagicMock(return_value=False)
-        yield cfg
-
-    # 恢复原始配置
-    config.base_dir = original_base_dir
-    config.notes_dir = original_notes_dir
-    config.zk_dir = original_zk_dir
-    config.chroma_dir = original_chroma_dir
+    try:
+        with patch("jfox.config.use_kb") as mock_use_kb:
+            mock_use_kb.return_value.__enter__ = MagicMock(return_value=None)
+            mock_use_kb.return_value.__exit__ = MagicMock(return_value=False)
+            yield cfg
+    finally:
+        # 恢复原始配置
+        config.base_dir = original_base_dir
+        config.notes_dir = original_notes_dir
+        config.zk_dir = original_zk_dir
+        config.chroma_dir = original_chroma_dir
 
 
 class TestCheckCommand:
@@ -97,7 +98,7 @@ class TestCheckCommand:
             assert data["issues"][0]["size"] == 0
 
     def test_check_clean_deletes_empty(self, temp_kb):
-        """--clean 删除空文件"""
+        """--clean 删除空文件后退出码为 0"""
         with _setup_temp_kb(temp_kb) as cfg:
             empty_file = cfg.notes_dir / "permanent" / "empty.md"
             empty_file.write_text("", encoding="utf-8")
@@ -105,9 +106,10 @@ class TestCheckCommand:
             result = runner.invoke(app, ["check", "--clean"], input="y\n")
             assert "Deleted" in result.output or "deleted" in result.output.lower()
             assert not empty_file.exists()
+            assert result.exit_code == 0
 
     def test_check_clean_keeps_corrupt(self, temp_kb):
-        """--clean 不删除损坏但非空的文件"""
+        """--clean 不删除损坏但非空的文件，退出码为 1"""
         with _setup_temp_kb(temp_kb) as cfg:
             corrupt_file = cfg.notes_dir / "fleeting" / "corrupt.md"
             corrupt_file.write_text("Some content without frontmatter", encoding="utf-8")
@@ -115,3 +117,4 @@ class TestCheckCommand:
             result = runner.invoke(app, ["check", "--clean"])
             assert corrupt_file.exists()
             assert "corrupt" in result.output.lower()
+            assert result.exit_code == 1
