@@ -242,23 +242,45 @@ def find_note_id_by_title_or_id(
     """通过标题或ID查找笔记
 
     匹配优先级：精确ID → 精确标题 → 标题包含
+
+    当 all_notes 未提供时，使用 NoteIndex 直接查找，避免全量加载。
+    all_notes 参数保留用于向后兼容。
     """
-    if all_notes is None:
-        all_notes = note.list_notes()
+    if all_notes is not None:
+        # 向后兼容：调用者已提供全量列表
+        title_lower = title_or_id.lower()
+        contains_match = None
+        for n in all_notes:
+            if n.id == title_or_id:
+                return n.id
+            if n.title.lower() == title_lower:
+                return n.id
+            if contains_match is None and title_lower in n.title.lower():
+                contains_match = n.id
+        return contains_match
 
-    # 单次遍历，按优先级：精确ID → 精确标题 → 标题包含
+    # 通过 NoteIndex 直接查找
+    from .note_index import get_note_index
+
+    idx = get_note_index()
+
+    # 精确 ID
+    meta = idx.find_by_id(title_or_id)
+    if meta:
+        return meta.id
+
+    # 精确标题
+    meta = idx.find_by_title(title_or_id)
+    if meta:
+        return meta.id
+
+    # 标题包含
     title_lower = title_or_id.lower()
-    contains_match = None
+    for meta in idx.get_all_meta():
+        if title_lower in meta.title.lower():
+            return meta.id
 
-    for n in all_notes:
-        if n.id == title_or_id:
-            return n.id
-        if n.title.lower() == title_lower:
-            return n.id
-        if contains_match is None and title_lower in n.title.lower():
-            contains_match = n.id
-
-    return contains_match
+    return None
 
 
 def _add_note_impl(
@@ -315,11 +337,8 @@ def _add_note_impl(
     resolved_links = []
     unresolved = []
 
-    # 缓存笔记列表，避免每个链接重复加载
-    all_notes = note.list_notes() if wiki_links else []
-
     for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text, all_notes=all_notes)
+        target_id = find_note_id_by_title_or_id(link_text)
         if target_id:
             resolved_links.append(target_id)
         else:
@@ -1199,9 +1218,8 @@ def _edit_impl(
         resolved_links = []
         unresolved = []
 
-        all_notes = note.list_notes() if wiki_links else []
         for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text, all_notes=all_notes)
+            target_id = find_note_id_by_title_or_id(link_text)
             if target_id:
                 resolved_links.append(target_id)
             else:
