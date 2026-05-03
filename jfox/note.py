@@ -166,6 +166,7 @@ def list_notes(
     """
     use_config = cfg or config
     notes = []
+    skipped = 0
 
     types_to_list = [note_type] if note_type else list(NoteType)
 
@@ -178,6 +179,8 @@ def list_notes(
             note = load_note(filepath)
             if note:
                 notes.append(note)
+            else:
+                skipped += 1
 
             # 无标签过滤时可提前截断，避免全量遍历
             if limit and not tags and len(notes) >= limit:
@@ -193,6 +196,9 @@ def list_notes(
     # 截断到 limit
     if limit:
         notes = notes[:limit]
+
+    if skipped > 0:
+        logger.warning(f"{skipped} 个文件无法加载，已跳过。运行 jfox check 清理。")
 
     return notes
 
