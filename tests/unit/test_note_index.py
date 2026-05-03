@@ -220,3 +220,62 @@ class TestNoteIndexInvalidFiles:
         idx.rebuild()
         assert len(idx.get_all_meta()) == 0
         assert idx.get_invalid_files() == []
+
+
+class TestListNotesViaIndex:
+    """验证 list_notes() 通过索引减少 load_note 调用"""
+
+    @pytest.fixture
+    def kb_with_many_notes(self, temp_kb):
+        """创建包含多条笔记的知识库"""
+        cfg = ZKConfig(base_dir=temp_kb)
+        cfg.ensure_dirs()
+
+        for i in range(10):
+            n = Note(
+                id=f"20260428{i:04d}",
+                title=f"笔记 {i}",
+                content=f"这是第 {i} 条笔记的内容，比较长。" * 10,
+                type=NoteType.PERMANENT,
+                tags=["tag1"] if i % 2 == 0 else ["tag2"],
+                created=datetime(2026, 4, 28, 0, i),
+                updated=datetime(2026, 4, 28, 0, i),
+            )
+            note_dir = cfg.notes_dir / n.type.value
+            note_dir.mkdir(parents=True, exist_ok=True)
+            note_file = note_dir / f"{n.id}.md"
+            note_file.write_text(n.to_markdown(), encoding="utf-8")
+
+        return cfg
+
+    def test_list_notes_returns_full_note_objects(self, kb_with_many_notes):
+        """list_notes 仍然返回完整 Note 对象（含 content）"""
+        from jfox.note import list_notes
+
+        notes = list_notes(cfg=kb_with_many_notes)
+        assert len(notes) == 10
+        assert all(hasattr(n, "content") for n in notes)
+        assert all(len(n.content) > 0 for n in notes)
+
+    def test_list_notes_with_tags_and_limit(self, kb_with_many_notes):
+        """tags + limit 组合正常工作（修复原有 bug）"""
+        from jfox.note import list_notes
+
+        # tag1 has 5 notes
+        result = list_notes(tags=["tag1"], limit=3, cfg=kb_with_many_notes)
+        assert len(result) == 3
+        assert all("tag1" in n.tags for n in result)
+
+    def test_list_notes_with_type_filter(self, kb_with_many_notes):
+        """类型过滤正常"""
+        from jfox.note import list_notes
+
+        result = list_notes(note_type=NoteType.PERMANENT, cfg=kb_with_many_notes)
+        assert len(result) == 10
+
+    def test_list_notes_limit_without_tags(self, kb_with_many_notes):
+        """无 tags 时 limit 提前截断"""
+        from jfox.note import list_notes
+
+        result = list_notes(limit=3, cfg=kb_with_many_notes)
+        assert len(result) == 3
