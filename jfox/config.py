@@ -126,7 +126,7 @@ config = get_config()
 
 
 def _reset_singletons():
-    """重置所有缓存的单例（搜索引擎、向量存储、BM25 索引、embedding 后端）"""
+    """重置所有缓存的单例（搜索引擎、向量存储、BM25 索引、embedding 后端、元数据索引）"""
     import importlib
 
     for module_name, fn_name in [
@@ -134,6 +134,7 @@ def _reset_singletons():
         (".search_engine", "reset_search_engine"),
         (".vector_store", "reset_vector_store"),
         (".embedding_backend", "reset_backend"),
+        (".note_index", "reset_note_index"),
     ]:
         try:
             module = importlib.import_module(module_name, package="jfox")

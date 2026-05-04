@@ -155,6 +155,8 @@ def list_notes(
     """
     列出笔记
 
+    内部通过 NoteIndex 减少不必要的 load_note 调用。
+
     Args:
         note_type: 笔记类型筛选
         limit: 数量限制
@@ -164,41 +166,43 @@ def list_notes(
     Returns:
         笔记列表
     """
+    from .note_index import get_note_index
+
     use_config = cfg or config
+
+    # 通过索引获取匹配的元数据列表（tags/limit 在索引层生效）
+    idx = get_note_index(use_config)
+    metas = idx.list_meta(note_type=note_type, tags=tags, limit=limit)
+
+    # 只加载匹配到的笔记文件
     notes = []
     skipped = 0
+    for meta in metas:
+        filepath = Path(meta.filepath)
+        note = load_note(filepath)
+        if note:
+            notes.append(note)
+        else:
+            skipped += 1
 
-    types_to_list = [note_type] if note_type else list(NoteType)
+    # skipped: 索引中有效但 load_note 失败的文件
+    # index_invalid: 索引层已跳过的无效文件（仅当本查询范围涉及它们时计入）
+    index_invalid = 0
+    if not note_type:
+        # 未限定类型时，所有无效文件都可能被查询到
+        index_invalid = len(idx.get_invalid_files())
+    else:
+        # 限定类型时，只计该类型目录下的无效文件
+        type_dir = str(use_config.notes_dir / note_type.value)
+        index_invalid = sum(
+            1
+            for f in idx.get_invalid_files()
+            if f.replace("\\", "/").startswith(type_dir.replace("\\", "/"))
+        )
 
-    for nt in types_to_list:
-        dir_path = use_config.notes_dir / nt.value
-        if not dir_path.exists():
-            continue
-
-        for filepath in sorted(dir_path.glob("*.md"), reverse=True):
-            note = load_note(filepath)
-            if note:
-                notes.append(note)
-            else:
-                skipped += 1
-
-            # 无标签过滤时可提前截断，避免全量遍历
-            if limit and not tags and len(notes) >= limit:
-                break
-
-        if limit and not tags and len(notes) >= limit:
-            break
-
-    # 标签过滤（AND 逻辑）—— 先过滤再截断，避免 limit + tags 组合时数量不足
-    if tags:
-        notes = [n for n in notes if all(t in n.tags for t in tags)]
-
-    # 截断到 limit
-    if limit:
-        notes = notes[:limit]
-
-    if skipped > 0:
-        logger.warning(f"{skipped} 个文件无法加载，已跳过。运行 jfox check 清理。")
+    total_skipped = skipped + index_invalid
+    if total_skipped > 0:
+        logger.warning(f"{total_skipped} 个文件无法加载，已跳过。运行 jfox check 清理。")
 
     return notes
 
