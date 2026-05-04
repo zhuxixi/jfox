@@ -195,9 +195,9 @@ def list_notes(
         # 限定类型时，只计该类型目录下的无效文件
         type_dir = str(use_config.notes_dir / note_type.value)
         index_invalid = sum(
-            1 for f in idx.get_invalid_files() if f.replace("\\", "/").startswith(
-                type_dir.replace("\\", "/")
-            )
+            1
+            for f in idx.get_invalid_files()
+            if f.replace("\\", "/").startswith(type_dir.replace("\\", "/"))
         )
 
     total_skipped = skipped + index_invalid
