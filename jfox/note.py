@@ -185,8 +185,21 @@ def list_notes(
         else:
             skipped += 1
 
-    # 合并索引层跳过的无效文件 + 加载层跳过的文件
-    index_invalid = len(idx.get_invalid_files())
+    # skipped: 索引中有效但 load_note 失败的文件
+    # index_invalid: 索引层已跳过的无效文件（仅当本查询范围涉及它们时计入）
+    index_invalid = 0
+    if not note_type:
+        # 未限定类型时，所有无效文件都可能被查询到
+        index_invalid = len(idx.get_invalid_files())
+    else:
+        # 限定类型时，只计该类型目录下的无效文件
+        type_dir = str(use_config.notes_dir / note_type.value)
+        index_invalid = sum(
+            1 for f in idx.get_invalid_files() if f.replace("\\", "/").startswith(
+                type_dir.replace("\\", "/")
+            )
+        )
+
     total_skipped = skipped + index_invalid
     if total_skipped > 0:
         logger.warning(f"{total_skipped} 个文件无法加载，已跳过。运行 jfox check 清理。")
