@@ -2,6 +2,28 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.7.0] - 2026-05-05
+
+### Features
+- **skills**: add CI monitoring with auto-polling to /ci command
+- **skills**: add /ci command to trigger GitHub Actions workflows
+- **cli**: add jfox check command for detecting corrupt files (#189)
+- **note**: list_notes 扫描结束时汇总无效文件提示 (#188)
+
+### Fixes
+- **note**: downgrade parse failure log to warning in load_note (#187)
+
+### Changes
+- add design specs and implementation plans for recent features
+- list_notes() 元数据索引，减少全量加载 (#190)
+- add implementation plan for list_notes metadata index (#190)
+- add spec for list_notes() metadata index (#190)
+- add spec for jfox check command (#189)
+- add spec for list_notes skip summary (#188)
+- **spec**: add design for load_note log level fix (#186)
+
+[0.7.0]: https://github.com/zhuxixi/jfox/compare/v0.6.0...v0.7.0
+
 ## [0.5.0] - 2026-04-29
 
 ### Features
