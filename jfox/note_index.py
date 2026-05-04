@@ -2,6 +2,7 @@
 
 import logging
 import time
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -29,6 +30,9 @@ class NoteMeta:
     backlinks: List[str] = field(default_factory=list)
 
 
+_MAX_FRONTMATTER_LINES = 200
+
+
 def _parse_frontmatter_only(filepath: Path) -> Optional[dict]:
     """只读取 frontmatter 部分，不解析正文内容。
 
@@ -36,7 +40,7 @@ def _parse_frontmatter_only(filepath: Path) -> Optional[dict]:
         解析后的 frontmatter dict，解析失败返回 None
     """
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, "r", encoding="utf-8-sig") as f:
             first_line = f.readline()
             if first_line.strip() != "---":
                 return None
@@ -47,14 +51,19 @@ def _parse_frontmatter_only(filepath: Path) -> Optional[dict]:
                 if stripped == "---":
                     break
                 lines.append(line)
+                if len(lines) > _MAX_FRONTMATTER_LINES:
+                    return None
 
             if not lines:
                 return None
 
             fm_text = "".join(lines)
-            return yaml.safe_load(fm_text)
+            result = yaml.safe_load(fm_text)
+            if not isinstance(result, dict):
+                return None
+            return result
 
-    except (yaml.YAMLError, UnicodeDecodeError, OSError):
+    except (yaml.YAMLError, UnicodeDecodeError, OSError, AttributeError):
         return None
 
 
@@ -95,16 +104,28 @@ class NoteIndex:
                         self._invalid_files.append(str(filepath))
                         continue
 
+                    def _to_str(val):
+                        if val is None:
+                            return ""
+                        if isinstance(val, datetime):
+                            return val.isoformat()
+                        return str(val)
+
+                    def _to_list(val):
+                        if val is None:
+                            return []
+                        return list(val) if isinstance(val, list) else []
+
                     meta = NoteMeta(
                         id=note_id,
                         title=fm.get("title", "Untitled"),
                         type=NoteType(fm.get("type", "fleeting")),
-                        tags=fm.get("tags", []),
-                        created=str(fm.get("created", "")),
-                        updated=str(fm.get("updated", "")),
+                        tags=_to_list(fm.get("tags")),
+                        created=_to_str(fm.get("created")),
+                        updated=_to_str(fm.get("updated")),
                         filepath=str(filepath),
-                        links=fm.get("links", []),
-                        backlinks=fm.get("backlinks", []),
+                        links=_to_list(fm.get("links")),
+                        backlinks=_to_list(fm.get("backlinks")),
                     )
 
                     self._by_id[meta.id] = meta

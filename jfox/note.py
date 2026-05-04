@@ -185,8 +185,9 @@ def list_notes(
         else:
             skipped += 1
 
-    # 统计索引层已跳过的无效文件 + 加载层跳过的文件
-    total_skipped = skipped + len(idx.get_invalid_files())
+    # 合并索引层跳过的无效文件 + 加载层跳过的文件
+    index_invalid = len(idx.get_invalid_files())
+    total_skipped = skipped + index_invalid
     if total_skipped > 0:
         logger.warning(f"{total_skipped} 个文件无法加载，已跳过。运行 jfox check 清理。")
 
