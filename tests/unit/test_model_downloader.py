@@ -101,6 +101,30 @@ class TestModelDownloader:
             result = downloader._try_curl_download()
             assert result is False
 
+    def test_check_cached_with_pytorch_bin(self, downloader):
+        """pytorch_model.bin 格式的缓存也能正常识别"""
+        snapshot = downloader._model_cache / "snapshots" / "abc123"
+        snapshot.mkdir(parents=True)
+        (snapshot / "pytorch_model.bin").write_text("fake")
+        assert downloader._check_cached() is True
+
+    def test_try_hf_hub_download_fallback_to_pytorch(self, downloader):
+        """model.safetensors 不存在时回退到 pytorch_model.bin"""
+        call_count = 0
+
+        def hf_hub_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:  # model.safetensors 失败
+                raise Exception("not found")
+            # pytorch_model.bin + 其他文件均成功
+            return str(downloader._model_cache / "snapshots" / "abc")
+
+        with patch("huggingface_hub.hf_hub_download") as mock_download:
+            mock_download.side_effect = hf_hub_side_effect
+            result = downloader._try_hf_hub_download()
+            assert result is True
+
     def test_cleanup_partial(self, downloader):
         """验证部分下载残留被清理（通过 TemporaryDirectory 自动实现）"""
         with patch("jfox.model_downloader.shutil.which", return_value="curl"):
