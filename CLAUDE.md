@@ -56,18 +56,21 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 | Module | Role |
 |--------|------|
-| `cli.py` | All CLI commands (~2500 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
+| `cli.py` | All CLI commands (~2900 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
 | `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
 | `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json` |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
 | `formatters.py` | Output formats: JSON, CSV, YAML, Table, Paths |
+| `git_extractor.py` | Git 仓库数据提取器（ingest 功能） |
+| `model_downloader.py` | Embedding 模型下载与缓存管理 |
+| `note_index.py` | 笔记索引管理（文件名↔ID 映射） |
 | `indexer.py` | File monitoring (watchdog) + incremental indexing |
 | `note.py` | Markdown file CRUD with YAML frontmatter |
 | `models.py` | `Note` data model with frontmatter serialization |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
 | `bm25_index.py` | BM25 keyword search index |
 | `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理） |
-| `daemon/` | Embedding 模型 HTTP 守护进程，`jfox daemon start/stop/status` |
+| `daemon/` | Embedding 模型 HTTP 守护进程 (`server.py`/`client.py`/`process.py`)，`jfox daemon start/stop/status` |
 | `vector_store.py` | ChromaDB vector store for semantic search |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
@@ -107,11 +110,11 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
 - **Run single-process** to avoid ChromaDB/model loading conflicts
-- **Test directory reorganization in progress**:
-  - `tests/unit/` — Pure logic unit tests (formatters, config, kb_manager, template)
-  - `tests/integration/` — Cross-module integration tests (backlinks)
+- **Test directory reorganization mostly complete**:
+  - `tests/unit/` — Pure logic unit tests (25 files)
+  - `tests/integration/` — Cross-module integration tests (backlinks, tag filter, model download)
   - `tests/performance/` — Performance benchmarks
-  - Root-level `test_*_unit.py` files also exist (partial migration)
+  - Root-level `test_config_unit.py` and `test_config_set_unit.py` remain (no longer duplicated, test different things)
 - **pytest.ini**: `timeout=120`, `--strict-markers`, `-ra` (show all test summary)
 
 ## CI (GitHub Actions)
@@ -121,6 +124,8 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **Core** (main branch): Core workflow tests with real embeddings, Python 3.10 + 3.12
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
+
+**Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
 ## Windows Notes
 
@@ -135,4 +140,4 @@ Four jobs in `.github/workflows/integration-test.yml`:
 ## Gotchas
 
 - `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
-- Test directory migration is partial: root-level `test_*_unit.py` files duplicate `tests/unit/` tests
+- Test directory migration mostly complete; root-level `test_config_unit.py` and `test_config_set_unit.py` remain but test different things from `tests/unit/`
