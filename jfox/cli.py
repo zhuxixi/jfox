@@ -1149,12 +1149,15 @@ def delete(
 
 def _strip_frontmatter(raw: str) -> str:
     """如果内容包含 YAML frontmatter，则剥离 frontmatter 和标题行，只返回正文"""
+    # 去除 UTF-8 BOM
+    if raw.startswith("﻿"):
+        raw = raw[1:]
     match = re.match(r"^---\n.*?\n---\n+(.*)", raw, re.DOTALL)
     if not match:
         return raw
     body = match.group(1).strip()
-    # 去除开头的 markdown 标题行（如 "# Title"）
-    body = re.sub(r"^#\s+.*\n*", "", body).strip()
+    # 去除 jfox 生成的标题行（# 后跟空格和非空内容，空行结尾）
+    body = re.sub(r"^#[ \t]+\S.*\n*", "", body).strip()
     return body
 
 
