@@ -2,6 +2,13 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.7.1] - 2026-05-05
+
+### Fixes
+- dynamically detect model weight file format
+
+[0.7.1]: https://github.com/zhuxixi/jfox/compare/v0.7.0...v0.7.1
+
 ## [0.7.0] - 2026-05-05
 
 ### Features
