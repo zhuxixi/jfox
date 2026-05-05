@@ -18,9 +18,14 @@ _HF_MIRROR = "https://hf-mirror.com"
 _TIMEOUT_HF_HUB = 60
 _TIMEOUT_CURL = 120
 
-# 需要下载的文件列表（按重要性排序）
-_REQUIRED_FILES = [
+# 权重文件候选列表（按优先级排序：safetensors 优先，PyTorch 回退）
+_WEIGHT_FILE_CANDIDATES = [
     "model.safetensors",
+    "pytorch_model.bin",
+]
+
+# 非权重必需文件列表
+_REQUIRED_FILES = [
     "config.json",
     "tokenizer.json",
     "tokenizer_config.json",
@@ -89,12 +94,13 @@ class ModelDownloader:
         snapshots_dir = self._model_cache / "snapshots"
         if not snapshots_dir.exists():
             return False
-        # 检查至少有一个 snapshot 且包含 model.safetensors
+        # 检查至少有一个 snapshot 且包含权重文件
         try:
             for snapshot in snapshots_dir.iterdir():
                 if snapshot.is_dir():
-                    if (snapshot / "model.safetensors").exists():
-                        return True
+                    for candidate in _WEIGHT_FILE_CANDIDATES:
+                        if (snapshot / candidate).exists():
+                            return True
         except OSError:
             logger.warning(f"无法遍历缓存目录: {snapshots_dir}")
             return False
@@ -113,15 +119,29 @@ class ModelDownloader:
                 env_backup = os.environ.get("HF_ENDPOINT")
                 os.environ["HF_ENDPOINT"] = endpoint
 
-            # 下载核心文件
-            hf_hub_download(
-                repo_id=self.model_name,
-                filename="model.safetensors",
-                cache_dir=str(self._hf_hub_cache),
-                local_files_only=False,
-            )
+            # 按优先级尝试下载权重文件
+            weight_downloaded = False
+            for candidate in _WEIGHT_FILE_CANDIDATES:
+                try:
+                    hf_hub_download(
+                        repo_id=self.model_name,
+                        filename=candidate,
+                        cache_dir=str(self._hf_hub_cache),
+                        local_files_only=False,
+                    )
+                    weight_downloaded = True
+                    logger.debug(f"权重文件 {candidate} 下载成功")
+                    break
+                except Exception:
+                    logger.debug(f"权重文件 {candidate} 不存在，尝试下一个")
+                    continue
+
+            if not weight_downloaded:
+                logger.warning("所有权重文件候选均下载失败")
+                return False
+
             # 尝试下载其他必要文件（不失败）
-            for fname in _REQUIRED_FILES[1:]:
+            for fname in _REQUIRED_FILES:
                 try:
                     hf_hub_download(
                         repo_id=self.model_name,
@@ -159,6 +179,46 @@ class ModelDownloader:
             tmp_path = Path(tmpdir)
             downloaded = []
 
+            # 按优先级尝试下载权重文件
+            weight_downloaded = False
+            for candidate in _WEIGHT_FILE_CANDIDATES:
+                url = f"{base_url}/{candidate}"
+                dest = tmp_path / candidate
+                logger.info(f"试用权重文件 {candidate}...")
+                try:
+                    result = subprocess.run(
+                        [
+                            "curl",
+                            "-L",
+                            "-f",
+                            "-s",
+                            "-S",
+                            "--connect-timeout",
+                            "10",
+                            "--max-time",
+                            str(_TIMEOUT_CURL),
+                            "-o",
+                            str(dest),
+                            url,
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=_TIMEOUT_CURL + 5,
+                    )
+                    if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+                        downloaded.append(candidate)
+                        weight_downloaded = True
+                        break
+                    else:
+                        logger.debug(f"{candidate} 下载失败或为空，跳过")
+                except (OSError, subprocess.TimeoutExpired) as e:
+                    logger.debug(f"{candidate} 下载异常: {e}")
+
+            if not weight_downloaded:
+                logger.error("所有权重文件候选下载失败，步骤 3 未完成")
+                return False
+
+            # 下载非权重必需文件
             for fname in _REQUIRED_FILES:
                 url = f"{base_url}/{fname}"
                 dest = tmp_path / fname
@@ -190,10 +250,6 @@ class ModelDownloader:
                 except (OSError, subprocess.TimeoutExpired) as e:
                     logger.debug(f"{fname} 下载异常: {e}")
 
-            if "model.safetensors" not in downloaded:
-                logger.error("model.safetensors 下载失败，步骤 3 未完成")
-                return False
-
             # 按 HF 缓存目录结构放置
             import hashlib
 
@@ -215,10 +271,11 @@ class ModelDownloader:
 
     def get_manual_instructions(self) -> str:
         """获取手动下载说明"""
+        candidates = " / ".join(_WEIGHT_FILE_CANDIDATES)
         return (
             f"自动下载失败。请手动下载模型:\n"
             f"  1. 访问 {_HF_MIRROR}/{self.model_name}\n"
-            f"  2. 下载 model.safetensors 和 config.json\n"
+            f"  2. 下载权重文件（{candidates}）和 config.json\n"
             f"  3. 放置到 {self._model_cache}/snapshots/\n"
             f"  或运行: bash scripts/download-model-intranet.sh"
         )
