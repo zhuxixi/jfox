@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import sys
 import warnings
 from datetime import datetime
@@ -1146,8 +1147,25 @@ def delete(
         raise typer.Exit(1)
 
 
+def _strip_frontmatter(raw: str) -> str:
+    """如果内容包含 YAML frontmatter，则剥离 frontmatter 和标题行，只返回正文"""
+    # 去除 UTF-8 BOM
+    if raw.startswith("﻿"):
+        raw = raw[1:]
+    match = re.match(r"^---\n.*?\n---\n+(.*)", raw, re.DOTALL)
+    if not match:
+        return raw
+    body = match.group(1).strip()
+    # 去除 jfox 生成的标题行（# 后跟空格和非空内容，空行结尾）
+    body = re.sub(r"^#[ \t]+\S.*\n*", "", body).strip()
+    return body
+
+
 def _read_content_file(content_file: str) -> str:
-    """从文件或 stdin 读取内容（--content-file 共用逻辑）"""
+    """从文件或 stdin 读取内容（--content-file 共用逻辑）
+
+    如果文件包含 YAML frontmatter（如 jfox 笔记文件），自动剥离只保留正文。
+    """
     if content_file == "-":
         import sys
 
@@ -1159,11 +1177,13 @@ def _read_content_file(content_file: str) -> str:
     if not p.is_file():
         raise ValueError(f"路径不是文件: {content_file}")
     try:
-        return p.read_text(encoding="utf-8")
+        raw = p.read_text(encoding="utf-8")
     except PermissionError:
         raise ValueError(f"无权限读取文件: {content_file}")
     except UnicodeDecodeError:
         raise ValueError(f"文件编码错误（需要 UTF-8）: {content_file}")
+
+    return _strip_frontmatter(raw)
 
 
 def _edit_impl(
