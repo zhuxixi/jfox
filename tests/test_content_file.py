@@ -1,7 +1,6 @@
 """测试 _read_content_file 对含 frontmatter 文件的处理"""
 
 import tempfile
-from pathlib import Path
 
 from jfox.cli import _read_content_file
 
