@@ -65,12 +65,9 @@ class TestReadContentFile:
     def test_bom_file_stripped(self):
         """含 UTF-8 BOM 的 frontmatter 文件应正确剥离"""
         raw = "---\nid: '123'\ntitle: test\n---\n\nBody with BOM\n"
-        with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".md", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".md", delete=False) as f:
             f.write(raw.encode("utf-8-sig"))
             f.flush()
             result = _read_content_file(f.name)
         assert "---" not in result
         assert "Body with BOM" in result
-
