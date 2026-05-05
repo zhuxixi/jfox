@@ -132,8 +132,8 @@ class ModelDownloader:
                     weight_downloaded = True
                     logger.debug(f"权重文件 {candidate} 下载成功")
                     break
-                except Exception:
-                    logger.debug(f"权重文件 {candidate} 不存在，尝试下一个")
+                except Exception as e:
+                    logger.debug(f"权重文件 {candidate} 尝试失败 ({e})，尝试下一个")
                     continue
 
             if not weight_downloaded:
