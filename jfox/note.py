@@ -64,16 +64,31 @@ def create_note(
 def _atomic_write(filepath: Path, content: str) -> None:
     """原子写入：先写临时文件再原子替换，防止崩溃产生空文件"""
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
+    tmp_fd = -1
+    tmp_path = ""
     try:
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            tmp_fd = -1  # fd 已移交 fdopen 管理
             f.write(content)
+        # 保留目标文件权限（如已存在）
+        if filepath.exists():
+            try:
+                os.chmod(tmp_path, filepath.stat().st_mode)
+            except OSError:
+                pass
         os.replace(tmp_path, filepath)
     except BaseException:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        if tmp_fd >= 0:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
         raise
 
 
