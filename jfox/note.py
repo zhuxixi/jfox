@@ -1,6 +1,8 @@
 """笔记 CRUD 操作"""
 
 import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -57,6 +59,22 @@ def create_note(
     )
 
     return note
+
+
+def _atomic_write(filepath: Path, content: str) -> None:
+    """原子写入：先写临时文件再 rename，防止崩溃产生空文件"""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp_path, filepath)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def save_note(note: Note, add_to_index: bool = True) -> bool:
