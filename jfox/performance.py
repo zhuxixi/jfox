@@ -9,6 +9,8 @@ import time
 from functools import wraps
 from typing import Any, Callable, List, Optional
 
+from .note import _atomic_write
+
 logger = logging.getLogger(__name__)
 
 
@@ -237,9 +239,7 @@ def bulk_import_notes(
             # 批量保存（不索引）
             for note in notes:
                 try:
-                    note.filepath.parent.mkdir(parents=True, exist_ok=True)
-                    with open(note.filepath, "w", encoding="utf-8") as f:
-                        f.write(note.to_markdown())
+                    _atomic_write(note.filepath, note.to_markdown())
                     imported += 1
                 except Exception as e:
                     logger.warning(f"Failed to save note: {e}")

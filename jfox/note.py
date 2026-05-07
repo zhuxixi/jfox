@@ -1,6 +1,8 @@
 """笔记 CRUD 操作"""
 
 import logging
+import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -59,15 +61,41 @@ def create_note(
     return note
 
 
+def _atomic_write(filepath: Path, content: str) -> None:
+    """原子写入：先写临时文件再原子替换，防止崩溃产生空文件"""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd = -1
+    tmp_path = ""
+    try:
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=filepath.parent, suffix=".tmp")
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+            tmp_fd = -1  # fd 已移交 fdopen 管理
+            f.write(content)
+        # 保留目标文件权限（如已存在）
+        if filepath.exists():
+            try:
+                os.chmod(tmp_path, filepath.stat().st_mode)
+            except OSError:
+                pass
+        os.replace(tmp_path, filepath)
+    except BaseException:
+        if tmp_fd >= 0:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+        raise
+
+
 def save_note(note: Note, add_to_index: bool = True) -> bool:
     """保存笔记到文件"""
     try:
-        # 确保目录存在
-        note.filepath.parent.mkdir(parents=True, exist_ok=True)
-
-        # 写入文件
-        with open(note.filepath, "w", encoding="utf-8") as f:
-            f.write(note.to_markdown())
+        _atomic_write(note.filepath, note.to_markdown())
 
         logger.info(f"Saved note to {note.filepath}")
 
@@ -265,9 +293,7 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
         note_obj.updated = datetime.now()
 
         # 写入新文件（filepath 属性根据当前字段生成）
-        note_obj.filepath.parent.mkdir(parents=True, exist_ok=True)
-        with open(note_obj.filepath, "w", encoding="utf-8") as f:
-            f.write(note_obj.to_markdown())
+        _atomic_write(note_obj.filepath, note_obj.to_markdown())
 
         # 如果文件路径变了（标题修改导致重命名），删除旧文件
         if old_filepath != note_obj.filepath and old_filepath.exists():
