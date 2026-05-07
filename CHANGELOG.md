@@ -2,6 +2,17 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.7.2] - 2026-05-07
+
+### Fixes
+- **note**: atomic write to prevent 0-byte note files (#201)
+- strip frontmatter from --content-file input to prevent duplication (#200)
+
+### Changes
+- update CLAUDE.md to reflect current codebase state (#203)
+
+[0.7.2]: https://github.com/zhuxixi/jfox/compare/v0.7.1...v0.7.2
+
 ## [0.7.1] - 2026-05-05
 
 ### Fixes
