@@ -139,3 +139,56 @@ content here
             cfg.ensure_dirs()
             assert (cfg.notes_dir / "session").exists()
             assert (cfg.notes_dir / "session").is_dir()
+
+
+class TestSessionCLI:
+    """Test session CLI integration"""
+
+    def test_add_session_requires_topic(self):
+        """--type session without --topic should raise error"""
+        from jfox.cli import _add_note_impl
+
+        with pytest.raises(ValueError, match="--topic"):
+            _add_note_impl(
+                content="test content",
+                title="Session: test",
+                note_type="session",
+                tags=None,
+                source=None,
+                output_format="json",
+                topic=None,
+            )
+
+    def test_add_session_with_topic(self):
+        """--type session with --topic should succeed"""
+        from jfox.cli import _add_note_impl
+        import tempfile
+
+        from jfox.config import config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            old_base = config.base_dir
+            old_notes_dir = config.notes_dir
+            old_zk_dir = config.zk_dir
+            config.base_dir = Path(tmpdir)
+            config.notes_dir = Path(tmpdir) / "notes"
+            config.zk_dir = Path(tmpdir) / ".zk"
+            (config.notes_dir / "session").mkdir(parents=True, exist_ok=True)
+
+            try:
+                _add_note_impl(
+                    content="test content",
+                    title="Session: test",
+                    note_type="session",
+                    tags=["session"],
+                    source=None,
+                    output_format="json",
+                    topic="my-topic",
+                )
+                session_files = list((config.notes_dir / "session").glob("*.md"))
+                assert len(session_files) == 1
+                assert "my-topic" in session_files[0].name
+            finally:
+                config.base_dir = old_base
+                config.notes_dir = old_notes_dir
+                config.zk_dir = old_zk_dir

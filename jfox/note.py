@@ -36,6 +36,7 @@ def create_note(
     tags: Optional[List[str]] = None,
     links: Optional[List[str]] = None,
     source: Optional[str] = None,
+    topic: Optional[str] = None,
 ) -> Note:
     """创建新笔记"""
     note_id = generate_id()
@@ -56,6 +57,7 @@ def create_note(
         links=links or [],
         backlinks=[],
         source=source,
+        topic=topic,
     )
 
     return note

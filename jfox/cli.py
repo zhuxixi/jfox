@@ -292,6 +292,7 @@ def _add_note_impl(
     source: Optional[str],
     output_format: str,
     template: Optional[str] = None,
+    topic: Optional[str] = None,
 ):
     """添加笔记的内部实现"""
     # 如果指定了模板，使用模板渲染
@@ -331,7 +332,11 @@ def _add_note_impl(
     try:
         nt = NoteType(note_type.lower())
     except ValueError:
-        raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent")
+        raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session")
+
+    # session 类型必须提供 --topic
+    if nt == NoteType.SESSION and not topic:
+        raise ValueError("--type session 需要 --topic 参数")
 
     # 从内容中提取维基链接
     wiki_links = extract_wiki_links(content)
@@ -353,6 +358,7 @@ def _add_note_impl(
         tags=tags or [],
         links=resolved_links,
         source=source,
+        topic=topic,
     )
 
     # 保存笔记
@@ -410,7 +416,7 @@ def add(
     content: Optional[str] = typer.Argument(None, help="笔记内容（支持 [[笔记标题]] 格式链接）"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="笔记标题"),
     note_type: str = typer.Option(
-        "fleeting", "--type", help="笔记类型 (fleeting/literature/permanent)"
+        "fleeting", "--type", help="笔记类型 (fleeting/literature/permanent/session)"
     ),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="标签（可多次使用）"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
@@ -419,6 +425,9 @@ def add(
     ),
     content_file: Optional[str] = typer.Option(
         None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
+    ),
+    topic: Optional[str] = typer.Option(
+        None, "--topic", help="会话主题（session 类型必填）"
     ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
@@ -447,7 +456,7 @@ def add(
         from .config import use_kb
 
         with use_kb(kb):
-            _add_note_impl(content, title, note_type, tags, source, output_format, template)
+            _add_note_impl(content, title, note_type, tags, source, output_format, template, topic)
 
     except typer.Exit:
         raise
@@ -1234,7 +1243,7 @@ def _edit_impl(
             new_type = NoteType(note_type.lower())
         except ValueError:
             raise ValueError(
-                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent"
+                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
             )
         n.type = new_type
 
