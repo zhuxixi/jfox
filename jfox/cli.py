@@ -332,7 +332,9 @@ def _add_note_impl(
     try:
         nt = NoteType(note_type.lower())
     except ValueError:
-        raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session")
+        raise ValueError(
+            f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
+        )
 
     # session 类型必须提供 --topic
     if nt == NoteType.SESSION and not topic:
@@ -426,9 +428,7 @@ def add(
     content_file: Optional[str] = typer.Option(
         None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
     ),
-    topic: Optional[str] = typer.Option(
-        None, "--topic", help="会话主题（session 类型必填）"
-    ),
+    topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型必填）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -792,7 +792,9 @@ def _list_impl(
         try:
             nt = NoteType(note_type.lower())
         except ValueError:
-            raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session")
+            raise ValueError(
+                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
+            )
 
     notes = note.list_notes(note_type=nt, tags=tags, limit=limit)
     data = [n.to_dict() for n in notes]
