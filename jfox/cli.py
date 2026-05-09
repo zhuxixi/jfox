@@ -306,6 +306,7 @@ def _add_note_impl(
                 "title": title or "",
                 "content": content,
                 "source": source or "",
+                "topic": topic or "",
             }
 
             # 渲染模板
@@ -1698,9 +1699,9 @@ def _inbox_impl(
     from .note_index import get_note_index
 
     idx = get_note_index()
-    # 查询 fleeting 和 session 类型笔记
-    fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING, limit=limit)
-    session_notes = idx.list_meta(note_type=NoteType.SESSION, limit=limit)
+    # 查询 fleeting 和 session 类型笔记（不传 limit，合并后再截断）
+    fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING)
+    session_notes = idx.list_meta(note_type=NoteType.SESSION)
     all_notes = fleeting_notes + session_notes
     # Sort by created descending
     all_notes.sort(key=lambda m: m.created or "", reverse=True)
