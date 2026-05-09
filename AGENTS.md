@@ -38,21 +38,25 @@ jfox/
 ├── jfox/                      # 主包
 │   ├── __init__.py
 │   ├── __main__.py            # 入口点
-│   ├── cli.py                 # CLI 主程序（所有命令）
+│   ├── cli.py                 # CLI 主程序（所有命令，~2900 行）
 │   ├── models.py              # 数据模型（Note, NoteType）
 │   ├── config.py              # 配置管理（ZKConfig, use_kb）
 │   ├── global_config.py       # 全局配置管理（多知识库）
 │   ├── note.py                # 笔记 CRUD 操作
 │   ├── kb_manager.py          # 知识库管理器
-│   ├── embedding_backend.py   # 嵌入模型后端
+│   ├── embedding_backend.py   # 嵌入模型后端（支持 daemon 代理）
+│   ├── daemon/                # Embedding 模型 HTTP 守护进程
 │   ├── vector_store.py        # ChromaDB 向量存储
 │   ├── bm25_index.py          # BM25 关键词索引
 │   ├── search_engine.py       # 混合搜索引擎（RRF 融合）
 │   ├── graph.py               # 知识图谱（NetworkX）
-│   ├── indexer.py             # 文件监控和索引
+│   ├── indexer.py             # 文件监控和增量索引
 │   ├── formatters.py          # 多格式输出（JSON/CSV/YAML/Tree）
 │   ├── template.py            # 模板系统
 │   ├── template_cli.py        # 模板 CLI 子命令
+│   ├── git_extractor.py       # Git 仓库数据提取器（ingest 功能）
+│   ├── model_downloader.py    # 嵌入模型下载与缓存管理
+│   ├── note_index.py          # 笔记索引管理（文件名↔ID 映射）
 │   └── performance.py         # 性能优化工具
 ├── tests/                     # 测试目录
 │   ├── conftest.py            # pytest 配置和 fixtures
@@ -81,30 +85,32 @@ jfox/
 ### 安装开发环境
 
 ```bash
-# 创建虚拟环境（推荐）
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-.venv\Scripts\activate     # Windows
-
-# 开发模式安装
+# 安装（使用 uv，推荐）
 uv sync --extra dev
+
+# 安装（legacy pip fallback）
+pip install -e ".[dev]"
 ```
 
 ### 运行测试
 
 ```bash
 # 运行所有测试
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # 运行特定测试文件
-pytest tests/test_core_workflow.py -v
+uv run pytest tests/test_core_workflow.py -v
 
 # 运行带标记的测试
-pytest tests/ -m "not slow"      # 排除慢测试
-pytest tests/ -m "integration"   # 仅运行集成测试
+uv run pytest tests/ -m "not slow"                     # 排除慢测试
+uv run pytest tests/ -m "not embedding and not slow"   # 快速测试（不加载模型）
+uv run pytest tests/ -m "integration"                  # 仅运行集成测试
 
 # 保留测试数据（用于调试）
-pytest tests/ --keep-data
+uv run pytest tests/ --keep-data
+
+# 覆盖率
+uv run pytest tests/ --cov=jfox --cov-report=html
 
 # Windows 全量测试（清理 + 测试）
 .\run_full_test.ps1
@@ -117,21 +123,21 @@ pytest tests/ --keep-data
 
 ```bash
 # 使用 black 格式化
-black jfox/ tests/
+uv run black jfox/ tests/
 
 # 使用 ruff 检查
-ruff check jfox/ tests/
+uv run ruff check jfox/ tests/
 ```
 
-### 本地安装和验证
+### 构建和验证
 
 ```bash
-# 安装到本地
-pip install -e .
+# 构建
+uv build
 
-# 验证安装
-jfox --help
-jfox --version
+# 验证 CLI
+uv run jfox --help
+uv run jfox --version
 ```
 
 ## 代码组织
@@ -140,16 +146,21 @@ jfox --version
 
 | 模块 | 职责 |
 |------|------|
-| `cli.py` | 所有 CLI 命令定义和实现（~1000 行） |
+| `cli.py` | 所有 CLI 命令定义和实现（~2900 行） |
 | `models.py` | Note 数据类、NoteType 枚举、Markdown 序列化/反序列化 |
 | `config.py` | ZKConfig 配置类、use_kb 上下文管理器（多知识库切换） |
 | `global_config.py` | GlobalConfigManager，管理 ~/.zk_config.json |
 | `note.py` | 笔记 CRUD：create_note, save_note, load_note, delete_note |
 | `kb_manager.py` | KnowledgeBaseManager，知识库生命周期管理 |
-| `search_engine.py` | HybridSearchEngine，支持 HYBRID/SEMANTIC/KEYWORD 模式 |
+| `search_engine.py` | HybridSearchEngine，支持 HYBRID/SEMANTIC/KEYWORD 模式，RRF 融合 |
 | `bm25_index.py` | BM25Index，本地文件存储的关键词索引 |
 | `vector_store.py` | VectorStore，ChromaDB 封装 |
 | `graph.py` | KnowledgeGraph，NetworkX 图分析和可视化 |
+| `git_extractor.py` | Git 仓库数据提取器（ingest 功能） |
+| `model_downloader.py` | 嵌入模型下载与缓存管理 |
+| `note_index.py` | 笔记索引管理（文件名↔ID 映射） |
+| `indexer.py` | 文件监控（watchdog）+ 增量索引 |
+| `daemon/` | Embedding 模型 HTTP 守护进程（server/client/process） |
 
 ### 笔记类型
 
@@ -159,6 +170,11 @@ class NoteType(Enum):
     LITERATURE = "literature"   # 文献笔记 - 读书笔记
     PERMANENT = "permanent"     # 永久笔记 - 整理后的知识
 ```
+
+各类型文件名格式：
+- `fleeting`: `YYYYMMDD-HHMMSS.md`
+- `literature`: `YYYYMMDDHHMMSS-{slug}.md`
+- `permanent`: `YYYYMMDDHHMMSS-{slug}.md`
 
 ### 笔记文件格式
 
@@ -184,8 +200,8 @@ backlinks: ['20260321011550']  # 反向链接（自动生成）
 ### 多知识库支持
 
 - 全局配置存储在 `~/.zk_config.json`
-- 默认知识库路径：`~/.zettelkasten`
-- 命名知识库路径：`~/.zettelkasten-{name}`
+- 默认知识库路径：`~/.zettelkasten/default/`
+- 命名知识库路径：`~/.zettelkasten/<name>/`
 - 使用 `use_kb()` 上下文管理器临时切换知识库
 
 ## 代码风格指南
@@ -224,6 +240,13 @@ backlinks: ['20260321011550']  # 反向链接（自动生成）
 2. **集成测试**: 测试完整工作流
 3. **性能测试**: 标记为 `@pytest.mark.performance`
 
+### 测试目录结构
+
+- `tests/unit/` — 纯逻辑单元测试（约 25 个文件）
+- `tests/integration/` — 跨模块集成测试
+- `tests/performance/` — 性能基准测试
+- 根级遗留：`test_config_unit.py`、`test_config_set_unit.py`（与 unit 目录中测试内容不同）
+
 ### 测试工具
 
 - **临时知识库**: `tests/utils/temp_kb.py`
@@ -235,14 +258,34 @@ backlinks: ['20260321011550']  # 反向链接（自动生成）
 ```python
 # conftest.py 中定义的主要 fixtures
 
-def test_example(temp_kb, cli, generator):
+def test_example(temp_kb, cli, cli_fast, generator, mock_embedding_backend):
     """
     temp_kb: 临时知识库路径
     cli: 已初始化的 ZKCLI 实例
+    cli_fast: ZKCLI with mocked embeddings（快速，不加载模型）
     generator: NoteGenerator 数据生成器
+    mock_embedding_backend: mock 嵌入后端
     """
     pass
 ```
+
+### 测试标记（Markers）
+
+| 标记 | 含义 |
+|------|------|
+| `slow` | 慢测试 |
+| `performance` | 性能基准 |
+| `integration` | 集成测试 |
+| `embedding` | 涉及模型加载 |
+| `workflow` | 工作流测试 |
+| `bulk` | 批量操作测试 |
+
+### 测试运行规则
+
+- **全量/集成测试（~50min）不要自主运行**，提供命令让用户手动执行
+- **快速单元测试（几秒内）可以自主运行**，如单个模块的纯逻辑测试，不涉及 embedding 或 ChromaDB
+- `pytest.ini` 配置：`timeout=120`、`--strict-markers`、`-ra`
+- 测试以单进程运行，避免 ChromaDB/模型加载冲突
 
 ### 编写新测试的模板
 
@@ -250,19 +293,14 @@ def test_example(temp_kb, cli, generator):
 # tests/test_feature.py
 
 import pytest
-from tests.utils.temp_kb import temp_knowledge_base
-from tests.utils.jfox_cli import ZKCLI
 
 
 class TestFeatureName:
     """测试功能名称"""
     
-    def test_basic_functionality(self, temp_kb):
+    def test_basic_functionality(self, temp_kb, cli):
         """测试基本功能"""
-        cli = ZKCLI(temp_kb)
-        cli.init()
-        
-        # 测试代码
+        # 使用 fixture 自动初始化的临时知识库和 CLI 实例
         result = cli.add("测试内容", title="测试笔记")
         
         assert result.success
@@ -343,6 +381,37 @@ def new_command(
 | 图谱构建 | <1s (1000笔记) |
 | 文件监控 | 实时 (<1s 延迟) |
 
+## CI（GitHub Actions）
+
+`.github/workflows/integration-test.yml` 包含四个 job：
+
+- **Fast**（PR/push 触发）：`not embedding and not slow`，Python 3.11，Ubuntu + Windows
+- **Core**（main 分支推送）：Core workflow 测试，使用真实 embedding，Python 3.10 + 3.12
+- **Full**（手动触发）：所有测试、所有 OS、所有 Python 版本
+- **Coverage**（Fast 完成后）：运行覆盖率，上传 HTML/XML 产物
+
+**Release** 工作流（`.github/workflows/publish.yml`）：在 GitHub Release 发布时自动推送到 PyPI。
+
+## Windows 注意事项
+
+- `robocopy` 参数会被 bash 误解析，应使用 `cmd.exe /c "robocopy source dest /E"`
+- 设置 `PYTHONUTF8=1` 和 `chcp 65001` 避免编码问题
+- HuggingFace 国内镜像：`export HF_ENDPOINT=https://hf-mirror.com`
+
+## 分支规则
+
+- **main 是保护分支**，不能直接 commit 或 push
+- 所有改动必须通过**新分支 + PR** 合入
+
+## 发版规则
+
+- 发版时必须同时修改三处版本号：
+  1. `pyproject.toml`
+  2. `jfox/__init__.py`
+  3. `uv.lock`
+- 操作顺序：先改 `pyproject.toml` 和 `__init__.py`，再跑 `uv lock` 更新 lock 文件
+- （曾有 #88 遗漏 `__init__.py` 的教训）
+
 ## 相关资源
 
 - **详细 CLI 文档**: `README.md`
@@ -383,6 +452,12 @@ class OutputFormatter:
 # 3. 在 search_engine.py 中集成
 # 4. 添加测试
 ```
+
+## 常见陷阱（Gotchas）
+
+- `pytest.ini` 的 `addopts` 已包含 `-v`，手动再加 `-v` 是冗余的
+- 测试目录重组已基本完成，根级 `test_config_unit.py` 和 `test_config_set_unit.py` 与 `tests/unit/` 中对应文件测试内容不同，不是重复
+- `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，只读输出完整 Markdown
 
 ---
 
