@@ -131,8 +131,9 @@ content here
         assert n.topic is None
 
     def test_config_ensure_dirs_creates_session_dir(self):
-        from jfox.config import ZKConfig
         import tempfile
+
+        from jfox.config import ZKConfig
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cfg = ZKConfig(base_dir=Path(tmpdir))
@@ -161,9 +162,9 @@ class TestSessionCLI:
 
     def test_add_session_with_topic(self):
         """--type session with --topic should succeed"""
-        from jfox.cli import _add_note_impl
         import tempfile
 
+        from jfox.cli import _add_note_impl
         from jfox.config import config
 
         with tempfile.TemporaryDirectory() as tmpdir:
