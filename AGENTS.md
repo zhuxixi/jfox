@@ -169,6 +169,7 @@ class NoteType(Enum):
     FLEETING = "fleeting"       # 闪念笔记 - 快速捕捉
     LITERATURE = "literature"   # 文献笔记 - 读书笔记
     PERMANENT = "permanent"     # 永久笔记 - 整理后的知识
+    SESSION = "session"         # AI Agent 会话记录
 ```
 
 各类型文件名格式：
@@ -190,6 +191,7 @@ updated: '2026-03-21T01:15:28'
 tags: [tag1, tag2]
 links: ['20260321011546']      # 正向链接
 backlinks: ['20260321011550']  # 反向链接（自动生成）
+topic: null                    # 会话主题（仅 session 类型）
 ---
 
 # 笔记标题

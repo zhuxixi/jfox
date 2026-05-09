@@ -16,6 +16,7 @@ class NoteType(Enum):
     FLEETING = "fleeting"  # 闪念笔记
     LITERATURE = "literature"  # 文献笔记
     PERMANENT = "permanent"  # 永久笔记
+    SESSION = "session"  # AI Agent 会话记录
 
 
 @dataclass
@@ -32,6 +33,7 @@ class Note:
     links: List[str] = field(default_factory=list)  # 正向链接
     backlinks: List[str] = field(default_factory=list)  # 反向链接
     source: Optional[str] = None  # 来源（文献笔记）
+    topic: Optional[str] = None  # 会话主题（session 类型）
 
     # 运行时字段（不持久化到 frontmatter）
     embedding: Optional[List[float]] = None  # 向量
@@ -48,9 +50,12 @@ class Note:
         """生成文件名"""
         if self.type == NoteType.FLEETING:
             return f"{self.id[:8]}-{self.id[8:]}.md"
+        elif self.type == NoteType.SESSION:
+            source = self.topic or self.title or "untitled"
+            slug = re.sub(r"[^\w\-]", "", source.lower().replace(" ", "-"))[:50]
+            return f"{self.id}-{slug}.md"
         else:
             slug = self.title.lower().replace(" ", "-")[:50]
-            # 移除特殊字符
             slug = re.sub(r"[^\w\-]", "", slug)
             return f"{self.id}-{slug}.md"
 
@@ -80,6 +85,8 @@ class Note:
         }
         if self.source:
             frontmatter["source"] = self.source
+        if self.topic:
+            frontmatter["topic"] = self.topic
 
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
 
@@ -128,6 +135,7 @@ class Note:
             links=fm.get("links", []),
             backlinks=fm.get("backlinks", []),
             source=fm.get("source"),
+            topic=fm.get("topic"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -144,4 +152,5 @@ class Note:
             "filepath": str(self.filepath),
             "score": self.score,
             "hop": self.hop,
+            "topic": self.topic,
         }

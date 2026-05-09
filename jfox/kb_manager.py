@@ -249,12 +249,12 @@ class KnowledgeBaseManager:
 
         # 统计笔记数量
         total = 0
-        by_type = {"fleeting": 0, "literature": 0, "permanent": 0}
+        by_type = {"fleeting": 0, "literature": 0, "permanent": 0, "session": 0}
 
         if path.exists():
             notes_dir = path / "notes"
             if notes_dir.exists():
-                for note_type in ["fleeting", "literature", "permanent"]:
+                for note_type in ["fleeting", "literature", "permanent", "session"]:
                     type_dir = notes_dir / note_type
                     if type_dir.exists():
                         count = len(list(type_dir.glob("*.md")))

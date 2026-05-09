@@ -292,6 +292,7 @@ def _add_note_impl(
     source: Optional[str],
     output_format: str,
     template: Optional[str] = None,
+    topic: Optional[str] = None,
 ):
     """添加笔记的内部实现"""
     # 如果指定了模板，使用模板渲染
@@ -305,6 +306,7 @@ def _add_note_impl(
                 "title": title or "",
                 "content": content,
                 "source": source or "",
+                "topic": topic or "",
             }
 
             # 渲染模板
@@ -331,7 +333,13 @@ def _add_note_impl(
     try:
         nt = NoteType(note_type.lower())
     except ValueError:
-        raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent")
+        raise ValueError(
+            f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
+        )
+
+    # session 类型必须提供 --topic
+    if nt == NoteType.SESSION and not topic:
+        raise ValueError("--type session 需要 --topic 参数")
 
     # 从内容中提取维基链接
     wiki_links = extract_wiki_links(content)
@@ -353,6 +361,7 @@ def _add_note_impl(
         tags=tags or [],
         links=resolved_links,
         source=source,
+        topic=topic,
     )
 
     # 保存笔记
@@ -410,7 +419,7 @@ def add(
     content: Optional[str] = typer.Argument(None, help="笔记内容（支持 [[笔记标题]] 格式链接）"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="笔记标题"),
     note_type: str = typer.Option(
-        "fleeting", "--type", help="笔记类型 (fleeting/literature/permanent)"
+        "fleeting", "--type", help="笔记类型 (fleeting/literature/permanent/session)"
     ),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="标签（可多次使用）"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
@@ -420,6 +429,7 @@ def add(
     content_file: Optional[str] = typer.Option(
         None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
     ),
+    topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型必填）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -447,7 +457,7 @@ def add(
         from .config import use_kb
 
         with use_kb(kb):
-            _add_note_impl(content, title, note_type, tags, source, output_format, template)
+            _add_note_impl(content, title, note_type, tags, source, output_format, template, topic)
 
     except typer.Exit:
         raise
@@ -783,7 +793,9 @@ def _list_impl(
         try:
             nt = NoteType(note_type.lower())
         except ValueError:
-            raise ValueError(f"Invalid note type: {note_type}")
+            raise ValueError(
+                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
+            )
 
     notes = note.list_notes(note_type=nt, tags=tags, limit=limit)
     data = [n.to_dict() for n in notes]
@@ -1195,6 +1207,7 @@ def _edit_impl(
     note_type: Optional[str],
     source: Optional[str],
     output_format: str,
+    topic: Optional[str] = None,
 ):
     """编辑笔记的内部实现"""
     # 验证：--content 和 --content-file 互斥
@@ -1206,10 +1219,10 @@ def _edit_impl(
         content = _read_content_file(content_file)
 
     # 验证：至少指定一个编辑字段
-    if all(v is None for v in [content, title, tags, note_type, source]):
+    if all(v is None for v in [content, title, tags, note_type, source, topic]):
         raise ValueError(
             "至少指定一个要编辑的字段 "
-            "(--content, --content-file, --title, --tags, --type, --source)"
+            "(--content, --content-file, --title, --tags, --type, --source, --topic)"
         )
 
     # 加载笔记
@@ -1234,9 +1247,15 @@ def _edit_impl(
             new_type = NoteType(note_type.lower())
         except ValueError:
             raise ValueError(
-                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent"
+                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
             )
         n.type = new_type
+        # 改为 session 类型时，笔记必须已有 topic 或通过 --topic 设置
+        if new_type == NoteType.SESSION and not n.topic and not topic:
+            raise ValueError("改为 session 类型时需要 --topic 参数")
+
+    if topic is not None:
+        n.topic = topic
 
     # 如果内容被更新，解析 wiki links
     if content is not None:
@@ -1333,9 +1352,10 @@ def edit(
     title: Optional[str] = typer.Option(None, "--title", "-t", help="新标题"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="新标签（替换全部）"),
     note_type: Optional[str] = typer.Option(
-        None, "--type", help="新类型 (fleeting/literature/permanent)"
+        None, "--type", help="新类型 (fleeting/literature/permanent/session)"
     ),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="新来源"),
+    topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -1352,7 +1372,7 @@ def edit(
 
         with use_kb(kb):
             _edit_impl(
-                note_id, content, content_file, title, tags, note_type, source, output_format
+                note_id, content, content_file, title, tags, note_type, source, output_format, topic
             )
     except typer.Exit:
         raise
@@ -1684,28 +1704,36 @@ def _inbox_impl(
     from .note_index import get_note_index
 
     idx = get_note_index()
-    fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING, limit=limit)
+    # 查询 fleeting 和 session 类型笔记（不传 limit，合并后再截断）
+    fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING)
+    session_notes = idx.list_meta(note_type=NoteType.SESSION)
+    all_notes = fleeting_notes + session_notes
+    # Sort by created descending
+    all_notes.sort(key=lambda m: m.created or "", reverse=True)
+    all_notes = all_notes[:limit]
 
     result = {
-        "total": len(fleeting_notes),
+        "total": len(all_notes),
         "notes": [
             {
                 "id": m.id,
                 "title": m.title,
+                "type": m.type.value,
                 "created": m.created,
                 "filepath": m.filepath if m.filepath else None,
             }
-            for m in fleeting_notes
+            for m in all_notes
         ],
     }
 
     if output_format == "json":
         print(output_json(result))
     else:
-        console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
-        for m in fleeting_notes:
+        console.print(f"[bold]Inbox ({len(all_notes)}):[/bold]\n")
+        for m in all_notes:
             time_str = m.created[11:16] if m.created and len(m.created) >= 16 else ""
-            console.print(f"- [{time_str}] {m.title}")
+            type_badge = {"fleeting": "fl", "session": "se"}.get(m.type.value, "??")
+            console.print(f"- [{time_str}] [{type_badge}] {m.title}")
 
 
 def _suggest_links_impl(
@@ -1795,7 +1823,7 @@ def inbox(
         False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
     ),
 ):
-    """查看临时笔记 (Fleeting Notes)"""
+    """查看临时笔记和会话记录 (Fleeting + Session Notes)"""
     try:
         # 处理 --json 快捷方式
         if json_output:

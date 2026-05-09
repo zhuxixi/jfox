@@ -192,7 +192,7 @@ def create_template(
         )
 
         # Validate note_type
-        if note_type not in ["fleeting", "literature", "permanent"]:
+        if note_type not in ["fleeting", "literature", "permanent", "session"]:
             console.print(f"[red]Invalid note type: {note_type}[/red]")
             raise typer.Exit(1)
 

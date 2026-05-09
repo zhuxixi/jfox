@@ -58,6 +58,7 @@ class ZKConfig:
             self.notes_dir / "fleeting",
             self.notes_dir / "literature",
             self.notes_dir / "permanent",
+            self.notes_dir / "session",
             self.zk_dir,
             self.chroma_dir,
             self.zk_dir / "cache",
