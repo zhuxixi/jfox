@@ -1207,6 +1207,7 @@ def _edit_impl(
     note_type: Optional[str],
     source: Optional[str],
     output_format: str,
+    topic: Optional[str] = None,
 ):
     """编辑笔记的内部实现"""
     # 验证：--content 和 --content-file 互斥
@@ -1218,10 +1219,10 @@ def _edit_impl(
         content = _read_content_file(content_file)
 
     # 验证：至少指定一个编辑字段
-    if all(v is None for v in [content, title, tags, note_type, source]):
+    if all(v is None for v in [content, title, tags, note_type, source, topic]):
         raise ValueError(
             "至少指定一个要编辑的字段 "
-            "(--content, --content-file, --title, --tags, --type, --source)"
+            "(--content, --content-file, --title, --tags, --type, --source, --topic)"
         )
 
     # 加载笔记
@@ -1250,8 +1251,11 @@ def _edit_impl(
             )
         n.type = new_type
         # 改为 session 类型时，笔记必须已有 topic 或通过 --topic 设置
-        if new_type == NoteType.SESSION and not n.topic:
+        if new_type == NoteType.SESSION and not n.topic and not topic:
             raise ValueError("改为 session 类型时需要 --topic 参数")
+
+    if topic is not None:
+        n.topic = topic
 
     # 如果内容被更新，解析 wiki links
     if content is not None:
@@ -1348,9 +1352,10 @@ def edit(
     title: Optional[str] = typer.Option(None, "--title", "-t", help="新标题"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="新标签（替换全部）"),
     note_type: Optional[str] = typer.Option(
-        None, "--type", help="新类型 (fleeting/literature/permanent)"
+        None, "--type", help="新类型 (fleeting/literature/permanent/session)"
     ),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="新来源"),
+    topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -1367,7 +1372,7 @@ def edit(
 
         with use_kb(kb):
             _edit_impl(
-                note_id, content, content_file, title, tags, note_type, source, output_format
+                note_id, content, content_file, title, tags, note_type, source, output_format, topic
             )
     except typer.Exit:
         raise
