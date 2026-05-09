@@ -792,7 +792,7 @@ def _list_impl(
         try:
             nt = NoteType(note_type.lower())
         except ValueError:
-            raise ValueError(f"Invalid note type: {note_type}")
+            raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session")
 
     notes = note.list_notes(note_type=nt, tags=tags, limit=limit)
     data = [n.to_dict() for n in notes]
