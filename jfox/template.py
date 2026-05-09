@@ -69,6 +69,27 @@ class TemplateManager:
             "content": "## 文献信息\n- **来源**: {{source}}\n- **作者**: \n- **阅读日期**: {{date}}\n\n## 核心观点\n\n## 个人思考\n\n## 关联笔记\n\n{{content}}",
             "tags": ["literature"],
         },
+        "session": {
+            "name": "session",
+            "description": "AI Agent 会话记录",
+            "note_type": "session",
+            "title_format": "{{date}}-{{time}}-{{topic}}",
+            "content": (
+                "## 背景\n<!-- 本次会话的起因/上下文 -->\n\n"
+                "## 完成的工作\n<!-- 本轮会话做了什么 -->\n\n"
+                "## 我的决策\n<!-- AI Agent 做出的决策 -->\n\n"
+                "| 决策 | 状态 | 说明 |\n|------|------|------|\n"
+                "|      | 采纳 |      |\n|      | 否决 |      |\n\n"
+                "采纳率：采纳 X/N，否决 Y/N\n\n"
+                "## 耶稣决策\n<!-- 外部输入的高权重决策，必须以此为准 -->\n\n"
+                "## 意外收获\n<!-- 会话中发现的非当前问题的问题 -->\n\n"
+                "| 发现 | 是否有跟进 | 跟进方式 |\n|------|-----------|----------|\n"
+                "|      | 是/否     | issue / 项目管理 |\n\n"
+                "## 待办\n<!-- 后续需要处理的事项 -->\n- [ ] \n\n"
+                "{{content}}"
+            ),
+            "tags": ["session"],
+        },
     }
 
     def __init__(self, templates_dir: Path):

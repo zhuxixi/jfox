@@ -192,3 +192,39 @@ class TestSessionCLI:
                 config.base_dir = old_base
                 config.notes_dir = old_notes_dir
                 config.zk_dir = old_zk_dir
+
+
+class TestSessionTemplate:
+    """Test session built-in template"""
+
+    def test_session_builtin_template_exists(self):
+        import tempfile
+
+        from jfox.template import TemplateManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = TemplateManager(Path(tmpdir))
+            tmpl = mgr.get_template("session")
+            assert tmpl is not None
+            assert tmpl.note_type == "session"
+
+    def test_session_template_renders(self):
+        import tempfile
+
+        from jfox.template import TemplateManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mgr = TemplateManager(Path(tmpdir))
+            result = mgr.render(
+                "session",
+                {
+                    "title": "Session: test",
+                    "content": "did some work",
+                    "source": "",
+                    "topic": "my-topic",
+                },
+            )
+            assert result["note_type"] == "session"
+            assert "my-topic" in result["title"]
+            assert "完成的工作" in result["content"]
+            assert "session" in result["tags"]
