@@ -51,7 +51,7 @@ class Note:
         if self.type == NoteType.FLEETING:
             return f"{self.id[:8]}-{self.id[8:]}.md"
         elif self.type == NoteType.SESSION:
-            source = self.topic or self.title
+            source = self.topic or self.title or "untitled"
             slug = re.sub(r"[^\w\-]", "", source.lower().replace(" ", "-"))[:50]
             return f"{self.id}-{slug}.md"
         else:

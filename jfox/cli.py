@@ -1248,6 +1248,9 @@ def _edit_impl(
                 f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
             )
         n.type = new_type
+        # 改为 session 类型时，笔记必须已有 topic 或通过 --topic 设置
+        if new_type == NoteType.SESSION and not n.topic:
+            raise ValueError("改为 session 类型时需要 --topic 参数")
 
     # 如果内容被更新，解析 wiki links
     if content is not None:
@@ -1695,6 +1698,7 @@ def _inbox_impl(
     from .note_index import get_note_index
 
     idx = get_note_index()
+    # 查询 fleeting 和 session 类型笔记
     fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING, limit=limit)
     session_notes = idx.list_meta(note_type=NoteType.SESSION, limit=limit)
     all_notes = fleeting_notes + session_notes
