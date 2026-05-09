@@ -1694,27 +1694,34 @@ def _inbox_impl(
 
     idx = get_note_index()
     fleeting_notes = idx.list_meta(note_type=NoteType.FLEETING, limit=limit)
+    session_notes = idx.list_meta(note_type=NoteType.SESSION, limit=limit)
+    all_notes = fleeting_notes + session_notes
+    # Sort by created descending
+    all_notes.sort(key=lambda m: m.created or "", reverse=True)
+    all_notes = all_notes[:limit]
 
     result = {
-        "total": len(fleeting_notes),
+        "total": len(all_notes),
         "notes": [
             {
                 "id": m.id,
                 "title": m.title,
+                "type": m.type.value,
                 "created": m.created,
                 "filepath": m.filepath if m.filepath else None,
             }
-            for m in fleeting_notes
+            for m in all_notes
         ],
     }
 
     if output_format == "json":
         print(output_json(result))
     else:
-        console.print(f"[bold]Fleeting Notes ({len(fleeting_notes)}):[/bold]\n")
-        for m in fleeting_notes:
+        console.print(f"[bold]Inbox ({len(all_notes)}):[/bold]\n")
+        for m in all_notes:
             time_str = m.created[11:16] if m.created and len(m.created) >= 16 else ""
-            console.print(f"- [{time_str}] {m.title}")
+            type_badge = {"fleeting": "fl", "session": "se"}.get(m.type.value, "??")
+            console.print(f"- [{time_str}] [{type_badge}] {m.title}")
 
 
 def _suggest_links_impl(
@@ -1804,7 +1811,7 @@ def inbox(
         False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
     ),
 ):
-    """查看临时笔记 (Fleeting Notes)"""
+    """查看临时笔记和会话记录 (Fleeting + Session Notes)"""
     try:
         # 处理 --json 快捷方式
         if json_output:
