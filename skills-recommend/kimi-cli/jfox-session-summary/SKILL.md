@@ -1,122 +1,122 @@
 ---
 name: jfox-session-summary
 description: |
-  Save the current conversation or session summary into a Zettelkasten knowledge base.
-  Use when user wants to save session summary, log conversation to knowledge base, write discussion to notes, or summarize chat into the knowledge base.
-  Triggers on: "保存会话", "总结到知识库", "记录这次对话", "写入知识库", "save session", "summarize to knowledge base", "log this conversation", "save chat", "conversation to notes".
+  Use when user wants to save the current conversation/session summary into their Zettelkasten. Triggers on "保存会话", "总结到知识库", "记录这次对话", "写入知识库", "save session", "summarize to knowledge base", "log this conversation".
 ---
 
 # JFox Session Summary
 
-Save the current session summary into the jfox knowledge base (with user confirmation and note type selection).
+将当前 Claude Code 会话的总结写入 jfox 知识库（支持用户确认和笔记类型选择）。
 
-## Prerequisites
+## 前置条件
 
-- Knowledge base initialized (`jfox init`)
-- Confirm target KB (via `--kb` or current default)
+- 知识库已初始化（`jfox init`）
+- 确认目标知识库（通过 `--kb` 或当前默认）
 
-## Workflow
+## 工作流程
 
-### Step 1: Generate Session Summary
+### Step 1: 生成会话总结
 
-Review current conversation and generate structured summary:
+回顾当前会话内容，生成结构化总结：
 
-```markdown
-## Session Summary
+```
+## 会话总结
 
-### Topic
-[One-sentence description of main topic]
+### 主题
+[一句话描述会话主要话题]
 
-### Completed Work
-- [Specific completed task 1]
-- [Specific completed task 2]
+### 完成的工作
+- [具体完成的任务 1]
+- [具体完成的任务 2]
 - ...
 
-### Key Decisions
-- [Decision 1 and rationale]
-- [Decision 2 and rationale]
+### 关键决策
+- [决策 1 及其理由]
+- [决策 2 及其理由]
 
-### TODO / Follow-up
-- [Incomplete items]
-- [Next steps]
+### 待办 / 后续
+- [未完成的事项]
+- [后续步骤]
 ```
 
-### Step 2: User Confirmation
+### Step 2: 用户确认
 
-Output the generated summary as plain text for user review. Then use `AskUserQuestion`:
+将生成的总结用普通文本输出，供用户阅读。然后使用 `AskUserQuestion` 询问：
 
-- Question: `Is the summary content OK?`
-- Options:
-  - `Content is fine` → proceed to Step 3
-  - `Needs changes` → user inputs modifications in "Other", adjust summary and return to Step 2
+- 问题：`笔记内容是否 OK？`
+- 选项：
+  - `内容没问题` → 继续 Step 3
+  - `需要修改` → 用户在 "Other" 中输入修改意见，根据意见调整总结后回到 Step 2 重新展示和确认
 
-Loop until user is satisfied.
+循环直到用户满意为止。
 
-### Step 3: Select Note Type
+### Step 3: 选择笔记类型
 
-After user confirms content, use `AskUserQuestion`:
+用户确认内容后，使用 `AskUserQuestion` 询问笔记类型：
 
-- Question: `Select note type`
-- Options:
-  - `fleeting` (recommended) — session records are temporary; can be refined to permanent later
-  - `literature` — if session has clear reference sources
-  - `permanent` — if summary is already mature knowledge
+- 问题：`选择笔记类型`
+- 选项：
+  - `session`（推荐）— AI Agent 会话记录，专为此场景设计
+  - `fleeting` — 如果只是快速记录，后续可提炼
+  - `literature` — 如果会话有明确的参考资料来源
+  - `permanent` — 如果总结已经是成熟的知识
 
-### Step 4: Write to Knowledge Base
+### Step 4: 写入知识库
 
-Use the selected type:
+使用 Step 3 选定的笔记类型执行写入：
 
 ```bash
 jfox add "<markdown-escaped-summary>" \
   --title "Session: <topic>" \
-  --type <selected-type> \
+  --type <Step 3 选定的类型> \
+  --topic <short-topic> \
   --tag session \
   --kb <kb-name> \
   --format json
 ```
 
-**Notes**:
-- Title format: `Session: <short topic>`
-- Type: use Step 3 selection, do not hardcode `fleeting`
-- Tag: always `session`
-- Escape double quotes in content, or use `--content-file`
+**注意**：
+- 当类型为 `session` 时，`--topic` 参数必填
+- `--topic` 的值应该是简短的英文标识（如 `atomic-write`、`daemon-stop-fix`）
+- 标题格式统一为 `Session: <简短主题>`
+- 标签统一使用 `session`
+- 内容中的双引号需要转义，或使用 `--content-file` 从临时文件读取
 
-### Step 5: Handle Long Content
+### Step 5: 处理长内容
 
-If summary exceeds 500 chars or contains special characters, prefer `--content-file`:
+如果总结超过 500 字或包含特殊字符，优先使用 `--content-file`：
 
 ```bash
-# Write to temp file
+# 写入临时文件
 cat > /tmp/session-summary.md << 'EOF'
-<summary content>
+<总结内容>
 EOF
 
-# Import from file
+# 从文件导入
 jfox add --content-file /tmp/session-summary.md \
   --title "Session: <topic>" \
-  --type <selected-type> \
+  --type <Step 3 选定的类型> \
+  --topic <short-topic> \
   --tag session \
   --kb <kb-name> \
   --format json
 ```
 
-On Windows, use a temp path like `$env:TEMP\session-summary.md`.
-
-## Command Reference
+## 命令参考
 
 ```bash
-# Direct add (short content)
-jfox add "<summary>" --title "Session: <topic>" --type <type> --tag session --kb <name>
+# 直接添加（短内容）
+jfox add "<summary>" --title "Session: <topic>" --type <type> --topic <short-topic> --tag session --kb <name>
 
-# From file (long content or special characters)
-jfox add --content-file <path> --title "Session: <topic>" --type <type> --tag session --kb <name>
+# 从文件添加（长内容或含特殊字符）
+jfox add --content-file <path> --title "Session: <topic>" --type <type> --topic <short-topic> --tag session --kb <name>
 
-# Verify write
-jfox show <note_id>
+# 验证写入
+jfox show <note_id> --format json
 ```
 
-## Error Handling
+## 错误处理
 
-- **"Knowledge base not found"**: Prompt user to create KB first via `jfox-common`
-- **Content too long for shell**: Switch to `--content-file` approach
-- **Special character escaping issues**: Use single quotes or write to temp file
+- **"Knowledge base not found"**: 提示用户先运行 `/jfox-common` 创建知识库
+- **内容过长导致 shell 解析失败**: 切换到 `--content-file` 方式
+- **特殊字符转义问题**: 使用单引号包裹内容，或写入临时文件
