@@ -2,6 +2,17 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.8.0] - 2026-05-10
+
+### Features
+- add Claude Code plugin packaging for jfox skills (#209) (#210)
+- 新增 session 笔记类型，专存 AI Agent 会话记录 (#202)
+
+### Changes
+- sync AGENTS.md with CLAUDE.md and current codebase (#208)
+
+[0.8.0]: https://github.com/zhuxixi/jfox/compare/v0.7.2...v0.8.0
+
 ## [0.7.2] - 2026-05-07
 
 ### Fixes
