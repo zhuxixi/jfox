@@ -17,7 +17,7 @@ description: Use when user wants to import data from a local git repository into
    ```bash
    jfox kb list --format json
    ```
-   如果没有知识库，提示用户先调用 kb 技能（`/jfox:kb`）创建。
+   如果没有知识库，提示用户先调用 manage 技能（`/jfox:manage`）创建。
 
 2. `git` 命令可用。
 
@@ -192,12 +192,7 @@ jfox bulk-import temp-file.json --type fleeting --kb name
 
 ## 手动输入支持
 
-如果用户直接粘贴文本（未提供仓库路径），将文本整理为单条 fleeting 笔记并导入：
-```bash
-jfox add "<content>" --title "<title>" --type fleeting --tag <tags> [--kb <name>]
-```
-
-> **约定**：`jfox add` 支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。
+如果用户直接粘贴文本（未提供仓库路径），将文本整理为单条 fleeting 笔记并导入。导入仍遵循下文「笔记格式规范」中的 `source:*` 标签约定；`jfox add` 完整语法与 `--kb` / `--json` / `--content-file` 共享约定详见 `/jfox:manage` §4。
 
 ## 笔记格式规范
 
@@ -237,20 +232,16 @@ jfox search "repo-name" --format json
 # 导入 GitHub 数据
 jfox bulk-import file.json --type fleeting --kb name
 
-# 手动添加单条笔记
-jfox add "content" --title "title" --type fleeting --kb name
-
-# 查看导入结果
-jfox show <note_id> --format json --kb name
-
 # 批量导入加速（可选）
 jfox daemon start                                # 启动 embedding 守护进程
 jfox daemon stop                                 # 完成后停止
 ```
 
+> 单条笔记命令（`jfox add` / `edit` / `delete` / `show` 等）的完整语法详见 `/jfox:manage` §4，共享约定见 §4.1。
+
 ## 错误处理
 
 - **"Not a git repository"**: `jfox ingest-log` 会报错，提示用户提供正确的仓库路径
 - **`gh: not found`** 或 `gh auth status` 失败: 跳过 GitHub PR/Issues 导入，仅用 `jfox ingest-log` 导入 git log
-- **"Knowledge base not found"**: 提示用户先调用 kb 技能（`/jfox:kb`）创建知识库
+- **"Knowledge base not found"**: 提示用户先调用 manage 技能（`/jfox:manage`）创建知识库
 - **Bulk import 部分失败**: 报告成功/失败数量，失败记录不重试
