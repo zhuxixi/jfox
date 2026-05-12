@@ -1,5 +1,5 @@
 ---
-name: jfox-ingest
+name: ingest
 description: Use when user wants to import data from a local git repository into their Zettelkasten as fleeting notes. Triggers on "导入仓库", "导入 git log", "导入 PR", "导入 issues", "读一下这个仓库", "抓取仓库信息", "ingest repo", "import notes from repository", "bulk import from git", "导入项目信息".
 ---
 
@@ -17,7 +17,7 @@ description: Use when user wants to import data from a local git repository into
    ```bash
    jfox kb list --format json
    ```
-   如果没有知识库，提示用户先运行 `/jfox-common` 创建。
+   如果没有知识库，提示用户先调用 kb 技能（`/jfox:kb`）创建。
 
 2. `git` 命令可用。
 
@@ -210,7 +210,7 @@ jfox add "<content>" --title "<title>" --type fleeting --tag <tags> [--kb <name>
 | Issue | Issue 标题 | Issue 编号, state, 描述, 评论 | `source:<repo-name>`, `source:issue` |
 
 - 所有笔记都带有 `source:<repo-name>` 标签用于后续按仓库检索
-- **Fleeting 笔记不含 `[[wiki links]]`** — 它们是原始数据捕获，链接在后续整理/精炼阶段添加（使用 `/jfox-organize`）
+- **Fleeting 笔记不含 `[[wiki links]]`** — 它们是原始数据捕获，链接在后续整理/精炼阶段添加（调用 organize 技能，`/jfox:organize`）
 
 ## GitLab 预留
 
@@ -252,5 +252,5 @@ jfox daemon stop                                 # 完成后停止
 
 - **"Not a git repository"**: `jfox ingest-log` 会报错，提示用户提供正确的仓库路径
 - **`gh: not found`** 或 `gh auth status` 失败: 跳过 GitHub PR/Issues 导入，仅用 `jfox ingest-log` 导入 git log
-- **"Knowledge base not found"**: 提示用户先运行 `/jfox-common` 创建知识库
+- **"Knowledge base not found"**: 提示用户先调用 kb 技能（`/jfox:kb`）创建知识库
 - **Bulk import 部分失败**: 报告成功/失败数量，失败记录不重试
