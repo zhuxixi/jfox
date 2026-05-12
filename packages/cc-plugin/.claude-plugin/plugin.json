@@ -1,0 +1,10 @@
+{
+  "name": "jfox",
+  "description": "JFox 知识管理 CLI 的 Claude Code 集成——搜索、导入、整理、会话总结",
+  "version": "0.1.2",
+  "author": { "name": "zhuxixi" },
+  "homepage": "https://github.com/zhuxixi/jfox",
+  "repository": "https://github.com/zhuxixi/jfox",
+  "license": "MIT",
+  "keywords": ["zettelkasten", "knowledge-management", "cli"]
+}

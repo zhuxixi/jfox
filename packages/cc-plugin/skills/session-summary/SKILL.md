@@ -1,5 +1,5 @@
 ---
-name: jfox-session-summary
+name: session-summary
 description: |
   Use when user wants to save the current conversation/session summary into their Zettelkasten. Triggers on "保存会话", "总结到知识库", "记录这次对话", "写入知识库", "save session", "summarize to knowledge base", "log this conversation".
 ---
@@ -117,6 +117,6 @@ jfox show <note_id> --format json
 
 ## 错误处理
 
-- **"Knowledge base not found"**: 提示用户先运行 `/jfox-common` 创建知识库
+- **"Knowledge base not found"**: 提示用户先调用 kb 技能（`/jfox:kb`）创建知识库
 - **内容过长导致 shell 解析失败**: 切换到 `--content-file` 方式
 - **特殊字符转义问题**: 使用单引号包裹内容，或写入临时文件

@@ -191,7 +191,7 @@ my-plugin/                     # 插件根目录
 }
 ```
 
-不声明 `skills`、`commands` 等字段时，Claude Code 自动从默认位置发现组件。**这是官方插件的主流做法**，也是 jfox 最终采用的方案。
+不声明 `skills`、`commands` 等字段时，Claude Code 自动从默认位置发现组件。**这是官方插件的主流做法**，也是 jfox 最终采用的方案：插件源位于 `packages/cc-plugin/`，5 个 skill 自动从 `packages/cc-plugin/skills/` 被发现。
 
 ---
 
@@ -575,6 +575,8 @@ claude plugin install plugin-name@marketplace-name
 
 ## 10. 踩坑记录（jfox 实战）
 
+> **注**：以下 5 个坑是 2026-05 重组前（PR #210/#213/#214 时期）的历史记录。重组后（PR #216 响应）的当前布局见**附录**。这些教训仍然有效，对照学习自动发现 + 标准目录的价值。
+
 ### 坑 1：`./commands/` 路径解析错误
 
 **现象**：`/doctor` 报 5 个 commands 路径找不到：
@@ -778,31 +780,29 @@ claude plugin marketplace add https://example.com/marketplace.json
 ```
 jfox/                                  # 仓库根目录
 ├── .claude-plugin/
-│   ├── plugin.json                    # 插件清单（只有元数据 + skills 声明）
-│   └── marketplace.json               # Marketplace 注册
-├── skills-recommend/                  # 非标准目录名（因历史原因）
-│   ├── claude-code/                   # Claude Code 版 skills
-│   │   ├── jfox-common/SKILL.md
-│   │   ├── jfox-ingest/SKILL.md
-│   │   ├── jfox-organize/SKILL.md
-│   │   ├── jfox-search/SKILL.md
-│   │   └── jfox-session-summary/SKILL.md
-│   ├── kimi-cli/                      # Kimi CLI 版 skills
+│   └── marketplace.json               # Marketplace 注册（source: ./packages/cc-plugin）
+├── packages/
+│   └── cc-plugin/                     # Claude Code 插件源
+│       ├── .claude-plugin/
+│       │   └── plugin.json            # 插件清单（仅元数据，无 skills 声明 → auto-discovery）
+│       └── skills/                    # 自动发现的 skills
+│           ├── kb/SKILL.md
+│           ├── ingest/SKILL.md
+│           ├── organize/SKILL.md
+│           ├── search/SKILL.md
+│           └── session-summary/SKILL.md
+├── skills-recommend/
+│   ├── kimi-cli/                      # Kimi CLI 版 skills（保留 jfox-X 前缀，不被打包）
 │   └── README.md
-├── commands/                          # Slash commands（自动发现）
-│   ├── jfox-common.md
-│   ├── jfox-ingest.md
-│   ├── jfox-organize.md
-│   ├── jfox-search.md
-│   └── jfox-session-summary.md
 ├── jfox/                              # Python 包源码
 ├── .claude/                           # 内嵌 skills（release、ci）
 └── ...
 ```
 
-**当前状态**（2026-05-10）：
-- 插件版本：`0.1.2`
+**当前状态**（2026-05-12，response to #216）：
+- 插件版本：`0.1.2`（建议下次发版 bump 至 `0.2.0` 反映破坏性 rename）
 - Python 包版本：`0.8.0`
-- Skills 通过显式声明（因非标准目录名 `skills-recommend/`）
-- Commands 通过自动发现
-- 已知问题：skills 路径解析依赖 clone 缓存行为，未来可能改为标准 `skills/` 目录
+- Skills 通过 auto-discovery（无 skills 字段）
+- Commands 已删除（曾是 skill shim 反模式）
+- Skill 命名移除 `jfox-` 前缀：`/jfox:search` / `/jfox:kb` / `/jfox:ingest` / `/jfox:organize` / `/jfox:session-summary`
+- Plugin source 拆出至 `packages/cc-plugin/`，与 `skills-recommend/kimi-cli/` 解耦

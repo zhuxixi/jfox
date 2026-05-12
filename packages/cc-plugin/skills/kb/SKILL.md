@@ -1,5 +1,5 @@
 ---
-name: jfox-common
+name: kb
 description: Use when user wants to create, manage, or check the health of a Zettelkasten knowledge base. Triggers on "创建知识库", "初始化", "知识库管理", "检查知识库", "知识库健康", "知识库体检", "health check", "create knowledge base", "init", "kb management", "知识库诊断".
 ---
 
@@ -203,12 +203,12 @@ jfox inbox --json --limit 100 [--kb <name>]
 #### 1. 知识孤岛（孤立比例过高）
 - **信号**：> 40% 的笔记没有任何链接
 - **原因**：笔记已记录但未与现有知识建立关联
-- **修复**：运行 `/jfox-organize` 查找并为孤立笔记添加链接
+- **修复**：调用 organize 技能（`/jfox:organize`）查找并为孤立笔记添加链接
 
 #### 2. Inbox 积压（未处理笔记过多）
 - **信号**：> 30 条未处理的 fleeting 笔记
 - **原因**：持续捕获想法，但未进行反思和提炼
-- **修复**：运行 `/jfox-organize` 处理收件箱
+- **修复**：调用 organize 技能（`/jfox:organize`）处理收件箱
 
 #### 3. 低连接度（平均连接度不足）
 - **信号**：笔记平均链接数 < 1.0
@@ -349,7 +349,7 @@ jfox daemon status                              # 查看 PID、端口、模型�
 
 注意：daemon 依赖（fastapi、uvicorn）已作为必选依赖安装，`jfox daemon start` 可直接使用。
 
-> 搜索、导入、整理等高频操作命令见对应技能文档（jfox-search、jfox-ingest、jfox-organize）。
+> 搜索、导入、整理等高频操作命令见对应技能文档（search、ingest、organize）。
 
 ## 错误处理
 

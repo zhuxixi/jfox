@@ -1,5 +1,5 @@
 ---
-name: jfox-organize
+name: organize
 description: Use when user wants to organize their Zettelkasten, refine fleeting notes into permanent notes, add wiki links, or optimize the knowledge graph. Triggers on "整理知识库", "清理 inbox", "提炼笔记", "组织笔记", "看看有什么可以整理的", "合并笔记", "生成链接", "organize", "process inbox", "refine notes", "knowledge graph optimization".
 ---
 
@@ -13,7 +13,7 @@ JFox 的核心提炼技能。将原始 fleeting 笔记转化为结构良好、�
 
 ## 前置条件
 
-知识库中已有笔记。如果知识库为空，建议先运行 `/jfox-ingest` 导入内容。
+知识库中已有笔记。如果知识库为空，建议先调用 ingest 技能（`/jfox:ingest`）导入内容。
 
 ## Step 1: Inbox 分析
 

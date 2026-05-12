@@ -1,17 +1,14 @@
-# JFox Agent Skills
+# JFox Agent Skills (Non-Claude Code)
 
-为各类 AI 编程助手提供的 JFox 知识管理操作技能定义。
+为非 Claude Code 平台准备的 JFox 知识管理 SKILL.md 集合。
+
+> **Claude Code 用户请通过 marketplace 安装**（`/plugin marketplace add zhuxixi/jfox`），不要从此目录拷贝。
+> Claude Code 的官方插件源在 `packages/cc-plugin/`，使用 auto-discovery 加载 `packages/cc-plugin/skills/` 下的 5 个 skill。
 
 ## 目录结构
 
 ```
 skills-recommend/
-├── claude-code/          # Claude Code 专用 SKILL.md 格式
-│   ├── jfox-ingest/      # 数据导入（git log / GitHub PR / Issues）
-│   ├── jfox-organize/    # 知识库整理与提炼（fleeting → permanent）
-│   ├── jfox-search/      # 知识库搜索与图谱查询
-│   ├── jfox-session-summary/  # 会话总结写入知识库
-│   └── jfox-common/      # 知识库管理 + 健康检查
 └── kimi-cli/             # Kimi CLI 适配版 SKILL.md
     ├── jfox-ingest/
     ├── jfox-organize/
@@ -21,25 +18,6 @@ skills-recommend/
 ```
 
 ## 使用方法
-
-### Claude Code
-
-直接复制到 `~/.claude/skills/` 即可使用：
-
-```bash
-# 复制全部 skills
-cp -r skills-recommend/claude-code/* ~/.claude/skills/
-
-# 或复制单个 skill
-cp -r skills-recommend/claude-code/jfox-search ~/.claude/skills/
-```
-
-复制后即可通过斜杠命令调用：
-- `/jfox-common` — 创建/管理知识库、健康检查
-- `/jfox-ingest` — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
-- `/jfox-organize` — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
-- `/jfox-search` — 搜索笔记、图谱查询、链接推荐
-- `/jfox-session-summary` — 将会话总结写入知识库作为 fleeting 笔记
 
 ### Kimi CLI
 
@@ -65,7 +43,7 @@ Kimi CLI 也兼容 `~/.kimi/skills/` 和 `~/.claude/skills/` 目录。
 
 ### OpenCode / Codex / Cursor 等
 
-这些 Agent 的 skill/instruction 格式各不相同，但核心逻辑是通用的。参考 `claude-code/` 或 `kimi-cli/` 下的 SKILL.md 内容，将其适配为对应平台的格式：
+这些 Agent 的 skill/instruction 格式各不相同，但核心逻辑是通用的。参考 `kimi-cli/` 下的 SKILL.md 内容，将其适配为对应平台的格式：
 
 | 平台 | 适配方式 |
 |------|---------|

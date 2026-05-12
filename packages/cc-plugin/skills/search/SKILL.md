@@ -1,5 +1,5 @@
 ---
-name: jfox-search
+name: search
 description: Use when user wants to search notes, find information, look up knowledge in their Zettelkasten. Triggers on "搜索", "查找", "找一下", "查一下", "搜一下", "帮我找", "有没有关于", "search notes", "look up", "find", "find related notes", "search knowledge base", "notes about".
 ---
 
