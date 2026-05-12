@@ -786,7 +786,7 @@ jfox/                                  # 仓库根目录
 │       ├── .claude-plugin/
 │       │   └── plugin.json            # 插件清单（仅元数据，无 skills 声明 → auto-discovery）
 │       └── skills/                    # 自动发现的 skills
-│           ├── kb/SKILL.md
+│           ├── manage/SKILL.md
 │           ├── ingest/SKILL.md
 │           ├── organize/SKILL.md
 │           ├── search/SKILL.md
@@ -804,5 +804,5 @@ jfox/                                  # 仓库根目录
 - Python 包版本：`0.8.0`
 - Skills 通过 auto-discovery（无 skills 字段）
 - Commands 已删除（曾是 skill shim 反模式）
-- Skill 命名移除 `jfox-` 前缀：`/jfox:search` / `/jfox:kb` / `/jfox:ingest` / `/jfox:organize` / `/jfox:session-summary`
+- Skill 命名移除 `jfox-` 前缀：`/jfox:search` / `/jfox:manage` / `/jfox:ingest` / `/jfox:organize` / `/jfox:session-summary`（`kb` → `manage` rename for clarity）
 - Plugin source 拆出至 `packages/cc-plugin/`，与 `skills-recommend/kimi-cli/` 解耦

@@ -13,6 +13,8 @@ description: |
 - 知识库已初始化（`jfox init`）
 - 确认目标知识库（通过 `--kb` 或当前默认）
 
+> 本技能复用 `/jfox:manage` §4.1 的共享约定（`--kb` / `--json` / `--content-file`）。`jfox add` 通用参数语法详见 `/jfox:manage` §4.2；下文记录的是 session 类型专属约束。
+
 ## 工作流程
 
 ### Step 1: 生成会话总结
@@ -110,13 +112,12 @@ jfox add "<summary>" --title "Session: <topic>" --type <type> --topic <short-top
 
 # 从文件添加（长内容或含特殊字符）
 jfox add --content-file <path> --title "Session: <topic>" --type <type> --topic <short-topic> --tag session --kb <name>
-
-# 验证写入
-jfox show <note_id> --format json
 ```
+
+> 写入后的验证（`jfox show` / `jfox refs` 等）详见 `/jfox:manage` §4.5。
 
 ## 错误处理
 
-- **"Knowledge base not found"**: 提示用户先调用 kb 技能（`/jfox:kb`）创建知识库
+- **"Knowledge base not found"**: 提示用户先调用 manage 技能（`/jfox:manage`）创建知识库
 - **内容过长导致 shell 解析失败**: 切换到 `--content-file` 方式
 - **特殊字符转义问题**: 使用单引号包裹内容，或写入临时文件
