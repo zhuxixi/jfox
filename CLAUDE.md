@@ -133,6 +133,16 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - Set `PYTHONUTF8=1` and `chcp 65001` for encoding
 - HuggingFace mirror for China: `export HF_ENDPOINT=https://hf-mirror.com`
 
+## Claude Code Plugin
+
+JFox ships as a Claude Code plugin. Two-tier structure:
+- `.claude-plugin/marketplace.json` — top-level marketplace registry (version, description)
+- `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
+- `packages/cc-plugin/skills/` — 5 skills: `search`, `ingest`, `manage`, `organize`, `session-summary`
+
+**Plugin versioning**: bump version in both `plugin.json` AND `marketplace.json` together. Current: 0.2.0.
+**Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
+
 ## Branch Rules
 
 - **main 是保护分支**，不能直接 commit 或 push。所有改动必须通过新分支 + PR 合入。
