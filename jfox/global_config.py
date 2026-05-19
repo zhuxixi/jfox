@@ -141,6 +141,15 @@ class GlobalConfigManager:
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self._config: Optional[GlobalConfig] = None
 
+    def reload(self) -> GlobalConfig:
+        """强制重新从磁盘加载配置（丢弃进程内缓存）
+
+        daemon 后台循环或跨进程协作中，CLI 可能已修改磁盘上的配置；
+        调用此方法使配置从文件重新读取，而非返回旧缓存。
+        """
+        self._config = None
+        return self._load()
+
     def _load(self) -> GlobalConfig:
         """加载配置，如果不存在则创建默认配置"""
         if self._config is not None:

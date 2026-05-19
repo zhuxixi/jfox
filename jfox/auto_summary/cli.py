@@ -13,8 +13,9 @@ CLI subapp: jfox auto-summary
 
 from __future__ import annotations
 
+import json as _json
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -24,6 +25,15 @@ from ..global_config import get_global_config_manager
 from . import ledger as ledger_module
 from .ledger import Ledger
 from .runner import run_once, scan_pending
+
+
+def _fmt(table: Optional[Table] = None, json_data: Any = None, fmt: str = "table") -> None:
+    """统一的输出路由：fmt=json 时输出 JSON 字符串，否则渲染 Table"""
+    if fmt == "json":
+        console.print(_json.dumps(json_data, ensure_ascii=False, indent=2))
+    elif table is not None:
+        console.print(table)
+
 
 console = Console(legacy_windows=False)
 
@@ -39,11 +49,24 @@ def _config():
 
 
 @auto_summary_app.command("status")
-def status() -> None:
+def status(
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
+) -> None:
     """显示 auto-summary 配置和 ledger 统计"""
     cfg = _config()
     led = Ledger()
     stats = led.stats()
+
+    if output_format == "json":
+        _fmt(
+            json_data={
+                "config": cfg.to_dict(),
+                "ledger_file": str(ledger_module.DEFAULT_LEDGER_PATH),
+                "ledger_stats": stats,
+            },
+            fmt="json",
+        )
+        return
 
     table = Table(title="auto-summary 配置", show_header=False)
     table.add_column("项", style="cyan", no_wrap=True)
@@ -105,6 +128,10 @@ def enable(
         console.print(
             "[dim]提示：daemon 启动后才会真正在后台运行；CLI 仍可手动 jfox auto-summary run[/dim]"
         )
+        console.print(
+            "[yellow]⚠ 隐私声明：auto-summary 会将 Claude Code 会话记录通过 `claude -p` 发送至"
+            " Anthropic API 以生成摘要。仅传输会话文本，不传输额外数据。[/yellow]"
+        )
     else:
         console.print("[red]✗[/red] 写入配置失败")
         raise typer.Exit(1)
@@ -121,11 +148,34 @@ def disable() -> None:
 
 
 @auto_summary_app.command("scan")
-def scan() -> None:
+def scan(
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
+) -> None:
     """列出当前会被处理的 session（dry-run）"""
     pending = scan_pending()
     if not pending:
-        console.print("[dim]无待处理 session[/dim]")
+        if output_format == "json":
+            _fmt(json_data={"pending": []}, fmt="json")
+        else:
+            console.print("[dim]无待处理 session[/dim]")
+        return
+
+    if output_format == "json":
+        _fmt(
+            json_data={
+                "pending": [
+                    {
+                        "session_id": sf.session_id,
+                        "project": sf.project_dir_name,
+                        "size_bytes": sf.size_bytes,
+                        "mtime": sf.mtime,
+                        "age_minutes": sf.age_seconds / 60,
+                    }
+                    for sf in pending
+                ]
+            },
+            fmt="json",
+        )
         return
 
     table = Table(title=f"待处理 session ({len(pending)})")

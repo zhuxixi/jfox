@@ -295,13 +295,15 @@ class _ParseError(ValueError):
 def _resolve_claude_binary(cfg: AutoSummaryConfig) -> str:
     """返回 claude 可执行文件的绝对路径"""
     if cfg.claude_binary:
-        candidate = cfg.claude_binary
-        if Path(candidate).is_file():
-            return candidate
-        resolved = shutil.which(candidate)
+        candidate = Path(cfg.claude_binary).expanduser().resolve()
+        if candidate.is_file():
+            return str(candidate)
+        resolved = shutil.which(str(candidate))
         if resolved:
             return resolved
-        raise _ClaudeNotFound(f"配置的 claude_binary 不可执行: {candidate}")
+        raise _ClaudeNotFound(
+            f"配置的 claude_binary 不可执行: {cfg.claude_binary} (展开后: {candidate})"
+        )
 
     resolved = shutil.which("claude")
     if not resolved:
@@ -426,7 +428,32 @@ def _parse_claude_json(stdout: str) -> dict[str, Any]:
     return _extract_object(inner_text)
 
 
-_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+def _extract_balanced_json(text: str, start: int) -> Optional[str]:
+    """从 text[start] 处（必须是 '{'）开始，找到配对的 '}' 返回子串。
+
+    正确处理字符串内的转义引号和嵌套大括号。"""
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start : i + 1]
+    return None
 
 
 def _extract_object(text: str) -> dict[str, Any]:
@@ -453,16 +480,17 @@ def _extract_object(text: str) -> dict[str, Any]:
         except json.JSONDecodeError:
             pass
 
-    # 找第一个大括号包裹的整体（可能尾巴有逗号等问题）
-    match = _OBJECT_RE.search(text)
-    if match:
-        candidate = match.group(0)
-        try:
-            obj = json.loads(candidate)
-            if isinstance(obj, dict):
-                return obj
-        except json.JSONDecodeError as e:
-            raise _ParseError(f"找到了 {{...}} 但无法解析: {e}") from e
+    # 找第一个平衡的大括号对象（不用贪婪正则，避免跨对象匹配）
+    brace_idx = text.find("{")
+    if brace_idx >= 0:
+        candidate = _extract_balanced_json(text, brace_idx)
+        if candidate is not None:
+            try:
+                obj = json.loads(candidate)
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError as e:
+                raise _ParseError(f"找到了 {{...}} 但无法解析: {e}") from e
 
     raise _ParseError("文本中找不到 JSON 对象")
 

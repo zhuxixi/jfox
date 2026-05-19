@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 def _tick_once() -> str:
-    """在 executor 中执行的同步函数。返回简短日志行供 await 后打印。"""
-    cfg = get_global_config_manager().get_auto_summary_config()
+    """在 executor 中执行的同步函数。返回简短日志行供 await 后打印。
+
+    每轮先 reload 全局配置：daemon 进程可能持有旧缓存，CLI `enable` / `disable`
+    已写入新值到磁盘。
+    """
+    gm = get_global_config_manager()
+    gm.reload()
+    cfg = gm.get_auto_summary_config()
     if not cfg.enabled:
         return "auto-summary 已禁用，跳过本轮"
     try:

@@ -94,6 +94,16 @@ class Ledger:
             )
             return _LedgerData()
 
+        # 合法 JSON 但非 dict → 视为损坏，同样备份
+        if not isinstance(raw, dict):
+            backup_path = self._backup_corrupted_file()
+            logger.error(
+                "Ledger 文件期望 dict 但得到 %s，已备份至 %s，将以空状态启动",
+                type(raw).__name__,
+                backup_path or "(备份失败)",
+            )
+            return _LedgerData()
+
         version = raw.get("version", SCHEMA_VERSION)
         if version != SCHEMA_VERSION:
             logger.warning(
