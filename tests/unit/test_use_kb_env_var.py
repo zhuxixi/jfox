@@ -68,14 +68,30 @@ class TestUseKbEnvVar:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("JFOX_KB", None)
             with patch("jfox.kb_manager.get_kb_manager") as mock_get_manager:
-                # 不应调用 get_kb_manager，因为没有需要切换的知识库
+                mock_manager = Mock()
+                mock_manager.config_manager.get_default_kb_name.return_value = "default"
+                mock_manager.config_manager.update_last_used.return_value = True
+                mock_get_manager.return_value = mock_manager
                 original_base_dir = config.base_dir
 
                 with use_kb(None) as _:
-                    # 验证没有尝试获取 kb_manager
-                    mock_get_manager.assert_not_called()
                     # 验证配置没有被修改
                     assert config.base_dir == original_base_dir
+
+    def test_default_kb_updates_last_used(self):
+        """使用默认 KB 时应更新 last_used"""
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("JFOX_KB", None)
+            with patch("jfox.kb_manager.get_kb_manager") as mock_get_manager:
+                mock_manager = Mock()
+                mock_manager.config_manager.get_default_kb_name.return_value = "default"
+                mock_manager.config_manager.update_last_used.return_value = True
+                mock_get_manager.return_value = mock_manager
+
+                with use_kb(None) as _:
+                    pass
+
+                mock_manager.config_manager.update_last_used.assert_called_once_with("default")
 
     def test_jfox_kb_with_whitespace_is_stripped(self):
         """JFOX_KB 值包含首尾空格时应被去除"""

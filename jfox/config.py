@@ -172,6 +172,12 @@ def use_kb(kb_name: Optional[str] = None):
             kb_name = env_kb
             resolved_from_env = True
         else:
+            from .kb_manager import get_kb_manager
+
+            manager = get_kb_manager()
+            default_name = manager.config_manager.get_default_kb_name()
+            manager.config_manager.update_last_used(default_name)
+
             yield
             return
 
