@@ -93,6 +93,11 @@ app.add_typer(template_app, name="template", help="Manage note templates")
 model_app = typer.Typer(name="model", help="模型管理")
 app.add_typer(model_app, name="model", help="模型管理")
 
+# Auto-summary 子命令组（Claude Code 会话定时自动总结）
+from .auto_summary.cli import auto_summary_app  # noqa: E402
+
+app.add_typer(auto_summary_app, name="auto-summary")
+
 console = Console(legacy_windows=False)
 
 
