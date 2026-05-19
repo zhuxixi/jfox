@@ -313,10 +313,21 @@ class GlobalConfigManager:
         return self._save()
 
     def update_last_used(self, name: str) -> bool:
-        """更新知识库最后使用时间"""
+        """更新知识库最后使用时间（5分钟内不重复写入）"""
         config = self._load()
 
         if name in config.knowledge_bases:
+            existing = config.knowledge_bases[name].last_used
+            if existing:
+                try:
+                    last_time = datetime.fromisoformat(existing)
+                    if last_time.tzinfo is not None:
+                        last_time = last_time.replace(tzinfo=None)
+                    elapsed = (datetime.now() - last_time).total_seconds()
+                    if 0 <= elapsed < 300:
+                        return True
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Invalid last_used format for '{name}': {e}")
             config.knowledge_bases[name].last_used = datetime.now().isoformat()
             self._config = config
             return self._save()

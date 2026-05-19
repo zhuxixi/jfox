@@ -1,5 +1,6 @@
 """配置管理"""
 
+import logging
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Optional
 import yaml
 from rich.console import Console
 
+logger = logging.getLogger(__name__)
 _console = Console(stderr=True)
 
 
@@ -172,6 +174,13 @@ def use_kb(kb_name: Optional[str] = None):
             kb_name = env_kb
             resolved_from_env = True
         else:
+            from .kb_manager import get_kb_manager
+
+            manager = get_kb_manager()
+            default_name = manager.config_manager.get_default_kb_name()
+            if not manager.config_manager.update_last_used(default_name):
+                logger.warning(f"Failed to update last_used for default KB '{default_name}'")
+
             yield
             return
 
@@ -195,6 +204,10 @@ def use_kb(kb_name: Optional[str] = None):
         config.notes_dir = kb_path / "notes"
         config.zk_dir = kb_path / ".zk"
         config.chroma_dir = config.zk_dir / "chroma_db"
+
+        # 更新最后使用时间
+        if not manager.config_manager.update_last_used(kb_name):
+            logger.warning(f"Failed to update last_used for KB '{kb_name}'")
 
         # 重置索引和搜索引擎（使用新的知识库路径）
         _reset_singletons()

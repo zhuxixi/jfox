@@ -9,6 +9,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 import json
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -463,6 +464,47 @@ class TestGlobalConfigManager:
         result = manager.update_last_used("nonexistent")
 
         assert result is False
+
+    def test_update_last_used_throttle_skips_recent(self, manager):
+        """5分钟内不重复写入"""
+        recent_time = datetime.now().isoformat()
+        entry = KnowledgeBaseEntry(
+            name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=recent_time
+        )
+        manager._config = GlobalConfig(knowledge_bases={"my_kb": entry})
+
+        with patch.object(manager, "_save", return_value=True) as mock_save:
+            result = manager.update_last_used("my_kb")
+
+        assert result is True
+        mock_save.assert_not_called()  # 跳过写入
+
+    def test_update_last_used_throttle_allows_stale(self, manager):
+        """超过5分钟则正常写入"""
+        stale_time = "2020-01-01T00:00:00"
+        entry = KnowledgeBaseEntry(
+            name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=stale_time
+        )
+        manager._config = GlobalConfig(knowledge_bases={"my_kb": entry})
+
+        with patch.object(manager, "_save", return_value=True):
+            result = manager.update_last_used("my_kb")
+
+        assert result is True
+        assert entry.last_used != stale_time
+
+    def test_update_last_used_no_throttle_when_null(self, manager):
+        """last_used 为 None 时直接写入"""
+        entry = KnowledgeBaseEntry(
+            name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=None
+        )
+        manager._config = GlobalConfig(knowledge_bases={"my_kb": entry})
+
+        with patch.object(manager, "_save", return_value=True):
+            result = manager.update_last_used("my_kb")
+
+        assert result is True
+        assert entry.last_used is not None
 
 
 class TestMigrateDefaultKbPath:
