@@ -102,6 +102,7 @@ def enable(
     max_per_tick: Optional[int] = typer.Option(
         None, "--max-per-tick", help="每轮最多处理几个 session"
     ),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
     """启用 auto-summary，可同时调整其他字段"""
     changes: dict = {"enabled": True}
@@ -124,6 +125,13 @@ def enable(
         changes["max_per_tick"] = max_per_tick
 
     if get_global_config_manager().update_auto_summary_config(**changes):
+        if output_format == "json":
+            _fmt(json_data={"success": True, "message": "auto-summary 已启用"}, fmt="json")
+            console.print(
+                "[yellow]⚠ 隐私声明：auto-summary 会将 Claude Code 会话记录通过 `claude -p` 发送至"
+                " Anthropic API 以生成摘要。仅传输会话文本，不传输额外数据。[/yellow]"
+            )
+            return
         console.print("[green]✓[/green] auto-summary 已启用")
         console.print(
             "[dim]提示：daemon 启动后才会真正在后台运行；CLI 仍可手动 jfox auto-summary run[/dim]"
@@ -133,16 +141,27 @@ def enable(
             " Anthropic API 以生成摘要。仅传输会话文本，不传输额外数据。[/yellow]"
         )
     else:
+        if output_format == "json":
+            _fmt(json_data={"success": False, "error": "写入配置失败"}, fmt="json")
+            raise typer.Exit(1)
         console.print("[red]✗[/red] 写入配置失败")
         raise typer.Exit(1)
 
 
 @auto_summary_app.command("disable")
-def disable() -> None:
+def disable(
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
+) -> None:
     """禁用 auto-summary（daemon 将停止后台循环；ledger 不会被清空）"""
     if get_global_config_manager().update_auto_summary_config(enabled=False):
+        if output_format == "json":
+            _fmt(json_data={"success": True, "message": "auto-summary 已禁用"}, fmt="json")
+            return
         console.print("[yellow]auto-summary 已禁用[/yellow]")
     else:
+        if output_format == "json":
+            _fmt(json_data={"success": False, "error": "写入配置失败"}, fmt="json")
+            raise typer.Exit(1)
         console.print("[red]✗[/red] 写入配置失败")
         raise typer.Exit(1)
 
@@ -205,6 +224,7 @@ def scan(
 def run(
     dry_run: bool = typer.Option(False, "--dry-run", help="只扫描不实际调用 claude 和写入"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出每条结果"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
     """手动触发一轮 auto-summary（不依赖 daemon）"""
     if not _config().enabled and not dry_run:
@@ -214,6 +234,31 @@ def run(
         )
 
     report = run_once(dry_run=dry_run)
+
+    if output_format == "json":
+        _fmt(
+            json_data={
+                "scanned": report.scanned,
+                "processed": report.processed,
+                "success": report.success,
+                "skipped": report.skipped,
+                "failed": report.failed,
+                "items": [
+                    {
+                        "session_id": it.session_id,
+                        "outcome": it.outcome.value,
+                        "note_id": it.note_id,
+                        "title": it.title,
+                        "reason": it.reason,
+                        "error": it.error,
+                    }
+                    for it in report.items
+                ],
+            },
+            fmt="json",
+        )
+        return
+
     console.print(
         f"扫描 {report.scanned}, 处理 {report.processed}, "
         f"[green]成功 {report.success}[/green], "
@@ -237,15 +282,32 @@ def run(
 
 @auto_summary_app.command("forget")
 def forget(
-    session_id: str = typer.Argument(..., help="要从 ledger 移除的 session_id（支持完整或前缀）")
+    session_id: str = typer.Argument(..., help="要从 ledger 移除的 session_id（支持完整或前缀）"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
     """从 ledger 中移除一条，使其下次扫描时被重新处理"""
     led = Ledger()
     matches = [sid for sid in led.all_entries() if sid.startswith(session_id)]
     if not matches:
+        if output_format == "json":
+            _fmt(
+                json_data={"success": False, "error": f"ledger 中没有匹配 '{session_id}' 的条目"},
+                fmt="json",
+            )
+            raise typer.Exit(1)
         console.print(f"[red]✗[/red] ledger 中没有匹配 '{session_id}' 的条目")
         raise typer.Exit(1)
     if len(matches) > 1:
+        if output_format == "json":
+            _fmt(
+                json_data={
+                    "success": False,
+                    "error": f"前缀 '{session_id}' 命中 {len(matches)} 条，请输入更长的前缀",
+                    "matches": matches[:10],
+                },
+                fmt="json",
+            )
+            raise typer.Exit(1)
         console.print(f"[red]✗[/red] 前缀 '{session_id}' 命中 {len(matches)} 条，请输入更长的前缀")
         for m in matches[:10]:
             console.print(f"  - {m}")
@@ -253,8 +315,14 @@ def forget(
 
     target = matches[0]
     if led.forget(target):
+        if output_format == "json":
+            _fmt(json_data={"success": True, "removed": target}, fmt="json")
+            return
         console.print(f"[green]✓[/green] 已从 ledger 移除 {target}")
     else:
+        if output_format == "json":
+            _fmt(json_data={"success": False, "error": "移除失败"}, fmt="json")
+            raise typer.Exit(1)
         console.print("[red]✗[/red] 移除失败")
         raise typer.Exit(1)
 
@@ -262,13 +330,20 @@ def forget(
 @auto_summary_app.command("prune")
 def prune(
     days: int = typer.Option(30, "--days", help="删除 ledger 中早于 N 天的条目"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
     """清理 ledger 中过旧的条目（不影响知识库笔记）"""
     if days <= 0:
+        if output_format == "json":
+            _fmt(json_data={"success": False, "error": "days 必须 > 0"}, fmt="json")
+            raise typer.Exit(1)
         console.print("[red]✗[/red] days 必须 > 0")
         raise typer.Exit(1)
     led = Ledger()
     n = led.prune_older_than(days)
+    if output_format == "json":
+        _fmt(json_data={"success": True, "pruned": n, "older_than_days": days}, fmt="json")
+        return
     console.print(f"[green]✓[/green] 已清理 {n} 条早于 {days} 天的 ledger 条目")
 
 
