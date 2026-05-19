@@ -468,7 +468,9 @@ class TestGlobalConfigManager:
     def test_update_last_used_throttle_skips_recent(self, manager):
         """5分钟内不重复写入"""
         recent_time = datetime.now().isoformat()
-        entry = KnowledgeBaseEntry(name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=recent_time)
+        entry = KnowledgeBaseEntry(
+            name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=recent_time
+        )
         manager._config = GlobalConfig(knowledge_bases={"my_kb": entry})
 
         with patch.object(manager, "_save", return_value=True) as mock_save:
@@ -480,7 +482,9 @@ class TestGlobalConfigManager:
     def test_update_last_used_throttle_allows_stale(self, manager):
         """超过5分钟则正常写入"""
         stale_time = "2020-01-01T00:00:00"
-        entry = KnowledgeBaseEntry(name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=stale_time)
+        entry = KnowledgeBaseEntry(
+            name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=stale_time
+        )
         manager._config = GlobalConfig(knowledge_bases={"my_kb": entry})
 
         with patch.object(manager, "_save", return_value=True):
@@ -491,7 +495,9 @@ class TestGlobalConfigManager:
 
     def test_update_last_used_no_throttle_when_null(self, manager):
         """last_used 为 None 时直接写入"""
-        entry = KnowledgeBaseEntry(name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=None)
+        entry = KnowledgeBaseEntry(
+            name="my_kb", path="/path", created="2024-01-01T00:00:00", last_used=None
+        )
         manager._config = GlobalConfig(knowledge_bases={"my_kb": entry})
 
         with patch.object(manager, "_save", return_value=True):
