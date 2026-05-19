@@ -206,7 +206,8 @@ def use_kb(kb_name: Optional[str] = None):
         config.chroma_dir = config.zk_dir / "chroma_db"
 
         # 更新最后使用时间
-        manager.config_manager.update_last_used(kb_name)
+        if not manager.config_manager.update_last_used(kb_name):
+            logger.warning(f"Failed to update last_used for KB '{kb_name}'")
 
         # 重置索引和搜索引擎（使用新的知识库路径）
         _reset_singletons()

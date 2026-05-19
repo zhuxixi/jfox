@@ -321,6 +321,8 @@ class GlobalConfigManager:
             if existing:
                 try:
                     last_time = datetime.fromisoformat(existing)
+                    if last_time.tzinfo is not None:
+                        last_time = last_time.replace(tzinfo=None)
                     elapsed = (datetime.now() - last_time).total_seconds()
                     if 0 <= elapsed < 300:
                         return True
