@@ -45,16 +45,76 @@ class KnowledgeBaseEntry:
 
 
 @dataclass
+class AutoSummaryConfig:
+    """Claude Code 会话自动总结配置（opt-in，默认关闭）"""
+
+    enabled: bool = False
+    interval_minutes: int = 30  # 后台循环每多少分钟扫一次
+    idle_threshold_minutes: int = 30  # session 文件 mtime 静默多久才视为已结束
+    target_kb: Optional[str] = None  # 写入哪个知识库；None 用 default
+    max_session_size_mb: int = 10  # 超过此大小的 session 跳过（避免 token 爆炸）
+    min_session_size_kb: int = 5  # 太小的 session 跳过（无实质内容）
+    max_per_tick: int = 5  # 每轮最多处理几个 session
+    skip_after_days: int = 7  # 超过此天数的旧 session 不再补做
+    claude_timeout_seconds: int = 120  # claude -p 调用超时
+    claude_binary: Optional[str] = None  # claude 命令路径；None 表示从 PATH 解析
+
+    def __post_init__(self) -> None:
+        # 把负值/0 当成"用默认值"而非崩溃；空字符串 target_kb 等价于 None
+        if self.interval_minutes < 1:
+            self.interval_minutes = 30
+        if self.idle_threshold_minutes < 1:
+            self.idle_threshold_minutes = 30
+        if self.max_session_size_mb < 1:
+            self.max_session_size_mb = 10
+        if self.min_session_size_kb < 0:
+            self.min_session_size_kb = 0
+        if self.max_per_tick < 1:
+            self.max_per_tick = 1
+        if self.skip_after_days < 0:
+            self.skip_after_days = 0
+        if self.claude_timeout_seconds < 30:
+            self.claude_timeout_seconds = 30
+        # 大小区间健全性：min_kb 不应大于 max_mb*1024
+        if self.min_session_size_kb >= self.max_session_size_mb * 1024:
+            self.min_session_size_kb = max(0, self.max_session_size_mb * 1024 - 1)
+        if isinstance(self.target_kb, str) and not self.target_kb.strip():
+            self.target_kb = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "AutoSummaryConfig":
+        if not data:
+            return cls()
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            interval_minutes=int(data.get("interval_minutes", 30)),
+            idle_threshold_minutes=int(data.get("idle_threshold_minutes", 30)),
+            target_kb=data.get("target_kb"),
+            max_session_size_mb=int(data.get("max_session_size_mb", 10)),
+            min_session_size_kb=int(data.get("min_session_size_kb", 5)),
+            max_per_tick=int(data.get("max_per_tick", 5)),
+            skip_after_days=int(data.get("skip_after_days", 7)),
+            claude_timeout_seconds=int(data.get("claude_timeout_seconds", 120)),
+            claude_binary=data.get("claude_binary"),
+        )
+
+
+@dataclass
 class GlobalConfig:
     """全局配置"""
 
     default: str = DEFAULT_KB_NAME
     knowledge_bases: Dict[str, KnowledgeBaseEntry] = field(default_factory=dict)
+    auto_summary: AutoSummaryConfig = field(default_factory=AutoSummaryConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "default": self.default,
             "knowledge_bases": {name: kb.to_dict() for name, kb in self.knowledge_bases.items()},
+            "auto_summary": self.auto_summary.to_dict(),
         }
 
     @classmethod
@@ -66,6 +126,7 @@ class GlobalConfig:
         return cls(
             default=data.get("default", DEFAULT_KB_NAME),
             knowledge_bases=kbs,
+            auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
         )
 
 
@@ -79,6 +140,15 @@ class GlobalConfigManager:
     def __init__(self, config_path: Optional[Path] = None):
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self._config: Optional[GlobalConfig] = None
+
+    def reload(self) -> GlobalConfig:
+        """强制重新从磁盘加载配置（丢弃进程内缓存）
+
+        daemon 后台循环或跨进程协作中，CLI 可能已修改磁盘上的配置；
+        调用此方法使配置从文件重新读取，而非返回旧缓存。
+        """
+        self._config = None
+        return self._load()
 
     def _load(self) -> GlobalConfig:
         """加载配置，如果不存在则创建默认配置"""
@@ -333,6 +403,19 @@ class GlobalConfigManager:
             return self._save()
 
         return False
+
+    def get_auto_summary_config(self) -> AutoSummaryConfig:
+        """获取自动总结配置"""
+        return self._load().auto_summary
+
+    def update_auto_summary_config(self, **changes: Any) -> bool:
+        """更新自动总结配置中的若干字段，未传入的字段保持原样"""
+        config = self._load()
+        current = asdict(config.auto_summary)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.auto_summary = AutoSummaryConfig.from_dict(current)
+        self._config = config
+        return self._save()
 
 
 # 全局配置管理器实例

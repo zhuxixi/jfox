@@ -6,10 +6,11 @@
 """
 
 import argparse
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -21,6 +22,10 @@ _backend = None
 
 # uvicorn Server 实例（用于 graceful shutdown）
 _server = None
+
+# auto-summary 后台 task 与停止信号
+_auto_summary_task: Optional[asyncio.Task] = None
+_auto_summary_stop_event: Optional[asyncio.Event] = None
 
 
 def _load_model():
@@ -43,10 +48,61 @@ def _load_model():
         os._exit(1)
 
 
+def _maybe_start_auto_summary() -> None:
+    """如果用户启用了 auto-summary，启动后台循环 task"""
+    global _auto_summary_task, _auto_summary_stop_event
+    try:
+        from ..auto_summary.loop import auto_summary_loop
+        from ..global_config import get_global_config_manager
+
+        cfg = get_global_config_manager().get_auto_summary_config()
+        if not cfg.enabled:
+            logger.info("Daemon: auto-summary 未启用（config.auto_summary.enabled=false）")
+            return
+
+        _auto_summary_stop_event = asyncio.Event()
+        _auto_summary_task = asyncio.create_task(auto_summary_loop(_auto_summary_stop_event))
+        logger.info(
+            "Daemon: auto-summary 后台循环已启动 (interval=%dm, idle_threshold=%dm)",
+            cfg.interval_minutes,
+            cfg.idle_threshold_minutes,
+        )
+    except Exception as e:
+        logger.exception("Daemon: 启动 auto-summary 后台循环失败: %s", e)
+
+
+async def _maybe_stop_auto_summary() -> None:
+    """关闭 auto-summary 后台循环（lifespan shutdown 阶段调用）"""
+    global _auto_summary_task, _auto_summary_stop_event
+    if _auto_summary_stop_event is not None:
+        _auto_summary_stop_event.set()
+    if _auto_summary_task is not None:
+        try:
+            await asyncio.wait_for(_auto_summary_task, timeout=5)
+        except asyncio.TimeoutError:
+            logger.warning("Daemon: auto-summary task 5s 内未退出，取消之")
+            _auto_summary_task.cancel()
+            # 等待 cancel 实际生效；如果 task 阻塞在 executor 的 claude -p 上，
+            # task.cancel() 不会终止 subprocess，仍会阻塞，但等到子进程超时（cfg.claude_timeout_seconds）后会返回
+            try:
+                await asyncio.gather(_auto_summary_task, return_exceptions=True)
+            except Exception as inner:
+                logger.warning("Daemon: 等待 auto-summary 取消时异常: %s", inner)
+        except Exception as e:
+            logger.warning("Daemon: 等待 auto-summary 退出时异常: %s", e)
+            _auto_summary_task.cancel()
+    _auto_summary_task = None
+    _auto_summary_stop_event = None
+
+
 @asynccontextmanager
 async def lifespan(app):
     _load_model()
-    yield
+    _maybe_start_auto_summary()
+    try:
+        yield
+    finally:
+        await _maybe_stop_auto_summary()
 
 
 app = FastAPI(title="JFox Embedding Daemon", lifespan=lifespan)
@@ -131,6 +187,32 @@ def encode_single(req: EncodeSingleRequest):
         embedding=embedding.tolist(),
         dimension=_backend.dimension,
     )
+
+
+@app.get("/auto_summary/status")
+def auto_summary_status():
+    """auto-summary 后台循环状态（仅供调试观察）"""
+    from ..auto_summary.ledger import Ledger
+    from ..global_config import get_global_config_manager
+
+    cfg = get_global_config_manager().get_auto_summary_config()
+    running = _auto_summary_task is not None and not _auto_summary_task.done()
+    try:
+        ledger_stats = Ledger().stats()
+    except Exception as e:
+        ledger_stats = {"error": str(e)}
+
+    return {
+        "config": {
+            "enabled": cfg.enabled,
+            "interval_minutes": cfg.interval_minutes,
+            "idle_threshold_minutes": cfg.idle_threshold_minutes,
+            "max_per_tick": cfg.max_per_tick,
+            "target_kb": cfg.target_kb,
+        },
+        "task_running": running,
+        "ledger": ledger_stats,
+    }
 
 
 # =============================================================================
