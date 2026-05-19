@@ -108,3 +108,38 @@ class TestUseKbEnvVar:
                     with use_kb(None) as _:
                         # 验证去除了空格后使用的是 "work"
                         mock_manager.config_manager.get_kb_path.assert_called_once_with("work")
+
+    def test_explicit_kb_updates_last_used(self):
+        """通过 --kb 指定知识库时应更新 last_used"""
+        with patch("jfox.config._reset_singletons"):
+            with patch("jfox.kb_manager.get_kb_manager") as mock_get_manager:
+                mock_manager = Mock()
+                mock_manager.config_manager.kb_exists.return_value = True
+                mock_manager.config_manager.get_kb_path.return_value = (
+                    config.base_dir.parent / "work"
+                )
+                mock_manager.config_manager.update_last_used.return_value = True
+                mock_get_manager.return_value = mock_manager
+
+                with use_kb("work") as _:
+                    pass
+
+                mock_manager.config_manager.update_last_used.assert_called_once_with("work")
+
+    def test_env_var_kb_updates_last_used(self):
+        """通过 JFOX_KB 环境变量指定知识库时应更新 last_used"""
+        with patch.dict(os.environ, {"JFOX_KB": "work"}):
+            with patch("jfox.config._reset_singletons"):
+                with patch("jfox.kb_manager.get_kb_manager") as mock_get_manager:
+                    mock_manager = Mock()
+                    mock_manager.config_manager.kb_exists.return_value = True
+                    mock_manager.config_manager.get_kb_path.return_value = (
+                        config.base_dir.parent / "work"
+                    )
+                    mock_manager.config_manager.update_last_used.return_value = True
+                    mock_get_manager.return_value = mock_manager
+
+                    with use_kb(None) as _:
+                        pass
+
+                    mock_manager.config_manager.update_last_used.assert_called_once_with("work")
