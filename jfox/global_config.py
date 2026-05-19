@@ -327,7 +327,7 @@ class GlobalConfigManager:
                     if 0 <= elapsed < 300:
                         return True
                 except (ValueError, TypeError) as e:
-                    logger.debug(f"Invalid last_used format for '{name}': {e}")
+                    logger.warning(f"Invalid last_used format for '{name}': {e}")
             config.knowledge_bases[name].last_used = datetime.now().isoformat()
             self._config = config
             return self._save()
