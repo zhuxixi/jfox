@@ -313,10 +313,18 @@ class GlobalConfigManager:
         return self._save()
 
     def update_last_used(self, name: str) -> bool:
-        """更新知识库最后使用时间"""
+        """更新知识库最后使用时间（5分钟内不重复写入）"""
         config = self._load()
 
         if name in config.knowledge_bases:
+            existing = config.knowledge_bases[name].last_used
+            if existing:
+                try:
+                    last_time = datetime.fromisoformat(existing)
+                    if (datetime.now() - last_time).total_seconds() < 300:
+                        return True
+                except (ValueError, TypeError):
+                    pass
             config.knowledge_bases[name].last_used = datetime.now().isoformat()
             self._config = config
             return self._save()
