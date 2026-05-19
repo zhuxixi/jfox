@@ -323,8 +323,8 @@ class GlobalConfigManager:
                     last_time = datetime.fromisoformat(existing)
                     if (datetime.now() - last_time).total_seconds() < 300:
                         return True
-                except (ValueError, TypeError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Invalid last_used format for '{name}': {e}")
             config.knowledge_bases[name].last_used = datetime.now().isoformat()
             self._config = config
             return self._save()

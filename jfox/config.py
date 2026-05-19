@@ -1,5 +1,6 @@
 """配置管理"""
 
+import logging
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -9,6 +10,7 @@ from typing import Optional
 import yaml
 from rich.console import Console
 
+logger = logging.getLogger(__name__)
 _console = Console(stderr=True)
 
 
@@ -176,7 +178,8 @@ def use_kb(kb_name: Optional[str] = None):
 
             manager = get_kb_manager()
             default_name = manager.config_manager.get_default_kb_name()
-            manager.config_manager.update_last_used(default_name)
+            if not manager.config_manager.update_last_used(default_name):
+                logger.warning(f"Failed to update last_used for default KB '{default_name}'")
 
             yield
             return
