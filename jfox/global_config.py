@@ -321,7 +321,8 @@ class GlobalConfigManager:
             if existing:
                 try:
                     last_time = datetime.fromisoformat(existing)
-                    if (datetime.now() - last_time).total_seconds() < 300:
+                    elapsed = (datetime.now() - last_time).total_seconds()
+                    if 0 <= elapsed < 300:
                         return True
                 except (ValueError, TypeError) as e:
                     logger.debug(f"Invalid last_used format for '{name}': {e}")
