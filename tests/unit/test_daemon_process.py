@@ -162,3 +162,90 @@ class TestDaemonModelCacheCheck:
         # 验证 health check 被调用了足够多次（使用 FIRST_RUN_TIMEOUT）
         # 由于第二次就返回了，至少被调用了 2 次
         assert mock_health.call_count >= 2
+
+
+class TestStartDaemonBlocking:
+    """测试下载失败时阻断启动"""
+
+    @patch("jfox.daemon.process._http_health_check", return_value=None)
+    @patch("jfox.daemon.process._check_model_cache")
+    @patch("jfox.model_downloader.ModelDownloader.ensure_cached", return_value=False)
+    @patch("jfox.model_downloader.ModelDownloader.get_manual_instructions", return_value="test instructions")
+    def test_blocks_when_download_fails(self, mock_instructions, mock_ensure, mock_cache, mock_health):
+        """模型下载失败时应阻断启动"""
+        from jfox.daemon.process import start_daemon
+
+        mock_cache.return_value = {
+            "needs_download": True,
+            "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+            "size_hint": "90MB",
+        }
+        result = start_daemon()
+        assert result is False
+        mock_ensure.assert_called_once()
+
+    @patch("jfox.daemon.process._check_model_cache")
+    @patch("jfox.model_downloader.ModelDownloader.ensure_cached", return_value=True)
+    @patch("jfox.daemon.process.subprocess.Popen")
+    @patch("jfox.daemon.process._http_health_check")
+    def test_starts_when_download_succeeds(
+        self, mock_health, mock_popen, mock_ensure, mock_cache
+    ):
+        """模型下载成功时正常启动"""
+        from jfox.daemon.process import start_daemon
+
+        mock_cache.return_value = {
+            "needs_download": True,
+            "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+            "size_hint": "90MB",
+        }
+        mock_health.side_effect = [None, {"pid": 9999}]
+        mock_popen.return_value.pid = 1234
+
+        result = start_daemon()
+        assert result is True
+
+
+class TestCheckModelCacheLocalDir:
+    """测试本地模型目录预检"""
+
+    def test_local_dir_with_weight(self):
+        """本地目录存在权重文件时 needs_download=False"""
+        from jfox.daemon.process import _check_model_cache
+        from jfox.model_downloader import _LOCAL_MODEL_DIR
+
+        local_path = _LOCAL_MODEL_DIR / "sentence-transformers--all-MiniLM-L6-v2"
+        local_path.mkdir(parents=True, exist_ok=True)
+        (local_path / "model.safetensors").write_text("fake")
+
+        try:
+            with patch("jfox.config.config") as mock_cfg:
+                mock_cfg.embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+                result = _check_model_cache()
+                assert result["needs_download"] is False
+                assert result["model_name"] == "sentence-transformers/all-MiniLM-L6-v2"
+        finally:
+            import shutil
+
+            if local_path.exists():
+                shutil.rmtree(local_path.parent, ignore_errors=True)
+
+    def test_local_dir_without_weight(self):
+        """本地目录存在但无权重文件时 needs_download=True"""
+        from jfox.daemon.process import _check_model_cache
+        from jfox.model_downloader import _LOCAL_MODEL_DIR
+
+        local_path = _LOCAL_MODEL_DIR / "sentence-transformers--all-MiniLM-L6-v2"
+        local_path.mkdir(parents=True, exist_ok=True)
+        (local_path / "config.json").write_text("fake")
+
+        try:
+            with patch("jfox.config.config") as mock_cfg:
+                mock_cfg.embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+                result = _check_model_cache()
+                assert result["needs_download"] is True
+        finally:
+            import shutil
+
+            if local_path.exists():
+                shutil.rmtree(local_path.parent, ignore_errors=True)
