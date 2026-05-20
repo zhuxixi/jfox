@@ -152,7 +152,7 @@ class ModelDownloader:
                     logger.debug(f"权重文件 {candidate} 下载成功")
                     break
                 except Exception as e:
-                    logger.debug(f"权重文件 {candidate} 尝试失败 ({e})，尝试下一个")
+                    logger.warning(f"权重文件 {candidate} 尝试失败 ({e})，尝试下一个")
                     continue
 
             if not weight_downloaded:
@@ -201,7 +201,7 @@ class ModelDownloader:
                     weight_downloaded = True
                     break
                 else:
-                    logger.debug(f"权重文件 {candidate} 下载后为空，尝试下一个")
+                    logger.warning(f"权重文件 {candidate} 下载后为空，尝试下一个")
             except Exception as e:
                 logger.warning(f"权重文件 {candidate} 下载失败 ({e})，尝试下一个")
                 continue
@@ -273,9 +273,9 @@ class ModelDownloader:
                     weight_downloaded = True
                     break
                 else:
-                    logger.debug(f"{candidate} 下载失败或为空，跳过")
+                    logger.warning(f"{candidate} 下载失败或为空，跳过")
             except (OSError, subprocess.TimeoutExpired) as e:
-                logger.debug(f"{candidate} 下载异常: {e}")
+                logger.warning(f"{candidate} 下载异常: {e}")
 
         if not weight_downloaded:
             logger.error("所有权重文件候选下载失败，步骤 3 未完成")
@@ -313,19 +313,21 @@ class ModelDownloader:
                 if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
                     pass  # 下载成功
                 else:
-                    logger.debug(f"{fname} 下载失败或为空，跳过")
+                    logger.warning(f"{fname} 下载失败或为空，跳过")
             except (OSError, subprocess.TimeoutExpired) as e:
-                logger.debug(f"{fname} 下载异常: {e}")
+                logger.warning(f"{fname} 下载异常: {e}")
 
         return True
 
     def get_manual_instructions(self) -> str:
         """获取手动下载说明"""
+        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR)
         candidates = " / ".join(_WEIGHT_FILE_CANDIDATES)
+        local_path = self._get_local_model_path()
         return (
             f"自动下载失败。请手动下载模型:\n"
-            f"  1. 访问 {_DEFAULT_MIRROR}/{self.model_name}\n"
+            f"  1. 访问 {mirror}/models/{self.model_name}\n"
             f"  2. 下载权重文件（{candidates}）和 config.json\n"
-            f"  3. 放置到 {self._model_cache}/snapshots/\n"
-            f"  或运行: bash scripts/download-model-intranet.sh"
+            f"  3. 放置到 {local_path}/\n"
+            f"  或设置环境变量 JFOX_MODEL_MIRROR 使用其他镜像"
         )

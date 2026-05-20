@@ -253,3 +253,16 @@ class TestModelDownloader:
                 mock_retrieve.side_effect = urlretrieve_side_effect
                 result = downloader._try_modelscope_http()
                 assert result is True
+
+    def test_get_manual_instructions(self, downloader):
+        """手动下载指引包含 ModelScope URL 和本地路径"""
+        instructions = downloader.get_manual_instructions()
+        assert "modelscope.cn" in instructions or "JFOX_MODEL_MIRROR" in instructions
+        assert downloader.model_name in instructions
+        assert str(downloader._get_local_model_path()) in instructions
+
+    def test_get_manual_instructions_custom_mirror(self, downloader):
+        """自定义镜像站时指引使用自定义 URL"""
+        with patch.dict(os.environ, {"JFOX_MODEL_MIRROR": "https://custom.mirror.com"}):
+            instructions = downloader.get_manual_instructions()
+            assert "custom.mirror.com" in instructions
