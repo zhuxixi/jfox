@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -77,6 +78,14 @@ class EmbeddingBackend:
         self._use_daemon = False
         return False
 
+    def _get_local_model_path(self) -> Optional[Path]:
+        """获取本地模型目录路径"""
+        if not self.model_name or self.model_name == "auto":
+            return None
+        safe_name = self.model_name.replace("/", "--")
+        local = Path.home() / ".zettelkasten" / ".models" / safe_name
+        return local if local.exists() else None
+
     def load(self):
         """加载模型（支持 device 自动检测和 GPU 加速）"""
         if self.model is not None:
@@ -94,7 +103,12 @@ class EmbeddingBackend:
         try:
             from sentence_transformers import SentenceTransformer
 
-            self.model = SentenceTransformer(self.model_name, device=self._resolved_device)
+            # 优先从本地目录加载
+            local_path = self._get_local_model_path()
+            if local_path is not None:
+                self.model = SentenceTransformer(str(local_path), device=self._resolved_device)
+            else:
+                self.model = SentenceTransformer(self.model_name, device=self._resolved_device)
             self._resolved_dim = self.model.get_sentence_embedding_dimension()
             logger.info(
                 f"模型已加载: {self.model_name} "
