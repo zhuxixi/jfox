@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
+from urllib.request import urlretrieve
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +80,15 @@ class ModelDownloader:
             return True
         logger.warning("步骤 1 失败，进入步骤 2")
 
-        # Step 2: 重试 huggingface_hub 下载
-        logger.info("步骤 2: 重试 huggingface_hub 下载...")
-        if self._try_hf_hub_download():
+        # Step 2: ModelScope HTTP 下载
+        logger.info("步骤 2: 使用 ModelScope HTTP 下载...")
+        if self._try_modelscope_http():
             logger.info("步骤 2 成功，模型已缓存")
             return True
         logger.warning("步骤 2 失败，进入步骤 3")
 
         # Step 3: curl 子进程下载
-        logger.info("步骤 3: 使用 curl 子进程从镜像站下载...")
+        logger.info("步骤 3: 使用 curl 从 ModelScope 下载...")
         if self._try_curl_download():
             logger.info("步骤 3 成功，模型已缓存")
             return True
@@ -176,6 +177,57 @@ class ModelDownloader:
         except Exception as e:
             logger.warning(f"huggingface_hub 下载失败: {e}")
             return False
+
+    def _try_modelscope_http(self) -> bool:
+        """
+        使用 urllib.request 从 ModelScope HTTP 下载模型文件到本地目录。
+        """
+        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR)
+        local_path = self._get_local_model_path()
+        local_path.mkdir(parents=True, exist_ok=True)
+
+        # 按优先级尝试下载权重文件
+        weight_downloaded = False
+        for candidate in _WEIGHT_FILE_CANDIDATES:
+            url = _MODELSCOPE_API_TEMPLATE.format(
+                mirror=mirror,
+                model_id=self.model_name,
+                file_path=candidate,
+            )
+            dest = local_path / candidate
+            logger.info(f"试用权重文件 {candidate}...")
+            try:
+                urlretrieve(url, str(dest))
+                if dest.exists() and dest.stat().st_size > 0:
+                    logger.info(f"权重文件 {candidate} 下载成功")
+                    weight_downloaded = True
+                    break
+                else:
+                    logger.debug(f"权重文件 {candidate} 下载后为空，尝试下一个")
+            except Exception as e:
+                logger.warning(f"权重文件 {candidate} 下载失败 ({e})，尝试下一个")
+                continue
+
+        if not weight_downloaded:
+            logger.warning("所有权重文件候选均下载失败")
+            return False
+
+        # 下载其他必需文件（不失败）
+        for fname in _REQUIRED_FILES:
+            url = _MODELSCOPE_API_TEMPLATE.format(
+                mirror=mirror,
+                model_id=self.model_name,
+                file_path=fname,
+            )
+            dest = local_path / fname
+            try:
+                urlretrieve(url, str(dest))
+                if not (dest.exists() and dest.stat().st_size > 0):
+                    logger.debug(f"{fname} 下载后为空，跳过")
+            except Exception as e:
+                logger.warning(f"{fname} 下载失败 ({e})，跳过")
+
+        return True
 
     def _try_curl_download(self) -> bool:
         """

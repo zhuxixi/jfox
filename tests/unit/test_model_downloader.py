@@ -1,5 +1,7 @@
 """ModelDownloader 单元测试"""
 
+import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -65,36 +67,43 @@ class TestModelDownloader:
     def test_ensure_cached_step1_succeeds(self, downloader):
         """Step 1 成功，后续步骤不执行"""
         with patch.object(downloader, "_try_hf_hub_download", return_value=True) as mock_hf:
-            with patch.object(downloader, "_try_curl_download") as mock_curl:
-                result = downloader.ensure_cached()
-                assert result is True
-                assert mock_hf.call_count == 1
-                mock_curl.assert_not_called()
+            with patch.object(downloader, "_try_modelscope_http") as mock_http:
+                with patch.object(downloader, "_try_curl_download") as mock_curl:
+                    result = downloader.ensure_cached()
+                    assert result is True
+                    mock_hf.assert_called_once()
+                    mock_http.assert_not_called()
+                    mock_curl.assert_not_called()
 
     def test_ensure_cached_step1_fails_step2_succeeds(self, downloader):
         """Step 1 失败，Step 2 成功"""
-        with patch.object(downloader, "_try_hf_hub_download", side_effect=[False, True]) as mock_hf:
-            with patch.object(downloader, "_try_curl_download") as mock_curl:
-                result = downloader.ensure_cached()
-                assert result is True
-                assert mock_hf.call_count == 2
-                mock_curl.assert_not_called()
+        with patch.object(downloader, "_try_hf_hub_download", return_value=False) as mock_hf:
+            with patch.object(downloader, "_try_modelscope_http", return_value=True) as mock_http:
+                with patch.object(downloader, "_try_curl_download") as mock_curl:
+                    result = downloader.ensure_cached()
+                    assert result is True
+                    mock_hf.assert_called_once()
+                    mock_http.assert_called_once()
+                    mock_curl.assert_not_called()
 
     def test_ensure_cached_step1_2_fail_step3_succeeds(self, downloader):
         """Step 1/2 失败，Step 3 成功"""
         with patch.object(downloader, "_try_hf_hub_download", return_value=False) as mock_hf:
-            with patch.object(downloader, "_try_curl_download", return_value=True) as mock_curl:
-                result = downloader.ensure_cached()
-                assert result is True
-                assert mock_hf.call_count == 2
-                mock_curl.assert_called_once()
+            with patch.object(downloader, "_try_modelscope_http", return_value=False) as mock_http:
+                with patch.object(downloader, "_try_curl_download", return_value=True) as mock_curl:
+                    result = downloader.ensure_cached()
+                    assert result is True
+                    mock_hf.assert_called_once()
+                    mock_http.assert_called_once()
+                    mock_curl.assert_called_once()
 
     def test_ensure_cached_all_fail(self, downloader):
         """全部失败，返回 False"""
         with patch.object(downloader, "_try_hf_hub_download", return_value=False):
-            with patch.object(downloader, "_try_curl_download", return_value=False):
-                result = downloader.ensure_cached()
-                assert result is False
+            with patch.object(downloader, "_try_modelscope_http", return_value=False):
+                with patch.object(downloader, "_try_curl_download", return_value=False):
+                    result = downloader.ensure_cached()
+                    assert result is False
 
     def test_try_curl_download_no_curl(self, downloader):
         """curl 不存在时返回 False"""
@@ -148,3 +157,53 @@ class TestModelDownloader:
         local.mkdir(parents=True, exist_ok=True)
         (local / "config.json").write_text("fake")
         assert downloader._check_cached() is False
+
+    def test_try_modelscope_http_success(self, downloader):
+        """ModelScope HTTP 下载成功"""
+        with patch("jfox.model_downloader.urlretrieve") as mock_retrieve:
+
+            def urlretrieve_side_effect(url, dest):
+                Path(dest).write_text("fake model")
+
+            mock_retrieve.side_effect = urlretrieve_side_effect
+
+            result = downloader._try_modelscope_http()
+            assert result is True
+            local_path = downloader._get_local_model_path()
+            assert (local_path / "model.safetensors").exists()
+
+    def test_try_modelscope_http_fallback_to_pytorch(self, downloader):
+        """model.safetensors 不存在时回退到 pytorch_model.bin"""
+        call_count = 0
+
+        def urlretrieve_side_effect(url, dest):
+            nonlocal call_count
+            call_count += 1
+            if "model.safetensors" in url:
+                raise Exception("404")
+            Path(dest).write_text("fake model")
+
+        with patch("jfox.model_downloader.urlretrieve") as mock_retrieve:
+            mock_retrieve.side_effect = urlretrieve_side_effect
+            result = downloader._try_modelscope_http()
+            assert result is True
+            assert call_count >= 1
+
+    def test_try_modelscope_http_all_fail(self, downloader):
+        """所有权重文件下载失败"""
+        with patch("jfox.model_downloader.urlretrieve", side_effect=Exception("network")):
+            result = downloader._try_modelscope_http()
+            assert result is False
+
+    def test_try_modelscope_http_custom_mirror(self, downloader):
+        """JFOX_MODEL_MIRROR 环境变量生效"""
+        with patch.dict(os.environ, {"JFOX_MODEL_MIRROR": "https://custom.mirror.com"}):
+            with patch("jfox.model_downloader.urlretrieve") as mock_retrieve:
+
+                def urlretrieve_side_effect(url, dest):
+                    assert "custom.mirror.com" in url
+                    Path(dest).write_text("fake")
+
+                mock_retrieve.side_effect = urlretrieve_side_effect
+                result = downloader._try_modelscope_http()
+                assert result is True
