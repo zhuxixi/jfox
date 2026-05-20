@@ -149,8 +149,7 @@ def _check_model_cache() -> dict:
         local_path = _LOCAL_MODEL_DIR / safe_name
         if local_path.exists():
             has_weight = any(
-                (local_path / candidate).exists()
-                for candidate in _WEIGHT_FILE_CANDIDATES
+                (local_path / candidate).exists() for candidate in _WEIGHT_FILE_CANDIDATES
             )
             size_hint = "2GB" if "bge-m3" in model_name else "90MB"
             return {

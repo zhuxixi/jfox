@@ -170,8 +170,13 @@ class TestStartDaemonBlocking:
     @patch("jfox.daemon.process._http_health_check", return_value=None)
     @patch("jfox.daemon.process._check_model_cache")
     @patch("jfox.model_downloader.ModelDownloader.ensure_cached", return_value=False)
-    @patch("jfox.model_downloader.ModelDownloader.get_manual_instructions", return_value="test instructions")
-    def test_blocks_when_download_fails(self, mock_instructions, mock_ensure, mock_cache, mock_health):
+    @patch(
+        "jfox.model_downloader.ModelDownloader.get_manual_instructions",
+        return_value="test instructions",
+    )
+    def test_blocks_when_download_fails(
+        self, mock_instructions, mock_ensure, mock_cache, mock_health
+    ):
         """模型下载失败时应阻断启动"""
         from jfox.daemon.process import start_daemon
 
@@ -188,9 +193,7 @@ class TestStartDaemonBlocking:
     @patch("jfox.model_downloader.ModelDownloader.ensure_cached", return_value=True)
     @patch("jfox.daemon.process.subprocess.Popen")
     @patch("jfox.daemon.process._http_health_check")
-    def test_starts_when_download_succeeds(
-        self, mock_health, mock_popen, mock_ensure, mock_cache
-    ):
+    def test_starts_when_download_succeeds(self, mock_health, mock_popen, mock_ensure, mock_cache):
         """模型下载成功时正常启动"""
         from jfox.daemon.process import start_daemon
 

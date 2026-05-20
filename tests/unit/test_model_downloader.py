@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jfox.model_downloader import _DEFAULT_MIRROR, ModelDownloader
+from jfox.model_downloader import ModelDownloader
 
 
 class TestModelDownloader:

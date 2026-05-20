@@ -5,7 +5,6 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 from urllib.request import urlretrieve
 
 logger = logging.getLogger(__name__)
