@@ -191,10 +191,11 @@ class TestModelDownloader:
                 assert result is False
 
     def test_check_cached_local_dir_with_weight(self, downloader):
-        """本地目录存在权重文件时返回 True"""
+        """本地目录存在权重文件和 config.json 时返回 True"""
         local = downloader._get_local_model_path()
         local.mkdir(parents=True, exist_ok=True)
         (local / "model.safetensors").write_text("fake")
+        (local / "config.json").write_text("fake")
         assert downloader._check_cached() is True
 
     def test_check_cached_local_dir_without_weight(self, downloader):
@@ -210,7 +211,7 @@ class TestModelDownloader:
 
             def urlopen_side_effect(url, timeout=None):
                 mock_resp = MagicMock()
-                mock_resp.read.return_value = b"fake model"
+                mock_resp.read.side_effect = [b"fake model", b""]
                 mock_resp.__enter__ = MagicMock(return_value=mock_resp)
                 mock_resp.__exit__ = MagicMock(return_value=False)
                 return mock_resp
@@ -232,7 +233,7 @@ class TestModelDownloader:
             mock_resp = MagicMock()
             if "model.safetensors" in str(url):
                 raise Exception("404")
-            mock_resp.read.return_value = b"fake model"
+            mock_resp.read.side_effect = [b"fake model", b""]
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
             mock_resp.__exit__ = MagicMock(return_value=False)
             return mock_resp
@@ -257,7 +258,7 @@ class TestModelDownloader:
                 def urlopen_side_effect(url, timeout=None):
                     assert "custom.mirror.com" in str(url)
                     mock_resp = MagicMock()
-                    mock_resp.read.return_value = b"fake"
+                    mock_resp.read.side_effect = [b"fake", b""]
                     mock_resp.__enter__ = MagicMock(return_value=mock_resp)
                     mock_resp.__exit__ = MagicMock(return_value=False)
                     return mock_resp

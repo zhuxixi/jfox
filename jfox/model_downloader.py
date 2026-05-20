@@ -47,7 +47,6 @@ _REQUIRED_FILES = [
     "config.json",
     "tokenizer.json",
     "tokenizer_config.json",
-    "sentence_bert_config.json",
 ]
 
 
@@ -114,7 +113,8 @@ class ModelDownloader:
         if local_path.exists():
             for candidate in _WEIGHT_FILE_CANDIDATES:
                 if (local_path / candidate).exists():
-                    return True
+                    if (local_path / "config.json").exists():
+                        return True
         return False
 
     def _check_hf_hub_cached(self) -> bool:
@@ -207,7 +207,7 @@ class ModelDownloader:
             try:
                 with urlopen(url, timeout=60) as resp:
                     with open(tmp_dest, "wb") as f:
-                        f.write(resp.read())
+                        shutil.copyfileobj(resp, f)
                 if tmp_dest.exists() and tmp_dest.stat().st_size > 0:
                     tmp_dest.replace(dest)
                     logger.info(f"权重文件 {candidate} 下载成功")
@@ -238,7 +238,7 @@ class ModelDownloader:
             try:
                 with urlopen(url, timeout=60) as resp:
                     with open(tmp_dest, "wb") as f:
-                        f.write(resp.read())
+                        shutil.copyfileobj(resp, f)
                 if tmp_dest.exists() and tmp_dest.stat().st_size > 0:
                     tmp_dest.replace(dest)
                 else:
@@ -358,6 +358,11 @@ class ModelDownloader:
     def _cleanup_partial(self, local_path: Path):
         """下载失败时清理残留文件和空目录"""
         try:
+            # 清理已下载的权重文件和必需文件
+            for candidate in _WEIGHT_FILE_CANDIDATES:
+                (local_path / candidate).unlink(missing_ok=True)
+            for fname in _REQUIRED_FILES:
+                (local_path / fname).unlink(missing_ok=True)
             # 清理临时文件
             for tmp in local_path.glob(".*.tmp"):
                 tmp.unlink(missing_ok=True)
