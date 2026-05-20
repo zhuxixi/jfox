@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import urlopen
 
@@ -191,7 +192,11 @@ class ModelDownloader:
         """
         mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR).rstrip("/")
         local_path = self._get_local_model_path()
-        local_path.mkdir(parents=True, exist_ok=True)
+        try:
+            local_path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.error(f"无法创建模型目录 {local_path}: {e}")
+            return False
 
         # 按优先级尝试下载权重文件（先写入临时文件，成功后重命名）
         weight_downloaded = False
@@ -216,7 +221,7 @@ class ModelDownloader:
                 else:
                     logger.warning(f"权重文件 {candidate} 下载后为空，尝试下一个")
                     tmp_dest.unlink(missing_ok=True)
-            except Exception as e:
+            except (OSError, URLError, ValueError) as e:
                 logger.warning(f"权重文件 {candidate} 下载失败 ({e})，尝试下一个")
                 tmp_dest.unlink(missing_ok=True)
                 continue
@@ -244,7 +249,7 @@ class ModelDownloader:
                 else:
                     logger.warning(f"{fname} 下载后为空，跳过")
                     tmp_dest.unlink(missing_ok=True)
-            except Exception as e:
+            except (OSError, URLError, ValueError) as e:
                 logger.warning(f"{fname} 下载失败 ({e})，跳过")
                 tmp_dest.unlink(missing_ok=True)
 
@@ -266,9 +271,13 @@ class ModelDownloader:
 
         mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR).rstrip("/")
         local_path = self._get_local_model_path()
-        local_path.mkdir(parents=True, exist_ok=True)
+        try:
+            local_path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.error(f"无法创建模型目录 {local_path}: {e}")
+            return False
 
-        # 按优先级尝试下载权重文件
+        # 按优先级尝试下载权重文件（先写入临时文件，成功后重命名）
         weight_downloaded = False
         for candidate in _WEIGHT_FILE_CANDIDATES:
             url = _MODELSCOPE_API_TEMPLATE.format(
@@ -277,6 +286,7 @@ class ModelDownloader:
                 file_path=quote(candidate, safe=""),
             )
             dest = local_path / candidate
+            tmp_dest = local_path / f".{candidate}.tmp"
             logger.info(f"试用权重文件 {candidate}...")
             try:
                 result = subprocess.run(
@@ -291,20 +301,23 @@ class ModelDownloader:
                         "--max-time",
                         str(_TIMEOUT_CURL),
                         "-o",
-                        str(dest),
+                        str(tmp_dest),
                         url,
                     ],
                     capture_output=True,
                     text=True,
                     timeout=_TIMEOUT_CURL + 5,
                 )
-                if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+                if result.returncode == 0 and tmp_dest.exists() and tmp_dest.stat().st_size > 0:
+                    tmp_dest.replace(dest)
                     weight_downloaded = True
                     break
                 else:
                     logger.warning(f"{candidate} 下载失败或为空，跳过")
+                    tmp_dest.unlink(missing_ok=True)
             except (OSError, subprocess.TimeoutExpired) as e:
                 logger.warning(f"{candidate} 下载异常: {e}")
+                tmp_dest.unlink(missing_ok=True)
 
         if not weight_downloaded:
             logger.error("所有权重文件候选下载失败，步骤 3 未完成")
@@ -319,6 +332,7 @@ class ModelDownloader:
                 file_path=quote(fname, safe=""),
             )
             dest = local_path / fname
+            tmp_dest = local_path / f".{fname}.tmp"
             logger.info(f"下载 {fname}...")
             try:
                 result = subprocess.run(
@@ -333,19 +347,21 @@ class ModelDownloader:
                         "--max-time",
                         str(_TIMEOUT_CURL),
                         "-o",
-                        str(dest),
+                        str(tmp_dest),
                         url,
                     ],
                     capture_output=True,
                     text=True,
                     timeout=_TIMEOUT_CURL + 5,
                 )
-                if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
-                    pass  # 下载成功
+                if result.returncode == 0 and tmp_dest.exists() and tmp_dest.stat().st_size > 0:
+                    tmp_dest.replace(dest)
                 else:
                     logger.warning(f"{fname} 下载失败或为空，跳过")
+                    tmp_dest.unlink(missing_ok=True)
             except (OSError, subprocess.TimeoutExpired) as e:
                 logger.warning(f"{fname} 下载异常: {e}")
+                tmp_dest.unlink(missing_ok=True)
 
         # 验证 config.json 存在
         if not (local_path / "config.json").exists():

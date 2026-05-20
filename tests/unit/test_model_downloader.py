@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from urllib.error import URLError
 
 import pytest
 
@@ -232,7 +233,7 @@ class TestModelDownloader:
             call_count += 1
             mock_resp = MagicMock()
             if "model.safetensors" in str(url):
-                raise Exception("404")
+                raise URLError("404")
             mock_resp.read.side_effect = [b"fake model", b""]
             mock_resp.__enter__ = MagicMock(return_value=mock_resp)
             mock_resp.__exit__ = MagicMock(return_value=False)
@@ -246,7 +247,7 @@ class TestModelDownloader:
 
     def test_try_modelscope_http_all_fail(self, downloader):
         """所有权重文件下载失败"""
-        with patch("jfox.model_downloader.urlopen", side_effect=Exception("network")):
+        with patch("jfox.model_downloader.urlopen", side_effect=URLError("network")):
             result = downloader._try_modelscope_http()
             assert result is False
 
