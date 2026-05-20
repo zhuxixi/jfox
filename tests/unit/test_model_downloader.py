@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jfox.model_downloader import _HF_MIRROR, ModelDownloader
+from jfox.model_downloader import _DEFAULT_MIRROR, ModelDownloader
 
 
 class TestModelDownloader:
@@ -14,12 +14,25 @@ class TestModelDownloader:
     @pytest.fixture
     def downloader(self, tmp_path):
         """创建带临时缓存的 downloader"""
-        with patch(
-            "jfox.model_downloader.ModelDownloader._get_hf_hub_cache",
-            return_value=tmp_path / "hub",
+        local_path = tmp_path / "local_models" / "sentence-transformers--all-MiniLM-L6-v2"
+        with (
+            patch(
+                "jfox.model_downloader.ModelDownloader._get_hf_hub_cache",
+                return_value=tmp_path / "hub",
+            ),
+            patch.object(
+                ModelDownloader,
+                "_get_local_model_path",
+                return_value=local_path,
+            ),
         ):
             d = ModelDownloader("sentence-transformers/all-MiniLM-L6-v2")
-            return d
+            yield d
+            # 清理本地模型目录，避免影响后续测试
+            if local_path.exists():
+                import shutil
+
+                shutil.rmtree(local_path)
 
     def test_check_cached_when_not_exists(self, downloader):
         """缓存不存在时返回 False"""
@@ -90,7 +103,7 @@ class TestModelDownloader:
 
         with patch("huggingface_hub.hf_hub_download") as mock_download:
             mock_download.side_effect = Exception("network")
-            downloader._try_hf_hub_download(endpoint=_HF_MIRROR)
+            downloader._try_hf_hub_download(endpoint=_DEFAULT_MIRROR)
 
         # 调用后环境变量应被恢复
         assert os.environ.get("HF_ENDPOINT") == env_before
@@ -133,3 +146,17 @@ class TestModelDownloader:
                 result = downloader._try_curl_download()
                 # curl 未实际下载文件，返回 False；TemporaryDirectory 自动清理
                 assert result is False
+
+    def test_check_cached_local_dir_with_weight(self, downloader):
+        """本地目录存在权重文件时返回 True"""
+        local = downloader._get_local_model_path()
+        local.mkdir(parents=True, exist_ok=True)
+        (local / "model.safetensors").write_text("fake")
+        assert downloader._check_cached() is True
+
+    def test_check_cached_local_dir_without_weight(self, downloader):
+        """本地目录存在但无权重文件时返回 False"""
+        local = downloader._get_local_model_path()
+        local.mkdir(parents=True, exist_ok=True)
+        (local / "config.json").write_text("fake")
+        assert downloader._check_cached() is False

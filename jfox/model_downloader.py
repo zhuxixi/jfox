@@ -11,12 +11,20 @@ from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
-# 镜像站地址
-_HF_MIRROR = "https://hf-mirror.com"
-
 # 重试超时（秒）
 _TIMEOUT_HF_HUB = 60
 _TIMEOUT_CURL = 120
+
+# 默认镜像站
+_DEFAULT_MIRROR = "https://modelscope.cn"
+
+# 本地模型目录
+_LOCAL_MODEL_DIR = Path.home() / ".zettelkasten" / ".models"
+
+# ModelScope API 模板
+_MODELSCOPE_API_TEMPLATE = (
+    "{mirror}/api/v1/models/{model_id}/repo" "?FilePath={file_path}&Revision=master"
+)
 
 # 权重文件候选列表（按优先级排序：safetensors 优先，PyTorch 回退）
 _WEIGHT_FILE_CANDIDATES = [
@@ -72,8 +80,8 @@ class ModelDownloader:
         logger.warning("步骤 1 失败，进入步骤 2")
 
         # Step 2: 镜像站下载
-        logger.info(f"步骤 2: 切换 HF_ENDPOINT={_HF_MIRROR} 重试...")
-        if self._try_hf_hub_download(endpoint=_HF_MIRROR):
+        logger.info(f"步骤 2: 切换 HF_ENDPOINT={_DEFAULT_MIRROR} 重试...")
+        if self._try_hf_hub_download(endpoint=_DEFAULT_MIRROR):
             logger.info("步骤 2 成功，模型已缓存")
             return True
         logger.warning("步骤 2 失败，进入步骤 3")
@@ -88,6 +96,19 @@ class ModelDownloader:
         return False
 
     def _check_cached(self) -> bool:
+        """检查模型是否已缓存（HF Hub 缓存或本地目录）"""
+        # 优先检查 HF Hub 缓存（现有用户）
+        if self._check_hf_hub_cached():
+            return True
+        # 再检查本地模型目录（ModelScope 下载）
+        local_path = self._get_local_model_path()
+        if local_path.exists():
+            for candidate in _WEIGHT_FILE_CANDIDATES:
+                if (local_path / candidate).exists():
+                    return True
+        return False
+
+    def _check_hf_hub_cached(self) -> bool:
         """检查模型是否已在 HuggingFace 缓存目录中存在"""
         if not self._model_cache.exists():
             return False
@@ -105,6 +126,11 @@ class ModelDownloader:
             logger.warning(f"无法遍历缓存目录: {snapshots_dir}")
             return False
         return False
+
+    def _get_local_model_path(self) -> Path:
+        """获取本地模型目录路径"""
+        safe_name = self.model_name.replace("/", "--")
+        return _LOCAL_MODEL_DIR / safe_name
 
     def _try_hf_hub_download(self, endpoint: Optional[str] = None) -> bool:
         """
@@ -173,7 +199,7 @@ class ModelDownloader:
 
         # 构建镜像站 URL（对模型名进行 URL 编码，防止特殊字符破坏 URL）
         encoded_name = quote(self.model_name, safe="/")
-        base_url = f"{_HF_MIRROR}/{encoded_name}/resolve/main"
+        base_url = f"{_DEFAULT_MIRROR}/{encoded_name}/resolve/main"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
@@ -274,7 +300,7 @@ class ModelDownloader:
         candidates = " / ".join(_WEIGHT_FILE_CANDIDATES)
         return (
             f"自动下载失败。请手动下载模型:\n"
-            f"  1. 访问 {_HF_MIRROR}/{self.model_name}\n"
+            f"  1. 访问 {_DEFAULT_MIRROR}/{self.model_name}\n"
             f"  2. 下载权重文件（{candidates}）和 config.json\n"
             f"  3. 放置到 {self._model_cache}/snapshots/\n"
             f"  或运行: bash scripts/download-model-intranet.sh"
