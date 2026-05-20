@@ -212,26 +212,29 @@ class TestStartDaemonBlocking:
 class TestCheckModelCacheLocalDir:
     """测试本地模型目录预检"""
 
-    def test_local_dir_with_weight(self):
-        """本地目录存在权重文件时 needs_download=False"""
+    def test_local_dir_with_weight(self, tmp_path):
+        """本地目录存在权重文件和 config.json 时 needs_download=False"""
         from jfox.daemon.process import _check_model_cache
         from jfox.model_downloader import _LOCAL_MODEL_DIR
 
         local_path = _LOCAL_MODEL_DIR / "sentence-transformers--all-MiniLM-L6-v2"
         local_path.mkdir(parents=True, exist_ok=True)
         (local_path / "model.safetensors").write_text("fake")
+        (local_path / "config.json").write_text("{}")
 
         try:
             with patch("jfox.config.config") as mock_cfg:
                 mock_cfg.embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
-                result = _check_model_cache()
-                assert result["needs_download"] is False
-                assert result["model_name"] == "sentence-transformers/all-MiniLM-L6-v2"
+                # 隔离 HF Hub 缓存，确保测试走本地目录分支
+                with patch.dict("os.environ", {"HF_HOME": str(tmp_path / "empty_hf_home")}):
+                    result = _check_model_cache()
+                    assert result["needs_download"] is False
+                    assert result["model_name"] == "sentence-transformers/all-MiniLM-L6-v2"
         finally:
             import shutil
 
             if local_path.exists():
-                shutil.rmtree(local_path.parent, ignore_errors=True)
+                shutil.rmtree(local_path, ignore_errors=True)
 
     def test_local_dir_without_weight(self, tmp_path):
         """本地目录存在但无权重文件时，HF Hub 也无缓存，needs_download=True"""
@@ -253,4 +256,4 @@ class TestCheckModelCacheLocalDir:
             import shutil
 
             if local_path.exists():
-                shutil.rmtree(local_path.parent, ignore_errors=True)
+                shutil.rmtree(local_path, ignore_errors=True)
