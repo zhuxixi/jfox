@@ -1,6 +1,5 @@
 """ModelDownloader 单元测试"""
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -65,7 +64,7 @@ class TestModelDownloader:
 
     def test_ensure_cached_step1_succeeds(self, downloader):
         """Step 1 成功，后续步骤不执行"""
-        with patch.object(downloader, "_try_hf_hub_download", side_effect=[True, False]) as mock_hf:
+        with patch.object(downloader, "_try_hf_hub_download", return_value=True) as mock_hf:
             with patch.object(downloader, "_try_curl_download") as mock_curl:
                 result = downloader.ensure_cached()
                 assert result is True
@@ -96,17 +95,6 @@ class TestModelDownloader:
             with patch.object(downloader, "_try_curl_download", return_value=False):
                 result = downloader.ensure_cached()
                 assert result is False
-
-    def test_try_hf_hub_download_sets_env(self, downloader):
-        """验证镜像模式设置了 HF_ENDPOINT 环境变量"""
-        env_before = os.environ.get("HF_ENDPOINT")
-
-        with patch("huggingface_hub.hf_hub_download") as mock_download:
-            mock_download.side_effect = Exception("network")
-            downloader._try_hf_hub_download(endpoint=_DEFAULT_MIRROR)
-
-        # 调用后环境变量应被恢复
-        assert os.environ.get("HF_ENDPOINT") == env_before
 
     def test_try_curl_download_no_curl(self, downloader):
         """curl 不存在时返回 False"""

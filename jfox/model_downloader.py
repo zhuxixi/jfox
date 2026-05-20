@@ -79,9 +79,9 @@ class ModelDownloader:
             return True
         logger.warning("步骤 1 失败，进入步骤 2")
 
-        # Step 2: 镜像站下载
-        logger.info(f"步骤 2: 切换 HF_ENDPOINT={_DEFAULT_MIRROR} 重试...")
-        if self._try_hf_hub_download(endpoint=_DEFAULT_MIRROR):
+        # Step 2: 重试 huggingface_hub 下载
+        logger.info("步骤 2: 重试 huggingface_hub 下载...")
+        if self._try_hf_hub_download():
             logger.info("步骤 2 成功，模型已缓存")
             return True
         logger.warning("步骤 2 失败，进入步骤 3")
@@ -132,18 +132,12 @@ class ModelDownloader:
         safe_name = self.model_name.replace("/", "--")
         return _LOCAL_MODEL_DIR / safe_name
 
-    def _try_hf_hub_download(self, endpoint: Optional[str] = None) -> bool:
+    def _try_hf_hub_download(self) -> bool:
         """
-        使用 huggingface_hub 下载模型。
-        endpoint=None 为正常模式；endpoint 为镜像站地址。
+        使用 huggingface_hub 直接下载模型。
         """
-        env_backup = None
         try:
             from huggingface_hub import hf_hub_download
-
-            if endpoint:
-                env_backup = os.environ.get("HF_ENDPOINT")
-                os.environ["HF_ENDPOINT"] = endpoint
 
             # 按优先级尝试下载权重文件
             weight_downloaded = False
@@ -182,11 +176,6 @@ class ModelDownloader:
         except Exception as e:
             logger.warning(f"huggingface_hub 下载失败: {e}")
             return False
-        finally:
-            if env_backup is not None:
-                os.environ["HF_ENDPOINT"] = env_backup
-            elif endpoint and "HF_ENDPOINT" in os.environ:
-                del os.environ["HF_ENDPOINT"]
 
     def _try_curl_download(self) -> bool:
         """
