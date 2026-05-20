@@ -155,7 +155,7 @@ def _check_model_cache() -> dict:
             has_weight = any(
                 (local_path / candidate).exists() for candidate in _WEIGHT_FILE_CANDIDATES
             )
-            if has_weight:
+            if has_weight and (local_path / "config.json").exists():
                 size_hint = "2GB" if "bge-m3" in model_name else "90MB"
                 return {
                     "needs_download": False,
