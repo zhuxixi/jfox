@@ -4,10 +4,8 @@ import logging
 import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
 from urllib.request import urlretrieve
 
 logger = logging.getLogger(__name__)
@@ -231,110 +229,95 @@ class ModelDownloader:
 
     def _try_curl_download(self) -> bool:
         """
-        使用 curl 子进程下载模型文件到 HF 缓存目录。
-        按 HF 缓存目录结构放置，使 sentence-transformers 认为"模型已缓存"。
+        使用 curl 子进程从 ModelScope API 下载模型文件到本地目录。
         """
         if not shutil.which("curl"):
             logger.warning("系统未安装 curl，跳过步骤 3")
             return False
 
-        # 构建镜像站 URL（对模型名进行 URL 编码，防止特殊字符破坏 URL）
-        encoded_name = quote(self.model_name, safe="/")
-        base_url = f"{_DEFAULT_MIRROR}/{encoded_name}/resolve/main"
+        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR)
+        local_path = self._get_local_model_path()
+        local_path.mkdir(parents=True, exist_ok=True)
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            downloaded = []
+        # 按优先级尝试下载权重文件
+        weight_downloaded = False
+        for candidate in _WEIGHT_FILE_CANDIDATES:
+            url = _MODELSCOPE_API_TEMPLATE.format(
+                mirror=mirror,
+                model_id=self.model_name,
+                file_path=candidate,
+            )
+            dest = local_path / candidate
+            logger.info(f"试用权重文件 {candidate}...")
+            try:
+                result = subprocess.run(
+                    [
+                        "curl",
+                        "-L",
+                        "-f",
+                        "-s",
+                        "-S",
+                        "--connect-timeout",
+                        "10",
+                        "--max-time",
+                        str(_TIMEOUT_CURL),
+                        "-o",
+                        str(dest),
+                        url,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=_TIMEOUT_CURL + 5,
+                )
+                if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+                    weight_downloaded = True
+                    break
+                else:
+                    logger.debug(f"{candidate} 下载失败或为空，跳过")
+            except (OSError, subprocess.TimeoutExpired) as e:
+                logger.debug(f"{candidate} 下载异常: {e}")
 
-            # 按优先级尝试下载权重文件
-            weight_downloaded = False
-            for candidate in _WEIGHT_FILE_CANDIDATES:
-                url = f"{base_url}/{candidate}"
-                dest = tmp_path / candidate
-                logger.info(f"试用权重文件 {candidate}...")
-                try:
-                    result = subprocess.run(
-                        [
-                            "curl",
-                            "-L",
-                            "-f",
-                            "-s",
-                            "-S",
-                            "--connect-timeout",
-                            "10",
-                            "--max-time",
-                            str(_TIMEOUT_CURL),
-                            "-o",
-                            str(dest),
-                            url,
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=_TIMEOUT_CURL + 5,
-                    )
-                    if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
-                        downloaded.append(candidate)
-                        weight_downloaded = True
-                        break
-                    else:
-                        logger.debug(f"{candidate} 下载失败或为空，跳过")
-                except (OSError, subprocess.TimeoutExpired) as e:
-                    logger.debug(f"{candidate} 下载异常: {e}")
+        if not weight_downloaded:
+            logger.error("所有权重文件候选下载失败，步骤 3 未完成")
+            return False
 
-            if not weight_downloaded:
-                logger.error("所有权重文件候选下载失败，步骤 3 未完成")
-                return False
+        # 下载非权重必需文件
+        for fname in _REQUIRED_FILES:
+            url = _MODELSCOPE_API_TEMPLATE.format(
+                mirror=mirror,
+                model_id=self.model_name,
+                file_path=fname,
+            )
+            dest = local_path / fname
+            logger.info(f"下载 {fname}...")
+            try:
+                result = subprocess.run(
+                    [
+                        "curl",
+                        "-L",
+                        "-f",
+                        "-s",
+                        "-S",
+                        "--connect-timeout",
+                        "10",
+                        "--max-time",
+                        str(_TIMEOUT_CURL),
+                        "-o",
+                        str(dest),
+                        url,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=_TIMEOUT_CURL + 5,
+                )
+                if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
+                    pass  # 下载成功
+                else:
+                    logger.debug(f"{fname} 下载失败或为空，跳过")
+            except (OSError, subprocess.TimeoutExpired) as e:
+                logger.debug(f"{fname} 下载异常: {e}")
 
-            # 下载非权重必需文件
-            for fname in _REQUIRED_FILES:
-                url = f"{base_url}/{fname}"
-                dest = tmp_path / fname
-                logger.info(f"下载 {fname}...")
-                try:
-                    result = subprocess.run(
-                        [
-                            "curl",
-                            "-L",
-                            "-f",
-                            "-s",
-                            "-S",
-                            "--connect-timeout",
-                            "10",
-                            "--max-time",
-                            str(_TIMEOUT_CURL),
-                            "-o",
-                            str(dest),
-                            url,
-                        ],
-                        capture_output=True,
-                        text=True,
-                        timeout=_TIMEOUT_CURL + 5,
-                    )
-                    if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
-                        downloaded.append(fname)
-                    else:
-                        logger.debug(f"{fname} 下载失败或为空，跳过")
-                except (OSError, subprocess.TimeoutExpired) as e:
-                    logger.debug(f"{fname} 下载异常: {e}")
-
-            # 按 HF 缓存目录结构放置
-            import hashlib
-
-            commit_hash = hashlib.sha256(self.model_name.encode()).hexdigest()[:12]
-            snapshot_dir = self._model_cache / "snapshots" / commit_hash
-            snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-            for fname in downloaded:
-                src = tmp_path / fname
-                dst = snapshot_dir / fname
-                shutil.copy2(str(src), str(dst))
-
-            # 创建 refs 指向 snapshot
-            refs_dir = self._model_cache / "refs"
-            refs_dir.mkdir(parents=True, exist_ok=True)
-            (refs_dir / "main").write_text(commit_hash, encoding="utf-8")
-
-            return True
+        return True
 
     def get_manual_instructions(self) -> str:
         """获取手动下载说明"""

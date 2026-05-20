@@ -135,13 +135,59 @@ class TestModelDownloader:
             result = downloader._try_hf_hub_download()
             assert result is True
 
+    def test_try_curl_download_success(self, downloader):
+        """curl 下载成功，文件写入本地目录"""
+        local_path = downloader._get_local_model_path()
+
+        def subprocess_side_effect(*args, **kwargs):
+            cmd = args[0]
+            outfile = cmd[cmd.index("-o") + 1]
+            Path(outfile).write_text("fake model")
+            return MagicMock(returncode=0)
+
+        with patch("jfox.model_downloader.shutil.which", return_value="curl"):
+            with patch(
+                "jfox.model_downloader.subprocess.run",
+                side_effect=subprocess_side_effect,
+            ) as mock_run:
+                result = downloader._try_curl_download()
+                assert result is True
+                assert (local_path / "model.safetensors").exists()
+                # 验证 curl 调用了 ModelScope API URL
+                calls = mock_run.call_args_list
+                assert len(calls) >= 1
+                cmd = calls[0][0][0]
+                url = cmd[-1]
+                assert "modelscope.cn" in url or "api/v1/models" in url
+
+    def test_try_curl_download_custom_mirror(self, downloader):
+        """JFOX_MODEL_MIRROR 环境变量生效"""
+        with patch.dict(os.environ, {"JFOX_MODEL_MIRROR": "https://custom.mirror.com"}):
+
+            def subprocess_side_effect(*args, **kwargs):
+                cmd = args[0]
+                outfile = cmd[cmd.index("-o") + 1]
+                Path(outfile).write_text("fake model")
+                return MagicMock(returncode=0)
+
+            with patch("jfox.model_downloader.shutil.which", return_value="curl"):
+                with patch(
+                    "jfox.model_downloader.subprocess.run",
+                    side_effect=subprocess_side_effect,
+                ) as mock_run:
+                    result = downloader._try_curl_download()
+                    assert result is True
+                    calls = mock_run.call_args_list
+                    url = calls[0][0][0][-1]
+                    assert "custom.mirror.com" in url
+
     def test_cleanup_partial(self, downloader):
-        """验证部分下载残留被清理（通过 TemporaryDirectory 自动实现）"""
+        """curl 返回成功码但未写入文件，视为失败"""
         with patch("jfox.model_downloader.shutil.which", return_value="curl"):
             with patch("jfox.model_downloader.subprocess.run") as mock_run:
                 mock_run.return_value = MagicMock(returncode=0)
                 result = downloader._try_curl_download()
-                # curl 未实际下载文件，返回 False；TemporaryDirectory 自动清理
+                # subprocess 返回 0 但文件不存在，返回 False
                 assert result is False
 
     def test_check_cached_local_dir_with_weight(self, downloader):
