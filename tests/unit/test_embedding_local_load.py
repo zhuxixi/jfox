@@ -17,24 +17,17 @@ class TestEmbeddingLocalLoad:
 
     def test_get_local_model_path_when_exists(self, backend, tmp_path):
         """本地目录存在时返回路径"""
-        fake_home = tmp_path / "home"
-        fake_home.mkdir()
-        fake_local = (
-            fake_home / ".zettelkasten" / ".models" / "sentence-transformers--all-MiniLM-L6-v2"
-        )
+        fake_local = tmp_path / ".models" / "sentence-transformers--all-MiniLM-L6-v2"
         fake_local.mkdir(parents=True)
 
-        with patch("jfox.embedding_backend.Path.home", return_value=fake_home):
+        with patch("jfox.model_downloader._LOCAL_MODEL_DIR", tmp_path / ".models"):
             result = backend._get_local_model_path()
             assert result is not None
             assert "all-MiniLM-L6-v2" in str(result)
 
     def test_get_local_model_path_when_not_exists(self, backend, tmp_path):
         """本地目录不存在时返回 None"""
-        fake_home = tmp_path / "no_models_home"
-        fake_home.mkdir()
-
-        with patch("jfox.embedding_backend.Path.home", return_value=fake_home):
+        with patch("jfox.model_downloader._LOCAL_MODEL_DIR", tmp_path / ".models"):
             result = backend._get_local_model_path()
             assert result is None
 

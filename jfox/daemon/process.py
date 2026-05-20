@@ -143,25 +143,31 @@ def _check_model_cache() -> dict:
                 model_name = _CPU_DEFAULT_MODEL
 
         # 检查本地模型目录
-        from ..model_downloader import _LOCAL_MODEL_DIR, _WEIGHT_FILE_CANDIDATES
+        from ..model_downloader import (
+            _LOCAL_MODEL_DIR,
+            _WEIGHT_FILE_CANDIDATES,
+            _safe_model_name,
+        )
 
-        safe_name = model_name.replace("/", "--")
+        safe_name = _safe_model_name(model_name)
         local_path = _LOCAL_MODEL_DIR / safe_name
         if local_path.exists():
             has_weight = any(
                 (local_path / candidate).exists() for candidate in _WEIGHT_FILE_CANDIDATES
             )
-            size_hint = "2GB" if "bge-m3" in model_name else "90MB"
-            return {
-                "needs_download": not has_weight,
-                "model_name": model_name,
-                "size_hint": size_hint,
-            }
+            if has_weight:
+                size_hint = "2GB" if "bge-m3" in model_name else "90MB"
+                return {
+                    "needs_download": False,
+                    "model_name": model_name,
+                    "size_hint": size_hint,
+                }
+            # 本地目录存在但无有效权重，继续检查 HF Hub 缓存
 
         # 检查 HuggingFace 缓存
         hf_home = os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
         hub_cache = os.environ.get("HUGGINGFACE_HUB_CACHE", str(Path(hf_home) / "hub"))
-        model_cache_dir = Path(hub_cache) / f"models--{model_name.replace('/', '--')}"
+        model_cache_dir = Path(hub_cache) / f"models--{safe_name}"
 
         size_hint = "2GB" if "bge-m3" in model_name else "90MB"
 

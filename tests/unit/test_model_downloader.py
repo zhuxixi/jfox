@@ -206,12 +206,16 @@ class TestModelDownloader:
 
     def test_try_modelscope_http_success(self, downloader):
         """ModelScope HTTP 下载成功"""
-        with patch("jfox.model_downloader.urlretrieve") as mock_retrieve:
+        with patch("jfox.model_downloader.urlopen") as mock_open:
 
-            def urlretrieve_side_effect(url, dest):
-                Path(dest).write_text("fake model")
+            def urlopen_side_effect(url, timeout=None):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b"fake model"
+                mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+                mock_resp.__exit__ = MagicMock(return_value=False)
+                return mock_resp
 
-            mock_retrieve.side_effect = urlretrieve_side_effect
+            mock_open.side_effect = urlopen_side_effect
 
             result = downloader._try_modelscope_http()
             assert result is True
@@ -222,35 +226,43 @@ class TestModelDownloader:
         """model.safetensors 不存在时回退到 pytorch_model.bin"""
         call_count = 0
 
-        def urlretrieve_side_effect(url, dest):
+        def urlopen_side_effect(url, timeout=None):
             nonlocal call_count
             call_count += 1
-            if "model.safetensors" in url:
+            mock_resp = MagicMock()
+            if "model.safetensors" in str(url):
                 raise Exception("404")
-            Path(dest).write_text("fake model")
+            mock_resp.read.return_value = b"fake model"
+            mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+            mock_resp.__exit__ = MagicMock(return_value=False)
+            return mock_resp
 
-        with patch("jfox.model_downloader.urlretrieve") as mock_retrieve:
-            mock_retrieve.side_effect = urlretrieve_side_effect
+        with patch("jfox.model_downloader.urlopen") as mock_open:
+            mock_open.side_effect = urlopen_side_effect
             result = downloader._try_modelscope_http()
             assert result is True
             assert call_count >= 1
 
     def test_try_modelscope_http_all_fail(self, downloader):
         """所有权重文件下载失败"""
-        with patch("jfox.model_downloader.urlretrieve", side_effect=Exception("network")):
+        with patch("jfox.model_downloader.urlopen", side_effect=Exception("network")):
             result = downloader._try_modelscope_http()
             assert result is False
 
     def test_try_modelscope_http_custom_mirror(self, downloader):
         """JFOX_MODEL_MIRROR 环境变量生效"""
         with patch.dict(os.environ, {"JFOX_MODEL_MIRROR": "https://custom.mirror.com"}):
-            with patch("jfox.model_downloader.urlretrieve") as mock_retrieve:
+            with patch("jfox.model_downloader.urlopen") as mock_open:
 
-                def urlretrieve_side_effect(url, dest):
-                    assert "custom.mirror.com" in url
-                    Path(dest).write_text("fake")
+                def urlopen_side_effect(url, timeout=None):
+                    assert "custom.mirror.com" in str(url)
+                    mock_resp = MagicMock()
+                    mock_resp.read.return_value = b"fake"
+                    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+                    mock_resp.__exit__ = MagicMock(return_value=False)
+                    return mock_resp
 
-                mock_retrieve.side_effect = urlretrieve_side_effect
+                mock_open.side_effect = urlopen_side_effect
                 result = downloader._try_modelscope_http()
                 assert result is True
 

@@ -233,8 +233,8 @@ class TestCheckModelCacheLocalDir:
             if local_path.exists():
                 shutil.rmtree(local_path.parent, ignore_errors=True)
 
-    def test_local_dir_without_weight(self):
-        """本地目录存在但无权重文件时 needs_download=True"""
+    def test_local_dir_without_weight(self, tmp_path):
+        """本地目录存在但无权重文件时，HF Hub 也无缓存，needs_download=True"""
         from jfox.daemon.process import _check_model_cache
         from jfox.model_downloader import _LOCAL_MODEL_DIR
 
@@ -245,8 +245,10 @@ class TestCheckModelCacheLocalDir:
         try:
             with patch("jfox.config.config") as mock_cfg:
                 mock_cfg.embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
-                result = _check_model_cache()
-                assert result["needs_download"] is True
+                # 隔离 HF Hub 缓存，避免测试机已有缓存导致结果不确定
+                with patch.dict("os.environ", {"HF_HOME": str(tmp_path / "empty_hf_home")}):
+                    result = _check_model_cache()
+                    assert result["needs_download"] is True
         finally:
             import shutil
 

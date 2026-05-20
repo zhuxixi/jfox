@@ -5,7 +5,8 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from urllib.request import urlretrieve
+from urllib.parse import quote
+from urllib.request import urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,17 @@ _WEIGHT_FILE_CANDIDATES = [
     "pytorch_model.bin",
 ]
 
+
+def _safe_model_name(model_name: str) -> str:
+    """将模型名转换为安全的目录名，防止路径遍历"""
+    return model_name.replace("/", "--").replace("\\", "--").replace("..", "--")
+
+
+def _get_local_model_path_for_name(model_name: str) -> Path:
+    """获取指定模型名的本地目录路径"""
+    return _LOCAL_MODEL_DIR / _safe_model_name(model_name)
+
+
 # 非权重必需文件列表
 _REQUIRED_FILES = [
     "config.json",
@@ -45,8 +57,7 @@ class ModelDownloader:
     def __init__(self, model_name: str):
         self.model_name = model_name
         self._hf_hub_cache = self._get_hf_hub_cache()
-        # 同时替换正反斜杠，防止路径遍历
-        safe_name = model_name.replace("/", "--").replace("\\", "--")
+        safe_name = _safe_model_name(model_name)
         self._model_cache = self._hf_hub_cache / f"models--{safe_name}"
 
     def _get_hf_hub_cache(self) -> Path:
@@ -127,8 +138,7 @@ class ModelDownloader:
 
     def _get_local_model_path(self) -> Path:
         """获取本地模型目录路径"""
-        safe_name = self.model_name.replace("/", "--")
-        return _LOCAL_MODEL_DIR / safe_name
+        return _get_local_model_path_for_name(self.model_name)
 
     def _try_hf_hub_download(self) -> bool:
         """
@@ -179,50 +189,70 @@ class ModelDownloader:
         """
         使用 urllib.request 从 ModelScope HTTP 下载模型文件到本地目录。
         """
-        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR)
+        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR).rstrip("/")
         local_path = self._get_local_model_path()
         local_path.mkdir(parents=True, exist_ok=True)
 
-        # 按优先级尝试下载权重文件
+        # 按优先级尝试下载权重文件（先写入临时文件，成功后重命名）
         weight_downloaded = False
         for candidate in _WEIGHT_FILE_CANDIDATES:
             url = _MODELSCOPE_API_TEMPLATE.format(
                 mirror=mirror,
-                model_id=self.model_name,
-                file_path=candidate,
+                model_id=quote(self.model_name, safe=""),
+                file_path=quote(candidate, safe=""),
             )
             dest = local_path / candidate
+            tmp_dest = local_path / f".{candidate}.tmp"
             logger.info(f"试用权重文件 {candidate}...")
             try:
-                urlretrieve(url, str(dest))
-                if dest.exists() and dest.stat().st_size > 0:
+                with urlopen(url, timeout=60) as resp:
+                    with open(tmp_dest, "wb") as f:
+                        f.write(resp.read())
+                if tmp_dest.exists() and tmp_dest.stat().st_size > 0:
+                    tmp_dest.replace(dest)
                     logger.info(f"权重文件 {candidate} 下载成功")
                     weight_downloaded = True
                     break
                 else:
                     logger.warning(f"权重文件 {candidate} 下载后为空，尝试下一个")
+                    tmp_dest.unlink(missing_ok=True)
             except Exception as e:
                 logger.warning(f"权重文件 {candidate} 下载失败 ({e})，尝试下一个")
+                tmp_dest.unlink(missing_ok=True)
                 continue
 
         if not weight_downloaded:
             logger.warning("所有权重文件候选均下载失败")
+            self._cleanup_partial(local_path)
             return False
 
-        # 下载其他必需文件（不失败）
+        # 下载其他必需文件（config.json 必须成功）
         for fname in _REQUIRED_FILES:
             url = _MODELSCOPE_API_TEMPLATE.format(
                 mirror=mirror,
-                model_id=self.model_name,
-                file_path=fname,
+                model_id=quote(self.model_name, safe=""),
+                file_path=quote(fname, safe=""),
             )
             dest = local_path / fname
+            tmp_dest = local_path / f".{fname}.tmp"
             try:
-                urlretrieve(url, str(dest))
-                if not (dest.exists() and dest.stat().st_size > 0):
-                    logger.debug(f"{fname} 下载后为空，跳过")
+                with urlopen(url, timeout=60) as resp:
+                    with open(tmp_dest, "wb") as f:
+                        f.write(resp.read())
+                if tmp_dest.exists() and tmp_dest.stat().st_size > 0:
+                    tmp_dest.replace(dest)
+                else:
+                    logger.warning(f"{fname} 下载后为空，跳过")
+                    tmp_dest.unlink(missing_ok=True)
             except Exception as e:
                 logger.warning(f"{fname} 下载失败 ({e})，跳过")
+                tmp_dest.unlink(missing_ok=True)
+
+        # 验证 config.json 存在（SentenceTransformer 必需）
+        if not (local_path / "config.json").exists():
+            logger.error("config.json 下载失败，模型不完整")
+            self._cleanup_partial(local_path)
+            return False
 
         return True
 
@@ -234,7 +264,7 @@ class ModelDownloader:
             logger.warning("系统未安装 curl，跳过步骤 3")
             return False
 
-        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR)
+        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR).rstrip("/")
         local_path = self._get_local_model_path()
         local_path.mkdir(parents=True, exist_ok=True)
 
@@ -243,8 +273,8 @@ class ModelDownloader:
         for candidate in _WEIGHT_FILE_CANDIDATES:
             url = _MODELSCOPE_API_TEMPLATE.format(
                 mirror=mirror,
-                model_id=self.model_name,
-                file_path=candidate,
+                model_id=quote(self.model_name, safe=""),
+                file_path=quote(candidate, safe=""),
             )
             dest = local_path / candidate
             logger.info(f"试用权重文件 {candidate}...")
@@ -278,14 +308,15 @@ class ModelDownloader:
 
         if not weight_downloaded:
             logger.error("所有权重文件候选下载失败，步骤 3 未完成")
+            self._cleanup_partial(local_path)
             return False
 
         # 下载非权重必需文件
         for fname in _REQUIRED_FILES:
             url = _MODELSCOPE_API_TEMPLATE.format(
                 mirror=mirror,
-                model_id=self.model_name,
-                file_path=fname,
+                model_id=quote(self.model_name, safe=""),
+                file_path=quote(fname, safe=""),
             )
             dest = local_path / fname
             logger.info(f"下载 {fname}...")
@@ -316,11 +347,29 @@ class ModelDownloader:
             except (OSError, subprocess.TimeoutExpired) as e:
                 logger.warning(f"{fname} 下载异常: {e}")
 
+        # 验证 config.json 存在
+        if not (local_path / "config.json").exists():
+            logger.error("config.json 下载失败，模型不完整")
+            self._cleanup_partial(local_path)
+            return False
+
         return True
+
+    def _cleanup_partial(self, local_path: Path):
+        """下载失败时清理残留文件和空目录"""
+        try:
+            # 清理临时文件
+            for tmp in local_path.glob(".*.tmp"):
+                tmp.unlink(missing_ok=True)
+            # 如果目录为空则删除
+            if local_path.exists() and not any(local_path.iterdir()):
+                local_path.rmdir()
+        except OSError:
+            pass
 
     def get_manual_instructions(self) -> str:
         """获取手动下载说明"""
-        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR)
+        mirror = os.environ.get("JFOX_MODEL_MIRROR", _DEFAULT_MIRROR).rstrip("/")
         candidates = " / ".join(_WEIGHT_FILE_CANDIDATES)
         local_path = self._get_local_model_path()
         return (

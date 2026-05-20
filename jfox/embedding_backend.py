@@ -82,8 +82,9 @@ class EmbeddingBackend:
         """获取本地模型目录路径"""
         if not self.model_name or self.model_name == "auto":
             return None
-        safe_name = self.model_name.replace("/", "--")
-        local = Path.home() / ".zettelkasten" / ".models" / safe_name
+        from .model_downloader import _get_local_model_path_for_name
+
+        local = _get_local_model_path_for_name(self.model_name)
         return local if local.exists() else None
 
     def load(self):
