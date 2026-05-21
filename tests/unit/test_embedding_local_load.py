@@ -33,6 +33,35 @@ class TestEmbeddingLocalLoad:
             result = backend._get_local_model_path()
             assert result is None
 
+    def test_get_local_model_path_empty_dir(self, backend, tmp_path):
+        """本地目录存在但为空时返回 None"""
+        fake_local = tmp_path / ".models" / "sentence-transformers--all-MiniLM-L6-v2"
+        fake_local.mkdir(parents=True)
+
+        with patch("jfox.model_downloader._LOCAL_MODEL_DIR", tmp_path / ".models"):
+            result = backend._get_local_model_path()
+            assert result is None
+
+    def test_get_local_model_path_config_only(self, backend, tmp_path):
+        """仅有 config.json 无权重文件时返回 None"""
+        fake_local = tmp_path / ".models" / "sentence-transformers--all-MiniLM-L6-v2"
+        fake_local.mkdir(parents=True)
+        (fake_local / "config.json").write_text("{}")
+
+        with patch("jfox.model_downloader._LOCAL_MODEL_DIR", tmp_path / ".models"):
+            result = backend._get_local_model_path()
+            assert result is None
+
+    def test_get_local_model_path_weight_only(self, backend, tmp_path):
+        """仅有权重文件无 config.json 时返回 None"""
+        fake_local = tmp_path / ".models" / "sentence-transformers--all-MiniLM-L6-v2"
+        fake_local.mkdir(parents=True)
+        (fake_local / "model.safetensors").write_text("fake")
+
+        with patch("jfox.model_downloader._LOCAL_MODEL_DIR", tmp_path / ".models"):
+            result = backend._get_local_model_path()
+            assert result is None
+
     def test_load_uses_local_path_when_available(self, backend):
         """本地目录存在时优先使用本地路径加载"""
         mock_model = MagicMock()
