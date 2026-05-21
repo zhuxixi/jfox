@@ -16,9 +16,11 @@ class TestEmbeddingLocalLoad:
         return EmbeddingBackend(device="cpu", model_name="sentence-transformers/all-MiniLM-L6-v2")
 
     def test_get_local_model_path_when_exists(self, backend, tmp_path):
-        """本地目录存在时返回路径"""
+        """本地目录存在有效模型文件时返回路径"""
         fake_local = tmp_path / ".models" / "sentence-transformers--all-MiniLM-L6-v2"
         fake_local.mkdir(parents=True)
+        (fake_local / "config.json").write_text("{}")
+        (fake_local / "model.safetensors").write_text("fake")
 
         with patch("jfox.model_downloader._LOCAL_MODEL_DIR", tmp_path / ".models"):
             result = backend._get_local_model_path()
