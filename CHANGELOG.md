@@ -2,6 +2,27 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.9.0] - 2026-05-22
+
+### Features
+- replace hf-mirror.com with ModelScope for model download
+- auto-summary daemon for Claude Code sessions
+
+### Fixes
+- Last Used 始终显示 Never，日常操作未更新 last_used (#222)
+- **plugin**: remove commands field, let Claude Code auto-discover (#214)
+- **plugin**: correct commands paths in plugin.json (#213)
+
+### Changes
+- ignore pr-monitor state and tmp issue body files
+- add superpowers plans and spec for recent work
+- document Claude Code plugin structure in CLAUDE.md (#220)
+- **plugin**: rename kb skill to manage and dedup CRUD docs (#218)
+- **plugin**: restructure plugin source for marketplace best practices (#217)
+- add Claude Code plugin guide and design docs (#215)
+
+[0.9.0]: https://github.com/zhuxixi/jfox/compare/v0.8.0...v0.9.0
+
 ## [0.8.0] - 2026-05-10
 
 ### Features
