@@ -324,6 +324,35 @@ jfox query "Luhmann's methodology" --depth 2
 | `jfox daemon stop` | Stop embedding daemon |
 | `jfox daemon status` | Show daemon PID, port, model info |
 
+### Auto-Summary
+
+Auto-summary runs inside the daemon to automatically archive Claude Code sessions into your knowledge base. It scans `~/.claude/projects/` for finished sessions, generates a structured summary via `claude -p`, and writes it as a `session` type note.
+
+A session is considered "finished" when its file has not been modified for `idle_threshold` minutes (default: 30).
+
+| Command | Description |
+|---------|-------------|
+| `jfox auto-summary enable` | Enable auto-summary in daemon |
+| `jfox auto-summary disable` | Disable auto-summary |
+| `jfox auto-summary status` | Show config and ledger statistics |
+| `jfox auto-summary scan` | List sessions that would be processed |
+| `jfox auto-summary run` | Manually trigger a summary round |
+| `jfox auto-summary run --dry-run` | Preview without writing |
+
+**Key options:**
+- `--interval` — Scan interval in minutes (default: 30)
+- `--idle-threshold` — Minutes of inactivity to consider a session finished (default: 30)
+- `--kb` — Target knowledge base for saved notes
+
+**How it works:**
+
+- Uses `claude -p` (non-interactive mode) to generate summaries from stdin/stdout
+- Runs with `--permission-mode bypassPermissions` so the daemon never blocks on permission prompts
+- Tracks processed sessions in `~/.zk_auto_summary_state.json` to avoid duplicates; transient failures are retried up to 3 times before giving up
+- A session is eligible only after its file has been idle for `idle_threshold` minutes (no new content)
+
+> **Privacy note:** Auto-summary sends session text to Anthropic API via `claude -p` to generate summaries. Only session content is transmitted.
+
 ### Global Options
 
 | Option | Description |
