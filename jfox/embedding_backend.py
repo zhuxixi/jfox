@@ -2,6 +2,7 @@
 
 import logging
 import os
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -77,6 +78,21 @@ class EmbeddingBackend:
         self._use_daemon = False
         return False
 
+    def _get_local_model_path(self) -> Optional[Path]:
+        """获取本地模型目录路径（验证目录内包含有效模型文件）"""
+        if not self.model_name or self.model_name == "auto":
+            return None
+        from .model_downloader import _WEIGHT_FILE_CANDIDATES, _get_local_model_path_for_name
+
+        local = _get_local_model_path_for_name(self.model_name)
+        if not local.exists():
+            return None
+
+        # 验证目录包含有效模型文件（config.json + 至少一个权重文件）
+        has_config = (local / "config.json").exists()
+        has_weight = any((local / candidate).exists() for candidate in _WEIGHT_FILE_CANDIDATES)
+        return local if (has_config and has_weight) else None
+
     def load(self):
         """加载模型（支持 device 自动检测和 GPU 加速）"""
         if self.model is not None:
@@ -94,7 +110,12 @@ class EmbeddingBackend:
         try:
             from sentence_transformers import SentenceTransformer
 
-            self.model = SentenceTransformer(self.model_name, device=self._resolved_device)
+            # 优先从本地目录加载
+            local_path = self._get_local_model_path()
+            if local_path is not None:
+                self.model = SentenceTransformer(str(local_path), device=self._resolved_device)
+            else:
+                self.model = SentenceTransformer(self.model_name, device=self._resolved_device)
             self._resolved_dim = self.model.get_sentence_embedding_dimension()
             logger.info(
                 f"模型已加载: {self.model_name} "

@@ -142,10 +142,32 @@ def _check_model_cache() -> dict:
             except (ImportError, OSError):
                 model_name = _CPU_DEFAULT_MODEL
 
+        # 检查本地模型目录
+        from ..model_downloader import (
+            _LOCAL_MODEL_DIR,
+            _WEIGHT_FILE_CANDIDATES,
+            _safe_model_name,
+        )
+
+        safe_name = _safe_model_name(model_name)
+        local_path = _LOCAL_MODEL_DIR / safe_name
+        if local_path.exists():
+            has_weight = any(
+                (local_path / candidate).exists() for candidate in _WEIGHT_FILE_CANDIDATES
+            )
+            if has_weight and (local_path / "config.json").exists():
+                size_hint = "2GB" if "bge-m3" in model_name else "90MB"
+                return {
+                    "needs_download": False,
+                    "model_name": model_name,
+                    "size_hint": size_hint,
+                }
+            # 本地目录存在但无有效权重，继续检查 HF Hub 缓存
+
         # 检查 HuggingFace 缓存
         hf_home = os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
         hub_cache = os.environ.get("HUGGINGFACE_HUB_CACHE", str(Path(hf_home) / "hub"))
-        model_cache_dir = Path(hub_cache) / f"models--{model_name.replace('/', '--')}"
+        model_cache_dir = Path(hub_cache) / f"models--{safe_name}"
 
         size_hint = "2GB" if "bge-m3" in model_name else "90MB"
 
@@ -205,7 +227,8 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
             downloader = ModelDownloader(cache_info["model_name"])
             if not downloader.ensure_cached():
                 logger.error("模型自动下载失败")
-                # 不阻断启动，让 daemon 自己去尝试加载（会暴露更详细的错误日志）
+                print(downloader.get_manual_instructions(), file=sys.stderr)
+                return False
         except (ImportError, OSError) as e:
             logger.warning(f"模型下载检查异常: {e}")
 
