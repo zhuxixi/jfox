@@ -406,7 +406,7 @@ def restart_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
                     import signal
 
                     os.kill(pid, signal.SIGKILL)
-            except (OSError, subprocess.SubprocessError) as e:
+            except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
                 logger.warning(f"强制终止失败: {e}")
 
         # 等待进程退出（最多 10 秒）
@@ -415,6 +415,9 @@ def restart_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
                 _remove_pid_file()
                 break
             time.sleep(0.5)
+        else:
+            logger.error("Daemon 未能在 10s 内终止，放弃重启")
+            return False
 
     return start_daemon(host=host, port=port)
 
