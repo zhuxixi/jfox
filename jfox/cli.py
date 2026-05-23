@@ -2641,26 +2641,30 @@ def daemon(
         stop_daemon,
     )
 
+    def _print_daemon_status():
+        """打印 daemon 状态表格"""
+        info = get_daemon_status()
+        if info:
+            table = Table(title="Embedding Daemon")
+            table.add_column("属性", style="cyan")
+            table.add_column("值", style="green")
+            table.add_row("状态", "[green]运行中[/green]")
+            table.add_row("PID", str(info["pid"]))
+            table.add_row("端口", str(info["port"]))
+            table.add_row("模型", info["model"])
+            table.add_row("维度", str(info["dimension"]))
+            table.add_row("设备", info.get("device", "unknown"))
+            console.print(table)
+        else:
+            console.print("[green]✓ Daemon 已就绪[/green]")
+
     try:
         if action == "start":
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
             console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
             ok = start_daemon(port=port)
             if ok:
-                info = get_daemon_status()
-                if info:
-                    table = Table(title="Embedding Daemon")
-                    table.add_column("属性", style="cyan")
-                    table.add_column("值", style="green")
-                    table.add_row("状态", "[green]运行中[/green]")
-                    table.add_row("PID", str(info["pid"]))
-                    table.add_row("端口", str(info["port"]))
-                    table.add_row("模型", info["model"])
-                    table.add_row("维度", str(info["dimension"]))
-                    table.add_row("设备", info.get("device", "unknown"))
-                    console.print(table)
-                else:
-                    console.print("[green]✓ Daemon 已启动[/green]")
+                _print_daemon_status()
             else:
                 console.print("[red]✗ Daemon 启动失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
@@ -2680,20 +2684,7 @@ def daemon(
         elif action == "restart":
             console.print("[yellow]正在重启 daemon...[/yellow]")
             if restart_daemon(port=port):
-                info = get_daemon_status()
-                if info:
-                    table = Table(title="Embedding Daemon")
-                    table.add_column("属性", style="cyan")
-                    table.add_column("值", style="green")
-                    table.add_row("状态", "[green]运行中[/green]")
-                    table.add_row("PID", str(info["pid"]))
-                    table.add_row("端口", str(info["port"]))
-                    table.add_row("模型", info["model"])
-                    table.add_row("维度", str(info["dimension"]))
-                    table.add_row("设备", info.get("device", "unknown"))
-                    console.print(table)
-                else:
-                    console.print("[green]✓ Daemon 已重启[/green]")
+                _print_daemon_status()
             else:
                 console.print("[red]✗ Daemon 重启失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
