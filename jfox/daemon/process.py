@@ -380,7 +380,7 @@ def restart_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         stop_port = port
 
         if data is not None:
-            pid = data.get("pid", 0)
+            pid = data.get("pid") or 0
             stop_host = data.get("host", host)
             stop_port = data.get("port", port)
 
@@ -388,8 +388,8 @@ def restart_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         if pid == 0:
             health = _http_health_check(stop_host, stop_port)
             if health:
-                pid = health.get("pid", 0)
-                if not isinstance(pid, int):
+                pid = health.get("pid") or 0
+                if not isinstance(pid, int) or isinstance(pid, bool):
                     pid = 0
 
         # 强制终止

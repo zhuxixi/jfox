@@ -273,6 +273,7 @@ class TestRestartDaemon:
         mock_stop.assert_called_once()
         mock_start.assert_called_once()
 
+    @patch("jfox.daemon.process.subprocess.run")
     @patch("jfox.daemon.process.start_daemon", return_value=True)
     @patch("jfox.daemon.process._http_health_check", return_value=None)
     @patch(
@@ -280,13 +281,16 @@ class TestRestartDaemon:
         return_value={"pid": 1234, "host": "127.0.0.1", "port": 18700},
     )
     @patch("jfox.daemon.process.stop_daemon", return_value=False)
-    def test_force_kill_on_stop_failure(self, mock_stop, mock_pid, mock_health, mock_start):
+    def test_force_kill_on_stop_failure(
+        self, mock_stop, mock_pid, mock_health, mock_start, mock_run
+    ):
         """stop 失败时强制 kill 后 start"""
         from jfox.daemon.process import restart_daemon
 
         result = restart_daemon()
         assert result is True
         mock_stop.assert_called_once()
+        mock_run.assert_called_once()
         mock_start.assert_called_once()
 
     @patch("jfox.daemon.process.start_daemon", return_value=True)
