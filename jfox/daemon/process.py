@@ -364,6 +364,66 @@ def stop_daemon() -> bool:
     return False
 
 
+def restart_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
+    """
+    重启 daemon 进程（stop → force kill if needed → start）
+
+    Returns:
+        True 表示重启成功
+    """
+    stop_ok = stop_daemon()
+    if not stop_ok:
+        # stop 失败，强制 kill
+        data = _read_pid_file()
+        pid = 0
+        stop_host = host
+        stop_port = port
+
+        if data is not None:
+            pid = data.get("pid") or 0
+            stop_host = data.get("host", host)
+            stop_port = data.get("port", port)
+
+        # 从 /health 获取真实 PID
+        if pid == 0:
+            health = _http_health_check(stop_host, stop_port)
+            if health:
+                pid = health.get("pid") or 0
+                if not isinstance(pid, int) or isinstance(pid, bool):
+                    pid = 0
+
+        # 强制终止
+        if pid > 0:
+            logger.warning(f"Daemon 未能优雅停止，强制终止 (PID: {pid})")
+            try:
+                if sys.platform == "win32":
+                    subprocess.run(
+                        ["taskkill", "/PID", str(pid), "/T", "/F"],
+                        capture_output=True,
+                        timeout=10,
+                    )
+                else:
+                    import signal
+
+                    os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                logger.debug(f"进程 {pid} 已退出，无需强制终止")
+            except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
+                logger.warning(f"强制终止失败: {e}")
+
+        # 等待进程退出（最多 10 秒）
+        for _ in range(20):
+            if _http_health_check(stop_host, stop_port) is None:
+                _remove_pid_file()
+                break
+            time.sleep(0.5)
+        else:
+            logger.error("Daemon 未能在 10s 内终止，放弃重启")
+            return False
+
+    return start_daemon(host=host, port=port)
+
+
 def get_daemon_status() -> Optional[dict]:
     """获取 daemon 状态信息（含健康检查）"""
     data = _read_pid_file()

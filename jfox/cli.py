@@ -2616,7 +2616,7 @@ def perf(
 
 @app.command()
 def daemon(
-    action: str = typer.Argument("status", help="操作: start, stop, status"),
+    action: str = typer.Argument("status", help="操作: start, stop, restart, status"),
     port: int = typer.Option(18700, "--port", "-p", help="Daemon 监听端口"),
 ):
     """
@@ -2628,38 +2628,43 @@ def daemon(
     示例:
 
         jfox daemon start       # 启动 daemon
-        jfox daemon status      # 查看状态
         jfox daemon stop        # 停止 daemon
+        jfox daemon restart     # 重启 daemon
+        jfox daemon status      # 查看状态
     """
     from .daemon.process import (
+        DAEMON_LOG_FILE,
         get_daemon_status,
         is_daemon_running,
+        restart_daemon,
         start_daemon,
         stop_daemon,
     )
 
+    def _print_daemon_status():
+        """打印 daemon 状态表格"""
+        info = get_daemon_status()
+        if info:
+            table = Table(title="Embedding Daemon")
+            table.add_column("属性", style="cyan")
+            table.add_column("值", style="green")
+            table.add_row("状态", "[green]运行中[/green]")
+            table.add_row("PID", str(info["pid"]))
+            table.add_row("端口", str(info["port"]))
+            table.add_row("模型", info["model"])
+            table.add_row("维度", str(info["dimension"]))
+            table.add_row("设备", info.get("device", "unknown"))
+            console.print(table)
+        else:
+            console.print("[green]✓ Daemon 运行中但状态查询失败[/green]")
+
     try:
         if action == "start":
-            from .daemon.process import DAEMON_LOG_FILE
-
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
             console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
             ok = start_daemon(port=port)
             if ok:
-                info = get_daemon_status()
-                if info:
-                    table = Table(title="Embedding Daemon")
-                    table.add_column("属性", style="cyan")
-                    table.add_column("值", style="green")
-                    table.add_row("状态", "[green]运行中[/green]")
-                    table.add_row("PID", str(info["pid"]))
-                    table.add_row("端口", str(info["port"]))
-                    table.add_row("模型", info["model"])
-                    table.add_row("维度", str(info["dimension"]))
-                    table.add_row("设备", info.get("device", "unknown"))
-                    console.print(table)
-                else:
-                    console.print("[green]✓ Daemon 已启动[/green]")
+                _print_daemon_status()
             else:
                 console.print("[red]✗ Daemon 启动失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
@@ -2674,6 +2679,15 @@ def daemon(
                 console.print("[green]✓ Daemon 已停止[/green]")
             else:
                 console.print("[red]✗ Daemon 停止失败，请手动终止进程[/red]")
+                raise typer.Exit(1)
+
+        elif action == "restart":
+            console.print("[yellow]正在重启 daemon...[/yellow]")
+            if restart_daemon(port=port):
+                _print_daemon_status()
+            else:
+                console.print("[red]✗ Daemon 重启失败[/red]")
+                console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
                 raise typer.Exit(1)
 
         elif action == "status":
@@ -2695,7 +2709,7 @@ def daemon(
 
         else:
             console.print(f"[red]未知操作: {action}[/red]")
-            console.print("可用操作: start, stop, status")
+            console.print("可用操作: start, stop, restart, status")
             raise typer.Exit(1)
 
     except typer.Exit:

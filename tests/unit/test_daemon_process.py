@@ -257,3 +257,74 @@ class TestCheckModelCacheLocalDir:
 
             if local_path.exists():
                 shutil.rmtree(local_path, ignore_errors=True)
+
+
+class TestRestartDaemon:
+    """测试 restart_daemon 函数"""
+
+    @patch("jfox.daemon.process.start_daemon", return_value=True)
+    @patch("jfox.daemon.process.stop_daemon", return_value=True)
+    def test_graceful_restart(self, mock_stop, mock_start):
+        """stop 成功时直接 start"""
+        from jfox.daemon.process import restart_daemon
+
+        result = restart_daemon()
+        assert result is True
+        mock_stop.assert_called_once()
+        mock_start.assert_called_once()
+
+    @patch("jfox.daemon.process.subprocess.run")
+    @patch("jfox.daemon.process.os.kill")
+    @patch("jfox.daemon.process.start_daemon", return_value=True)
+    @patch("jfox.daemon.process._http_health_check", return_value=None)
+    @patch(
+        "jfox.daemon.process._read_pid_file",
+        return_value={"pid": 1234, "host": "127.0.0.1", "port": 18700},
+    )
+    @patch("jfox.daemon.process.stop_daemon", return_value=False)
+    def test_force_kill_on_stop_failure(
+        self, mock_stop, mock_pid, mock_health, mock_start, mock_os_kill, mock_run
+    ):
+        """stop 失败时强制 kill 后 start"""
+        from jfox.daemon.process import restart_daemon
+
+        result = restart_daemon()
+        assert result is True
+        mock_stop.assert_called_once()
+        if sys.platform == "win32":
+            mock_run.assert_called_once()
+            mock_os_kill.assert_not_called()
+        else:
+            mock_os_kill.assert_called_once()
+            mock_run.assert_not_called()
+        mock_start.assert_called_once()
+
+    @patch("jfox.daemon.process.start_daemon", return_value=True)
+    @patch("jfox.daemon.process._http_health_check", return_value=None)
+    @patch("jfox.daemon.process._read_pid_file", return_value=None)
+    @patch("jfox.daemon.process.stop_daemon", return_value=False)
+    def test_force_kill_no_pid_file(self, mock_stop, mock_pid, mock_health, mock_start):
+        """stop 失败且无 PID 文件时仍尝试 start"""
+        from jfox.daemon.process import restart_daemon
+
+        result = restart_daemon()
+        assert result is True
+        mock_start.assert_called_once()
+
+    @patch("jfox.daemon.process.start_daemon", return_value=False)
+    @patch("jfox.daemon.process.stop_daemon", return_value=True)
+    def test_start_failure_propagates(self, mock_stop, mock_start):
+        """stop 成功但 start 失败时返回 False"""
+        from jfox.daemon.process import restart_daemon
+
+        result = restart_daemon()
+        assert result is False
+
+    @patch("jfox.daemon.process.start_daemon", return_value=True)
+    @patch("jfox.daemon.process.stop_daemon", return_value=True)
+    def test_passes_host_port(self, mock_stop, mock_start):
+        """host/port 参数透传到 start_daemon"""
+        from jfox.daemon.process import restart_daemon
+
+        restart_daemon(host="0.0.0.0", port=9999)
+        mock_start.assert_called_once_with(host="0.0.0.0", port=9999)
