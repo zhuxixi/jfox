@@ -2656,7 +2656,7 @@ def daemon(
             table.add_row("设备", info.get("device", "unknown"))
             console.print(table)
         else:
-            console.print("[green]✓ Daemon 已就绪[/green]")
+            console.print("[green]✓ Daemon 运行中但状态查询失败[/green]")
 
     try:
         if action == "start":

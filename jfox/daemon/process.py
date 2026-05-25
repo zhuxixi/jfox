@@ -406,6 +406,8 @@ def restart_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
                     import signal
 
                     os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                logger.debug(f"进程 {pid} 已退出，无需强制终止")
             except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired) as e:
                 logger.warning(f"强制终止失败: {e}")
 
