@@ -2618,6 +2618,12 @@ def perf(
 def daemon(
     action: str = typer.Argument("status", help="操作: start, stop, restart, status"),
     port: int = typer.Option(18700, "--port", "-p", help="Daemon 监听端口"),
+    enable_auto_summary: bool = typer.Option(
+        False, "--enable-auto-summary", help="启动时直接启用 auto-summary（跳过询问）"
+    ),
+    no_auto_summary: bool = typer.Option(
+        False, "--no-auto-summary", help="启动时不启用 auto-summary（跳过询问）"
+    ),
 ):
     """
     管理嵌入模型守护进程
@@ -2659,6 +2665,12 @@ def daemon(
             console.print("[green]✓ Daemon 运行中但状态查询失败[/green]")
 
     try:
+        if enable_auto_summary and no_auto_summary:
+            console.print(
+                "[red]✗[/red] --enable-auto-summary 和 --no-auto-summary 不能同时使用"
+            )
+            raise typer.Exit(1)
+
         if action == "start":
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
             console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
