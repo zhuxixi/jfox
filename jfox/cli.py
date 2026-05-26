@@ -2709,6 +2709,13 @@ def daemon(
                 raise typer.Exit(1)
 
         elif action == "restart":
+            if enable_auto_summary:
+                from .global_config import get_global_config_manager
+                get_global_config_manager().update_auto_summary_config(enabled=True)
+            elif no_auto_summary:
+                from .global_config import get_global_config_manager
+                get_global_config_manager().update_auto_summary_config(enabled=False)
+
             console.print("[yellow]正在重启 daemon...[/yellow]")
             if restart_daemon(port=port):
                 _print_daemon_status()

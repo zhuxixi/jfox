@@ -104,3 +104,42 @@ class TestDaemonStartAutoSummaryFlags:
         result = runner.invoke(app, ["daemon", "start"], input="n\n")
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_not_called()
+
+
+class TestDaemonRestartAutoSummaryFlags:
+    """测试 daemon restart 的 auto-summary flag 处理"""
+
+    def test_restart_no_flags_keeps_config(
+        self, runner, mock_global_config, mock_restart_daemon, mock_daemon_status
+    ):
+        """restart 无 flag 时保持当前配置"""
+        result = runner.invoke(app, ["daemon", "restart"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
+
+    def test_restart_enable_flag_sets_enabled(
+        self, runner, mock_global_config, mock_restart_daemon, mock_daemon_status
+    ):
+        """restart --enable-auto-summary 写入 enabled=True"""
+        result = runner.invoke(app, ["daemon", "restart", "--enable-auto-summary"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=True)
+
+    def test_restart_no_flag_sets_disabled(
+        self, runner, mock_global_config, mock_restart_daemon, mock_daemon_status
+    ):
+        """restart --no-auto-summary 写入 enabled=False"""
+        result = runner.invoke(app, ["daemon", "restart", "--no-auto-summary"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=False)
+
+    def test_restart_no_prompt(
+        self, runner, mock_global_config, mock_restart_daemon, mock_daemon_status
+    ):
+        """restart 不会触发交互式询问"""
+        cfg = mock_global_config.get_auto_summary_config.return_value
+        cfg.enabled = False
+        # 不提供 input — 如果有 prompt 会导致超时或 hang
+        result = runner.invoke(app, ["daemon", "restart"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
