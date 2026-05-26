@@ -2672,6 +2672,21 @@ def daemon(
             raise typer.Exit(1)
 
         if action == "start":
+            # auto-summary 启用检查
+            if enable_auto_summary:
+                from .global_config import get_global_config_manager
+
+                get_global_config_manager().update_auto_summary_config(enabled=True)
+                console.print("[green]✓[/green] auto-summary 已启用")
+            elif not no_auto_summary:
+                from .global_config import get_global_config_manager
+
+                auto_cfg = get_global_config_manager().get_auto_summary_config()
+                if not auto_cfg.enabled:
+                    if typer.confirm("是否启用 auto-summary 自动总结功能？", default=False):
+                        get_global_config_manager().update_auto_summary_config(enabled=True)
+                        console.print("[green]✓[/green] auto-summary 已启用")
+
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
             console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
             ok = start_daemon(port=port)

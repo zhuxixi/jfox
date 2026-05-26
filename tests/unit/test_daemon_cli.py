@@ -16,7 +16,7 @@ def runner():
 @pytest.fixture
 def mock_global_config():
     """Mock GlobalConfigManager，默认 auto_summary.enabled=False"""
-    with patch("jfox.cli.get_global_config_manager") as mock_get:
+    with patch("jfox.global_config.get_global_config_manager") as mock_get:
         mgr = MagicMock()
         cfg = MagicMock()
         cfg.enabled = False
@@ -62,3 +62,45 @@ class TestDaemonStartAutoSummaryFlags:
             app, ["daemon", "start", "--enable-auto-summary", "--no-auto-summary"]
         )
         assert result.exit_code != 0
+
+    def test_enable_flag_skips_prompt_and_enables(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """--enable-auto-summary 跳过询问，直接写入 enabled=True"""
+        result = runner.invoke(app, ["daemon", "start", "--enable-auto-summary"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=True)
+
+    def test_no_flag_skips_prompt_and_does_not_enable(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """--no-auto-summary 跳过询问，不写入配置"""
+        result = runner.invoke(app, ["daemon", "start", "--no-auto-summary"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
+
+    def test_no_flags_enabled_true_skips_prompt(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """无 flag 且 enabled=True 时不询问也不写入"""
+        cfg = mock_global_config.get_auto_summary_config.return_value
+        cfg.enabled = True
+        result = runner.invoke(app, ["daemon", "start"])
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
+
+    def test_no_flags_enabled_false_user_says_yes(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """无 flag 且 enabled=false，用户选 yes → 写入 enabled=True"""
+        result = runner.invoke(app, ["daemon", "start"], input="y\n")
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=True)
+
+    def test_no_flags_enabled_false_user_says_no(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """无 flag 且 enabled=false，用户选 no → 不写入"""
+        result = runner.invoke(app, ["daemon", "start"], input="n\n")
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
