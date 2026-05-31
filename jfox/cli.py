@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import re
 import sys
 import warnings
@@ -2680,7 +2681,7 @@ def daemon(
                 from .global_config import get_global_config_manager
 
                 auto_cfg = get_global_config_manager().get_auto_summary_config()
-                if not auto_cfg.enabled:
+                if not auto_cfg.enabled and os.isatty(1):
                     if typer.confirm("是否启用 auto-summary 自动总结功能？", default=False):
                         get_global_config_manager().update_auto_summary_config(enabled=True)
                         console.print("[green]✓[/green] auto-summary 已启用")

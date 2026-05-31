@@ -1,5 +1,6 @@
 """daemon start/restart --enable-auto-summary / --no-auto-summary 交互逻辑测试"""
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -93,7 +94,8 @@ class TestDaemonStartAutoSummaryFlags:
         self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
     ):
         """无 flag 且 enabled=false，用户选 yes → 写入 enabled=True"""
-        result = runner.invoke(app, ["daemon", "start"], input="y\n")
+        with patch("jfox.cli.os.isatty", return_value=True):
+            result = runner.invoke(app, ["daemon", "start"], input="y\n")
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=True)
 
@@ -101,7 +103,17 @@ class TestDaemonStartAutoSummaryFlags:
         self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
     ):
         """无 flag 且 enabled=false，用户选 no → 不写入"""
-        result = runner.invoke(app, ["daemon", "start"], input="n\n")
+        with patch("jfox.cli.os.isatty", return_value=True):
+            result = runner.invoke(app, ["daemon", "start"], input="n\n")
+        assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
+
+    def test_no_flags_non_tty_skips_prompt(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """非 TTY 环境下不询问，不写入配置"""
+        with patch("jfox.cli.os.isatty", return_value=False):
+            result = runner.invoke(app, ["daemon", "start"])
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_not_called()
 
