@@ -1,0 +1,12 @@
+{
+  "name": "jfox-pi-skills",
+  "version": "0.2.0",
+  "private": true,
+  "description": "JFox Zettelkasten skills for pi coding agent",
+  "keywords": ["pi-package"],
+  "pi": {
+    "skills": [
+      "./skills-recommend/pi"
+    ]
+  }
+}

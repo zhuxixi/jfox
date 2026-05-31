@@ -9,12 +9,20 @@
 
 ```
 skills-recommend/
-└── kimi-cli/             # Kimi CLI 适配版 SKILL.md
+├── kimi-cli/             # Kimi CLI 适配版 SKILL.md
+│   ├── jfox-ingest/
+│   ├── jfox-organize/
+│   ├── jfox-search/
+│   ├── jfox-session-summary/
+│   └── jfox-common/
+└── pi/                   # pi coding agent 适配版 SKILL.md
     ├── jfox-ingest/
     ├── jfox-organize/
     ├── jfox-search/
     ├── jfox-session-summary/
-    └── jfox-common/
+    ├── jfox-common/
+    ├── jfox-ci/
+    └── jfox-release/
 ```
 
 ## 使用方法
@@ -40,6 +48,43 @@ cp -r skills-recommend/kimi-cli/jfox-search ~/.config/agents/skills/
 - **jfox-session-summary** — 将会话总结写入知识库作为 fleeting 笔记
 
 Kimi CLI 也兼容 `~/.kimi/skills/` 和 `~/.claude/skills/` 目录。
+
+### pi coding agent
+
+pi 支持 [Agent Skills 标准](https://agentskills.io/specification)，通过 `SKILL.md` 的 `description` 自然语言触发，也支持 `/skill:name` 显式调用。
+
+pi 会自动发现以下位置的 skills：
+- 全局：`~/.pi/agent/skills/`、`~/.agents/skills/`
+- 项目级：`.pi/skills/`、`.agents/skills/`
+- Package：`package.json` 中 `pi.skills` 指定的目录
+
+**安装方式一：手动复制**
+```bash
+# 复制到全局 skills 目录
+mkdir -p ~/.pi/agent/skills/
+cp -r skills-recommend/pi/* ~/.pi/agent/skills/
+```
+
+**安装方式二：通过 pi package（零侵入，推荐）**
+```bash
+pi install git:github.com/zhuxixi/jfox
+```
+安装后 pi 会自动识别 `skills-recommend/pi/` 下的所有 skills。
+
+**pi 版 skill 列表：**
+- **jfox-common** — 创建/管理知识库、笔记 CRUD、健康检查、Daemon 管理
+- **jfox-ingest** — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
+- **jfox-organize** — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
+- **jfox-search** — 搜索笔记、图谱查询、链接推荐
+- **jfox-session-summary** — 将会话总结写入知识库
+- **jfox-ci** — 触发 GitHub Actions CI 工作流
+- **jfox-release** — 版本发布（bump → CHANGELOG → PR → Release）
+
+**与 kimi-cli 版的差异：**
+- description 中英双语，触发词覆盖更广
+- 交叉引用使用 pi 的 `/skill:name` 语法
+- 额外包含 `jfox-ci` 和 `jfox-release`（从 `.claude/skills/` 移植）
+- 内容以 cc-plugin 的详细版为基础，保持中文主体
 
 ### OpenCode / Codex / Cursor 等
 
