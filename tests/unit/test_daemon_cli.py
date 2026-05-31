@@ -1,6 +1,5 @@
 """daemon start/restart --enable-auto-summary / --no-auto-summary 交互逻辑测试"""
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
