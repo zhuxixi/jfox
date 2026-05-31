@@ -2712,10 +2712,12 @@ def daemon(
                 from .global_config import get_global_config_manager
 
                 get_global_config_manager().update_auto_summary_config(enabled=True)
+                console.print("[green]✓[/green] auto-summary 已启用")
             elif no_auto_summary:
                 from .global_config import get_global_config_manager
 
                 get_global_config_manager().update_auto_summary_config(enabled=False)
+                console.print("[yellow]auto-summary 已禁用[/yellow]")
 
             console.print("[yellow]正在重启 daemon...[/yellow]")
             if restart_daemon(port=port):
