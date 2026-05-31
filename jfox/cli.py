@@ -2666,9 +2666,7 @@ def daemon(
 
     try:
         if enable_auto_summary and no_auto_summary:
-            console.print(
-                "[red]✗[/red] --enable-auto-summary 和 --no-auto-summary 不能同时使用"
-            )
+            console.print("[red]✗[/red] --enable-auto-summary 和 --no-auto-summary 不能同时使用")
             raise typer.Exit(1)
 
         if action == "start":
@@ -2711,9 +2709,11 @@ def daemon(
         elif action == "restart":
             if enable_auto_summary:
                 from .global_config import get_global_config_manager
+
                 get_global_config_manager().update_auto_summary_config(enabled=True)
             elif no_auto_summary:
                 from .global_config import get_global_config_manager
+
                 get_global_config_manager().update_auto_summary_config(enabled=False)
 
             console.print("[yellow]正在重启 daemon...[/yellow]")
