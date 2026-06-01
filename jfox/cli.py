@@ -2665,6 +2665,11 @@ def daemon(
         else:
             console.print("[green]✓ Daemon 运行中但状态查询失败[/green]")
 
+    from .global_config import get_global_config_manager
+
+    # 记录待写入的 auto-summary 配置变更，daemon 成功后再写入
+    _pending_auto_summary: Optional[bool] = None
+
     try:
         if enable_auto_summary and no_auto_summary:
             console.print("[red]✗[/red] --enable-auto-summary 和 --no-auto-summary 不能同时使用")
@@ -2673,23 +2678,25 @@ def daemon(
         if action == "start":
             # auto-summary 启用检查
             if enable_auto_summary:
-                from .global_config import get_global_config_manager
-
-                get_global_config_manager().update_auto_summary_config(enabled=True)
-                console.print("[green]✓[/green] auto-summary 已启用")
+                _pending_auto_summary = True
             elif not no_auto_summary:
-                from .global_config import get_global_config_manager
-
                 auto_cfg = get_global_config_manager().get_auto_summary_config()
                 if not auto_cfg.enabled and os.isatty(0):
                     if typer.confirm("是否启用 auto-summary 自动总结功能？", default=False):
-                        get_global_config_manager().update_auto_summary_config(enabled=True)
-                        console.print("[green]✓[/green] auto-summary 已启用")
+                        _pending_auto_summary = True
 
             console.print("[yellow]正在启动 embedding daemon...[/yellow]")
             console.print(f"[dim]日志文件: {DAEMON_LOG_FILE}[/dim]")
             ok = start_daemon(port=port)
             if ok:
+                # daemon 成功后再写入配置
+                if _pending_auto_summary is not None:
+                    if get_global_config_manager().update_auto_summary_config(
+                        enabled=_pending_auto_summary
+                    ):
+                        console.print("[green]✓[/green] auto-summary 已启用")
+                    else:
+                        console.print("[red]✗ auto-summary 配置写入失败[/red]")
                 _print_daemon_status()
             else:
                 console.print("[red]✗ Daemon 启动失败[/red]")
@@ -2709,18 +2716,23 @@ def daemon(
 
         elif action == "restart":
             if enable_auto_summary:
-                from .global_config import get_global_config_manager
-
-                get_global_config_manager().update_auto_summary_config(enabled=True)
-                console.print("[green]✓[/green] auto-summary 已启用")
+                _pending_auto_summary = True
             elif no_auto_summary:
-                from .global_config import get_global_config_manager
-
-                get_global_config_manager().update_auto_summary_config(enabled=False)
-                console.print("[yellow]auto-summary 已禁用[/yellow]")
+                _pending_auto_summary = False
 
             console.print("[yellow]正在重启 daemon...[/yellow]")
             if restart_daemon(port=port):
+                # daemon 成功后再写入配置
+                if _pending_auto_summary is not None:
+                    if get_global_config_manager().update_auto_summary_config(
+                        enabled=_pending_auto_summary
+                    ):
+                        if _pending_auto_summary:
+                            console.print("[green]✓[/green] auto-summary 已启用")
+                        else:
+                            console.print("[yellow]auto-summary 已禁用[/yellow]")
+                    else:
+                        console.print("[red]✗ auto-summary 配置写入失败[/red]")
                 _print_daemon_status()
             else:
                 console.print("[red]✗ Daemon 重启失败[/red]")

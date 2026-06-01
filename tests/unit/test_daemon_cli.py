@@ -63,18 +63,18 @@ class TestDaemonStartAutoSummaryFlags:
         )
         assert result.exit_code != 0
 
-    def test_enable_flag_skips_prompt_and_enables(
+    def test_enable_flag_enables_after_daemon_success(
         self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
     ):
-        """--enable-auto-summary 跳过询问，直接写入 enabled=True"""
+        """--enable-auto-summary 在 daemon 启动成功后写入 enabled=True"""
         result = runner.invoke(app, ["daemon", "start", "--enable-auto-summary"])
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=True)
 
-    def test_no_flag_skips_prompt_and_does_not_enable(
+    def test_no_flag_does_not_enable(
         self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
     ):
-        """--no-auto-summary 跳过询问，不写入配置"""
+        """--no-auto-summary 不写入配置"""
         result = runner.invoke(app, ["daemon", "start", "--no-auto-summary"])
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_not_called()
@@ -92,7 +92,7 @@ class TestDaemonStartAutoSummaryFlags:
     def test_no_flags_enabled_false_user_says_yes(
         self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
     ):
-        """无 flag 且 enabled=false，用户选 yes → 写入 enabled=True"""
+        """无 flag 且 enabled=false，用户选 yes → daemon 成功后写入 enabled=True"""
         with patch("jfox.cli.os.isatty", return_value=True):
             result = runner.invoke(app, ["daemon", "start"], input="y\n")
         assert result.exit_code == 0
@@ -116,6 +116,22 @@ class TestDaemonStartAutoSummaryFlags:
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_not_called()
 
+    def test_enable_flag_rolls_back_on_daemon_failure(self, runner, mock_global_config):
+        """daemon 启动失败时不写入 auto-summary 配置"""
+        with patch("jfox.daemon.process.start_daemon", return_value=False):
+            result = runner.invoke(app, ["daemon", "start", "--enable-auto-summary"])
+        assert result.exit_code != 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
+
+    def test_config_write_failure_shows_error(
+        self, runner, mock_global_config, mock_start_daemon, mock_daemon_status
+    ):
+        """update_auto_summary_config 返回 False 时显示错误"""
+        mock_global_config.update_auto_summary_config.return_value = False
+        result = runner.invoke(app, ["daemon", "start", "--enable-auto-summary"])
+        assert result.exit_code == 0
+        assert "配置写入失败" in result.output
+
 
 class TestDaemonRestartAutoSummaryFlags:
     """测试 daemon restart 的 auto-summary flag 处理"""
@@ -131,7 +147,7 @@ class TestDaemonRestartAutoSummaryFlags:
     def test_restart_enable_flag_sets_enabled(
         self, runner, mock_global_config, mock_restart_daemon, mock_daemon_status
     ):
-        """restart --enable-auto-summary 写入 enabled=True"""
+        """restart --enable-auto-summary 在 daemon 成功后写入 enabled=True"""
         result = runner.invoke(app, ["daemon", "restart", "--enable-auto-summary"])
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=True)
@@ -139,7 +155,7 @@ class TestDaemonRestartAutoSummaryFlags:
     def test_restart_no_flag_sets_disabled(
         self, runner, mock_global_config, mock_restart_daemon, mock_daemon_status
     ):
-        """restart --no-auto-summary 写入 enabled=False"""
+        """restart --no-auto-summary 在 daemon 成功后写入 enabled=False"""
         result = runner.invoke(app, ["daemon", "restart", "--no-auto-summary"])
         assert result.exit_code == 0
         mock_global_config.update_auto_summary_config.assert_called_once_with(enabled=False)
@@ -153,4 +169,11 @@ class TestDaemonRestartAutoSummaryFlags:
         # 不提供 input — 如果有 prompt 会导致超时或 hang
         result = runner.invoke(app, ["daemon", "restart"])
         assert result.exit_code == 0
+        mock_global_config.update_auto_summary_config.assert_not_called()
+
+    def test_restart_rolls_back_on_daemon_failure(self, runner, mock_global_config):
+        """restart daemon 失败时不写入 auto-summary 配置"""
+        with patch("jfox.daemon.process.restart_daemon", return_value=False):
+            result = runner.invoke(app, ["daemon", "restart", "--enable-auto-summary"])
+        assert result.exit_code != 0
         mock_global_config.update_auto_summary_config.assert_not_called()
