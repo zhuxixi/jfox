@@ -2761,7 +2761,7 @@ def daemon(
             console.print("可用操作: start, stop, restart, status")
             raise typer.Exit(1)
 
-    except typer.Exit:
+    except (typer.Exit, typer.Abort):
         raise
     except Exception as e:
         console.print(f"[red]✗[/red] 错误: {e}")
