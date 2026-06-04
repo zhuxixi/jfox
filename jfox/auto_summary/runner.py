@@ -352,14 +352,13 @@ def _run_claude(
     cwd: str,
     env: dict[str, str],
     shell: bool = False,
-    stop_event: Optional["threading.Event"] = None,
+    stop_event: Optional[object] = None,
 ) -> str:
     """执行子命令，支持 stop_event 中断。
 
     使用 Popen + 轮询代替 subprocess.run，使 stop_event.set() 能在 ~1s 内
     终止子进程，而非等待整个 timeout。
     """
-    import threading
     import time as _time
 
     proc = subprocess.Popen(
@@ -420,8 +419,6 @@ def _run_claude(
 
 def _invoke_claude(extracted_dialog_text: str, cfg: AutoSummaryConfig) -> str:
     """调用 claude -p，返回原始 stdout（非空字符串）"""
-    import threading
-
     binary = _resolve_claude_binary(cfg)
     cwd = isolated_runs_dir()
 
