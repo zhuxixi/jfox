@@ -26,6 +26,11 @@ from . import ledger as ledger_module
 from .ledger import Ledger
 from .runner import run_once, scan_pending
 
+# 设计说明：此模块的子命令未采用主 cli.py 的 `@app.command() → _xxx_impl()` 拆分模式。
+# 原因：(1) 每个子命令仅 20-40 行，拆分无复用价值；
+#       (2) 作为独立子模块，不与主 cli.py 共享 _impl 函数；
+#       (3) 保持紧凑可读比形式统一更重要。
+
 
 def _fmt(table: Optional[Table] = None, json_data: Any = None, fmt: str = "table") -> None:
     """统一的输出路由：fmt=json 时输出 JSON 字符串，否则渲染 Table"""
