@@ -90,6 +90,11 @@ async def _maybe_stop_auto_summary() -> None:
                 logger.warning("Daemon: 等待 auto-summary 取消时异常: %s", inner)
         except Exception as e:
             logger.warning("Daemon: 等待 auto-summary 退出时异常: %s", e)
+            _auto_summary_task.cancel()
+            try:
+                await asyncio.gather(_auto_summary_task, return_exceptions=True)
+            except Exception:
+                pass
     _auto_summary_task = None
     _auto_summary_stop_event = None
 

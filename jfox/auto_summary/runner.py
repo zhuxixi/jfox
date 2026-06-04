@@ -377,8 +377,8 @@ def _run_claude(
         if input_text:
             proc.stdin.write(input_text)
         proc.stdin.close()
-    except (BrokenPipeError, OSError):
-        pass
+    except (BrokenPipeError, OSError) as e:
+        logger.warning("子进程 stdin 写入失败（进程可能已提前退出）: %s", e)
 
     try:
         deadline = _time.monotonic() + timeout

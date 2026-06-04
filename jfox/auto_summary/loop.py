@@ -61,11 +61,11 @@ async def auto_summary_loop(stop_event: threading.Event) -> None:
     # 启动后短暂延迟，让 daemon 完成模型加载
     try:
         await loop.run_in_executor(None, lambda: stop_event.wait(timeout=10))
-        if stop_event.is_set():
-            logger.info("auto-summary 后台循环：启动延迟期间收到停止信号，退出")
-            return
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("auto-summary 启动延迟等待异常: %s", e)
+    if stop_event.is_set():
+        logger.info("auto-summary 后台循环：启动延迟期间收到停止信号，退出")
+        return
 
     while not stop_event.is_set():
         gm = get_global_config_manager()
@@ -82,12 +82,14 @@ async def auto_summary_loop(stop_event: threading.Event) -> None:
             logger.debug("auto-summary 处于禁用状态，等待下一轮")
 
         try:
-            await loop.run_in_executor(
+            was_set = await loop.run_in_executor(
                 None, lambda: stop_event.wait(timeout=interval_sec)
             )
-            # wait 返回 True → stop_event 已 set
-            break
-        except Exception:
+            if was_set:
+                break  # stop_event 已 set，退出循环
+            # timeout 到期，继续下一轮
+        except Exception as e:
+            logger.warning("auto-summary 等待间隔异常: %s", e)
             continue
 
     logger.info("auto-summary 后台循环已退出")
