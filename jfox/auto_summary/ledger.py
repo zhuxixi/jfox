@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -132,28 +131,13 @@ class Ledger:
 
     def _save(self) -> bool:
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+            from ..utils import atomic_write_json
+
             payload = {
                 "version": self._data.version,
                 "sessions": {sid: e.to_dict() for sid, e in self._data.sessions.items()},
             }
-            # 原子写：tempfile + os.replace；避免半截写入导致下次 _load 失败、清空所有历史
-            fd, tmp_path = tempfile.mkstemp(
-                prefix=self.path.name + ".",
-                suffix=".tmp",
-                dir=str(self.path.parent),
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, ensure_ascii=False, indent=2)
-                os.replace(tmp_path, self.path)
-            except Exception:
-                # 清理半成品 tmp 文件，再抛
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            atomic_write_json(self.path, payload)
             return True
         except OSError as e:
             logger.error("保存 ledger 失败: %s", e)
