@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -25,7 +26,7 @@ _server = None
 
 # auto-summary 后台 task 与停止信号
 _auto_summary_task: Optional[asyncio.Task] = None
-_auto_summary_stop_event: Optional[asyncio.Event] = None
+_auto_summary_stop_event: Optional[threading.Event] = None
 
 
 def _load_model():
@@ -60,7 +61,7 @@ def _maybe_start_auto_summary() -> None:
             logger.info("Daemon: auto-summary 未启用（config.auto_summary.enabled=false）")
             return
 
-        _auto_summary_stop_event = asyncio.Event()
+        _auto_summary_stop_event = threading.Event()
         _auto_summary_task = asyncio.create_task(auto_summary_loop(_auto_summary_stop_event))
         logger.info(
             "Daemon: auto-summary 后台循环已启动 (interval=%dm, idle_threshold=%dm)",
@@ -78,19 +79,17 @@ async def _maybe_stop_auto_summary() -> None:
         _auto_summary_stop_event.set()
     if _auto_summary_task is not None:
         try:
-            await asyncio.wait_for(_auto_summary_task, timeout=5)
+            # stop_event 已 set，_run_claude 会在 ~1s 内终止子进程
+            await asyncio.wait_for(_auto_summary_task, timeout=10)
         except asyncio.TimeoutError:
-            logger.warning("Daemon: auto-summary task 5s 内未退出，取消之")
+            logger.warning("Daemon: auto-summary task 10s 内未退出，取消之")
             _auto_summary_task.cancel()
-            # 等待 cancel 实际生效；如果 task 阻塞在 executor 的 claude -p 上，
-            # task.cancel() 不会终止 subprocess，仍会阻塞，但等到子进程超时（cfg.claude_timeout_seconds）后会返回
             try:
                 await asyncio.gather(_auto_summary_task, return_exceptions=True)
             except Exception as inner:
                 logger.warning("Daemon: 等待 auto-summary 取消时异常: %s", inner)
         except Exception as e:
             logger.warning("Daemon: 等待 auto-summary 退出时异常: %s", e)
-            _auto_summary_task.cancel()
     _auto_summary_task = None
     _auto_summary_stop_event = None
 
