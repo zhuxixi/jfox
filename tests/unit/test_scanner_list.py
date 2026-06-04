@@ -3,7 +3,7 @@ import os
 import time
 from pathlib import Path
 
-from jfox.auto_summary.scanner import SessionFile, list_session_files
+from jfox.auto_summary.scanner import list_session_files
 
 
 def _make_session(tmp_path: Path, name: str, size: int = 5000, age_minutes: int = 60) -> Path:

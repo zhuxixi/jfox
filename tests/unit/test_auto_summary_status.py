@@ -5,8 +5,6 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from jfox.auto_summary import ledger as ledger_module
 from jfox.auto_summary.ledger import Ledger, LedgerEntry, SessionStatus
 from jfox.global_config import AutoSummaryConfig
