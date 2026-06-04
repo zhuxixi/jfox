@@ -102,7 +102,7 @@ def status(
         )
         return
 
-    # --- table output (keep existing two tables, add third) ---
+    # --- 表格输出（保留原有两张表，新增第三张进度表） ---
 
     table = Table(title="auto-summary 配置", show_header=False)
     table.add_column("项", style="cyan", no_wrap=True)
