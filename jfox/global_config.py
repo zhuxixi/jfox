@@ -55,7 +55,7 @@ class AutoSummaryConfig:
     max_session_size_mb: int = 10  # 超过此大小的 session 跳过（避免 token 爆炸）
     min_session_size_kb: int = 5  # 太小的 session 跳过（无实质内容）
     max_per_tick: int = 5  # 每轮最多处理几个 session
-    skip_after_days: int = 7  # 超过此天数的旧 session 不再补做
+    skip_after_days: int = 0  # 0 表示不跳过任何 session；可自行设置上限
     claude_timeout_seconds: int = 120  # claude -p 调用超时
     claude_binary: Optional[str] = None  # claude 命令路径；None 表示从 PATH 解析
 
@@ -96,7 +96,7 @@ class AutoSummaryConfig:
             max_session_size_mb=int(data.get("max_session_size_mb", 10)),
             min_session_size_kb=int(data.get("min_session_size_kb", 5)),
             max_per_tick=int(data.get("max_per_tick", 5)),
-            skip_after_days=int(data.get("skip_after_days", 7)),
+            skip_after_days=int(data.get("skip_after_days", 0)),
             claude_timeout_seconds=int(data.get("claude_timeout_seconds", 120)),
             claude_binary=data.get("claude_binary"),
         )

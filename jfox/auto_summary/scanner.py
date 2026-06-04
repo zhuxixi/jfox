@@ -57,7 +57,7 @@ def iter_session_files(
     idle_threshold_minutes: int = 30,
     max_session_size_mb: int = 10,
     min_session_size_kb: int = 5,
-    skip_after_days: int = 7,
+    skip_after_days: int = 0,
     project_blocklist: Sequence[str] = DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS,
     now: float | None = None,
 ) -> Iterator[SessionFile]:
