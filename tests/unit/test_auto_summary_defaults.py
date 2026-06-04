@@ -1,4 +1,5 @@
 """验证 auto-summary 默认配置：skip_after_days=0"""
+
 from jfox.global_config import AutoSummaryConfig
 
 

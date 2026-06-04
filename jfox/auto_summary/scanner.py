@@ -174,12 +174,14 @@ def list_session_files(
 
     供 status 命令等需要完整列表的场景使用。
     """
-    return list(iter_session_files(
-        claude_projects_dir=claude_projects_dir,
-        idle_threshold_minutes=idle_threshold_minutes,
-        max_session_size_mb=max_session_size_mb,
-        min_session_size_kb=min_session_size_kb,
-        skip_after_days=skip_after_days,
-        project_blocklist=project_blocklist,
-        now=now,
-    ))
+    return list(
+        iter_session_files(
+            claude_projects_dir=claude_projects_dir,
+            idle_threshold_minutes=idle_threshold_minutes,
+            max_session_size_mb=max_session_size_mb,
+            min_session_size_kb=min_session_size_kb,
+            skip_after_days=skip_after_days,
+            project_blocklist=project_blocklist,
+            now=now,
+        )
+    )

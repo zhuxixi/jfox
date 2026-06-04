@@ -1,4 +1,5 @@
 """验证 status 命令的进度显示和 JSON 输出"""
+
 import json
 import re
 import time
@@ -66,9 +67,7 @@ class TestProgressJsonOutput:
             _mock_session_file("s3"),
         ]
         led = _make_mock_ledger()
-        with (
-            patch("jfox.auto_summary.cli.Ledger", return_value=led),
-        ):
+        with (patch("jfox.auto_summary.cli.Ledger", return_value=led),):
             from typer.testing import CliRunner
 
             from jfox.auto_summary.cli import auto_summary_app
@@ -112,9 +111,7 @@ class TestProgressJsonOutput:
             ),
         }
         led = _make_mock_ledger(sessions)
-        with (
-            patch("jfox.auto_summary.cli.Ledger", return_value=led),
-        ):
+        with (patch("jfox.auto_summary.cli.Ledger", return_value=led),):
             from typer.testing import CliRunner
 
             from jfox.auto_summary.cli import auto_summary_app
@@ -144,9 +141,7 @@ class TestProgressTableOutput:
         mock_list.return_value = [_mock_session_file("s1")]
 
         led = _make_mock_ledger()
-        with (
-            patch("jfox.auto_summary.cli.Ledger", return_value=led),
-        ):
+        with (patch("jfox.auto_summary.cli.Ledger", return_value=led),):
             from typer.testing import CliRunner
 
             from jfox.auto_summary.cli import auto_summary_app

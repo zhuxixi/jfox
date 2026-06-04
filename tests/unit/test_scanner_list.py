@@ -1,4 +1,5 @@
 """验证 list_session_files 返回完整列表"""
+
 import os
 import time
 from pathlib import Path
@@ -40,6 +41,7 @@ def test_list_matches_iter(tmp_path):
         now=time.time(),
     )
     from jfox.auto_summary.scanner import iter_session_files
+
     from_iter = list(iter_session_files(**kwargs))
     from_list = list_session_files(**kwargs)
     assert len(from_iter) == len(from_list)
