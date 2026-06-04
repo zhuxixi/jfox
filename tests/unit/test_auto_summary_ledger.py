@@ -124,3 +124,64 @@ class TestLedger:
         assert led.all_entries() == {}
         # 写入仍然能工作
         assert led.record_success("sid", "p", "n")
+
+
+from jfox.utils import atomic_write_json as _atomic_write_json
+
+
+class TestLedgerCAS:
+    """测试 ledger 的 compare-and-swap 并发保护"""
+
+    def test_cas_writes_succeed_when_no_conflict(self, tmp_path):
+        """无并发时正常写入"""
+        path = tmp_path / "cas.json"
+        led = Ledger(path=path)
+        led.record_success("sid1", "proj", "n1")
+        assert led.get("sid1") is not None
+        assert led.get("sid1").status == SessionStatus.SUCCESS.value
+
+    def test_cas_retries_on_mtime_conflict(self, tmp_path):
+        """mtime 被外部修改后，CAS 应重试成功"""
+        import json as _json
+        import time
+
+        path = tmp_path / "cas2.json"
+        led = Ledger(path=path)
+        led.record_success("sid1", "proj", "n1")
+
+        time.sleep(0.05)
+        raw = _json.loads(path.read_text(encoding="utf-8"))
+        raw["sessions"]["ext_sid"] = {
+            "project": "ext",
+            "processed_at": "2026-01-01T00:00:00",
+            "status": "success",
+            "note_id": "ext_note",
+            "retry_count": 0,
+            "last_error": None,
+        }
+        _atomic_write_json(path, raw)
+
+        led.record_success("sid2", "proj", "n2")
+
+        led2 = Ledger(path=path)
+        assert led2.get("ext_sid") is not None
+        assert led2.get("sid2") is not None
+
+    def test_cas_raises_after_max_retries(self, tmp_path):
+        """持续冲突 3 次后应抛 RuntimeError"""
+        from unittest.mock import patch
+
+        path = tmp_path / "cas3.json"
+        led = Ledger(path=path)
+        led.record_success("sid1", "proj", "n1")
+
+        with patch.object(led, "_save_cas", return_value=False):
+            with pytest.raises(RuntimeError, match="CAS conflict"):
+                led.record_success("sid2", "proj", "n2")
+
+    def test_cas_handles_missing_file(self, tmp_path):
+        """文件不存在时 mtime 比较应跳过，直接写入"""
+        path = tmp_path / "new.json"
+        led = Ledger(path=path)
+        led.record_success("sid1", "proj", "n1")
+        assert led.get("sid1") is not None
