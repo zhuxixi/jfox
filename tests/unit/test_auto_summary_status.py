@@ -81,16 +81,64 @@ class TestProgressJsonOutput:
         assert data["progress"]["total_scannable"] == 3
         assert data["progress"]["pending"] == 3
         assert data["progress"]["success"] == 0
+        assert "retryable" in data["progress"]  # 新增字段
+
+    @patch("jfox.auto_summary.cli.list_session_files")
+    @patch("jfox.auto_summary.cli._config")
+    def test_failed_permanent_counted_as_failed(self, mock_config, mock_list):
+        """failed_permanent 应计入 failed，不计入 pending"""
+        mock_config.return_value = _make_config()
+        mock_list.return_value = [
+            _mock_session_file("s1"),  # success
+            _mock_session_file("s2"),  # failed_permanent → 永久失败
+            _mock_session_file("s3"),  # failed_transient → 可重试
+            _mock_session_file("s4"),  # pending (not in ledger)
+        ]
+        sessions = {
+            "s1": LedgerEntry(
+                project="p",
+                processed_at="2026-01-01",
+                status=SessionStatus.SUCCESS.value,
+            ),
+            "s2": LedgerEntry(
+                project="p",
+                processed_at="2026-01-01",
+                status=SessionStatus.FAILED_PERMANENT.value,
+            ),
+            "s3": LedgerEntry(
+                project="p",
+                processed_at="2026-01-01",
+                status=SessionStatus.FAILED_TRANSIENT.value,
+            ),
+        }
+        led = _make_mock_ledger(sessions)
+        with (patch("jfox.auto_summary.cli.Ledger", return_value=led),):
+            from typer.testing import CliRunner
+
+            from jfox.auto_summary.cli import auto_summary_app
+
+            runner = CliRunner()
+            result = runner.invoke(auto_summary_app, ["status", "--format", "json"])
+
+        assert result.exit_code == 0
+        data = json.loads(_strip_ansi(result.output))
+        p = data["progress"]
+        assert p["total_scannable"] == 4
+        assert p["success"] == 1
+        assert p["failed"] == 1  # s2: failed_permanent
+        assert p["retryable"] == 1  # s3: failed_transient
+        assert p["pending"] == 2  # s3 (retryable) + s4 (无记录)
+        assert p["percentage"] == 25.0  # success/total = 1/4 = 25%
 
     @patch("jfox.auto_summary.cli.list_session_files")
     @patch("jfox.auto_summary.cli._config")
     def test_progress_counts_match_ledger(self, mock_config, mock_list):
-        """progress 中的 success/skipped/failed 应与 ledger 匹配"""
+        """progress 中的 success/skipped/failed 应与 ledger 匹配，failed_transient 归入 pending"""
         mock_config.return_value = _make_config()
         mock_list.return_value = [
             _mock_session_file("s1"),  # success
             _mock_session_file("s2"),  # skipped
-            _mock_session_file("s3"),  # failed_transient
+            _mock_session_file("s3"),  # failed_transient → runner 会重试，归入 pending
             _mock_session_file("s4"),  # pending (not in ledger)
         ]
         sessions = {
@@ -125,8 +173,10 @@ class TestProgressJsonOutput:
         assert p["total_scannable"] == 4
         assert p["success"] == 1
         assert p["skipped"] == 1
-        assert p["failed"] == 1
-        assert p["pending"] == 1
+        # failed_transient 归入 pending（runner 会重试），failed 仅计永久失败
+        assert p["failed"] == 0
+        assert p["pending"] == 2  # s3 (retryable) + s4 (无记录)
+        assert p["retryable"] == 1  # s3
         assert p["percentage"] == 50.0  # (success+skipped)/total = 2/4 = 50%
 
 

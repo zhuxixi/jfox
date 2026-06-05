@@ -65,7 +65,10 @@ def status(
         min_session_size_kb=cfg.min_session_size_kb,
         skip_after_days=cfg.skip_after_days,
     )
-    success = skipped = failed = 0
+    # 与 runner 调度逻辑对齐：
+    # runner 的 is_done() 对 success/skipped/failed_permanent 返回 True（不再处理）
+    # failed_transient 不在 _TERMINAL_STATUSES 中，会被 runner 重试
+    success = skipped = failed_transient = failed_permanent = 0
     for sf in scannable:
         entry = led.get(sf.session_id)
         if entry is None:
@@ -74,9 +77,13 @@ def status(
             success += 1
         elif entry.status == "skipped":
             skipped += 1
-        else:
-            failed += 1
+        elif entry.status == "failed_transient":
+            failed_transient += 1
+        else:  # failed_permanent 或其他 → 视为永久失败
+            failed_permanent += 1
     total = len(scannable)
+    # pending 包含：无 ledger 记录的 + failed_transient（runner 下轮会重试）
+    failed = failed_permanent
     pending = total - success - skipped - failed
     done = success + skipped
     pct = round(done / total * 100, 1) if total > 0 else 100.0
@@ -87,6 +94,7 @@ def status(
         "skipped": skipped,
         "pending": pending,
         "failed": failed,
+        "retryable": failed_transient,
         "percentage": pct,
     }
 
@@ -135,7 +143,9 @@ def status(
     prog_table.add_row("已处理 (success)", str(success))
     prog_table.add_row("已跳过 (skipped)", str(skipped))
     prog_table.add_row("待处理 (pending)", str(pending))
-    prog_table.add_row("处理失败", str(failed))
+    if failed_transient > 0:
+        prog_table.add_row("可重试 (retryable)", str(failed_transient))
+    prog_table.add_row("永久失败 (failed)", str(failed))
     prog_table.add_row("进度", f"{pct}%")
     console.print(prog_table)
 
