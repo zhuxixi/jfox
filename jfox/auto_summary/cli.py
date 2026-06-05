@@ -25,6 +25,7 @@ from ..global_config import get_global_config_manager
 from . import ledger as ledger_module
 from .ledger import Ledger
 from .runner import run_once, scan_pending
+from .scanner import list_session_files
 
 
 def _fmt(table: Optional[Table] = None, json_data: Any = None, fmt: str = "table") -> None:
@@ -52,10 +53,50 @@ def _config():
 def status(
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
-    """显示 auto-summary 配置和 ledger 统计"""
+    """显示 auto-summary 配置、ledger 统计和处理进度"""
     cfg = _config()
     led = Ledger()
     stats = led.stats()
+
+    # 交叉对比：scanner vs ledger
+    scannable = list_session_files(
+        idle_threshold_minutes=cfg.idle_threshold_minutes,
+        max_session_size_mb=cfg.max_session_size_mb,
+        min_session_size_kb=cfg.min_session_size_kb,
+        skip_after_days=cfg.skip_after_days,
+    )
+    # 与 runner 调度逻辑对齐：
+    # runner 的 is_done() 对 success/skipped/failed_permanent 返回 True（不再处理）
+    # failed_transient 不在 _TERMINAL_STATUSES 中，会被 runner 重试
+    success = skipped = failed_transient = failed_permanent = 0
+    for sf in scannable:
+        entry = led.get(sf.session_id)
+        if entry is None:
+            continue
+        if entry.status == "success":
+            success += 1
+        elif entry.status == "skipped":
+            skipped += 1
+        elif entry.status == "failed_transient":
+            failed_transient += 1
+        else:  # failed_permanent 或其他 → 视为永久失败
+            failed_permanent += 1
+    total = len(scannable)
+    # pending 包含：无 ledger 记录的 + failed_transient（runner 下轮会重试）
+    failed = failed_permanent
+    pending = total - success - skipped - failed
+    done = success + skipped
+    pct = round(done / total * 100, 1) if total > 0 else 100.0
+
+    progress = {
+        "total_scannable": total,
+        "success": success,
+        "skipped": skipped,
+        "pending": pending,
+        "failed": failed,
+        "retryable": failed_transient,
+        "percentage": pct,
+    }
 
     if output_format == "json":
         _fmt(
@@ -63,10 +104,13 @@ def status(
                 "config": cfg.to_dict(),
                 "ledger_file": str(ledger_module.DEFAULT_LEDGER_PATH),
                 "ledger_stats": stats,
+                "progress": progress,
             },
             fmt="json",
         )
         return
+
+    # --- 表格输出（保留原有两张表，新增第三张进度表） ---
 
     table = Table(title="auto-summary 配置", show_header=False)
     table.add_column("项", style="cyan", no_wrap=True)
@@ -90,6 +134,20 @@ def status(
     for k, v in stats.items():
         stat_table.add_row(k, str(v))
     console.print(stat_table)
+
+    # 进度表
+    prog_table = Table(title="auto-summary 进度", show_header=False)
+    prog_table.add_column("项", style="cyan", no_wrap=True)
+    prog_table.add_column("值", style="green", justify="right")
+    prog_table.add_row("可扫描 session 总数", str(total))
+    prog_table.add_row("已处理 (success)", str(success))
+    prog_table.add_row("已跳过 (skipped)", str(skipped))
+    prog_table.add_row("待处理 (pending)", str(pending))
+    if failed_transient > 0:
+        prog_table.add_row("可重试 (retryable)", str(failed_transient))
+    prog_table.add_row("永久失败 (failed)", str(failed))
+    prog_table.add_row("进度", f"{pct}%")
+    console.print(prog_table)
 
 
 @auto_summary_app.command("enable")

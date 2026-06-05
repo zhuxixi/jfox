@@ -57,7 +57,7 @@ def iter_session_files(
     idle_threshold_minutes: int = 30,
     max_session_size_mb: int = 10,
     min_session_size_kb: int = 5,
-    skip_after_days: int = 7,
+    skip_after_days: int = 0,
     project_blocklist: Sequence[str] = DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS,
     now: float | None = None,
 ) -> Iterator[SessionFile]:
@@ -159,3 +159,29 @@ def is_running_inside_isolated_dir() -> bool:
         return True
     except ValueError:
         return False
+
+
+def list_session_files(
+    claude_projects_dir: Path | None = None,
+    idle_threshold_minutes: int = 30,
+    max_session_size_mb: int = 10,
+    min_session_size_kb: int = 5,
+    skip_after_days: int = 0,
+    project_blocklist: Sequence[str] = DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS,
+    now: float | None = None,
+) -> list[SessionFile]:
+    """返回所有可扫描的 session 文件列表（materialized）。
+
+    供 status 命令等需要完整列表的场景使用。
+    """
+    return list(
+        iter_session_files(
+            claude_projects_dir=claude_projects_dir,
+            idle_threshold_minutes=idle_threshold_minutes,
+            max_session_size_mb=max_session_size_mb,
+            min_session_size_kb=min_session_size_kb,
+            skip_after_days=skip_after_days,
+            project_blocklist=project_blocklist,
+            now=now,
+        )
+    )
