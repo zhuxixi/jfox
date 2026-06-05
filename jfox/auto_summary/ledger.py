@@ -208,7 +208,7 @@ class Ledger:
     # 写入 -----------------------------------------------------------------
 
     def record_success(self, session_id: str, project: str, note_id: str) -> bool:
-        for attempt in range(3):
+        for attempt in range(self.max_retries):
             data = self._load()
             data.sessions[session_id] = LedgerEntry(
                 project=project,
@@ -221,11 +221,13 @@ class Ledger:
             if self._save_cas(data):
                 self._data = data
                 return True
-            logger.debug("CAS conflict on record_success, retry %d/3", attempt + 1)
-        raise RuntimeError(f"Ledger CAS conflict after 3 retries: {session_id}")
+            logger.debug(
+                "CAS conflict on record_success, retry %d/%d", attempt + 1, self.max_retries
+            )
+        raise RuntimeError(f"Ledger CAS conflict after {self.max_retries} retries: {session_id}")
 
     def record_skip(self, session_id: str, project: str, reason: str) -> bool:
-        for attempt in range(3):
+        for attempt in range(self.max_retries):
             data = self._load()
             data.sessions[session_id] = LedgerEntry(
                 project=project,
@@ -238,11 +240,11 @@ class Ledger:
             if self._save_cas(data):
                 self._data = data
                 return True
-            logger.debug("CAS conflict on record_skip, retry %d/3", attempt + 1)
-        raise RuntimeError(f"Ledger CAS conflict after 3 retries: {session_id}")
+            logger.debug("CAS conflict on record_skip, retry %d/%d", attempt + 1, self.max_retries)
+        raise RuntimeError(f"Ledger CAS conflict after {self.max_retries} retries: {session_id}")
 
     def record_failure(self, session_id: str, project: str, error: str) -> bool:
-        for attempt in range(3):
+        for attempt in range(self.max_retries):
             data = self._load()
             prev = data.sessions.get(session_id)
             retries = (prev.retry_count if prev else 0) + 1
@@ -259,12 +261,14 @@ class Ledger:
             if self._save_cas(data):
                 self._data = data
                 return True
-            logger.debug("CAS conflict on record_failure, retry %d/3", attempt + 1)
-        raise RuntimeError(f"Ledger CAS conflict after 3 retries: {session_id}")
+            logger.debug(
+                "CAS conflict on record_failure, retry %d/%d", attempt + 1, self.max_retries
+            )
+        raise RuntimeError(f"Ledger CAS conflict after {self.max_retries} retries: {session_id}")
 
     def forget(self, session_id: str) -> bool:
         """从 ledger 中移除某条，使其下次扫描时被重新处理"""
-        for attempt in range(3):
+        for attempt in range(self.max_retries):
             data = self._load()
             if session_id not in data.sessions:
                 return False
@@ -272,15 +276,15 @@ class Ledger:
             if self._save_cas(data):
                 self._data = data
                 return True
-            logger.debug("CAS conflict on forget, retry %d/3", attempt + 1)
-        raise RuntimeError(f"Ledger CAS conflict after 3 retries: {session_id}")
+            logger.debug("CAS conflict on forget, retry %d/%d", attempt + 1, self.max_retries)
+        raise RuntimeError(f"Ledger CAS conflict after {self.max_retries} retries: {session_id}")
 
     def prune_older_than(self, days: int) -> int:
         """删除 processed_at 早于 N 天的条目，返回删除数量"""
         if days <= 0:
             return 0
         cutoff = datetime.now().timestamp() - days * 86400
-        for attempt in range(3):
+        for attempt in range(self.max_retries):
             data = self._load()
             to_delete = []
             for sid, entry in data.sessions.items():
@@ -297,5 +301,5 @@ class Ledger:
             if self._save_cas(data):
                 self._data = data
                 return len(to_delete)
-            logger.debug("CAS conflict on prune, retry %d/3", attempt + 1)
-        raise RuntimeError("Ledger CAS conflict after 3 retries during prune")
+            logger.debug("CAS conflict on prune, retry %d/%d", attempt + 1, self.max_retries)
+        raise RuntimeError(f"Ledger CAS conflict after {self.max_retries} retries during prune")

@@ -468,8 +468,8 @@ class TestRunClaudeInterruptible:
 
         with patch("subprocess.Popen") as mock_popen, patch("time.sleep"):
             proc = mock_popen.return_value
-            # 第一次 poll 返回 None（sleep），第二次返回 0（break），第三次循环后检查
-            proc.poll.side_effect = [None, 0, 0]
+            # poll 调用链：loop sleep → break → timeout check → except 存活检查
+            proc.poll.side_effect = [None, 0, 0, 0]
             proc.returncode = 1
             proc.stderr.read.return_value = "error msg"
 

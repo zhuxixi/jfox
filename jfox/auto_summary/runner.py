@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -352,7 +353,7 @@ def _run_claude(
     cwd: str,
     env: dict[str, str],
     shell: bool = False,
-    stop_event: Optional[object] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> str:
     """执行子命令，支持 stop_event 中断。
 
@@ -373,6 +374,15 @@ def _run_claude(
         env=env,
         shell=shell,
     )
+
+    # 后台线程读取 stderr，防止管道缓冲区满导致死锁
+    stderr_chunks: list[str] = []
+    stderr_thread = threading.Thread(
+        target=lambda: stderr_chunks.append(proc.stderr.read()),
+        daemon=True,
+    )
+    stderr_thread.start()
+
     try:
         if input_text:
             proc.stdin.write(input_text)
@@ -389,6 +399,7 @@ def _run_claude(
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     proc.kill()
+                    proc.wait()
                 raise RuntimeError("Claude subprocess interrupted by stop signal")
 
             if proc.poll() is not None:
@@ -401,19 +412,25 @@ def _run_claude(
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait()
             raise TimeoutError(f"Subprocess timed out after {timeout}s")
 
+        stderr_thread.join(timeout=5)
+        stderr_text = "".join(stderr_chunks)
+
         if proc.returncode != 0:
-            stderr = (proc.stderr.read() or "").strip()[:500]
+            stderr = stderr_text.strip()[:500]
             raise RuntimeError(f"Subprocess exited {proc.returncode}: {stderr or '(no stderr)'}")
 
         out = (proc.stdout.read() or "").strip()
         if not out:
-            stderr_hint = (proc.stderr.read() or "").strip()[:200]
+            stderr_hint = stderr_text.strip()[:200]
             raise RuntimeError(f"Empty stdout (stderr: {stderr_hint or '(none)'})")
         return out
     except Exception:
-        proc.kill()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
         raise
 
 
