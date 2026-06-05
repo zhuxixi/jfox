@@ -80,6 +80,8 @@ class AutoSummaryConfig:
             self.min_session_size_kb = max(0, self.max_session_size_mb * 1024 - 1)
         if isinstance(self.target_kb, str) and not self.target_kb.strip():
             self.target_kb = None
+        # 运行时 stop_event，由 daemon loop 注入，不序列化
+        object.__setattr__(self, "_stop_event", None)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
