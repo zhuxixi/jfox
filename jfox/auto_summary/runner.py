@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -345,6 +346,94 @@ def _build_user_prompt(session_file: SessionFile, extracted) -> str:
     return "\n".join(lines)
 
 
+def _run_claude(
+    cmd: list[str],
+    input_text: str,
+    timeout: int,
+    cwd: str,
+    env: dict[str, str],
+    shell: bool = False,
+    stop_event: Optional[threading.Event] = None,
+) -> str:
+    """执行子命令，支持 stop_event 中断。
+
+    使用 Popen + 轮询代替 subprocess.run，使 stop_event.set() 能在 ~1s 内
+    终止子进程，而非等待整个 timeout。
+    """
+    import time as _time
+
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=cwd,
+        env=env,
+        shell=shell,
+    )
+
+    # 后台线程读取 stderr，防止管道缓冲区满导致死锁
+    stderr_chunks: list[str] = []
+    stderr_thread = threading.Thread(
+        target=lambda: stderr_chunks.append(proc.stderr.read()),
+        daemon=True,
+    )
+    stderr_thread.start()
+
+    try:
+        if input_text:
+            proc.stdin.write(input_text)
+        proc.stdin.close()
+    except (BrokenPipeError, OSError) as e:
+        logger.warning("子进程 stdin 写入失败（进程可能已提前退出）: %s", e)
+
+    try:
+        deadline = _time.monotonic() + timeout
+        while _time.monotonic() < deadline:
+            if stop_event and stop_event.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                raise RuntimeError("Claude subprocess interrupted by stop signal")
+
+            if proc.poll() is not None:
+                break
+            _time.sleep(1)
+
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+            raise TimeoutError(f"Subprocess timed out after {timeout}s")
+
+        stderr_thread.join(timeout=5)
+        stderr_text = "".join(stderr_chunks)
+
+        if proc.returncode != 0:
+            stderr = stderr_text.strip()[:500]
+            raise RuntimeError(f"Subprocess exited {proc.returncode}: {stderr or '(no stderr)'}")
+
+        out = (proc.stdout.read() or "").strip()
+        if not out:
+            stderr_hint = stderr_text.strip()[:200]
+            raise RuntimeError(f"Empty stdout (stderr: {stderr_hint or '(none)'})")
+        return out
+    except Exception:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        raise
+
+
 def _invoke_claude(extracted_dialog_text: str, cfg: AutoSummaryConfig) -> str:
     """调用 claude -p，返回原始 stdout（非空字符串）"""
     binary = _resolve_claude_binary(cfg)
@@ -369,35 +458,29 @@ def _invoke_claude(extracted_dialog_text: str, cfg: AutoSummaryConfig) -> str:
     for noisy in ("JFOX_KB", "JFOX_DAEMON_PROCESS"):
         env.pop(noisy, None)
 
+    stop_event = getattr(cfg, "_stop_event", None)
+
     try:
-        proc = subprocess.run(
-            cmd,
-            input=extracted_dialog_text,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=str(cwd),
+        return _run_claude(
+            cmd=cmd,
+            input_text=extracted_dialog_text,
             timeout=max(30, cfg.claude_timeout_seconds),
+            cwd=str(cwd),
             env=env,
             shell=use_shell,
+            stop_event=stop_event,
         )
-    except subprocess.TimeoutExpired as e:
+    except TimeoutError as e:
         raise _ClaudeInvocationError(f"claude -p 超时（{cfg.claude_timeout_seconds}s）") from e
+    except RuntimeError as e:
+        msg = str(e)
+        if "interrupted" in msg.lower():
+            raise
+        if "exited" in msg or "Empty stdout" in msg:
+            raise _ClaudeInvocationError(msg) from e
+        raise
     except OSError as e:
         raise _ClaudeInvocationError(f"启动 claude 失败: {e}") from e
-
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()[:500]
-        raise _ClaudeInvocationError(
-            f"claude -p 退出码 {proc.returncode}: {stderr or '(no stderr)'}"
-        )
-
-    out = (proc.stdout or "").strip()
-    if not out:
-        stderr_hint = (proc.stderr or "").strip()[:200]
-        raise _ClaudeInvocationError(f"claude -p 返回空 stdout (stderr: {stderr_hint or '(none)'})")
-    return out
 
 
 def _parse_claude_json(stdout: str) -> dict[str, Any]:

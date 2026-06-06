@@ -6,8 +6,9 @@
 """
 
 import json
-import subprocess
-from unittest.mock import patch
+import threading
+import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -123,10 +124,17 @@ def ledger(tmp_path):
     return Ledger(path=tmp_path / "state.json", max_retries=3)
 
 
-def _make_completed_proc(stdout, returncode=0, stderr=""):
-    return subprocess.CompletedProcess(
-        args=["claude", "-p"], returncode=returncode, stdout=stdout, stderr=stderr
-    )
+def _make_popen_mock(stdout="", returncode=0, stderr=""):
+    """创建 mock Popen 实例，模拟子进程立即完成（首次 poll 即返回 returncode）。"""
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = returncode
+    mock_proc.returncode = returncode
+    mock_proc.stdout.read.return_value = stdout
+    mock_proc.stderr.read.return_value = stderr
+    mock_proc.wait.return_value = returncode
+    mock_proc.terminate.return_value = None
+    mock_proc.kill.return_value = None
+    return mock_proc
 
 
 def test_summarize_one_success(tmp_path, ledger, fake_cfg):
@@ -142,7 +150,7 @@ def test_summarize_one_success(tmp_path, ledger, fake_cfg):
 
     with (
         patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
-        patch.object(subprocess, "run", return_value=_make_completed_proc(fake_stdout)),
+        patch("subprocess.Popen", return_value=_make_popen_mock(stdout=fake_stdout)),
         patch.object(runner_module, "_save_session_note", return_value="20260519T100000"),
     ):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
@@ -169,7 +177,7 @@ def test_summarize_one_claude_marks_skip(tmp_path, ledger, fake_cfg):
 
     with (
         patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
-        patch.object(subprocess, "run", return_value=_make_completed_proc(fake_stdout)),
+        patch("subprocess.Popen", return_value=_make_popen_mock(stdout=fake_stdout)),
         patch.object(runner_module, "_save_session_note") as save_mock,
     ):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
@@ -183,11 +191,10 @@ def test_summarize_one_claude_marks_skip(tmp_path, ledger, fake_cfg):
 
 def test_summarize_one_claude_nonzero_exit_marks_failure(tmp_path, ledger, fake_cfg):
     sf = _make_session_jsonl(tmp_path, sid="fail0001")
-    proc = _make_completed_proc("", returncode=2, stderr="boom")
 
     with (
         patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
-        patch.object(subprocess, "run", return_value=proc),
+        patch("subprocess.Popen", return_value=_make_popen_mock(returncode=2, stderr="boom")),
     ):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
@@ -199,11 +206,13 @@ def test_summarize_one_claude_nonzero_exit_marks_failure(tmp_path, ledger, fake_
 
 def test_summarize_one_invalid_json_marks_failure(tmp_path, ledger, fake_cfg):
     sf = _make_session_jsonl(tmp_path, sid="parse001")
-    proc = _make_completed_proc('{"result": "not a json object at all"}')
 
     with (
         patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
-        patch.object(subprocess, "run", return_value=proc),
+        patch(
+            "subprocess.Popen",
+            return_value=_make_popen_mock(stdout='{"result": "not a json object at all"}'),
+        ),
     ):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
@@ -228,11 +237,11 @@ def test_summarize_one_empty_dialog_skips_without_calling_claude(tmp_path, ledge
         size_bytes=p.stat().st_size,
     )
 
-    with patch.object(subprocess, "run") as run_mock:
+    with patch("subprocess.Popen") as popen_mock:
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.SKIPPED
-    run_mock.assert_not_called()
+    popen_mock.assert_not_called()
 
 
 def test_summarize_one_empty_summary_md_marks_failure(tmp_path, ledger, fake_cfg):
@@ -249,7 +258,7 @@ def test_summarize_one_empty_summary_md_marks_failure(tmp_path, ledger, fake_cfg
 
     with (
         patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
-        patch.object(subprocess, "run", return_value=_make_completed_proc(fake_stdout)),
+        patch("subprocess.Popen", return_value=_make_popen_mock(stdout=fake_stdout)),
         patch.object(runner_module, "_save_session_note") as save_mock,
     ):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
@@ -263,12 +272,18 @@ def test_summarize_one_empty_summary_md_marks_failure(tmp_path, ledger, fake_cfg
 def test_summarize_one_timeout_marks_failure(tmp_path, ledger, fake_cfg):
     sf = _make_session_jsonl(tmp_path, sid="timeout1")
 
-    def raise_timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args[0], timeout=10)
+    # _run_claude 超时后会 raise TimeoutError，_invoke_claude 捕获后包装为
+    # _ClaudeInvocationError（包含"超时"字样），summarize_one 再记录为 FAILED
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None  # 永远不退出
+    mock_proc.wait.return_value = 0
+    mock_proc.terminate.return_value = None
+    mock_proc.kill.return_value = None
 
     with (
         patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
-        patch.object(subprocess, "run", side_effect=raise_timeout),
+        patch("subprocess.Popen", return_value=mock_proc),
+        patch("time.monotonic", side_effect=[0.0, 1.0, 999.0]),  # deadline 超过
     ):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
@@ -362,3 +377,101 @@ def test_run_once_dry_run_skips_summarize(tmp_path, fake_cfg):
     assert report.scanned == 1
     assert report.processed == 0
     summarize_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _run_claude interruptibility tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunClaudeInterruptible:
+    """测试 _run_claude 的 stop_event 可中断性"""
+
+    def _default_kwargs(self, tmp_path):
+        return dict(
+            cmd=["claude", "-p"],
+            input_text="test prompt",
+            timeout=30,
+            cwd=str(tmp_path),
+            env={"PATH": "/usr/bin"},
+            shell=False,
+        )
+
+    def test_normal_completion(self, tmp_path):
+        """正常完成：stop_event 未设置，返回 stdout"""
+        from jfox.auto_summary.runner import _run_claude
+
+        with patch("subprocess.Popen") as mock_popen, patch("time.sleep"):
+            proc = mock_popen.return_value
+            # 第一次 poll 返回 None（sleep），第二次返回 0（break），第三次被循环后检查调用
+            proc.poll.side_effect = [None, 0, 0]
+            proc.returncode = 0
+            proc.stdout.read.return_value = '{"result": "ok"}'
+            proc.stderr.read.return_value = ""
+
+            result = _run_claude(**self._default_kwargs(tmp_path))
+            assert result == '{"result": "ok"}'
+
+    def test_stop_event_terminates_subprocess(self, tmp_path):
+        """stop_event.set() 后子进程应被 terminate"""
+        from jfox.auto_summary.runner import _run_claude
+
+        stop = threading.Event()
+
+        with patch("subprocess.Popen") as mock_popen, patch("time.sleep"):
+            proc = mock_popen.return_value
+
+            poll_count = {"n": 0}
+
+            def poll_side_effect():
+                poll_count["n"] += 1
+                if poll_count["n"] > 10:
+                    return 0
+                return None
+
+            proc.poll.side_effect = poll_side_effect
+            proc.wait.return_value = 0
+            proc.returncode = 0
+            proc.stdout.read.return_value = ""
+
+            def set_stop_later():
+                time.sleep(0.01)
+                stop.set()
+
+            t = threading.Thread(target=set_stop_later)
+            t.start()
+
+            with pytest.raises(RuntimeError, match="interrupted"):
+                _run_claude(**self._default_kwargs(tmp_path), stop_event=stop)
+
+            t.join()
+            proc.terminate.assert_called()
+
+    def test_timeout_terminates_subprocess(self, tmp_path):
+        """超时后子进程应被 terminate"""
+        from jfox.auto_summary.runner import _run_claude
+
+        with patch("subprocess.Popen") as mock_popen, patch("time.sleep"):
+            proc = mock_popen.return_value
+            proc.poll.return_value = None
+            proc.wait.return_value = 0
+
+            with patch("time.monotonic", side_effect=[0, 0.5, 1.5]):
+                with pytest.raises(TimeoutError, match="timed out"):
+                    _run_claude(**{**self._default_kwargs(tmp_path), "timeout": 1})
+
+            proc.terminate.assert_called()
+
+    def test_nonzero_exit_raises(self, tmp_path):
+        """非零退出码应抛异常"""
+        from jfox.auto_summary.runner import _run_claude
+
+        with patch("subprocess.Popen") as mock_popen, patch("time.sleep"):
+            proc = mock_popen.return_value
+            # poll 调用链：loop sleep → break → timeout check → except 存活检查
+            proc.poll.side_effect = [None, 0, 0, 0]
+            proc.returncode = 1
+            proc.stderr.read.return_value = "error msg"
+
+            with pytest.raises(RuntimeError, match="exited 1"):
+                _run_claude(**self._default_kwargs(tmp_path))

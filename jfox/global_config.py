@@ -80,6 +80,8 @@ class AutoSummaryConfig:
             self.min_session_size_kb = max(0, self.max_session_size_mb * 1024 - 1)
         if isinstance(self.target_kb, str) and not self.target_kb.strip():
             self.target_kb = None
+        # 运行时 stop_event，由 daemon loop 注入，不序列化
+        object.__setattr__(self, "_stop_event", None)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -232,11 +234,11 @@ class GlobalConfigManager:
             )
 
     def _save(self) -> bool:
-        """保存配置到文件"""
+        """原子保存配置到文件（tempfile + os.replace）"""
         try:
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(self._config.to_dict(), f, ensure_ascii=False, indent=2)
+            from jfox.utils import atomic_write_json
+
+            atomic_write_json(self.config_path, self._config.to_dict())
             logger.debug(f"Saved global config to {self.config_path}")
             return True
         except Exception as e:
