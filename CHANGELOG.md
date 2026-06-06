@@ -2,6 +2,24 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [0.10.0] - 2026-06-06
+
+### Features
+- **auto-summary**: progress visibility + remove 7-day scan limit (#235)
+- **daemon**: interactive auto-summary prompt on daemon start (#233)
+- add pi skills and package.json for pi-package support
+- **daemon**: add restart command
+
+### Fixes
+- Issue #224 CR leftovers — atomic write + CAS + interruptible Popen + threading.Event (#236)
+
+### Changes
+- **README**: add auto-summary section with implementation details
+- ignore pr-monitor state and tmp issue body files
+- add superpowers plans and spec for recent work
+
+[0.10.0]: https://github.com/zhuxixi/jfox/compare/v0.9.0...v0.10.0
+
 ## [0.9.0] - 2026-05-22
 
 ### Features
