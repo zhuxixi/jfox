@@ -364,6 +364,30 @@ A session is considered "finished" when its file has not been modified for `idle
 
 ---
 
+## Agent Plugins
+
+JFox 提供主流 AI Agent 的插件/技能集成：
+
+### Claude Code
+
+- 插件目录：`packages/cc-plugin/`
+- 安装（marketplace 上架后）：`/plugin marketplace add zhuxixi/jfox`
+- 包含 5 个 skill：manage、search、ingest、organize、session-summary
+
+### Kimi Code CLI
+
+- 插件目录：`packages/kimi-plugin/`
+- 安装：在 Kimi Code CLI TUI 中执行 `/plugins install github:zhuxixi/jfox?path=packages/kimi-plugin`，或使用本地 zip
+- 包含 6 个 skill：`using-jfox`（会话启动自动加载）、`jfox-manage`、`jfox-search`、`jfox-ingest`、`jfox-organize`、`jfox-session-summary`
+- 详见：`packages/kimi-plugin/README.md`
+
+### 其他 Agent
+
+- `skills-recommend/pi/` 提供 pi coding agent 的技能包
+- `skills-recommend/kimi-cli/` 保留旧版 Kimi CLI 手动复制 skill（已弃用）
+
+---
+
 ## Note Format
 
 ### Directory Structure
