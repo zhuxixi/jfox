@@ -4,6 +4,8 @@
 
 > **Claude Code 用户请通过 marketplace 安装**（`/plugin marketplace add zhuxixi/jfox`），不要从此目录拷贝。
 > Claude Code 的官方插件源在 `packages/cc-plugin/`，使用 auto-discovery 加载 `packages/cc-plugin/skills/` 下的 5 个 skill。
+>
+> **Kimi Code 用户请使用新版插件**（`packages/kimi-plugin/`），通过 `/plugins install` 安装，支持 `sessionStart` 自动加载。
 
 ## 目录结构
 
@@ -27,27 +29,42 @@ skills-recommend/
 
 ## 使用方法
 
-### Kimi CLI
+### Kimi Code CLI（推荐新版插件）
 
-Kimi CLI 使用与 Claude Code 相同的 SKILL.md 格式，通过 `description` 中的关键词自然语言触发：
+Kimi Code CLI 已支持正式插件机制。新版插件位于 `packages/kimi-plugin/`，包含 manifest 和 `sessionStart` 自动加载：
 
 ```bash
-# 复制全部 skills
-mkdir -p ~/.config/agents/skills/
-cp -r skills-recommend/kimi-cli/* ~/.config/agents/skills/
+# 方式一：本地 zip 安装（开发测试）
+cd packages/kimi-plugin
+zip -r /tmp/jfox-kimi-plugin.zip .
 
-# 或复制单个 skill
-cp -r skills-recommend/kimi-cli/jfox-search ~/.config/agents/skills/
+# 在 Kimi Code CLI TUI 中执行
+/plugins install /tmp/jfox-kimi-plugin.zip
+/new
+
+# 方式二：从 GitHub 安装（marketplace 上架后）
+/plugins install github:zhuxixi/jfox?path=packages/kimi-plugin
+/new
 ```
 
-复制后 Kimi CLI 会根据对话内容自动触发对应的 skill：
-- **jfox-common** — 创建/管理知识库、健康检查
+插件内置 skill：
+- **using-jfox** — 会话启动时自动加载，环境检查与命令速查
+- **jfox-manage** — 创建/管理知识库、笔记 CRUD、健康检查
 - **jfox-ingest** — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
 - **jfox-organize** — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
 - **jfox-search** — 搜索笔记、图谱查询、链接推荐
-- **jfox-session-summary** — 将会话总结写入知识库作为 fleeting 笔记
+- **jfox-session-summary** — 将会话总结写入知识库
 
-Kimi CLI 也兼容 `~/.kimi/skills/` 和 `~/.claude/skills/` 目录。
+详见 `packages/kimi-plugin/README.md`。
+
+#### 旧版手动复制（已弃用）
+
+早期 Kimi CLI 没有正式插件机制，只能把 `skills-recommend/kimi-cli/` 下的 SKILL.md 手动复制到 skills 目录。该方式不再维护，仅作为历史参考：
+
+```bash
+mkdir -p ~/.kimi-code/skills/
+cp -r skills-recommend/kimi-cli/* ~/.kimi-code/skills/
+```
 
 ### pi coding agent
 
