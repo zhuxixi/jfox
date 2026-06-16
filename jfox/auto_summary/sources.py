@@ -2,6 +2,7 @@
 Session 来源抽象：把 Claude Code / Kimi Code 的「扫描 + 对话提取」收拢为
 统一的 SessionSource 接口，runner 只面向接口编程。
 """
+
 from __future__ import annotations
 
 import logging

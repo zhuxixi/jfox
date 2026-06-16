@@ -58,7 +58,9 @@ def test_summarize_one_uses_source_extract_and_prefixed_key(monkeypatch):
 
     # 让 _invoke_claude 返回 skip，快速走 ledger.record_skip 分支验证 key
     monkeypatch.setattr(
-        runner, "_invoke_claude", lambda extracted_dialog_text, cfg: '{"skip": true, "reason": "test"}'
+        runner,
+        "_invoke_claude",
+        lambda extracted_dialog_text, cfg: '{"skip": true, "reason": "test"}',
     )
     result = runner.summarize_one(sf, ledger=ledger)
     assert ledger.record_skip.called

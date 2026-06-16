@@ -4,9 +4,7 @@ from jfox.auto_summary.ledger import Ledger
 
 
 def _write_ledger(path, sessions):
-    path.write_text(
-        json.dumps({"version": 1, "sessions": sessions}), encoding="utf-8"
-    )
+    path.write_text(json.dumps({"version": 1, "sessions": sessions}), encoding="utf-8")
 
 
 def test_legacy_bare_key_migrated_to_claude_prefix(tmp_path):
