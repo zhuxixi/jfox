@@ -1,0 +1,20 @@
+from jfox.global_config import AutoSummaryConfig
+
+
+def test_default_sources_both_enabled():
+    cfg = AutoSummaryConfig()
+    assert cfg.session_sources == ["claude", "kimi"]
+    assert cfg.kimi_sessions_dir is None
+
+
+def test_from_dict_legacy_config_gets_default_sources():
+    cfg = AutoSummaryConfig.from_dict({"enabled": True})
+    assert cfg.enabled is True
+    assert cfg.session_sources == ["claude", "kimi"]
+
+
+def test_roundtrip_preserves_sources():
+    cfg = AutoSummaryConfig(session_sources=["claude"], kimi_sessions_dir="/tmp/k")
+    cfg2 = AutoSummaryConfig.from_dict(cfg.to_dict())
+    assert cfg2.session_sources == ["claude"]
+    assert cfg2.kimi_sessions_dir == "/tmp/k"
