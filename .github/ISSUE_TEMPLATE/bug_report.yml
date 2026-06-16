@@ -1,0 +1,129 @@
+name: "🐛 Bug 报告"
+description: 报告一个 bug — 功能损坏、崩溃或行为异常。
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢报告 bug！请填写以下内容，帮助我们快速复现和修复。
+
+        **提交前请确认**：
+        - [ ] 搜索 [现有 issues](https://github.com/zhuxixi/jfox/issues) 避免重复
+        - [ ] 升级到最新版本（`pip install --upgrade jfox` 或 `uv tool upgrade jfox`）确认 bug 仍存在
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug 描述
+      description: 清晰描述什么问题。包含错误消息、堆栈跟踪或截图。
+      placeholder: |
+        发生了什么？期望发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 触发 bug 的最小步骤。越具体，修复越快。
+      placeholder: |
+        1. 运行 `jfox search "xxx"`
+        2. 输入 "..."
+        3. 出现错误：...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 应该发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 实际发生了什么？包含完整的错误输出。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 受影响组件
+      description: jfox 的哪个部分受影响？
+      multiple: true
+      options:
+        - CLI 命令
+        - 笔记管理（add/edit/delete/show）
+        - 搜索（search/suggest_links）
+        - 知识图谱（graph）
+        - 向量索引（embedding/vector_store）
+        - 守护进程（daemon）
+        - 配置（config/kb_manager）
+        - 安装/部署
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 例如 Ubuntu 24.04, macOS 15.2, Windows 11
+      placeholder: Ubuntu 24.04
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python 版本
+      description: "python --version 的输出"
+      placeholder: "3.11.9"
+    validations:
+      required: true
+
+  - type: input
+    id: uv-version
+    attributes:
+      label: uv 版本（如使用 uv 安装）
+      description: "uv --version 的输出"
+      placeholder: "0.6.0"
+
+  - type: input
+    id: jfox-version
+    attributes:
+      label: jfox 版本
+      description: "jfox --version 的输出"
+      placeholder: "0.10.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志 / 堆栈跟踪
+      description: 完整的错误输出。自动格式化。
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: 根因分析（可选）
+      description: |
+        如果你已经排查到代码层面的根因，请分享。包含文件路径、行号、代码片段。这会大大加速修复。
+      placeholder: |
+        问题在 `jfox/cli.py` 第 123 行。`load_note()` 未处理 frontmatter 缺失的情况...
+
+  - type: checkboxes
+    id: pr-ready
+    attributes:
+      label: 是否愿意提交 PR 修复？
+      options:
+        - label: 我想自己修复并提交 PR

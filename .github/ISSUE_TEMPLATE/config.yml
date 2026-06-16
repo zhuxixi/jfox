@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 文档
+    url: https://github.com/zhuxixi/jfox/blob/main/README.md
+    about: 查看 README 和文档。
+  - name: 🤝 贡献指南
+    url: https://github.com/zhuxixi/jfox/blob/main/AGENTS.md
+    about: 提交 PR 前请阅读。
