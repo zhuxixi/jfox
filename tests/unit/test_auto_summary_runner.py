@@ -158,7 +158,7 @@ def test_summarize_one_success(tmp_path, ledger, fake_cfg):
     assert result.outcome == SummaryOutcome.SUCCESS
     assert result.note_id == "20260519T100000"
     assert result.title == "实现 auto-summary"
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert entry is not None
     assert entry.status == SessionStatus.SUCCESS.value
 
@@ -185,7 +185,7 @@ def test_summarize_one_claude_marks_skip(tmp_path, ledger, fake_cfg):
     assert result.outcome == SummaryOutcome.SKIPPED
     assert result.reason == "对话过短"
     save_mock.assert_not_called()
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert entry.status == SessionStatus.SKIPPED.value
 
 
@@ -199,7 +199,7 @@ def test_summarize_one_claude_nonzero_exit_marks_failure(tmp_path, ledger, fake_
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.FAILED  # transient on first attempt
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert entry.status == SessionStatus.FAILED_TRANSIENT.value
     assert entry.retry_count == 1
 
@@ -217,7 +217,7 @@ def test_summarize_one_invalid_json_marks_failure(tmp_path, ledger, fake_cfg):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.FAILED
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert "parse error" in (entry.last_error or "")
 
 
@@ -265,7 +265,7 @@ def test_summarize_one_empty_summary_md_marks_failure(tmp_path, ledger, fake_cfg
 
     assert result.outcome == SummaryOutcome.FAILED
     save_mock.assert_not_called()
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert "summary_md" in (entry.last_error or "")
 
 
@@ -288,7 +288,7 @@ def test_summarize_one_timeout_marks_failure(tmp_path, ledger, fake_cfg):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.FAILED
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert "超时" in (entry.last_error or "")
 
 
