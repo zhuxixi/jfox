@@ -1,0 +1,54 @@
+name: "📝 文档改进"
+description: 报告文档错误、缺失或改进建议。
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢帮助我们改进文档！
+
+  - type: textarea
+    id: location
+    attributes:
+      label: 文档位置
+      description: 指出需要改进的文档位置（文件路径或 URL）。
+      placeholder: |
+        README.md 第 45 行
+        AGENTS.md 的 "开发环境" 部分
+        https://github.com/zhuxixi/jfox/blob/main/docs/xxx.md
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述
+      description: 当前文档有什么问题？（错误、过时、缺失、不清晰）
+      placeholder: |
+        文档说 "uv sync" 但应该是 "uv sync --extra dev"...
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 改进建议
+      description: 你希望怎么改？
+      placeholder: |
+        添加 `--extra dev` 说明，并解释为什么需要 dev 依赖...
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息（可选）
+      description: 截图、参考链接或其他上下文。
+
+  - type: checkboxes
+    id: pr-ready
+    attributes:
+      label: 是否愿意提交 PR 改进？
+      options:
+        - label: 我想自己修改并提交 PR
