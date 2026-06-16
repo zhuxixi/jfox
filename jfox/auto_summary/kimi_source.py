@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from ..global_config import AutoSummaryConfig
-from .extractor import ExtractedDialog
+from .extractor import DEFAULT_MAX_DIALOG_CHARS, ExtractedDialog, _truncate
 from .scanner import SessionFile
 
 logger = logging.getLogger(__name__)
@@ -43,19 +43,24 @@ def _flatten_text(content) -> str:
 
 
 def _find_cwd(record: dict) -> Optional[str]:
-    """在 loop_event 记录里递归找 cwd 字段（cwd 嵌在 event 子对象里）"""
+    """在 loop_event 记录里递归找 cwd 字段（cwd 嵌在 event 子对象里）。
 
-    def _walk(o):
+    带深度限制（默认 20 层），防止病态嵌套记录触发 RecursionError。
+    """
+
+    def _walk(o, depth: int = 0):
+        if depth > 20:
+            return None
         if isinstance(o, dict):
             if isinstance(o.get("cwd"), str):
                 return o["cwd"]
             for v in o.values():
-                r = _walk(v)
+                r = _walk(v, depth + 1)
                 if r:
                     return r
         elif isinstance(o, list):
             for v in o:
-                r = _walk(v)
+                r = _walk(v, depth + 1)
                 if r:
                     return r
         return None
@@ -129,6 +134,7 @@ class KimiCodeSource:
         cwd: Optional[str] = None
         first_time: Optional[int] = None
         last_time: Optional[int] = None
+        seen_user_texts: set[str] = set()  # 去重：turn.prompt 与 append_message(user) 常携带同文本
 
         try:
             with open(sf.path, "r", encoding="utf-8", errors="replace") as f:
@@ -154,22 +160,33 @@ class KimiCodeSource:
                         msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
                         role = msg.get("role") or "user"
                         text = _flatten_text(msg.get("content")).strip()
-                        if text:
-                            turns.append(f"## {role}\n\n{text}")
-                            if role == "user":
-                                result.user_turn_count += 1
-                            elif role == "assistant":
-                                result.assistant_turn_count += 1
+                        if not text:
+                            continue
+                        if role == "user":
+                            # turn.prompt 常先于此记录同文本，去重避免重复 append + 计数翻倍
+                            if text in seen_user_texts:
+                                continue
+                            seen_user_texts.add(text)
+                        turns.append(f"## {role}\n\n{text}")
+                        if role == "user":
+                            result.user_turn_count += 1
+                        elif role == "assistant":
+                            result.assistant_turn_count += 1
                     elif t == "turn.prompt":
                         text = _flatten_text(rec.get("input")).strip()
-                        if text:
+                        if text and text not in seen_user_texts:
                             turns.append(f"## user\n\n{text}")
                             result.user_turn_count += 1
+                            seen_user_texts.add(text)
         except OSError as e:
             logger.warning("读取 kimi session 失败 %s: %s", sf.path, e)
 
         result.cwd = cwd
-        result.dialog_text = "\n\n---\n\n".join(turns)
+        # 与 Claude 路径一致：超长对话截断到 DEFAULT_MAX_DIALOG_CHARS，置 truncated 标记
+        dialog_text, result.truncated = _truncate(
+            "\n\n---\n\n".join(turns), DEFAULT_MAX_DIALOG_CHARS
+        )
+        result.dialog_text = dialog_text
 
         # 时间戳降级：state.json 没给则从 wire time(毫秒)推导
         if result.started_at is None and first_time is not None:

@@ -18,3 +18,9 @@ def test_roundtrip_preserves_sources():
     cfg2 = AutoSummaryConfig.from_dict(cfg.to_dict())
     assert cfg2.session_sources == ["claude"]
     assert cfg2.kimi_sessions_dir == "/tmp/k"
+
+
+def test_from_dict_null_session_sources_falls_back():
+    """issue-3: session_sources 显式 null 时不能崩，回退默认"""
+    cfg = AutoSummaryConfig.from_dict({"session_sources": None})
+    assert cfg.session_sources == ["claude", "kimi"]

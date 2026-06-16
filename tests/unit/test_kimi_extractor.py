@@ -85,3 +85,46 @@ def test_extract_dialog_state_missing_falls_back_to_wire_time(tmp_path):
     d = src.extract_dialog(sf)
     assert d.started_at is not None  # 从首行 time(毫秒) 推导
     assert d.ended_at is not None
+
+
+def test_extract_dialog_dedupes_turn_prompt_duplicate(tmp_path):
+    """issue-1: turn.prompt 与紧随的 append_message(user) 同文本时去重，不重复 append / 计数翻倍"""
+    sf = _session_file(tmp_path)
+    d = KimiCodeSource(tmp_path).extract_dialog(sf)
+    # fixture 有 1 个 turn.prompt + 1 个 append_message(user)，同文本 "list open issues"
+    # 去重后 user_turn_count 应为 1（而非 2），dialog 中该文本只出现一次
+    assert d.user_turn_count == 1
+    assert d.dialog_text.count("list open issues") == 1
+
+
+def test_extract_dialog_truncates_long_dialog(tmp_path):
+    """issue-2: 超长对话截断到 DEFAULT_MAX_DIALOG_CHARS，置 truncated 标记"""
+    from jfox.auto_summary.extractor import DEFAULT_MAX_DIALOG_CHARS
+
+    wire = tmp_path / "wd_jfox_abc" / "session_s2" / "agents" / "main" / "wire.jsonl"
+    wire.parent.mkdir(parents=True)
+    sess_dir = wire.parent.parent.parent
+    (sess_dir / "state.json").write_text(
+        json.dumps({"createdAt": "2026-06-15T14:00:00Z", "updatedAt": "2026-06-15T14:30:00Z"}),
+        encoding="utf-8",
+    )
+    big = "x" * (DEFAULT_MAX_DIALOG_CHARS + 5000)
+    rows = [
+        {
+            "type": "context.append_message",
+            "message": {"role": "user", "content": [{"type": "text", "text": big}]},
+            "time": 1781532844226,
+        }
+    ]
+    wire.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    sf = SessionFile(
+        session_id="s2",
+        project_dir_name="wd_jfox_abc",
+        path=wire,
+        mtime=0.0,
+        size_bytes=600,
+        source="kimi",
+    )
+    d = KimiCodeSource(tmp_path).extract_dialog(sf)
+    assert d.truncated is True
+    assert len(d.dialog_text) <= DEFAULT_MAX_DIALOG_CHARS + 200

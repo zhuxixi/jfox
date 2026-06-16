@@ -103,7 +103,7 @@ class AutoSummaryConfig:
             skip_after_days=int(data.get("skip_after_days", 0)),
             claude_timeout_seconds=int(data.get("claude_timeout_seconds", 120)),
             claude_binary=data.get("claude_binary"),
-            session_sources=list(data.get("session_sources", ["claude", "kimi"])),
+            session_sources=list(data.get("session_sources") or ["claude", "kimi"]),
             kimi_sessions_dir=data.get("kimi_sessions_dir"),
         )
 
