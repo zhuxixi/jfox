@@ -2,6 +2,15 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [Unreleased]
+
+### Features
+- auto-summary 支持 Kimi Code session（`~/.kimi-code/sessions/`），与 Claude Code 共存；新增 `session_sources`/`kimi_sessions_dir` 配置（默认 claude+kimi 都启用，auto-detect 目录）。(#242)
+- 总结笔记升级为五段结构（背景/做了什么/关键决策/技术细节/未决事项），更具上下文感。(#242)
+
+### Changes
+- auto-summary ledger 去重 key 加来源前缀（`claude:`/`kimi:`），旧数据自动迁移。
+
 ## [0.10.0] - 2026-06-06
 
 ### Features
