@@ -37,6 +37,7 @@ class SessionFile:
     path: Path
     mtime: float  # epoch seconds
     size_bytes: int
+    source: str = "claude"  # 来源："claude" / "kimi"，用于分发到对应解析器
 
     @property
     def age_seconds(self) -> float:
