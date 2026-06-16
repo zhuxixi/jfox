@@ -13,6 +13,7 @@ import pytest
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
 from jfox.auto_summary import runner
+from jfox.auto_summary.extractor import ExtractedDialog
 from jfox.auto_summary.scanner import SessionFile
 
 
@@ -38,19 +39,10 @@ def test_scan_pending_merges_multiple_sources(monkeypatch):
 
 def test_summarize_one_uses_source_extract_and_prefixed_key(monkeypatch):
     sf = SessionFile("k1", "wd_jfox_x", Path("/k.jsonl"), 0.0, 10, "kimi")
-    kimi_src = MagicMock()
-    kimi_src.name = "kimi"
-    extracted = MagicMock()
-    extracted.dialog_text = "hello"
-    extracted.user_turn_count = 1
-    extracted.cwd = None
-    extracted.git_branch = None
-    extracted.started_at = None
-    extracted.ended_at = None
-    extracted.assistant_turn_count = 0
-    extracted.truncated = False
-    kimi_src.extract_dialog.return_value = extracted
-    monkeypatch.setattr(runner, "get_sources", lambda cfg: [kimi_src])
+    extracted = ExtractedDialog(dialog_text="hello", user_turn_count=1)
+    # 直接 mock extract_dialog_for，隔离 summarize_one 的 key/skip 逻辑，
+    # 不依赖真实 source 或目录存在（CI 无 ~/.kimi-code/sessions）
+    monkeypatch.setattr(runner, "extract_dialog_for", lambda sf_, cfg: extracted)
 
     ledger = MagicMock()
     ledger.is_done.return_value = False

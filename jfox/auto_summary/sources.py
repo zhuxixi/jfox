@@ -76,8 +76,13 @@ def get_sources(cfg: AutoSummaryConfig) -> list[SessionSource]:
 
 
 def extract_dialog_for(sf: SessionFile, cfg: AutoSummaryConfig) -> ExtractedDialog:
-    """按 sf.source 找到对应 source 并提取对话（供 runner.summarize_one 使用）。"""
-    for src in get_sources(cfg):
-        if src.name == sf.source:
-            return src.extract_dialog(sf)
+    """按 sf.source 直接构造对应 source 提取对话。
+
+    刻意不经过 get_sources 的目录 auto-detect：sf 来自扫描阶段，来源已确定，
+    extract 时不应因当前环境目录缺失而失败（例如 CI 环境没有 ~/.claude/projects）。
+    """
+    if sf.source == "claude":
+        return ClaudeCodeSource().extract_dialog(sf)
+    if sf.source == "kimi":
+        return KimiCodeSource(kimi_sessions_dir(cfg)).extract_dialog(sf)
     raise ValueError(f"没有启用的来源匹配 source={sf.source!r}")
