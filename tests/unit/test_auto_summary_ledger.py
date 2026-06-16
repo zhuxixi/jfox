@@ -29,58 +29,62 @@ class TestLedger:
     def test_record_success_persists(self, tmp_path):
         path = tmp_path / "s.json"
         led = Ledger(path=path)
-        assert led.record_success("sid1", "proj1", "20260519100000")
-        assert led.is_done("sid1")
+        sid = "claude:sid1"
+        assert led.record_success(sid, "proj1", "20260519100000")
+        assert led.is_done(sid)
         # reload & verify
         led2 = Ledger(path=path)
-        entry = led2.get("sid1")
+        entry = led2.get(sid)
         assert entry is not None
         assert entry.status == SessionStatus.SUCCESS.value
         assert entry.note_id == "20260519100000"
 
     def test_record_skip_marks_done(self, tmp_ledger):
-        tmp_ledger.record_skip("sid", "proj", "trivial chat")
-        assert tmp_ledger.is_done("sid")
-        entry = tmp_ledger.get("sid")
+        sid = "claude:sid"
+        tmp_ledger.record_skip(sid, "proj", "trivial chat")
+        assert tmp_ledger.is_done(sid)
+        entry = tmp_ledger.get(sid)
         assert entry.status == SessionStatus.SKIPPED.value
         assert entry.last_error == "trivial chat"
 
     def test_record_failure_increments_retry_and_promotes_to_permanent(self, tmp_ledger):
+        sid = "claude:sid"
         # 第一次：transient
-        tmp_ledger.record_failure("sid", "proj", "claude timeout")
-        e1 = tmp_ledger.get("sid")
+        tmp_ledger.record_failure(sid, "proj", "claude timeout")
+        e1 = tmp_ledger.get(sid)
         assert e1.status == SessionStatus.FAILED_TRANSIENT.value
         assert e1.retry_count == 1
-        assert tmp_ledger.is_done("sid") is False  # transient 不算了结
+        assert tmp_ledger.is_done(sid) is False  # transient 不算了结
 
         # 第二次：仍 transient
-        tmp_ledger.record_failure("sid", "proj", "again")
-        e2 = tmp_ledger.get("sid")
+        tmp_ledger.record_failure(sid, "proj", "again")
+        e2 = tmp_ledger.get(sid)
         assert e2.status == SessionStatus.FAILED_TRANSIENT.value
         assert e2.retry_count == 2
 
         # 第三次：到达 max_retries=3，转 permanent
-        tmp_ledger.record_failure("sid", "proj", "final")
-        e3 = tmp_ledger.get("sid")
+        tmp_ledger.record_failure(sid, "proj", "final")
+        e3 = tmp_ledger.get(sid)
         assert e3.status == SessionStatus.FAILED_PERMANENT.value
         assert e3.retry_count == 3
-        assert tmp_ledger.is_done("sid") is True
+        assert tmp_ledger.is_done(sid) is True
 
     def test_forget_removes_entry(self, tmp_ledger):
-        tmp_ledger.record_success("sid", "proj", "n1")
-        assert tmp_ledger.forget("sid") is True
-        assert tmp_ledger.get("sid") is None
-        assert tmp_ledger.forget("sid") is False  # 已经不在
+        sid = "claude:sid"
+        tmp_ledger.record_success(sid, "proj", "n1")
+        assert tmp_ledger.forget(sid) is True
+        assert tmp_ledger.get(sid) is None
+        assert tmp_ledger.forget(sid) is False  # 已经不在
 
     def test_prune_older_than(self, tmp_path):
         path = tmp_path / "s.json"
         old_ts = (datetime.now() - timedelta(days=40)).isoformat()
         new_ts = datetime.now().isoformat()
-        # 直接构造数据并写盘，再重新加载
+        # 直接构造数据并写盘，再重新加载（key 已含 source 前缀，不会触发迁移）
         raw = {
             "version": 1,
             "sessions": {
-                "old": {
+                "claude:old": {
                     "project": "p",
                     "processed_at": old_ts,
                     "status": "success",
@@ -88,7 +92,7 @@ class TestLedger:
                     "retry_count": 0,
                     "last_error": None,
                 },
-                "new": {
+                "claude:new": {
                     "project": "p",
                     "processed_at": new_ts,
                     "status": "success",
@@ -103,13 +107,13 @@ class TestLedger:
         led2 = Ledger(path=path)
         deleted = led2.prune_older_than(days=30)
         assert deleted == 1
-        assert led2.get("old") is None
-        assert led2.get("new") is not None
+        assert led2.get("claude:old") is None
+        assert led2.get("claude:new") is not None
 
     def test_stats_counts_per_status(self, tmp_ledger):
-        tmp_ledger.record_success("a", "p", "n")
-        tmp_ledger.record_skip("b", "p", "x")
-        tmp_ledger.record_failure("c", "p", "fail")
+        tmp_ledger.record_success("claude:a", "p", "n")
+        tmp_ledger.record_skip("claude:b", "p", "x")
+        tmp_ledger.record_failure("claude:c", "p", "fail")
 
         stats = tmp_ledger.stats()
         assert stats[SessionStatus.SUCCESS.value] == 1
@@ -123,7 +127,7 @@ class TestLedger:
         led = Ledger(path=path)
         assert led.all_entries() == {}
         # 写入仍然能工作
-        assert led.record_success("sid", "p", "n")
+        assert led.record_success("claude:sid", "p", "n")
 
 
 from jfox.utils import atomic_write_json as _atomic_write_json
@@ -136,9 +140,9 @@ class TestLedgerCAS:
         """无并发时正常写入"""
         path = tmp_path / "cas.json"
         led = Ledger(path=path)
-        led.record_success("sid1", "proj", "n1")
-        assert led.get("sid1") is not None
-        assert led.get("sid1").status == SessionStatus.SUCCESS.value
+        led.record_success("claude:sid1", "proj", "n1")
+        assert led.get("claude:sid1") is not None
+        assert led.get("claude:sid1").status == SessionStatus.SUCCESS.value
 
     def test_cas_retries_on_mtime_conflict(self, tmp_path):
         """mtime 被外部修改后，CAS 应重试成功"""
@@ -147,11 +151,11 @@ class TestLedgerCAS:
 
         path = tmp_path / "cas2.json"
         led = Ledger(path=path)
-        led.record_success("sid1", "proj", "n1")
+        led.record_success("claude:sid1", "proj", "n1")
 
         time.sleep(0.05)
         raw = _json.loads(path.read_text(encoding="utf-8"))
-        raw["sessions"]["ext_sid"] = {
+        raw["sessions"]["claude:ext_sid"] = {
             "project": "ext",
             "processed_at": "2026-01-01T00:00:00",
             "status": "success",
@@ -161,11 +165,11 @@ class TestLedgerCAS:
         }
         _atomic_write_json(path, raw)
 
-        led.record_success("sid2", "proj", "n2")
+        led.record_success("claude:sid2", "proj", "n2")
 
         led2 = Ledger(path=path)
-        assert led2.get("ext_sid") is not None
-        assert led2.get("sid2") is not None
+        assert led2.get("claude:ext_sid") is not None
+        assert led2.get("claude:sid2") is not None
 
     def test_cas_raises_after_max_retries(self, tmp_path):
         """持续冲突 3 次后应抛 RuntimeError"""
@@ -173,15 +177,15 @@ class TestLedgerCAS:
 
         path = tmp_path / "cas3.json"
         led = Ledger(path=path)
-        led.record_success("sid1", "proj", "n1")
+        led.record_success("claude:sid1", "proj", "n1")
 
         with patch.object(led, "_save_cas", return_value=False):
             with pytest.raises(RuntimeError, match="CAS conflict"):
-                led.record_success("sid2", "proj", "n2")
+                led.record_success("claude:sid2", "proj", "n2")
 
     def test_cas_handles_missing_file(self, tmp_path):
         """文件不存在时 mtime 比较应跳过，直接写入"""
         path = tmp_path / "new.json"
         led = Ledger(path=path)
-        led.record_success("sid1", "proj", "n1")
-        assert led.get("sid1") is not None
+        led.record_success("claude:sid1", "proj", "n1")
+        assert led.get("claude:sid1") is not None

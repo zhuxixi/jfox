@@ -119,6 +119,10 @@ class Ledger:
         sessions = {
             sid: LedgerEntry.from_dict(d) for sid, d in sessions_raw.items() if isinstance(d, dict)
         }
+        # 迁移：旧版裸 session_id（不含 ':')视为 claude 来源，加前缀
+        sessions = {
+            (sid if ":" in sid else f"claude:{sid}"): entry for sid, entry in sessions.items()
+        }
         try:
             self._last_mtime = os.path.getmtime(self.path)
         except OSError:
