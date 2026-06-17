@@ -42,6 +42,8 @@ def test_get_sources_includes_kimi_when_dir_exists(tmp_path):
 
 
 def test_kimi_sessions_dir_default(monkeypatch):
-    monkeypatch.setattr(Path, "home", lambda: Path("/fakehome"))
-    expected = Path.home() / ".kimi-code" / "sessions"
+    fake_home = Path("/fakehome")
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    # 与实现侧保持一致，都走 resolve()，避免 Windows 下盘符差异导致断言失败
+    expected = (fake_home / ".kimi-code" / "sessions").resolve()
     assert kimi_sessions_dir(AutoSummaryConfig()) == expected
