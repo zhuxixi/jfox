@@ -834,8 +834,8 @@ def _list_impl(
                 n.id,
                 n.title[:40],
                 n.type.value,
-                str(len(n.links)),
-                str(len(n.backlinks)),
+                str(len(n.links or [])),
+                str(len(n.backlinks or [])),
                 ", ".join(n.tags) if n.tags else "",
                 created_str,
             )
