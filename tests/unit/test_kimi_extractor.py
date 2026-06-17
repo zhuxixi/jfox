@@ -133,8 +133,8 @@ def test_extract_dialog_keeps_repeated_short_user_text_across_turns(tmp_path):
     assert d.dialog_text.count("继续") == 3
 
 
-def test_extract_dialog_keeps_whitespace_only_text(tmp_path):
-    """issue-8: 空白文本块也应保留，不被当无内容丢弃"""
+def test_extract_dialog_keeps_whitespace_and_non_text_blocks(tmp_path):
+    """issue-8: 空白文本块保留；非 text 类型但含 text 字段的块也保留"""
     wire = tmp_path / "wd_jfox_abc" / "session_s4" / "agents" / "main" / "wire.jsonl"
     wire.parent.mkdir(parents=True)
     sess_dir = wire.parent.parent.parent
@@ -147,7 +147,11 @@ def test_extract_dialog_keeps_whitespace_only_text(tmp_path):
             "type": "context.append_message",
             "message": {
                 "role": "user",
-                "content": [{"type": "text", "text": "   "}, {"type": "text", "text": "ok"}],
+                "content": [
+                    {"type": "text", "text": "   "},
+                    {"type": "text", "text": "ok"},
+                    {"type": "tool_result", "text": "tool output"},
+                ],
             },
             "time": 1781532844226,
         }
@@ -164,6 +168,7 @@ def test_extract_dialog_keeps_whitespace_only_text(tmp_path):
     d = KimiCodeSource(tmp_path).extract_dialog(sf)
     assert "   " in d.dialog_text
     assert "ok" in d.dialog_text
+    assert "tool output" in d.dialog_text
 
 
 def test_find_cwd_uses_real_nesting_depth_not_siblings():

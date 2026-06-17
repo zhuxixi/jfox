@@ -30,14 +30,15 @@ def _ms_to_iso(ms: int) -> Optional[str]:
 def _flatten_text(content) -> str:
     """Kimi content: [{type:text,text:...}, ...] → 纯文本。
 
-    保留空白文本块；非 text 类型块跳过（当前协议下非文本块不进入对话）。
+    保留空白文本块；只要块里有 text 字段就保留，避免丢失 tool result 等
+    非 'text' 类型但携带有效文本的内容块。
     """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts = []
         for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
+            if isinstance(item, dict):
                 t = item.get("text")
                 if isinstance(t, str):
                     parts.append(t)
