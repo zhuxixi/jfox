@@ -804,7 +804,12 @@ def _list_impl(
             )
 
     notes = note.list_notes(note_type=nt, tags=tags, limit=limit)
-    data = [n.to_dict() for n in notes]
+    data = []
+    for n in notes:
+        d = n.to_dict()
+        d["outgoing"] = len(n.links)
+        d["incoming"] = len(n.backlinks)
+        data.append(d)
 
     result = {
         "total": len(notes),
@@ -818,13 +823,21 @@ def _list_impl(
         table.add_column("ID", style="dim")
         table.add_column("Title", style="cyan")
         table.add_column("Type", style="green")
+        table.add_column("Out", justify="right")
+        table.add_column("In", justify="right")
         table.add_column("Tags", style="yellow")
         table.add_column("Created", style="dim")
 
         for n in notes:
             created_str = n.created.strftime("%Y-%m-%d") if n.created else ""
             table.add_row(
-                n.id, n.title[:40], n.type.value, ", ".join(n.tags) if n.tags else "", created_str
+                n.id,
+                n.title[:40],
+                n.type.value,
+                str(len(n.links)),
+                str(len(n.backlinks)),
+                ", ".join(n.tags) if n.tags else "",
+                created_str,
             )
 
         console.print(table)
@@ -834,7 +847,9 @@ def _list_impl(
         # 对于 csv, yaml, paths，只输出 notes 列表
         if output_format == "csv":
             console.print(
-                OutputFormatter.to_csv(data, headers=["id", "title", "type", "tags", "created"])
+                OutputFormatter.to_csv(
+                    data, headers=["id", "title", "type", "outgoing", "incoming", "tags", "created"]
+                )
             )
         elif output_format == "yaml":
             print(OutputFormatter.to_yaml(result))
