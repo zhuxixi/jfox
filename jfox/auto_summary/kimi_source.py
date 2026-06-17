@@ -23,7 +23,7 @@ def _ms_to_iso(ms: int) -> Optional[str]:
     """毫秒级 epoch → ISO8601 字符串（UTC）"""
     try:
         return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).isoformat()
-    except (TypeError, ValueError, OSError):
+    except (TypeError, ValueError, OSError, OverflowError):
         return None
 
 
@@ -52,8 +52,9 @@ def _find_cwd(record: dict) -> Optional[str]:
         if depth > 20:
             return None
         if isinstance(o, dict):
-            if isinstance(o.get("cwd"), str):
-                return o["cwd"]
+            cwd = o.get("cwd")
+            if isinstance(cwd, str) and cwd:
+                return cwd
             for v in o.values():
                 r = _walk(v, depth + 1)
                 if r:
@@ -69,6 +70,8 @@ def _find_cwd(record: dict) -> Optional[str]:
 
 
 class KimiCodeSource:
+    """Kimi Code session 来源：扫描 wire.jsonl 并解析 wire 协议。"""
+
     name = "kimi"
 
     def __init__(self, kimi_dir: Path):
@@ -85,11 +88,24 @@ class KimiCodeSource:
         max_size = max(0, cfg.max_session_size_mb) * 1024 * 1024
         skip_sec = max(0, cfg.skip_after_days) * 86400
 
-        for wd in sorted(self.kimi_dir.iterdir()):
+        try:
+            wd_entries = sorted(self.kimi_dir.iterdir())
+        except OSError as e:
+            logger.debug("无法遍历 kimi_dir %s: %s", self.kimi_dir, e)
+            return
+        for wd in wd_entries:
             if not wd.is_dir() or not wd.name.startswith("wd_"):
                 continue
-            for sess in sorted(wd.iterdir()):
+            try:
+                sess_entries = sorted(wd.iterdir())
+            except OSError as e:
+                logger.debug("无法遍历 %s: %s", wd, e)
+                continue
+            for sess in sess_entries:
                 if not sess.is_dir() or not sess.name.startswith("session_"):
+                    continue
+                sid = sess.name[len("session_") :]
+                if not sid:
                     continue
                 wire = sess / "agents" / "main" / "wire.jsonl"
                 if not wire.is_file():
@@ -111,7 +127,7 @@ class KimiCodeSource:
                 if skip_sec and age > skip_sec:
                     continue
                 yield SessionFile(
-                    session_id=sess.name[len("session_") :],
+                    session_id=sid,
                     project_dir_name=wd.name,
                     path=wire,
                     mtime=mtime,
@@ -195,7 +211,7 @@ class KimiCodeSource:
         try:
             with open(state_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.debug("state.json 读取失败 %s: %s", state_path, e)
             return
         if isinstance(data, dict):

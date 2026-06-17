@@ -105,7 +105,7 @@ class AutoSummaryConfig:
             claude_binary=data.get("claude_binary"),
             session_sources=(
                 list(data["session_sources"])
-                if data.get("session_sources") is not None
+                if isinstance(data.get("session_sources"), list)
                 else ["claude", "kimi"]
             ),
             kimi_sessions_dir=data.get("kimi_sessions_dir"),

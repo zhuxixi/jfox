@@ -24,6 +24,8 @@ def session_key(sf: SessionFile) -> str:
 
 @runtime_checkable
 class SessionSource(Protocol):
+    """统一的多来源 session 接口：扫描 + 对话提取。"""
+
     name: str
 
     def iter_sessions(self, cfg: AutoSummaryConfig) -> Iterator[SessionFile]: ...
@@ -49,16 +51,21 @@ class ClaudeCodeSource:
 
 
 def kimi_sessions_dir(cfg: AutoSummaryConfig) -> Path:
-    """返回 Kimi session 根目录（配置优先，否则 ~/.kimi-code/sessions）"""
+    """返回 Kimi session 根目录（配置优先，否则 ~/.kimi-code/sessions），规范化绝对路径。"""
     if cfg.kimi_sessions_dir:
-        return Path(cfg.kimi_sessions_dir).expanduser()
-    return Path.home() / ".kimi-code" / "sessions"
+        return Path(cfg.kimi_sessions_dir).expanduser().resolve()
+    return (Path.home() / ".kimi-code" / "sessions").resolve()
 
 
 def get_sources(cfg: AutoSummaryConfig) -> list[SessionSource]:
-    """按 cfg.session_sources 返回启用的来源实例，auto-detect 目录存在性。"""
+    """按 cfg.session_sources 返回启用的来源实例，auto-detect 目录存在性，去重。"""
     sources: list[SessionSource] = []
+    seen: set[str] = set()
     for name in cfg.session_sources:
+        if name in seen:
+            logger.warning("session_sources 含重复来源 %s，已忽略", name)
+            continue
+        seen.add(name)
         if name == "claude":
             if default_claude_projects_dir().is_dir():
                 sources.append(ClaudeCodeSource())
