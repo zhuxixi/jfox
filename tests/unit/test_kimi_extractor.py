@@ -87,14 +87,50 @@ def test_extract_dialog_state_missing_falls_back_to_wire_time(tmp_path):
     assert d.ended_at is not None
 
 
-def test_extract_dialog_dedupes_turn_prompt_duplicate(tmp_path):
-    """issue-1: turn.prompt 与紧随的 append_message(user) 同文本时去重，不重复 append / 计数翻倍"""
+def test_extract_dialog_ignores_turn_prompt_uses_append_message(tmp_path):
+    """issue-1/6: turn.prompt 不单独处理（依赖 append_message 独占 user），不重复计数。
+    fixture 有 turn.prompt + append_message(user) 同文本 "list open issues"，
+    只 append_message 记录一次 → user_turn_count=1，dialog 中该文本只出现一次。"""
     sf = _session_file(tmp_path)
     d = KimiCodeSource(tmp_path).extract_dialog(sf)
-    # fixture 有 1 个 turn.prompt + 1 个 append_message(user)，同文本 "list open issues"
-    # 去重后 user_turn_count 应为 1（而非 2），dialog 中该文本只出现一次
     assert d.user_turn_count == 1
     assert d.dialog_text.count("list open issues") == 1
+
+
+def test_extract_dialog_keeps_repeated_short_user_text_across_turns(tmp_path):
+    """issue-6: 不同轮次合法的相同短文本（如"继续"）不被误杀，各自保留"""
+    wire = tmp_path / "wd_jfox_abc" / "session_s3" / "agents" / "main" / "wire.jsonl"
+    wire.parent.mkdir(parents=True)
+    sess_dir = wire.parent.parent.parent
+    (sess_dir / "state.json").write_text(
+        json.dumps({"createdAt": "2026-06-15T14:00:00Z", "updatedAt": "2026-06-15T14:30:00Z"}),
+        encoding="utf-8",
+    )
+    rows = []
+    for ts in (1781532844226, 1781532900000, 1781532960000):
+        rows.append(
+            {
+                "type": "context.append_message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "继续"}],
+                },
+                "time": ts,
+            }
+        )
+    wire.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    sf = SessionFile(
+        session_id="s3",
+        project_dir_name="wd_jfox_abc",
+        path=wire,
+        mtime=0.0,
+        size_bytes=600,
+        source="kimi",
+    )
+    d = KimiCodeSource(tmp_path).extract_dialog(sf)
+    # 三轮"继续"都应保留（不误杀）
+    assert d.user_turn_count == 3
+    assert d.dialog_text.count("继续") == 3
 
 
 def test_extract_dialog_truncates_long_dialog(tmp_path):

@@ -24,3 +24,9 @@ def test_from_dict_null_session_sources_falls_back():
     """issue-3: session_sources 显式 null 时不能崩，回退默认"""
     cfg = AutoSummaryConfig.from_dict({"session_sources": None})
     assert cfg.session_sources == ["claude", "kimi"]
+
+
+def test_from_dict_empty_session_sources_preserved():
+    """issue-7: session_sources 显式 [] 表示禁用所有来源，不应被 or 短路替换为默认"""
+    cfg = AutoSummaryConfig.from_dict({"session_sources": []})
+    assert cfg.session_sources == []

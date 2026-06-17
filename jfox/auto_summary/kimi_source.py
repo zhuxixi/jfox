@@ -134,7 +134,6 @@ class KimiCodeSource:
         cwd: Optional[str] = None
         first_time: Optional[int] = None
         last_time: Optional[int] = None
-        seen_user_texts: set[str] = set()  # 去重：turn.prompt 与 append_message(user) 常携带同文本
 
         try:
             with open(sf.path, "r", encoding="utf-8", errors="replace") as f:
@@ -162,22 +161,15 @@ class KimiCodeSource:
                         text = _flatten_text(msg.get("content")).strip()
                         if not text:
                             continue
-                        if role == "user":
-                            # turn.prompt 常先于此记录同文本，去重避免重复 append + 计数翻倍
-                            if text in seen_user_texts:
-                                continue
-                            seen_user_texts.add(text)
                         turns.append(f"## {role}\n\n{text}")
                         if role == "user":
                             result.user_turn_count += 1
                         elif role == "assistant":
                             result.assistant_turn_count += 1
-                    elif t == "turn.prompt":
-                        text = _flatten_text(rec.get("input")).strip()
-                        if text and text not in seen_user_texts:
-                            turns.append(f"## user\n\n{text}")
-                            result.user_turn_count += 1
-                            seen_user_texts.add(text)
+                    # turn.prompt 不单独处理：Kimi 协议中它总伴随同文本的
+                    # context.append_message(role=user)，append_message 已记录该输入；
+                    # 单独处理会重复 append+计数翻倍（issue-1），而用全局 set 去重又会
+                    # 误杀不同轮次的相同短文本如"继续"/"ok"（issue-6）。故依赖 append_message 独占。
         except OSError as e:
             logger.warning("读取 kimi session 失败 %s: %s", sf.path, e)
 
