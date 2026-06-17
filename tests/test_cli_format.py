@@ -47,6 +47,44 @@ class TestCLIFormat:
         # Table 格式应该有表格边框和标题
         assert "ID" in result.stdout or "Title" in result.stdout
 
+    def test_list_table_shows_link_counts(self, cli, sample_notes):
+        """list --format table 应显示 Out / In 列"""
+        target_title = sample_notes[0]["title"]
+        result = cli.add(f"链接到 [[{target_title}]]", title="链接源笔记", note_type="permanent")
+        assert result.success
+
+        result = cli.run("list", "--format", "table")
+        assert result.success
+        assert "Out" in result.stdout
+        assert "In" in result.stdout
+
+    def test_list_json_includes_link_counts(self, cli, sample_notes):
+        """list --format json 应包含 outgoing / incoming 数量"""
+        target_title = sample_notes[0]["title"]
+        result = cli.add(f"链接到 [[{target_title}]]", title="链接源笔记", note_type="permanent")
+        assert result.success
+
+        result = cli.run("list", "--format", "json")
+        assert result.success
+        data = json.loads(result.stdout)
+        notes = data["notes"]
+
+        source = next(n for n in notes if n["title"] == "链接源笔记")
+        target = next(n for n in notes if n["title"] == target_title)
+        assert source["outgoing"] == 1
+        assert source["incoming"] == 0
+        assert target["outgoing"] == 0
+        assert target["incoming"] == 1
+
+    def test_list_csv_includes_link_counts(self, cli, sample_notes):
+        """list --format csv 应包含 outgoing / incoming 列"""
+        result = cli.run("list", "--format", "csv")
+
+        assert result.success
+        header = result.stdout.strip().split("\n")[0]
+        assert "outgoing" in header
+        assert "incoming" in header
+
     def test_list_format_csv(self, cli, sample_notes):
         """测试 list 命令 --format csv"""
         result = cli.run("list", "--format", "csv")
