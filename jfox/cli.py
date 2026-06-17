@@ -807,8 +807,8 @@ def _list_impl(
     data = []
     for n in notes:
         d = n.to_dict()
-        d["outgoing"] = len(n.links)
-        d["incoming"] = len(n.backlinks)
+        d["outgoing"] = len(n.links or [])
+        d["incoming"] = len(n.backlinks or [])
         data.append(d)
 
     result = {
@@ -848,7 +848,7 @@ def _list_impl(
         if output_format == "csv":
             console.print(
                 OutputFormatter.to_csv(
-                    data, headers=["id", "title", "type", "outgoing", "incoming", "tags", "created"]
+                    data, headers=["id", "title", "type", "tags", "created", "outgoing", "incoming"]
                 )
             )
         elif output_format == "yaml":
