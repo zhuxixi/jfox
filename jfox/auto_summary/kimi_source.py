@@ -28,7 +28,10 @@ def _ms_to_iso(ms: int) -> Optional[str]:
 
 
 def _flatten_text(content) -> str:
-    """Kimi content: [{type:text,text:...}, ...] → 纯文本"""
+    """Kimi content: [{type:text,text:...}, ...] → 纯文本。
+
+    保留空白文本块；非 text 类型块跳过（当前协议下非文本块不进入对话）。
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -36,37 +39,37 @@ def _flatten_text(content) -> str:
         for item in content:
             if isinstance(item, dict) and item.get("type") == "text":
                 t = item.get("text")
-                if isinstance(t, str) and t.strip():
+                if isinstance(t, str):
                     parts.append(t)
         return "\n".join(parts)
     return ""
 
 
 def _find_cwd(record: dict) -> Optional[str]:
-    """在 loop_event 记录里递归找 cwd 字段（cwd 嵌在 event 子对象里）。
+    """在 loop_event 记录里按真实嵌套深度找 cwd 字段。
 
-    带深度限制（默认 20 层），防止病态嵌套记录触发 RecursionError。
+    使用显式栈记录当前对象和真实嵌套深度，避免递归深度问题，
+    并防止宽顶层记录因兄弟节点计数被误触深度上限。
     """
+    from collections import deque
 
-    def _walk(o, depth: int = 0):
+    queue = deque([(record, 0)])
+    while queue:
+        obj, depth = queue.popleft()
         if depth > 20:
-            return None
-        if isinstance(o, dict):
-            cwd = o.get("cwd")
+            continue
+        if isinstance(obj, dict):
+            cwd = obj.get("cwd")
             if isinstance(cwd, str) and cwd:
                 return cwd
-            for v in o.values():
-                r = _walk(v, depth + 1)
-                if r:
-                    return r
-        elif isinstance(o, list):
-            for v in o:
-                r = _walk(v, depth + 1)
-                if r:
-                    return r
-        return None
-
-    return _walk(record)
+            for v in obj.values():
+                if isinstance(v, (dict, list)):
+                    queue.append((v, depth + 1))
+        elif isinstance(obj, list):
+            for v in obj:
+                if isinstance(v, (dict, list)):
+                    queue.append((v, depth + 1))
+    return None
 
 
 class KimiCodeSource:
@@ -174,7 +177,7 @@ class KimiCodeSource:
                     elif t == "context.append_message":
                         msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
                         role = msg.get("role") or "user"
-                        text = _flatten_text(msg.get("content")).strip()
+                        text = _flatten_text(msg.get("content"))
                         if not text:
                             continue
                         turns.append(f"## {role}\n\n{text}")

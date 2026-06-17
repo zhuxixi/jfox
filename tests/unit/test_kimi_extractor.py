@@ -133,6 +133,54 @@ def test_extract_dialog_keeps_repeated_short_user_text_across_turns(tmp_path):
     assert d.dialog_text.count("继续") == 3
 
 
+def test_extract_dialog_keeps_whitespace_only_text(tmp_path):
+    """issue-8: 空白文本块也应保留，不被当无内容丢弃"""
+    wire = tmp_path / "wd_jfox_abc" / "session_s4" / "agents" / "main" / "wire.jsonl"
+    wire.parent.mkdir(parents=True)
+    sess_dir = wire.parent.parent.parent
+    (sess_dir / "state.json").write_text(
+        json.dumps({"createdAt": "2026-06-15T14:00:00Z", "updatedAt": "2026-06-15T14:30:00Z"}),
+        encoding="utf-8",
+    )
+    rows = [
+        {
+            "type": "context.append_message",
+            "message": {
+                "role": "user",
+                "content": [{"type": "text", "text": "   "}, {"type": "text", "text": "ok"}],
+            },
+            "time": 1781532844226,
+        }
+    ]
+    wire.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    sf = SessionFile(
+        session_id="s4",
+        project_dir_name="wd_jfox_abc",
+        path=wire,
+        mtime=0.0,
+        size_bytes=600,
+        source="kimi",
+    )
+    d = KimiCodeSource(tmp_path).extract_dialog(sf)
+    assert "   " in d.dialog_text
+    assert "ok" in d.dialog_text
+
+
+def test_find_cwd_uses_real_nesting_depth_not_siblings():
+    """issue-7: 宽顶层记录不应因兄弟节点多而误触深度上限"""
+    from jfox.auto_summary.kimi_source import _find_cwd
+
+    # 顶层有 30 个兄弟 dict，cwd 嵌在第 19 层
+    record = {f"k{i}": {"v": i} for i in range(30)}
+    nested = record
+    for i in range(18):
+        nested = {f"level_{i}": nested}
+    # 把深层 cwd 放进 record 内部，而不是覆盖外部变量
+    record["deep_root"] = nested
+    record["deep_root"]["deep"] = {"cwd": "/deep/path"}
+    assert _find_cwd(record) == "/deep/path"
+
+
 def test_extract_dialog_truncates_long_dialog(tmp_path):
     """issue-2: 超长对话截断到 DEFAULT_MAX_DIALOG_CHARS，置 truncated 标记"""
     from jfox.auto_summary.extractor import DEFAULT_MAX_DIALOG_CHARS

@@ -176,7 +176,16 @@ def summarize_one(
     project = session_file.project_dir_name
 
     # 1) 抽对话
-    extracted = extract_dialog_for(session_file, cfg)
+    try:
+        extracted = extract_dialog_for(session_file, cfg)
+    except ValueError as e:
+        logger.exception("不支持的 session source session=%s", session_file.session_id)
+        ledger.record_failure(session_key(session_file), project, str(e))
+        return SummaryResult(
+            session_id=session_file.session_id,
+            outcome=_failed_outcome(ledger, session_key(session_file)),
+            error=str(e),
+        )
     if not extracted.dialog_text or extracted.user_turn_count == 0:
         ledger.record_skip(session_key(session_file), project, "no user content")
         return SummaryResult(
