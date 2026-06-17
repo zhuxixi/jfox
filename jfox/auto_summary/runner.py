@@ -109,16 +109,15 @@ def scan_pending(
 ) -> list[SessionFile]:
     """返回当前会被 run_once 处理的 session 列表（已过滤 ledger 中已了结的）
 
-    通过 get_sources(cfg) 汇总所有启用的来源（claude / kimi），逐个迭代并按
-    ``{source}:{session_id}`` 前缀去重。
-    注意：``claude_projects_dir`` 参数仅为向后兼容保留，不再生效（来源由配置决定）。
+    通过 get_sources(cfg, claude_projects_dir) 汇总所有启用的来源（claude / kimi），
+    逐个迭代并按 ``{source}:{session_id}`` 前缀去重。
+    claude_projects_dir 可选，限定 claude 来源扫描目录（None 用默认）。
     """
-    del claude_projects_dir  # 向后兼容：忽略
     cfg = cfg or get_global_config_manager().get_auto_summary_config()
     ledger = ledger if ledger is not None else Ledger()
 
     pending: list[SessionFile] = []
-    for source in get_sources(cfg):
+    for source in get_sources(cfg, claude_projects_dir=claude_projects_dir):
         for sf in source.iter_sessions(cfg):
             if ledger.is_done(session_key(sf)):
                 continue

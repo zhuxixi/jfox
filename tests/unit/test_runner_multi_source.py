@@ -28,7 +28,9 @@ def test_scan_pending_merges_multiple_sources(monkeypatch):
     kimi_src.name = "kimi"
     kimi_src.iter_sessions.return_value = iter([kimi_sf])
 
-    monkeypatch.setattr(runner, "get_sources", lambda cfg: [claude_src, kimi_src])
+    monkeypatch.setattr(
+        runner, "get_sources", lambda cfg, claude_projects_dir=None: [claude_src, kimi_src]
+    )
 
     ledger = MagicMock()
     ledger.is_done.return_value = False

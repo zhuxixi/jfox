@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Iterator, Protocol, runtime_checkable
+from typing import Iterator, Optional, Protocol, runtime_checkable
 
 from ..global_config import AutoSummaryConfig
 from .extractor import ExtractedDialog, extract_dialog
@@ -34,12 +34,19 @@ class SessionSource(Protocol):
 
 
 class ClaudeCodeSource:
-    """封装现有 scanner + extractor，逻辑零改动。"""
+    """封装现有 scanner + extractor，逻辑零改动。
+
+    可选 claude_projects_dir 限定扫描目录（None 用默认 ~/.claude/projects）。
+    """
 
     name = "claude"
 
+    def __init__(self, claude_projects_dir: Optional[Path] = None):
+        self.claude_projects_dir = claude_projects_dir
+
     def iter_sessions(self, cfg: AutoSummaryConfig) -> Iterator[SessionFile]:
         yield from iter_session_files(
+            claude_projects_dir=self.claude_projects_dir,
             idle_threshold_minutes=cfg.idle_threshold_minutes,
             max_session_size_mb=cfg.max_session_size_mb,
             min_session_size_kb=cfg.min_session_size_kb,
@@ -57,8 +64,13 @@ def kimi_sessions_dir(cfg: AutoSummaryConfig) -> Path:
     return (Path.home() / ".kimi-code" / "sessions").resolve()
 
 
-def get_sources(cfg: AutoSummaryConfig) -> list[SessionSource]:
-    """按 cfg.session_sources 返回启用的来源实例，auto-detect 目录存在性，去重。"""
+def get_sources(
+    cfg: AutoSummaryConfig, claude_projects_dir: Optional[Path] = None
+) -> list[SessionSource]:
+    """按 cfg.session_sources 返回启用的来源实例，auto-detect 目录存在性，去重。
+
+    claude_projects_dir 可选，限定 claude 来源的扫描目录（None 用默认）。
+    """
     sources: list[SessionSource] = []
     seen: set[str] = set()
     for name in cfg.session_sources:
@@ -67,10 +79,11 @@ def get_sources(cfg: AutoSummaryConfig) -> list[SessionSource]:
             continue
         seen.add(name)
         if name == "claude":
-            if default_claude_projects_dir().is_dir():
-                sources.append(ClaudeCodeSource())
+            cdir = claude_projects_dir or default_claude_projects_dir()
+            if cdir.is_dir():
+                sources.append(ClaudeCodeSource(claude_projects_dir))
             else:
-                logger.info("跳过 claude 来源：目录不存在 %s", default_claude_projects_dir())
+                logger.info("跳过 claude 来源：目录不存在 %s", cdir)
         elif name == "kimi":
             kdir = kimi_sessions_dir(cfg)
             if kdir.is_dir():
