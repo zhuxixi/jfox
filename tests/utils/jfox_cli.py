@@ -323,9 +323,12 @@ class ZKCLI:
         """查看索引状态"""
         return self._run("index", "status")
 
-    def index_rebuild(self) -> CLIResult:
+    def index_rebuild(self, backlinks: bool = False) -> CLIResult:
         """重建索引"""
-        return self._run("index", "rebuild")
+        args = ["rebuild"]
+        if backlinks:
+            args.append("--backlinks")
+        return self._run("index", *args)
 
     def index_verify(self) -> CLIResult:
         """验证索引"""
