@@ -43,4 +43,5 @@ def test_get_sources_includes_kimi_when_dir_exists(tmp_path):
 
 def test_kimi_sessions_dir_default(monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: Path("/fakehome"))
-    assert kimi_sessions_dir(AutoSummaryConfig()) == Path("/fakehome/.kimi-code/sessions")
+    expected = Path.home() / ".kimi-code" / "sessions"
+    assert kimi_sessions_dir(AutoSummaryConfig()) == expected
