@@ -119,6 +119,22 @@ class Ledger:
         sessions = {
             sid: LedgerEntry.from_dict(d) for sid, d in sessions_raw.items() if isinstance(d, dict)
         }
+        # 迁移：旧版裸 session_id（不含 ':')视为 claude 来源，加前缀。
+        # 两遍处理：先落 prefixed 键（原始含 ':'），再迁移裸键；裸键若与 prefixed
+        # 冲突则跳过（保留 prefixed 来源，避免静默覆盖丢失 entry）。
+        migrated: dict[str, LedgerEntry] = {}
+        for sid, entry in sessions.items():
+            if ":" in sid:
+                migrated[sid] = entry
+        for sid, entry in sessions.items():
+            if ":" in sid:
+                continue
+            key = f"claude:{sid}"
+            if key in migrated:
+                logger.warning("ledger 迁移键冲突，跳过裸键 %s（保留 %s）", sid, key)
+                continue
+            migrated[key] = entry
+        sessions = migrated
         try:
             self._last_mtime = os.path.getmtime(self.path)
         except OSError:

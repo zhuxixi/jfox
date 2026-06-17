@@ -8,6 +8,7 @@
 import json
 import threading
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -158,7 +159,7 @@ def test_summarize_one_success(tmp_path, ledger, fake_cfg):
     assert result.outcome == SummaryOutcome.SUCCESS
     assert result.note_id == "20260519T100000"
     assert result.title == "实现 auto-summary"
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert entry is not None
     assert entry.status == SessionStatus.SUCCESS.value
 
@@ -185,7 +186,7 @@ def test_summarize_one_claude_marks_skip(tmp_path, ledger, fake_cfg):
     assert result.outcome == SummaryOutcome.SKIPPED
     assert result.reason == "对话过短"
     save_mock.assert_not_called()
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert entry.status == SessionStatus.SKIPPED.value
 
 
@@ -199,7 +200,7 @@ def test_summarize_one_claude_nonzero_exit_marks_failure(tmp_path, ledger, fake_
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.FAILED  # transient on first attempt
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert entry.status == SessionStatus.FAILED_TRANSIENT.value
     assert entry.retry_count == 1
 
@@ -217,7 +218,7 @@ def test_summarize_one_invalid_json_marks_failure(tmp_path, ledger, fake_cfg):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.FAILED
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert "parse error" in (entry.last_error or "")
 
 
@@ -244,6 +245,25 @@ def test_summarize_one_empty_dialog_skips_without_calling_claude(tmp_path, ledge
     popen_mock.assert_not_called()
 
 
+def test_summarize_one_unknown_source_records_failure(ledger, fake_cfg):
+    """issue-16: 未知 source 的 SessionFile 不应崩溃，应记录 failure"""
+    sf = SessionFile(
+        session_id="unknown1",
+        project_dir_name="proj",
+        path=Path("/tmp/dummy.jsonl"),
+        mtime=0.0,
+        size_bytes=1,
+        source="unknown",
+    )
+    result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
+    assert result.outcome == SummaryOutcome.FAILED
+    entry = ledger.get("unknown:unknown1")
+    assert entry.status in (
+        SessionStatus.FAILED_TRANSIENT.value,
+        SessionStatus.FAILED_PERMANENT.value,
+    )
+
+
 def test_summarize_one_empty_summary_md_marks_failure(tmp_path, ledger, fake_cfg):
     """claude 返回 skip=false 但 summary_md 为空白时应标记失败，不写笔记。"""
     sf = _make_session_jsonl(tmp_path, sid="empty_md")
@@ -265,7 +285,7 @@ def test_summarize_one_empty_summary_md_marks_failure(tmp_path, ledger, fake_cfg
 
     assert result.outcome == SummaryOutcome.FAILED
     save_mock.assert_not_called()
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert "summary_md" in (entry.last_error or "")
 
 
@@ -288,7 +308,7 @@ def test_summarize_one_timeout_marks_failure(tmp_path, ledger, fake_cfg):
         result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
 
     assert result.outcome == SummaryOutcome.FAILED
-    entry = ledger.get(sf.session_id)
+    entry = ledger.get(f"claude:{sf.session_id}")
     assert "超时" in (entry.last_error or "")
 
 

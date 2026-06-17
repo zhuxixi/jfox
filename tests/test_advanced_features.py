@@ -33,6 +33,25 @@ def isolated_config(tmp_path):
         yield temp_config
 
 
+@pytest.fixture
+def mock_embedding_backend_for_vs():
+    """为 VectorStore 提供 mock embedding backend，避免加载真实模型"""
+    from unittest.mock import patch
+
+    import numpy as np
+
+    class MockBackend:
+        model_name = "mock-model"
+        device = "cpu"
+        dimension = 384
+
+        def encode_single(self, text: str):
+            return np.random.rand(self.dimension).astype("float32")
+
+    with patch("jfox.embedding_backend.get_backend", return_value=MockBackend()):
+        yield
+
+
 def test_knowledge_graph(isolated_config):
     """测试知识图谱功能"""
     # 创建测试笔记
@@ -85,7 +104,7 @@ def test_knowledge_graph(isolated_config):
     assert note2.id not in orphans, "note2 should not be an orphan (has outgoing link)"
 
 
-def test_indexer(isolated_config):
+def test_indexer(isolated_config, mock_embedding_backend_for_vs):
     """测试索引器功能"""
     # 创建向量存储
     vector_store = VectorStore(isolated_config.chroma_dir)
@@ -167,7 +186,7 @@ def test_daily_inbox_commands(isolated_config):
     assert len(daily_notes) == 2, "Should have 2 notes for today"
 
 
-def test_verify_index_matches_filenames_to_ids(isolated_config):
+def test_verify_index_matches_filenames_to_ids(isolated_config, mock_embedding_backend_for_vs):
     """验证 verify_index 正确匹配文件名和索引 ID（不误报 missing/orphaned）
 
     Issue #103: 文件名含 slug 或 fleeting 连字符，索引 ID 为纯数字，格式不匹配导致全部误报

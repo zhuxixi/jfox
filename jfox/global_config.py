@@ -58,6 +58,8 @@ class AutoSummaryConfig:
     skip_after_days: int = 0  # 0 表示不跳过任何 session；可自行设置上限
     claude_timeout_seconds: int = 120  # claude -p 调用超时
     claude_binary: Optional[str] = None  # claude 命令路径；None 表示从 PATH 解析
+    session_sources: List[str] = field(default_factory=lambda: ["claude", "kimi"])  # 启用的扫描来源
+    kimi_sessions_dir: Optional[str] = None  # None → ~/.kimi-code/sessions
 
     def __post_init__(self) -> None:
         # 把负值/0 当成"用默认值"而非崩溃；空字符串 target_kb 等价于 None
@@ -101,6 +103,12 @@ class AutoSummaryConfig:
             skip_after_days=int(data.get("skip_after_days", 0)),
             claude_timeout_seconds=int(data.get("claude_timeout_seconds", 120)),
             claude_binary=data.get("claude_binary"),
+            session_sources=(
+                list(data["session_sources"])
+                if isinstance(data.get("session_sources"), list)
+                else ["claude", "kimi"]
+            ),
+            kimi_sessions_dir=data.get("kimi_sessions_dir"),
         )
 
 

@@ -50,7 +50,11 @@ class TestStartDaemonWindowsExecutable:
 
     @patch("jfox.daemon.process.subprocess.Popen")
     @patch("jfox.daemon.process._http_health_check")
-    def test_uses_pythonw_on_windows(self, mock_health, mock_popen):
+    @patch(
+        "jfox.daemon.process._check_model_cache",
+        return_value={"needs_download": False, "model_name": "mock", "size_hint": ""},
+    )
+    def test_uses_pythonw_on_windows(self, mock_cache, mock_health, mock_popen):
         """Windows 上 start_daemon 使用 pythonw.exe 启动子进程"""
         if sys.platform != "win32":
             pytest.skip("Windows only")
@@ -69,7 +73,11 @@ class TestStartDaemonWindowsExecutable:
 
     @patch("jfox.daemon.process.subprocess.Popen")
     @patch("jfox.daemon.process._http_health_check")
-    def test_creationflags_present(self, mock_health, mock_popen):
+    @patch(
+        "jfox.daemon.process._check_model_cache",
+        return_value={"needs_download": False, "model_name": "mock", "size_hint": ""},
+    )
+    def test_creationflags_present(self, mock_cache, mock_health, mock_popen):
         """Windows 上 creationflags 包含 CREATE_NO_WINDOW"""
         if sys.platform != "win32":
             pytest.skip("Windows only")
@@ -92,7 +100,11 @@ class TestDaemonLogFile:
 
     @patch("jfox.daemon.process.subprocess.Popen")
     @patch("jfox.daemon.process._http_health_check")
-    def test_start_daemon_writes_to_log_file(self, mock_health, mock_popen):
+    @patch(
+        "jfox.daemon.process._check_model_cache",
+        return_value={"needs_download": False, "model_name": "mock", "size_hint": ""},
+    )
+    def test_start_daemon_writes_to_log_file(self, mock_cache, mock_health, mock_popen):
         """start_daemon 应将子进程 stdout/stderr 重定向到日志文件"""
         import subprocess
 

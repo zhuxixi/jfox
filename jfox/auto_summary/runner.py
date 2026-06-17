@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ..global_config import AutoSummaryConfig, get_global_config_manager
-from .extractor import extract_dialog
 from .ledger import Ledger, SessionStatus
 from .scanner import (
     DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS,
@@ -29,7 +28,11 @@ from .scanner import (
     default_claude_projects_dir,
     is_running_inside_isolated_dir,
     isolated_runs_dir,
-    iter_session_files,
+)
+from .sources import (
+    extract_dialog_for,
+    get_sources,
+    session_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,14 +50,18 @@ SYSTEM_PROMPT = """你是知识库归档助手。我会通过用户消息提供�
    - reason (str): 当 skip=true 时填跳过原因，否则空串
    - title (str): 该会话的概括标题，<= 50 个汉字。中文。
    - topic (str): 简短主题词，例如 "auto-summary 设计" 或 "PR #220 review"。中文。
-   - summary_md (str): Markdown 正文，包含三个二级章节：
+   - summary_md (str): Markdown 正文，包含五个二级章节：
+       ## 背景
+       <本次会话的目标 / 起点状态>
        ## 做了什么
-       <要点列表>
+       <要点列表，每点可含 1-2 句技术细节或涉及的文件/命令>
        ## 关键决策
-       <要点列表>
+       <要点列表，每点含决策与理由>
+       ## 技术细节
+       <关键文件路径 / 代码片段 / 配置等可复用的上下文>
        ## 未决事项
        <要点列表，没有则写 "无">
-     正文中文，简洁，每个要点一行。
+     正文中文，保留足够上下文使其可独立读懂，但避免冗长。
    - tags (list[str]): 3-6 个标签，小写英文或中文短词，不带 # 号
 4. JSON 字段顺序无要求，但所有字段必须出现"""
 
@@ -100,21 +107,21 @@ def scan_pending(
     claude_projects_dir: Optional[Path] = None,
     ledger: Optional[Ledger] = None,
 ) -> list[SessionFile]:
-    """返回当前会被 run_once 处理的 session 列表（已过滤 ledger 中已了结的）"""
+    """返回当前会被 run_once 处理的 session 列表（已过滤 ledger 中已了结的）
+
+    通过 get_sources(cfg, claude_projects_dir) 汇总所有启用的来源（claude / kimi），
+    逐个迭代并按 ``{source}:{session_id}`` 前缀去重。
+    claude_projects_dir 可选，限定 claude 来源扫描目录（None 用默认）。
+    """
     cfg = cfg or get_global_config_manager().get_auto_summary_config()
     ledger = ledger if ledger is not None else Ledger()
 
     pending: list[SessionFile] = []
-    for sf in iter_session_files(
-        claude_projects_dir=claude_projects_dir,
-        idle_threshold_minutes=cfg.idle_threshold_minutes,
-        max_session_size_mb=cfg.max_session_size_mb,
-        min_session_size_kb=cfg.min_session_size_kb,
-        skip_after_days=cfg.skip_after_days,
-    ):
-        if ledger.is_done(sf.session_id):
-            continue
-        pending.append(sf)
+    for source in get_sources(cfg, claude_projects_dir=claude_projects_dir):
+        for sf in source.iter_sessions(cfg):
+            if ledger.is_done(session_key(sf)):
+                continue
+            pending.append(sf)
     return pending
 
 
@@ -169,9 +176,18 @@ def summarize_one(
     project = session_file.project_dir_name
 
     # 1) 抽对话
-    extracted = extract_dialog(session_file.path)
+    try:
+        extracted = extract_dialog_for(session_file, cfg)
+    except ValueError as e:
+        logger.exception("不支持的 session source session=%s", session_file.session_id)
+        ledger.record_failure(session_key(session_file), project, str(e))
+        return SummaryResult(
+            session_id=session_file.session_id,
+            outcome=_failed_outcome(ledger, session_key(session_file)),
+            error=str(e),
+        )
     if not extracted.dialog_text or extracted.user_turn_count == 0:
-        ledger.record_skip(session_file.session_id, project, "no user content")
+        ledger.record_skip(session_key(session_file), project, "no user content")
         return SummaryResult(
             session_id=session_file.session_id,
             outcome=SummaryOutcome.SKIPPED,
@@ -185,18 +201,18 @@ def summarize_one(
         )
     except _ClaudeNotFound as e:
         logger.exception("claude 二进制定位失败 session=%s", session_file.session_id)
-        ledger.record_failure(session_file.session_id, project, str(e))
+        ledger.record_failure(session_key(session_file), project, str(e))
         return SummaryResult(
             session_id=session_file.session_id,
-            outcome=_failed_outcome(ledger, session_file.session_id),
+            outcome=_failed_outcome(ledger, session_key(session_file)),
             error=str(e),
         )
     except _ClaudeInvocationError as e:
         logger.exception("claude -p 调用失败 session=%s", session_file.session_id)
-        ledger.record_failure(session_file.session_id, project, str(e))
+        ledger.record_failure(session_key(session_file), project, str(e))
         return SummaryResult(
             session_id=session_file.session_id,
-            outcome=_failed_outcome(ledger, session_file.session_id),
+            outcome=_failed_outcome(ledger, session_key(session_file)),
             error=str(e),
         )
 
@@ -210,17 +226,17 @@ def summarize_one(
             e,
             claude_output[:300],
         )
-        ledger.record_failure(session_file.session_id, project, f"parse error: {e}")
+        ledger.record_failure(session_key(session_file), project, f"parse error: {e}")
         return SummaryResult(
             session_id=session_file.session_id,
-            outcome=_failed_outcome(ledger, session_file.session_id),
+            outcome=_failed_outcome(ledger, session_key(session_file)),
             error=f"parse error: {e}",
         )
 
     # 4) skip 分支
     if parsed.get("skip") is True:
         reason = str(parsed.get("reason") or "claude marked skip")
-        ledger.record_skip(session_file.session_id, project, reason)
+        ledger.record_skip(session_key(session_file), project, reason)
         return SummaryResult(
             session_id=session_file.session_id,
             outcome=SummaryOutcome.SKIPPED,
@@ -241,10 +257,10 @@ def summarize_one(
             tags.append(bt)
 
     if not summary_md:
-        ledger.record_failure(session_file.session_id, project, "empty summary_md")
+        ledger.record_failure(session_key(session_file), project, "empty summary_md")
         return SummaryResult(
             session_id=session_file.session_id,
-            outcome=_failed_outcome(ledger, session_file.session_id),
+            outcome=_failed_outcome(ledger, session_key(session_file)),
             error="claude 返回的 summary_md 为空",
         )
 
@@ -260,14 +276,14 @@ def summarize_one(
         )
     except Exception as e:
         logger.exception("保存会话笔记失败 session=%s", session_file.session_id)
-        ledger.record_failure(session_file.session_id, project, f"save error: {e}")
+        ledger.record_failure(session_key(session_file), project, f"save error: {e}")
         return SummaryResult(
             session_id=session_file.session_id,
-            outcome=_failed_outcome(ledger, session_file.session_id),
+            outcome=_failed_outcome(ledger, session_key(session_file)),
             error=f"save error: {e}",
         )
 
-    ledger.record_success(session_file.session_id, project, note_id)
+    ledger.record_success(session_key(session_file), project, note_id)
     return SummaryResult(
         session_id=session_file.session_id,
         outcome=SummaryOutcome.SUCCESS,
