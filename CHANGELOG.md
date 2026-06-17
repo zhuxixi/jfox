@@ -2,6 +2,19 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.0.0] - 2026-06-18
+
+### Features
+- **auto-summary**: support Kimi Code session + 5-section summary notes (#248)
+- **cli**: jfox list 增加 Out/In backlinks 计数列 (#253) (#254)
+- **cc-plugin**: add using-jfox overview/routing skill (#243) (#251)
+- add Kimi Code plugin packages/kimi-plugin (#239)
+
+### Changes
+- add GitHub PR and issue templates (#241)
+
+[1.0.0]: https://github.com/zhuxixi/jfox/compare/v0.10.0...v1.0.0
+
 ## [Unreleased]
 
 ### Features
