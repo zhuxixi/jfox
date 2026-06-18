@@ -34,6 +34,7 @@ class Note:
     backlinks: List[str] = field(default_factory=list)  # 反向链接
     source: Optional[str] = None  # 来源（文献笔记）
     topic: Optional[str] = None  # 会话主题（session 类型）
+    archived: bool = False  # 是否已归档（软删除标记）
 
     # 运行时字段（不持久化到 frontmatter）
     embedding: Optional[List[float]] = None  # 向量
@@ -87,6 +88,8 @@ class Note:
             frontmatter["source"] = self.source
         if self.topic:
             frontmatter["topic"] = self.topic
+        if self.archived:
+            frontmatter["archived"] = self.archived
 
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
 
@@ -136,6 +139,7 @@ class Note:
             backlinks=fm.get("backlinks", []),
             source=fm.get("source"),
             topic=fm.get("topic"),
+            archived=bool(fm.get("archived", False)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -150,6 +154,7 @@ class Note:
             "tags": self.tags,
             "links": self.links,
             "filepath": str(self.filepath),
+            "archived": self.archived,
             "score": self.score,
             "hop": self.hop,
             "topic": self.topic,

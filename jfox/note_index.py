@@ -28,6 +28,7 @@ class NoteMeta:
     filepath: str = ""
     links: List[str] = field(default_factory=list)
     backlinks: List[str] = field(default_factory=list)
+    archived: bool = False
 
 
 _MAX_FRONTMATTER_LINES = 200
@@ -126,6 +127,7 @@ class NoteIndex:
                         filepath=str(filepath),
                         links=_to_list(fm.get("links")),
                         backlinks=_to_list(fm.get("backlinks")),
+                        archived=bool(fm.get("archived", False)),
                     )
 
                     self._by_id[meta.id] = meta
@@ -167,12 +169,20 @@ class NoteIndex:
         note_type: Optional[NoteType] = None,
         tags: Optional[List[str]] = None,
         limit: Optional[int] = None,
+        archived_only: bool = False,
+        include_archived: bool = False,
     ) -> List[NoteMeta]:
-        """列出元数据，支持类型/标签过滤和 limit 截断"""
+        """列出元数据，支持类型/标签/归档状态过滤和 limit 截断"""
         if note_type:
             result = list(self._by_type.get(note_type, []))
         else:
             result = list(self._by_id.values())
+
+        # 归档状态过滤
+        if archived_only:
+            result = [m for m in result if m.archived]
+        elif not include_archived:
+            result = [m for m in result if not m.archived]
 
         if tags:
             result = [m for m in result if all(t in m.tags for t in tags)]

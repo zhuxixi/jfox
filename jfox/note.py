@@ -181,6 +181,8 @@ def list_notes(
     limit: Optional[int] = None,
     cfg: Optional[ZKConfig] = None,
     tags: Optional[List[str]] = None,
+    archived_only: bool = False,
+    include_archived: bool = False,
 ) -> List[Note]:
     """
     列出笔记
@@ -192,6 +194,8 @@ def list_notes(
         limit: 数量限制
         cfg: 可选的配置对象，默认使用全局 config
         tags: 标签筛选列表（AND 逻辑）
+        archived_only: 仅返回已归档笔记
+        include_archived: 返回时包含已归档笔记
 
     Returns:
         笔记列表
@@ -202,7 +206,13 @@ def list_notes(
 
     # 通过索引获取匹配的元数据列表（tags/limit 在索引层生效）
     idx = get_note_index(use_config)
-    metas = idx.list_meta(note_type=note_type, tags=tags, limit=limit)
+    metas = idx.list_meta(
+        note_type=note_type,
+        tags=tags,
+        limit=limit,
+        archived_only=archived_only,
+        include_archived=include_archived,
+    )
 
     # 只加载匹配到的笔记文件
     notes = []
@@ -269,6 +279,52 @@ def delete_note(note_id: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to delete note {note_id}: {e}")
         return False
+
+
+def archive_note(note_id: str) -> bool:
+    """
+    归档笔记（软删除）
+
+    Args:
+        note_id: 笔记 ID
+
+    Returns:
+        是否成功归档
+    """
+    n = load_note_by_id(note_id)
+    if not n:
+        logger.warning(f"Note {note_id} not found")
+        return False
+
+    if n.archived:
+        logger.info(f"Note {note_id} is already archived")
+        return True
+
+    n.archived = True
+    return update_note(n)
+
+
+def unarchive_note(note_id: str) -> bool:
+    """
+    恢复归档笔记
+
+    Args:
+        note_id: 笔记 ID
+
+    Returns:
+        是否成功恢复
+    """
+    n = load_note_by_id(note_id)
+    if not n:
+        logger.warning(f"Note {note_id} not found")
+        return False
+
+    if not n.archived:
+        logger.info(f"Note {note_id} is not archived")
+        return True
+
+    n.archived = False
+    return update_note(n)
 
 
 def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
@@ -378,6 +434,7 @@ def search_notes(
     note_type: Optional[str] = None,
     mode: str = "hybrid",
     tags: Optional[List[str]] = None,
+    include_archived: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     搜索笔记
@@ -388,6 +445,7 @@ def search_notes(
         note_type: 笔记类型筛选
         mode: 搜索模式 - "hybrid"(混合), "semantic"(语义), "keyword"(关键词)
         tags: 标签筛选列表（AND 逻辑）
+        include_archived: 是否包含已归档笔记，默认排除
 
     Returns:
         搜索结果列表
@@ -405,7 +463,12 @@ def search_notes(
     search_mode = mode_map.get(mode.lower(), SearchMode.HYBRID)
 
     return search_engine.search(
-        query, top_k=top_k, mode=search_mode, note_type=note_type, tags=tags
+        query,
+        top_k=top_k,
+        mode=search_mode,
+        note_type=note_type,
+        tags=tags,
+        include_archived=include_archived,
     )
 
 

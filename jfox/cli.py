@@ -486,15 +486,24 @@ def _search_impl(
     tags: Optional[List[str]],
     search_mode: str,
     output_format: str,
+    include_archived: bool = False,
 ):
     """搜索笔记的内部实现"""
     from .formatters import OutputFormatter
 
-    results = note.search_notes(query, top_k=top, note_type=note_type, tags=tags, mode=search_mode)
+    results = note.search_notes(
+        query,
+        top_k=top,
+        note_type=note_type,
+        tags=tags,
+        mode=search_mode,
+        include_archived=include_archived,
+    )
 
     result = {
         "query": query,
         "mode": search_mode,
+        "include_archived": include_archived,
         "total": len(results),
         "results": results,
     }
@@ -574,6 +583,7 @@ def search(
         "table", "--format", "-f", help="输出格式: json, table, csv, yaml, paths"
     ),
     json_output: bool = typer.Option(False, "--json/--no-json", help="JSON 输出（向后兼容）"),
+    include_archived: bool = typer.Option(False, "--include-archived", help="搜索时包含已归档笔记"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
 ):
     """
@@ -583,6 +593,8 @@ def search(
     - hybrid: 混合搜索（BM25 + 语义），默认
     - semantic: 纯语义搜索
     - keyword: 纯关键词搜索 (BM25)
+
+    已归档笔记默认不会出现在搜索结果中，可使用 --include-archived 包含。
 
     示例:
         jfox search "Python" --mode hybrid
@@ -596,7 +608,7 @@ def search(
         from .config import use_kb
 
         with use_kb(kb):
-            _search_impl(query, top, note_type, tags, search_mode, output_format)
+            _search_impl(query, top, note_type, tags, search_mode, output_format, include_archived)
 
     except Exception as e:
         result = {
@@ -789,6 +801,8 @@ def _list_impl(
     tags: Optional[List[str]],
     limit: int,
     output_format: str,
+    archived_only: bool = False,
+    include_archived: bool = False,
 ):
     """列出笔记的内部实现"""
     from .formatters import OutputFormatter
@@ -803,7 +817,13 @@ def _list_impl(
                 f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
             )
 
-    notes = note.list_notes(note_type=nt, tags=tags, limit=limit)
+    notes = note.list_notes(
+        note_type=nt,
+        tags=tags,
+        limit=limit,
+        archived_only=archived_only,
+        include_archived=include_archived,
+    )
     data = []
     for n in notes:
         d = n.to_dict()
@@ -819,7 +839,12 @@ def _list_impl(
     if output_format == "json":
         print(OutputFormatter.to_json(result))
     elif output_format == "table":
-        table = Table(title=f"Notes ({len(notes)} total)")
+        title = f"Notes ({len(notes)} total)"
+        if archived_only:
+            title = f"Archived Notes ({len(notes)} total)"
+        elif include_archived:
+            title = f"All Notes ({len(notes)} total, including archived)"
+        table = Table(title=title)
         table.add_column("ID", style="dim")
         table.add_column("Title", style="cyan")
         table.add_column("Type", style="green")
@@ -870,6 +895,8 @@ def list(
         "table", "--format", "-f", help="输出格式: json, table, csv, yaml, paths, tree"
     ),
     json_output: bool = typer.Option(False, "--json/--no-json", help="JSON 输出（向后兼容）"),
+    archived_only: bool = typer.Option(False, "--archived", help="仅显示已归档笔记"),
+    include_archived: bool = typer.Option(False, "--include-archived", help="显示时包含已归档笔记"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
 ):
     """
@@ -882,16 +909,21 @@ def list(
     - yaml: YAML 格式
     - paths: 仅输出文件路径
     - tree: 树形结构
+
+    归档笔记默认隐藏，可使用 --archived 或 --include-archived 查看。
     """
     try:
         # 向后兼容：如果指定了 --json，使用 json 格式
         if json_output:
             output_format = "json"
 
+        if archived_only and include_archived:
+            raise ValueError("--archived 和 --include-archived 不能同时使用")
+
         from .config import use_kb
 
         with use_kb(kb):
-            _list_impl(note_type, tags, limit, output_format)
+            _list_impl(note_type, tags, limit, output_format, archived_only, include_archived)
 
     except Exception as e:
         result = {
@@ -1165,6 +1197,126 @@ def delete(
 
         with use_kb(kb):
             _delete_impl(note_id, force, output_format)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        result = {
+            "success": False,
+            "error": str(e),
+        }
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+def _archive_impl(note_id: str, output_format: str):
+    """归档笔记的内部实现"""
+    n = note.load_note_by_id(note_id)
+    if not n:
+        raise ValueError(f"Note not found: {note_id}")
+
+    if note.archive_note(note_id):
+        result = {
+            "success": True,
+            "archived": note_id,
+            "title": n.title,
+        }
+
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            _print_action_table(
+                "archived",
+                {
+                    "ID": note_id,
+                    "Title": n.title,
+                },
+            )
+    else:
+        raise Exception("Failed to archive note")
+
+
+def _unarchive_impl(note_id: str, output_format: str):
+    """恢复归档笔记的内部实现"""
+    n = note.load_note_by_id(note_id)
+    if not n:
+        raise ValueError(f"Note not found: {note_id}")
+
+    if note.unarchive_note(note_id):
+        result = {
+            "success": True,
+            "unarchived": note_id,
+            "title": n.title,
+        }
+
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            _print_action_table(
+                "unarchived",
+                {
+                    "ID": note_id,
+                    "Title": n.title,
+                },
+            )
+    else:
+        raise Exception("Failed to unarchive note")
+
+
+@app.command()
+def archive(
+    note_id: str = typer.Argument(..., help="笔记 ID"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+):
+    """归档笔记（软删除）：文件保留，默认列表和搜索中隐藏"""
+    try:
+        if json_output:
+            output_format = "json"
+
+        from .config import use_kb
+
+        with use_kb(kb):
+            _archive_impl(note_id, output_format)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        result = {
+            "success": False,
+            "error": str(e),
+        }
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@app.command()
+def unarchive(
+    note_id: str = typer.Argument(..., help="笔记 ID"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+):
+    """恢复归档笔记，重新出现在默认列表和搜索结果中"""
+    try:
+        if json_output:
+            output_format = "json"
+
+        from .config import use_kb
+
+        with use_kb(kb):
+            _unarchive_impl(note_id, output_format)
 
     except typer.Exit:
         raise
@@ -1873,7 +2025,7 @@ def _index_impl(action: str, output_format: str):
 
         console.print("[yellow]Rebuilding BM25 index...[/yellow]")
         bm25_index = get_bm25_index()
-        notes = note_module.list_notes(limit=10000)
+        notes = note_module.list_notes(limit=10000, include_archived=True)
         success = bm25_index.rebuild_from_notes(notes)
 
         result = {
@@ -1956,7 +2108,7 @@ def _index_impl(action: str, output_format: str):
             from .bm25_index import get_bm25_index
 
             bm25_index = get_bm25_index()
-            notes = note_module.list_notes(limit=10000)
+            notes = note_module.list_notes(limit=10000, include_archived=True)
             bm25_success = bm25_index.rebuild_from_notes(notes)
 
             result = {
