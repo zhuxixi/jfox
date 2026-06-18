@@ -291,20 +291,21 @@ def find_note_id_by_title_or_id(
 
 
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
-    """重新计算所有笔记的 wiki links 和 backlinks。
+    """重新计算所有笔记的 backlinks。
 
     全量加载笔记，解析正文中的 [[...]] 链接，按标题/ID 解析目标笔记，
-    更新每篇笔记 frontmatter 中的 links 和 backlinks 字段。只有发生变化的
-    笔记才会被重新写入文件，避免无意义的 I/O。
+    重新计算每篇笔记 frontmatter 中的 backlinks 字段。只有 backlinks 发生变化的
+    笔记才会被重新写入文件，避免无意义的 I/O；forward links 不会被覆盖。
 
     Args:
         output_format: 输出格式，用于控制是否在控制台打印进度信息
 
     Returns:
         统计信息字典，包含 backlinks_rebuilt, backlinks_updated, backlinks_total,
-        unresolved_links 等字段
+        backlinks_failed, unresolved_links 等字段
     """
-    console.print("[yellow]Rebuilding backlinks...[/yellow]")
+    if output_format != "json":
+        console.print("[yellow]Rebuilding backlinks...[/yellow]")
 
     # 加载所有笔记
     notes = note.list_notes(limit=10000)
@@ -315,13 +316,14 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
             "backlinks_rebuilt": True,
             "backlinks_updated": 0,
             "backlinks_total": 0,
+            "backlinks_failed": 0,
             "unresolved_links": [],
         }
 
     # 构建 id -> note 映射，用于后续 backlinks 计算
     note_by_id = {n.id: n for n in notes}
 
-    # 第一阶段：解析每篇笔记的 wiki links
+    # 第一阶段：解析每篇笔记的 wiki links，过滤自链接
     new_links: Dict[str, List[str]] = {n.id: [] for n in notes}
     unresolved: List[str] = []
 
@@ -330,6 +332,9 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
         for link_text in wiki_links:
             target_id = find_note_id_by_title_or_id(link_text)
             if target_id and target_id in note_by_id:
+                # 过滤自链接，避免笔记指向自身
+                if target_id == n.id:
+                    continue
                 # 避免同一笔记内重复链接同一目标
                 if target_id not in new_links[n.id]:
                     new_links[n.id].append(target_id)
@@ -343,7 +348,7 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
             if source_id not in new_backlinks[target_id]:
                 new_backlinks[target_id].append(source_id)
 
-    # 第三阶段：比较并写回变化的笔记
+    # 第三阶段：比较并写回变化的笔记（只写 backlinks，不覆盖 forward links）
     updated_count = 0
     failed_count = 0
     changed_note_ids: List[str] = []
@@ -351,14 +356,12 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     for n in notes:
         # 注意：cli.py 模块级存在名为 list 的命令函数，会遮蔽 built-in list()，
         # 因此这里使用切片复制列表。
-        old_links = n.links[:]
         old_backlinks = n.backlinks[:]
-        new_links_sorted = sorted(new_links[n.id])
         new_backlinks_sorted = sorted(new_backlinks[n.id])
 
-        if sorted(old_links) != new_links_sorted or sorted(old_backlinks) != new_backlinks_sorted:
-            n.links = new_links[n.id]
-            n.backlinks = new_backlinks[n.id]
+        if sorted(old_backlinks) != new_backlinks_sorted:
+            # 排序后写回，保证 frontmatter 顺序稳定
+            n.backlinks = new_backlinks_sorted
             try:
                 if note.save_note(n, add_to_index=False):
                     updated_count += 1
@@ -397,6 +400,7 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
         "backlinks_rebuilt": True,
         "backlinks_updated": updated_count,
         "backlinks_total": total,
+        "backlinks_failed": failed_count,
         "unresolved_links": unresolved_unique,
     }
 
@@ -2096,6 +2100,11 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
                         f"{result.get('backlinks_updated', 0)} note(s) updated / "
                         f"{result.get('backlinks_total', 0)} scanned"
                     )
+                    failed = result.get("backlinks_failed", 0)
+                    if failed > 0:
+                        console.print(
+                            f"[yellow]⚠[/yellow] {failed} note(s) failed to save during backlinks rebuild"
+                        )
                     unresolved = result.get("unresolved_links", [])
                     if unresolved:
                         console.print(
@@ -2154,7 +2163,7 @@ def index(
     json_output: bool = typer.Option(
         False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
     ),
-    backlinks: bool = typer.Option(False, "--backlinks", "-b", help="rebuild 时重新计算 backlinks"),
+    backlinks: bool = typer.Option(False, "--backlinks", "-b", help="rebuild 时重新计算反向链接"),
 ):
     """索引管理：查看状态、重建索引、验证完整性"""
     try:

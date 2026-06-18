@@ -34,6 +34,29 @@ def _make_fake_meta(note: _FakeNote):
     return meta
 
 
+def _make_index(notes):
+    """构造 mock NoteIndex"""
+
+    def _find_by_id(nid):
+        for n in notes:
+            if n.id == nid:
+                return _make_fake_meta(n)
+        return None
+
+    def _find_by_title(title):
+        title_lower = title.lower()
+        for n in notes:
+            if n.title.lower() == title_lower:
+                return _make_fake_meta(n)
+        return None
+
+    idx = MagicMock()
+    idx.find_by_id.side_effect = _find_by_id
+    idx.find_by_title.side_effect = _find_by_title
+    idx.get_all_meta.return_value = [_make_fake_meta(n) for n in notes]
+    return idx
+
+
 class TestRebuildBacklinksImpl:
     """_rebuild_backlinks_impl 单元测试"""
 
@@ -43,7 +66,7 @@ class TestRebuildBacklinksImpl:
     def test_rebuild_updates_changed_backlinks(
         self, mock_list_notes, mock_get_index, mock_save_note
     ):
-        """backlinks 变化时，应调用 save_note 写回"""
+        """backlinks 变化时，应只写 backlinks，不覆盖 forward links"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
 
@@ -53,39 +76,25 @@ class TestRebuildBacklinksImpl:
         )
 
         mock_list_notes.return_value = [note_a, note_b]
-
-        # 构造 mock NoteIndex
-        def _find_by_id(nid):
-            for n in [note_a, note_b]:
-                if n.id == nid:
-                    return _make_fake_meta(n)
-            return None
-
-        def _find_by_title(title):
-            title_lower = title.lower()
-            for n in [note_a, note_b]:
-                if n.title.lower() == title_lower:
-                    return _make_fake_meta(n)
-            return None
-
-        idx = MagicMock()
-        idx.find_by_id.side_effect = _find_by_id
-        idx.find_by_title.side_effect = _find_by_title
-        idx.get_all_meta.return_value = [_make_fake_meta(n) for n in [note_a, note_b]]
-        mock_get_index.return_value = idx
+        mock_get_index.return_value = _make_index([note_a, note_b])
 
         result = _rebuild_backlinks_impl(output_format="json")
 
         assert result["backlinks_rebuilt"] is True
         assert result["backlinks_total"] == 2
-        # A 的 backlinks 从 [] 变为 [B]，B 的 links 从 [] 变为 [A]
-        assert result["backlinks_updated"] == 2
+        # 只有 A 的 backlinks 从 [] 变为 [B]
+        assert result["backlinks_updated"] == 1
+        assert result["backlinks_failed"] == 0
         assert result["unresolved_links"] == []
 
-        # 验证 save_note 被调用且未重新加入索引
-        assert mock_save_note.call_count == 2
-        for call in mock_save_note.call_args_list:
-            assert call.kwargs.get("add_to_index") is False
+        # 验证 save_note 只被调用一次，且未重新加入索引
+        assert mock_save_note.call_count == 1
+        saved_note = mock_save_note.call_args[0][0]
+        assert saved_note.id == note_a.id
+        assert saved_note.backlinks == [note_b.id]
+        # forward links 不应被覆盖
+        assert saved_note.links == []
+        assert mock_save_note.call_args.kwargs.get("add_to_index") is False
 
     @patch("jfox.note.save_note")
     @patch("jfox.note_index.get_note_index")
@@ -109,31 +118,14 @@ class TestRebuildBacklinksImpl:
         )
 
         mock_list_notes.return_value = [note_a, note_b]
-
-        def _find_by_id(nid):
-            for n in [note_a, note_b]:
-                if n.id == nid:
-                    return _make_fake_meta(n)
-            return None
-
-        def _find_by_title(title):
-            title_lower = title.lower()
-            for n in [note_a, note_b]:
-                if n.title.lower() == title_lower:
-                    return _make_fake_meta(n)
-            return None
-
-        idx = MagicMock()
-        idx.find_by_id.side_effect = _find_by_id
-        idx.find_by_title.side_effect = _find_by_title
-        idx.get_all_meta.return_value = [_make_fake_meta(n) for n in [note_a, note_b]]
-        mock_get_index.return_value = idx
+        mock_get_index.return_value = _make_index([note_a, note_b])
 
         result = _rebuild_backlinks_impl(output_format="json")
 
         assert result["backlinks_rebuilt"] is True
         assert result["backlinks_total"] == 2
         assert result["backlinks_updated"] == 0
+        assert result["backlinks_failed"] == 0
         assert result["unresolved_links"] == []
         mock_save_note.assert_not_called()
 
@@ -155,19 +147,14 @@ class TestRebuildBacklinksImpl:
         )
 
         mock_list_notes.return_value = [note_a, note_b]
-
-        idx = MagicMock()
-        idx.find_by_id.return_value = None
-        idx.find_by_title.return_value = None
-        idx.get_all_meta.return_value = [_make_fake_meta(n) for n in [note_a, note_b]]
-        mock_get_index.return_value = idx
+        mock_get_index.return_value = _make_index([note_a, note_b])
 
         result = _rebuild_backlinks_impl(output_format="json")
 
         assert result["backlinks_rebuilt"] is True
         assert "Missing Note" in result["unresolved_links"]
-        # B 的 links 为空，A 的 backlinks 为空，没有变化
         assert result["backlinks_updated"] == 0
+        assert result["backlinks_failed"] == 0
 
     @patch("jfox.note.save_note")
     @patch("jfox.note_index.get_note_index")
@@ -184,5 +171,49 @@ class TestRebuildBacklinksImpl:
         assert result["backlinks_rebuilt"] is True
         assert result["backlinks_total"] == 0
         assert result["backlinks_updated"] == 0
+        assert result["backlinks_failed"] == 0
         assert result["unresolved_links"] == []
         mock_save_note.assert_not_called()
+
+    @patch("jfox.note.save_note")
+    @patch("jfox.note_index.get_note_index")
+    @patch("jfox.note.list_notes")
+    def test_rebuild_filters_self_links(self, mock_list_notes, mock_get_index, mock_save_note):
+        """自链接 [[Note A]] 不应产生自指边"""
+        import jfox.cli  # noqa: F401
+        from jfox.cli import _rebuild_backlinks_impl
+
+        note_a = _FakeNote(id="202601010000000001", title="Note A", content="See also [[Note A]]")
+
+        mock_list_notes.return_value = [note_a]
+        mock_get_index.return_value = _make_index([note_a])
+
+        result = _rebuild_backlinks_impl(output_format="json")
+
+        assert result["backlinks_total"] == 1
+        assert result["backlinks_updated"] == 0
+        assert result["unresolved_links"] == []
+        mock_save_note.assert_not_called()
+
+    @patch("jfox.note.save_note")
+    @patch("jfox.note_index.get_note_index")
+    @patch("jfox.note.list_notes")
+    def test_rebuild_includes_failed_count(self, mock_list_notes, mock_get_index, mock_save_note):
+        """save_note 失败时，backlinks_failed 应被统计并包含在 JSON 输出中"""
+        import jfox.cli  # noqa: F401
+        from jfox.cli import _rebuild_backlinks_impl
+
+        note_a = _FakeNote(id="202601010000000001", title="Note A", content="Content A")
+        note_b = _FakeNote(
+            id="202601010000000002", title="Note B", content="Note B references [[Note A]]"
+        )
+
+        mock_list_notes.return_value = [note_a, note_b]
+        mock_get_index.return_value = _make_index([note_a, note_b])
+        mock_save_note.return_value = False
+
+        result = _rebuild_backlinks_impl(output_format="json")
+
+        assert result["backlinks_total"] == 2
+        assert result["backlinks_updated"] == 0
+        assert result["backlinks_failed"] == 1
