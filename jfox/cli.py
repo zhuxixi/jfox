@@ -3071,9 +3071,7 @@ def _is_uv_tool_installation(package_file: Path) -> bool:
 
     # 路径特征降级匹配
     parts = [p.lower() for p in package_file.parts]
-    return (
-        "uv" in parts and "tools" in parts and "jfox-cli" in parts
-    )
+    return "uv" in parts and "tools" in parts and "jfox-cli" in parts
 
 
 def _get_pipx_home() -> Optional[Path]:
@@ -3105,9 +3103,7 @@ def _is_pipx_installation(package_file: Path) -> bool:
 
     # 路径特征降级匹配
     parts = [p.lower() for p in package_file.parts]
-    return (
-        "pipx" in parts and "venvs" in parts and "jfox-cli" in parts
-    )
+    return "pipx" in parts and "venvs" in parts and "jfox-cli" in parts
 
 
 def _detect_install_method() -> str:
@@ -3211,9 +3207,7 @@ def _update_impl(output_format: str = "table") -> dict:
 
 @app.command()
 def update(
-    output_format: str = typer.Option(
-        "table", "--format", "-f", help="输出格式: json, table"
-    ),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
         False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
     ),
@@ -3242,12 +3236,8 @@ def update(
                         f"{result['current_version']}[/green]"
                     )
                 else:
-                    console.print(
-                        f"[red]升级失败: {result.get('error', 'unknown error')}[/red]"
-                    )
-                    console.print(
-                        f"[yellow]请手动执行: {result['command']}[/yellow]"
-                    )
+                    console.print(f"[red]升级失败: {result.get('error', 'unknown error')}[/red]")
+                    console.print(f"[yellow]请手动执行: {result['command']}[/yellow]")
 
         if not result["success"]:
             raise typer.Exit(1)

@@ -42,9 +42,7 @@ class TestDetectInstallMethod:
         """site-packages 下存在 jfox_cli.egg-link 判定为 dev"""
         site_packages = tmp_path / "lib" / "python3.11" / "site-packages"
         site_packages.mkdir(parents=True)
-        (site_packages / "jfox_cli.egg-link").write_text(
-            "/path/to/src\n.", encoding="utf-8"
-        )
+        (site_packages / "jfox_cli.egg-link").write_text("/path/to/src\n.", encoding="utf-8")
         package = site_packages / "jfox" / "cli.py"
         package.parent.mkdir(parents=True)
         package.write_text("", encoding="utf-8")
@@ -55,15 +53,7 @@ class TestDetectInstallMethod:
     def test_uv_tool_installation(self, tmp_path):
         """uv tool 路径判定为 uv"""
         uv_tools = tmp_path / "uv" / "tools"
-        package = (
-            uv_tools
-            / "jfox-cli"
-            / "lib"
-            / "python3.11"
-            / "site-packages"
-            / "jfox"
-            / "cli.py"
-        )
+        package = uv_tools / "jfox-cli" / "lib" / "python3.11" / "site-packages" / "jfox" / "cli.py"
         package.parent.mkdir(parents=True)
         package.write_text("", encoding="utf-8")
 
@@ -123,9 +113,7 @@ class TestUpdateImpl:
         with patch("jfox.cli._detect_install_method", return_value="uv"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch("jfox.cli._run_upgrade", return_value="Upgraded"):
-                    with patch(
-                        "jfox.cli._get_installed_version", return_value="1.1.0"
-                    ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = _update_impl()
                         assert result["success"] is True
                         assert result["method"] == "uv"
@@ -138,9 +126,7 @@ class TestUpdateImpl:
         with patch("jfox.cli._detect_install_method", return_value="pipx"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch("jfox.cli._run_upgrade", return_value="Upgraded"):
-                    with patch(
-                        "jfox.cli._get_installed_version", return_value="1.1.0"
-                    ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = _update_impl()
                         assert result["command"] == "pipx upgrade jfox-cli"
 
@@ -149,17 +135,13 @@ class TestUpdateImpl:
         with patch("jfox.cli._detect_install_method", return_value="pip"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch("jfox.cli._run_upgrade", return_value="Upgraded"):
-                    with patch(
-                        "jfox.cli._get_installed_version", return_value="1.1.0"
-                    ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = _update_impl()
                         assert "pip install --upgrade jfox-cli" in result["command"]
 
     def test_upgrade_failure_returns_manual_command(self):
         """升级失败时返回手动执行命令"""
-        error = subprocess.CalledProcessError(
-            1, ["uv", "tool", "upgrade", "jfox-cli"]
-        )
+        error = subprocess.CalledProcessError(1, ["uv", "tool", "upgrade", "jfox-cli"])
         error.stderr = "network error"
 
         with patch("jfox.cli._detect_install_method", return_value="uv"):
@@ -188,9 +170,7 @@ class TestUpdateCommand:
         with patch("jfox.cli._detect_install_method", return_value="uv"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch("jfox.cli._run_upgrade", return_value="Upgraded"):
-                    with patch(
-                        "jfox.cli._get_installed_version", return_value="1.1.0"
-                    ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = runner.invoke(app, ["update"])
                         assert result.exit_code == 0
                         assert "uv" in result.output
@@ -198,9 +178,7 @@ class TestUpdateCommand:
 
     def test_table_output_failure(self):
         """升级失败时 table 输出显示错误和手动命令"""
-        error = subprocess.CalledProcessError(
-            1, ["uv", "tool", "upgrade", "jfox-cli"]
-        )
+        error = subprocess.CalledProcessError(1, ["uv", "tool", "upgrade", "jfox-cli"])
         error.stderr = "network error"
 
         with patch("jfox.cli._detect_install_method", return_value="uv"):
@@ -217,9 +195,7 @@ class TestUpdateCommand:
         with patch("jfox.cli._detect_install_method", return_value="uv"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch("jfox.cli._run_upgrade", return_value="Upgraded"):
-                    with patch(
-                        "jfox.cli._get_installed_version", return_value="1.1.0"
-                    ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = runner.invoke(app, ["update", "--json"])
                         assert result.exit_code == 0
                         data = json.loads(result.output)
@@ -230,9 +206,7 @@ class TestUpdateCommand:
 
     def test_json_output_failure(self):
         """失败时 --json 输出 success=false"""
-        error = subprocess.CalledProcessError(
-            1, ["uv", "tool", "upgrade", "jfox-cli"]
-        )
+        error = subprocess.CalledProcessError(1, ["uv", "tool", "upgrade", "jfox-cli"])
         error.stderr = "network error"
 
         with patch("jfox.cli._detect_install_method", return_value="uv"):
