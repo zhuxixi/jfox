@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
 import warnings
 from datetime import datetime
@@ -2978,6 +2980,277 @@ def check(
 
         with use_kb(kb):
             _check_impl(clean=clean, output_format=output_format)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        if output_format == "json":
+            print(output_json({"success": False, "error": str(e)}))
+        else:
+            console.print(f"[red]X[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# 自升级
+# =============================================================================
+
+
+def _read_pyproject_name(pyproject_path: Path) -> Optional[str]:
+    """从 pyproject.toml 中读取 project.name（简单文本匹配，兼容 Python 3.10）"""
+    try:
+        text = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    # 匹配 [project] 区块内的 name = "..." 或 name = '...'
+    match = re.search(
+        r"^\[project\].*?^name\s*=\s*['\"]([^'\"]+)['\"]",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if match:
+        return match.group(1)
+
+    # 退回到全局查找
+    match = re.search(r"^name\s*=\s*['\"]([^'\"]+)['\"]", text, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def _is_dev_installation(package_file: Path) -> bool:
+    """判断当前是否为开发模式（源码目录 + git + pyproject.toml）"""
+    # 向上查找 pyproject.toml 和 .git
+    for parent in package_file.parents[:6]:
+        pyproject = parent / "pyproject.toml"
+        git_marker = parent / ".git"
+        if pyproject.exists() and git_marker.exists():
+            name = _read_pyproject_name(pyproject)
+            if name == "jfox-cli":
+                return True
+
+    # editable install 标记
+    try:
+        for parent in package_file.parents:
+            if parent.name.lower() == "site-packages":
+                egg_link = parent / "jfox_cli.egg-link"
+                if egg_link.exists():
+                    return True
+                break
+    except (OSError, ValueError):
+        pass
+
+    return False
+
+
+def _get_uv_tool_dir() -> Optional[Path]:
+    """获取 uv tool 安装根目录"""
+    try:
+        result = subprocess.run(
+            ["uv", "tool", "dir"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        path = Path(result.stdout.strip())
+        if path.exists():
+            return path.resolve()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        pass
+    return None
+
+
+def _is_uv_tool_installation(package_file: Path) -> bool:
+    """判断当前是否为 uv tool 安装"""
+    uv_dir = _get_uv_tool_dir()
+    if uv_dir:
+        try:
+            return package_file.is_relative_to(uv_dir / "jfox-cli")
+        except ValueError:
+            pass
+
+    # 路径特征降级匹配
+    parts = [p.lower() for p in package_file.parts]
+    return (
+        "uv" in parts and "tools" in parts and "jfox-cli" in parts
+    )
+
+
+def _get_pipx_home() -> Optional[Path]:
+    """获取 pipx 主目录"""
+    try:
+        result = subprocess.run(
+            ["pipx", "environment", "--value", "PIPX_HOME"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        path = Path(result.stdout.strip())
+        if path.exists():
+            return path.resolve()
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        pass
+    return None
+
+
+def _is_pipx_installation(package_file: Path) -> bool:
+    """判断当前是否为 pipx 安装"""
+    pipx_home = _get_pipx_home()
+    if pipx_home:
+        try:
+            return package_file.is_relative_to(pipx_home / "venvs" / "jfox-cli")
+        except ValueError:
+            pass
+
+    # 路径特征降级匹配
+    parts = [p.lower() for p in package_file.parts]
+    return (
+        "pipx" in parts and "venvs" in parts and "jfox-cli" in parts
+    )
+
+
+def _detect_install_method() -> str:
+    """检测当前安装方式：dev / uv / pipx / pip"""
+    package_file = Path(__file__).resolve()
+
+    if _is_dev_installation(package_file):
+        return "dev"
+    if _is_uv_tool_installation(package_file):
+        return "uv"
+    if _is_pipx_installation(package_file):
+        return "pipx"
+    return "pip"
+
+
+def _build_upgrade_command(method: str) -> Optional[List[str]]:
+    """根据安装方式构造升级命令"""
+    if method == "uv":
+        return ["uv", "tool", "upgrade", "jfox-cli"]
+    if method == "pipx":
+        return ["pipx", "upgrade", "jfox-cli"]
+    if method == "pip":
+        return [sys.executable, "-m", "pip", "install", "--upgrade", "jfox-cli"]
+    return None
+
+
+def _run_upgrade(command: List[str]) -> str:
+    """执行升级命令并返回标准输出"""
+    result = subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    return result.stdout
+
+
+def _get_installed_version() -> str:
+    """调用 jfox --version 获取升级后版本"""
+    jfox_exe = shutil.which("jfox")
+    if not jfox_exe:
+        return "unknown"
+    try:
+        result = subprocess.run(
+            [jfox_exe, "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return result.stdout.strip().replace("jfox ", "")
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return "unknown"
+
+
+def _update_impl(output_format: str = "table") -> dict:
+    """update 命令的内部实现"""
+    from . import __version__
+
+    method = _detect_install_method()
+    previous_version = __version__
+
+    if method == "dev":
+        return {
+            "success": True,
+            "method": "dev",
+            "previous_version": previous_version,
+            "current_version": previous_version,
+            "command": None,
+            "message": "开发模式请使用：git pull && uv sync --extra dev",
+        }
+
+    command = _build_upgrade_command(method)
+    command_str = " ".join(command) if command else None
+
+    try:
+        output = _run_upgrade(command)
+    except subprocess.CalledProcessError as e:
+        return {
+            "success": False,
+            "method": method,
+            "previous_version": previous_version,
+            "current_version": previous_version,
+            "command": command_str,
+            "output": e.stdout or "",
+            "error": e.stderr or str(e),
+            "message": f"升级失败，请手动执行：{command_str}",
+        }
+
+    current_version = _get_installed_version()
+    return {
+        "success": True,
+        "method": method,
+        "previous_version": previous_version,
+        "current_version": current_version,
+        "command": command_str,
+        "output": output,
+    }
+
+
+@app.command()
+def update(
+    output_format: str = typer.Option(
+        "table", "--format", "-f", help="输出格式: json, table"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+):
+    """升级 jfox 到最新版本"""
+    try:
+        if json_output:
+            output_format = "json"
+
+        result = _update_impl(output_format=output_format)
+
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"当前版本: {result['previous_version']}")
+            console.print(f"安装方式: {result['method']}")
+            if result["method"] == "dev":
+                console.print(f"[yellow]{result['message']}[/yellow]")
+            else:
+                console.print(f"执行: {result['command']}")
+                if result.get("output"):
+                    console.print(result["output"].rstrip())
+                if result["success"]:
+                    console.print(
+                        f"[green]升级完成: {result['previous_version']} → "
+                        f"{result['current_version']}[/green]"
+                    )
+                else:
+                    console.print(
+                        f"[red]升级失败: {result.get('error', 'unknown error')}[/red]"
+                    )
+                    console.print(
+                        f"[yellow]请手动执行: {result['command']}[/yellow]"
+                    )
+
+        if not result["success"]:
+            raise typer.Exit(1)
 
     except typer.Exit:
         raise
