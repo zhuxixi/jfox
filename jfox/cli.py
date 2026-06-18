@@ -291,11 +291,13 @@ def find_note_id_by_title_or_id(
 
 
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
-    """重新计算所有笔记的 backlinks。
+    """重新计算所有笔记的 links 和 backlinks。
 
     全量加载笔记，解析正文中的 [[...]] 链接，按标题/ID 解析目标笔记，
-    重新计算每篇笔记 frontmatter 中的 backlinks 字段。只有 backlinks 发生变化的
-    笔记才会被重新写入文件，避免无意义的 I/O；forward links 不会被覆盖。
+    更新每篇笔记 frontmatter 中的 links 和 backlinks 字段。forward links 采用
+    合并策略：保留现有 frontmatter 链接，同时把正文新解析出的合法链接加入进去，
+    避免静默删除用户手写链接；backlinks 根据合并后的 forward links 重新计算。
+    只有发生变化的笔记才会被重新写入文件，避免无意义的 I/O。
 
     Args:
         output_format: 输出格式，用于控制是否在控制台打印进度信息
@@ -324,7 +326,7 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     note_by_id = {n.id: n for n in notes}
 
     # 第一阶段：解析每篇笔记的 wiki links，过滤自链接
-    new_links: Dict[str, List[str]] = {n.id: [] for n in notes}
+    parsed_links: Dict[str, List[str]] = {n.id: [] for n in notes}
     unresolved: List[str] = []
 
     for n in notes:
@@ -336,19 +338,24 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
                 if target_id == n.id:
                     continue
                 # 避免同一笔记内重复链接同一目标
-                if target_id not in new_links[n.id]:
-                    new_links[n.id].append(target_id)
+                if target_id not in parsed_links[n.id]:
+                    parsed_links[n.id].append(target_id)
             else:
                 unresolved.append(link_text)
 
-    # 第二阶段：根据新的 links 重新计算 backlinks
+    # 第二阶段：合并现有 forward links 与解析出的 links，然后重新计算 backlinks
+    merged_links: Dict[str, List[str]] = {}
     new_backlinks: Dict[str, List[str]] = {n.id: [] for n in notes}
-    for source_id, target_ids in new_links.items():
-        for target_id in target_ids:
-            if source_id not in new_backlinks[target_id]:
-                new_backlinks[target_id].append(source_id)
+    for n in notes:
+        # 保留用户手写的 forward links，同时加入正文解析出的合法链接
+        merged = sorted(set(n.links + parsed_links[n.id]))
+        merged_links[n.id] = merged
+        # 只有目标笔记真实存在时才生成反向链接
+        for target_id in merged:
+            if target_id in note_by_id and n.id not in new_backlinks[target_id]:
+                new_backlinks[target_id].append(n.id)
 
-    # 第三阶段：比较并写回变化的笔记（只写 backlinks，不覆盖 forward links）
+    # 第三阶段：比较并写回变化的笔记
     updated_count = 0
     failed_count = 0
     changed_note_ids: List[str] = []
@@ -356,11 +363,14 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     for n in notes:
         # 注意：cli.py 模块级存在名为 list 的命令函数，会遮蔽 built-in list()，
         # 因此这里使用切片复制列表。
+        old_links = n.links[:]
         old_backlinks = n.backlinks[:]
+        new_links_sorted = merged_links[n.id]
         new_backlinks_sorted = sorted(new_backlinks[n.id])
 
-        if sorted(old_backlinks) != new_backlinks_sorted:
+        if sorted(old_links) != new_links_sorted or sorted(old_backlinks) != new_backlinks_sorted:
             # 排序后写回，保证 frontmatter 顺序稳定
+            n.links = new_links_sorted
             n.backlinks = new_backlinks_sorted
             try:
                 if note.save_note(n, add_to_index=False):

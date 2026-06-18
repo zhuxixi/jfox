@@ -159,10 +159,8 @@ class TestIndexRebuildBacklinks:
         assert "unresolved_links" in data
         assert "Nonexistent Target" in data["unresolved_links"]
 
-    def test_index_rebuild_backlinks_does_not_overwrite_forward_links(
-        self, cli_fast, _clear_backlinks
-    ):
-        """--backlinks 只重新计算 backlinks，不覆盖用户手写或已有的 forward links"""
+    def test_index_rebuild_backlinks_merges_forward_links(self, cli_fast, _clear_backlinks):
+        """--backlinks 合并正文解析出的 links 与现有 frontmatter links，不删除手写链接"""
         from jfox.models import Note
 
         # 1. 创建目标笔记 A
@@ -203,6 +201,7 @@ class TestIndexRebuildBacklinks:
         backlink_ids = [link["id"] for link in refs_after.data.get("backward_links", [])]
         assert source_id in backlink_ids
 
-        # 7. 验证 B 的 forward links 保持不变（包含手写的 extra_link_id）
+        # 7. 验证 B 的 forward links 保留手写链接，同时包含正文解析出的 target_id
         note_after = Note.from_markdown(source_path.read_text(encoding="utf-8"), source_path)
         assert extra_link_id in note_after.links
+        assert target_id in note_after.links

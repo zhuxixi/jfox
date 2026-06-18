@@ -63,10 +63,10 @@ class TestRebuildBacklinksImpl:
     @patch("jfox.note.save_note")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
-    def test_rebuild_updates_changed_backlinks(
+    def test_rebuild_updates_changed_links_and_backlinks(
         self, mock_list_notes, mock_get_index, mock_save_note
     ):
-        """backlinks 变化时，应只写 backlinks，不覆盖 forward links"""
+        """links/backlinks 变化时，应调用 save_note 写回；forward links 与解析结果合并"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
 
@@ -82,19 +82,18 @@ class TestRebuildBacklinksImpl:
 
         assert result["backlinks_rebuilt"] is True
         assert result["backlinks_total"] == 2
-        # 只有 A 的 backlinks 从 [] 变为 [B]
-        assert result["backlinks_updated"] == 1
+        # A 的 backlinks 从 [] 变为 [B]，B 的 links 从 [] 变为 [A]
+        assert result["backlinks_updated"] == 2
         assert result["backlinks_failed"] == 0
         assert result["unresolved_links"] == []
 
-        # 验证 save_note 只被调用一次，且未重新加入索引
-        assert mock_save_note.call_count == 1
-        saved_note = mock_save_note.call_args[0][0]
-        assert saved_note.id == note_a.id
-        assert saved_note.backlinks == [note_b.id]
-        # forward links 不应被覆盖
-        assert saved_note.links == []
-        assert mock_save_note.call_args.kwargs.get("add_to_index") is False
+        # 验证 save_note 被调用两次，且未重新加入索引
+        assert mock_save_note.call_count == 2
+        saved_by_id = {call.args[0].id: call.args[0] for call in mock_save_note.call_args_list}
+        assert saved_by_id[note_a.id].backlinks == [note_b.id]
+        assert saved_by_id[note_b.id].links == [note_a.id]
+        for call in mock_save_note.call_args_list:
+            assert call.kwargs.get("add_to_index") is False
 
     @patch("jfox.note.save_note")
     @patch("jfox.note_index.get_note_index")
@@ -216,4 +215,4 @@ class TestRebuildBacklinksImpl:
 
         assert result["backlinks_total"] == 2
         assert result["backlinks_updated"] == 0
-        assert result["backlinks_failed"] == 1
+        assert result["backlinks_failed"] == 2
