@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
-from jfox.cli import _detect_install_method, _update_impl, app
+from jfox.cli import _detect_install_method, _get_installed_version, _update_impl, app
 
 runner = CliRunner()
 
@@ -95,6 +95,25 @@ class TestDetectInstallMethod:
                 with patch("jfox.cli._get_pipx_home", return_value=None):
                     assert _detect_install_method() == "pip"
 
+    def test_dev_detection_stops_at_site_packages(self, tmp_path):
+        """向上遍历时遇到 site-packages 即停止，避免误判 venv"""
+        repo = tmp_path / "jfox"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / "pyproject.toml").write_text(
+            '[project]\nname = "jfox-cli"\n',
+            encoding="utf-8",
+        )
+        venv_site = repo / ".venv" / "lib" / "python3.11" / "site-packages"
+        package = venv_site / "jfox" / "cli.py"
+        package.parent.mkdir(parents=True)
+        package.write_text("", encoding="utf-8")
+
+        with patch("jfox.cli.__file__", str(package)):
+            with patch("jfox.cli._get_uv_tool_dir", return_value=None):
+                with patch("jfox.cli._get_pipx_home", return_value=None):
+                    assert _detect_install_method() == "pip"
+
 
 class TestUpdateImpl:
     """_update_impl 行为测试"""
@@ -139,6 +158,25 @@ class TestUpdateImpl:
                         result = _update_impl()
                         assert "pip install --upgrade jfox-cli" in result["command"]
 
+    def test_pip_upgrade_in_user_site_adds_user_flag(self, tmp_path):
+        """pip 用户级安装时追加 --user"""
+        user_site = tmp_path / "user-site"
+        user_site.mkdir(parents=True)
+        package = user_site / "jfox" / "cli.py"
+        package.parent.mkdir(parents=True)
+        package.write_text("", encoding="utf-8")
+
+        with patch("jfox.cli._detect_install_method", return_value="pip"):
+            with patch("jfox.__version__", "1.0.0"):
+                with patch("jfox.cli._run_upgrade", return_value="Upgraded"):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        with patch(
+                            "jfox.cli.site.getusersitepackages", return_value=str(user_site)
+                        ):
+                            with patch("jfox.cli.__file__", str(package)):
+                                result = _update_impl()
+                                assert "--user" in result["command"]
+
     def test_upgrade_failure_returns_manual_command(self):
         """升级失败时返回手动执行命令"""
         error = subprocess.CalledProcessError(1, ["uv", "tool", "upgrade", "jfox-cli"])
@@ -150,6 +188,17 @@ class TestUpdateImpl:
                     result = _update_impl()
                     assert result["success"] is False
                     assert "network error" in result["error"]
+                    assert "uv tool upgrade jfox-cli" in result["message"]
+
+    def test_upgrade_timeout_returns_failure(self):
+        """升级超时时返回结构化失败"""
+        error = subprocess.TimeoutExpired(["uv", "tool", "upgrade", "jfox-cli"], timeout=300)
+
+        with patch("jfox.cli._detect_install_method", return_value="uv"):
+            with patch("jfox.__version__", "1.0.0"):
+                with patch("jfox.cli._run_upgrade", side_effect=error):
+                    result = _update_impl()
+                    assert result["success"] is False
                     assert "uv tool upgrade jfox-cli" in result["message"]
 
 
@@ -217,3 +266,52 @@ class TestUpdateCommand:
                     data = json.loads(result.output)
                     assert data["success"] is False
                     assert "network error" in data["error"]
+
+    def test_invalid_format_exits_with_error(self):
+        """--format 传入非法值时返回非零退出码"""
+        result = runner.invoke(app, ["update", "--format", "josn"])
+        assert result.exit_code == 2
+        assert "table" in result.output or "json" in result.output
+
+
+class TestGetInstalledVersion:
+    """_get_installed_version 测试"""
+
+    def test_prefers_sys_executable_module(self):
+        """优先使用 sys.executable -m jfox --version"""
+        with patch("jfox.cli.sys.executable", "/usr/bin/python3"):
+            with patch("jfox.cli.shutil.which", return_value="/usr/local/bin/jfox"):
+                with patch("jfox.cli.subprocess.run") as mock_run:
+                    mock_run.return_value.stdout = "jfox 1.1.0\n"
+                    version = _get_installed_version()
+                    assert version == "1.1.0"
+                    mock_run.assert_called_once()
+                    assert mock_run.call_args[0][0] == [
+                        "/usr/bin/python3",
+                        "-m",
+                        "jfox",
+                        "--version",
+                    ]
+
+    def test_falls_back_to_path_jfox(self):
+        """sys.executable 方式失败时回退到 PATH 中的 jfox"""
+        with patch("jfox.cli.sys.executable", "/usr/bin/python3"):
+            with patch("jfox.cli.shutil.which", return_value="/usr/local/bin/jfox"):
+                with patch("jfox.cli.subprocess.run") as mock_run:
+                    mock_run.side_effect = [
+                        subprocess.CalledProcessError(1, ["python3", "-m", "jfox"]),
+                        type("obj", (object,), {"stdout": "jfox 1.2.0\n"})(),
+                    ]
+                    version = _get_installed_version()
+                    assert version == "1.2.0"
+                    assert mock_run.call_count == 2
+
+    def test_returns_unknown_when_all_fail(self):
+        """所有方式均失败时返回 unknown"""
+        with patch("jfox.cli.sys.executable", "/usr/bin/python3"):
+            with patch("jfox.cli.shutil.which", return_value=None):
+                with patch(
+                    "jfox.cli.subprocess.run",
+                    side_effect=subprocess.CalledProcessError(1, ["python3"]),
+                ):
+                    assert _get_installed_version() == "unknown"

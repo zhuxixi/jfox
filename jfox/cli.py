@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
+import site
 import subprocess
 import sys
 import warnings
@@ -3000,7 +3002,7 @@ def _read_pyproject_name(pyproject_path: Path) -> Optional[str]:
     """从 pyproject.toml 中读取 project.name（简单文本匹配，兼容 Python 3.10）"""
     try:
         text = pyproject_path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
 
     # 匹配 [project] 区块内的 name = "..." 或 name = '...'
@@ -3019,8 +3021,11 @@ def _read_pyproject_name(pyproject_path: Path) -> Optional[str]:
 
 def _is_dev_installation(package_file: Path) -> bool:
     """判断当前是否为开发模式（源码目录 + git + pyproject.toml）"""
-    # 向上查找 pyproject.toml 和 .git
+    # 向上查找 pyproject.toml 和 .git，但遇到 site-packages 即停止，
+    # 避免把位于项目目录下的 venv 安装误判为 dev 模式。
     for parent in package_file.parents[:6]:
+        if parent.name.lower() == "site-packages":
+            break
         pyproject = parent / "pyproject.toml"
         git_marker = parent / ".git"
         if pyproject.exists() and git_marker.exists():
@@ -3050,12 +3055,18 @@ def _get_uv_tool_dir() -> Optional[Path]:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
         )
         path = Path(result.stdout.strip())
         if path.exists():
             return path.resolve()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+        OSError,
+    ):
         pass
     return None
 
@@ -3082,12 +3093,18 @@ def _get_pipx_home() -> Optional[Path]:
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
         )
         path = Path(result.stdout.strip())
         if path.exists():
             return path.resolve()
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+        OSError,
+    ):
         pass
     return None
 
@@ -3126,7 +3143,15 @@ def _build_upgrade_command(method: str) -> Optional[List[str]]:
     if method == "pipx":
         return ["pipx", "upgrade", "jfox-cli"]
     if method == "pip":
-        return [sys.executable, "-m", "pip", "install", "--upgrade", "jfox-cli"]
+        command = [sys.executable, "-m", "pip", "install", "--upgrade", "jfox-cli"]
+        # 如果当前包安装在用户 site-packages 中，追加 --user 避免权限/位置问题
+        try:
+            user_site = Path(site.getusersitepackages()).resolve()
+            if Path(__file__).resolve().is_relative_to(user_site):
+                command.append("--user")
+        except (AttributeError, ValueError, OSError):
+            pass
+        return command
     return None
 
 
@@ -3137,6 +3162,7 @@ def _run_upgrade(command: List[str]) -> str:
         check=True,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=300,
     )
     return result.stdout
@@ -3144,20 +3170,33 @@ def _run_upgrade(command: List[str]) -> str:
 
 def _get_installed_version() -> str:
     """调用 jfox --version 获取升级后版本"""
+    # 优先使用同一个 Python 解释器，避免 PATH 中其他 jfox 造成误判
+    candidates = [
+        [sys.executable, "-m", "jfox", "--version"],
+    ]
     jfox_exe = shutil.which("jfox")
-    if not jfox_exe:
-        return "unknown"
-    try:
-        result = subprocess.run(
-            [jfox_exe, "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return result.stdout.strip().replace("jfox ", "")
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-        return "unknown"
+    if jfox_exe:
+        candidates.append([jfox_exe, "--version"])
+
+    for cmd in candidates:
+        try:
+            result = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            return result.stdout.strip().replace("jfox ", "")
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            OSError,
+        ):
+            continue
+    return "unknown"
 
 
 def _update_impl(output_format: str = "table") -> dict:
@@ -3178,19 +3217,26 @@ def _update_impl(output_format: str = "table") -> dict:
         }
 
     command = _build_upgrade_command(method)
-    command_str = " ".join(command) if command else None
+    command_str = shlex.join(command) if command else None
 
     try:
         output = _run_upgrade(command)
-    except subprocess.CalledProcessError as e:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+        OSError,
+    ) as e:
+        stderr = getattr(e, "stderr", None) or ""
+        stdout = getattr(e, "stdout", None) or ""
         return {
             "success": False,
             "method": method,
             "previous_version": previous_version,
             "current_version": previous_version,
             "command": command_str,
-            "output": e.stdout or "",
-            "error": e.stderr or str(e),
+            "output": stdout,
+            "error": stderr or str(e),
             "message": f"升级失败，请手动执行：{command_str}",
         }
 
@@ -3217,6 +3263,10 @@ def update(
         if json_output:
             output_format = "json"
 
+        if output_format not in {"table", "json"}:
+            console.print("[red]X[/red] Error: --format 必须是 table 或 json")
+            raise typer.Exit(2)
+
         result = _update_impl(output_format=output_format)
 
         if output_format == "json":
@@ -3229,7 +3279,7 @@ def update(
             else:
                 console.print(f"执行: {result['command']}")
                 if result.get("output"):
-                    console.print(result["output"].rstrip())
+                    console.print(result["output"].rstrip(), markup=False)
                 if result["success"]:
                     console.print(
                         f"[green]升级完成: {result['previous_version']} → "
