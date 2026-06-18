@@ -28,6 +28,32 @@ jfox --version
 pip install -e ".[dev]"
 ```
 
+## Upgrade
+
+```bash
+# Auto-detect installation method and upgrade
+jfox update
+
+# JSON output with version info
+jfox update --json
+```
+
+If `jfox update` fails (e.g. behind a proxy or on an unsupported install method), use the manual command for your install method:
+
+```bash
+# uv tool users
+uv tool upgrade jfox-cli
+
+# pipx users
+pipx upgrade jfox-cli
+
+# pip users
+pip install --upgrade jfox-cli
+
+# Development mode (git clone + uv sync --extra dev)
+git pull && uv sync --extra dev
+```
+
 ## Uninstall
 
 ```bash

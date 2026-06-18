@@ -353,6 +353,13 @@ A session is considered "finished" when its file has not been modified for `idle
 
 > **Privacy note:** Auto-summary sends session text to Anthropic API via `claude -p` to generate summaries. Only session content is transmitted.
 
+### Self-Update
+
+| Command | Description |
+|---------|-------------|
+| `jfox update` | Upgrade jfox to the latest version (auto-detects pip/pipx/uv) |
+| `jfox update --json` | JSON output with before/after version info |
+
 ### Global Options
 
 | Option | Description |
