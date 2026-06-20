@@ -156,42 +156,54 @@ class HybridSearchEngine:
                 search_k = top_k
             bm25_results = self.bm25_index.search(query, top_k=search_k)
 
-            # 转换为与语义搜索一致的格式
-            results = []
-            for r in bm25_results:
-                # 获取笔记详情
-                from . import note as note_module
+            results = self._build_keyword_results(bm25_results, tags, include_archived)
 
-                note = note_module.load_note_by_id(r["note_id"])
-                if note:
-                    # 默认排除归档笔记
-                    if not include_archived and note.archived:
-                        continue
-                    # 如果有标签筛选，检查是否匹配所有标签
-                    if tags and not all(t in note.tags for t in tags):
-                        continue
-                    results.append(
-                        {
-                            "id": r["note_id"],
-                            "document": (
-                                note.content[:300] + "..."
-                                if len(note.content) > 300
-                                else note.content
-                            ),
-                            "metadata": {
-                                "title": note.title,
-                                "type": note.type.value,
-                                "tags": ",".join(note.tags),
-                            },
-                            "score": r["score"],
-                            "search_mode": "keyword",
-                        }
-                    )
+            # 高密度归档场景下，初次过滤结果可能不足 top_k，二次扩大检索回填
+            if not include_archived and len(results) < top_k:
+                search_k = max(top_k * 10, 50)
+                bm25_results = self.bm25_index.search(query, top_k=search_k)
+                results = self._build_keyword_results(bm25_results, tags, include_archived)
 
             return results[:top_k]
         except Exception as e:
             logger.error(f"Keyword search failed: {e}")
             return []
+
+    def _build_keyword_results(
+        self,
+        bm25_results: List[Dict[str, Any]],
+        tags: Optional[List[str]] = None,
+        include_archived: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """将 BM25 搜索结果转换为统一格式并过滤归档/标签"""
+        results = []
+        for r in bm25_results:
+            from . import note as note_module
+
+            note = note_module.load_note_by_id(r["note_id"])
+            if note:
+                # 默认排除归档笔记
+                if not include_archived and note.archived:
+                    continue
+                # 如果有标签筛选，检查是否匹配所有标签
+                if tags and not all(t in note.tags for t in tags):
+                    continue
+                results.append(
+                    {
+                        "id": r["note_id"],
+                        "document": (
+                            note.content[:300] + "..." if len(note.content) > 300 else note.content
+                        ),
+                        "metadata": {
+                            "title": note.title,
+                            "type": note.type.value,
+                            "tags": ",".join(note.tags),
+                        },
+                        "score": r["score"],
+                        "search_mode": "keyword",
+                    }
+                )
+        return results
 
     def _hybrid_search_with_k(
         self,

@@ -462,3 +462,33 @@ class TestArchiveSearchModes:
                     results = engine._semantic_search("alpha", top_k=5)
                     assert len(results) == 1
                     assert results[0]["id"] == active.id
+
+    def test_keyword_search_overfetch_fallback(self, temp_kb, mock_embedding_backend):
+        """高密度归档场景下，关键词搜索会二次扩大检索回填活跃笔记"""
+        with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+            with temp_kb_registered() as kb_name:
+                with use_kb(kb_name):
+                    from jfox.config import config as zk_config
+                    from jfox.search_engine import HybridSearchEngine
+
+                    active, archived = self._create_active_and_archived()
+
+                    from jfox.note_index import get_note_index
+
+                    get_note_index(zk_config)
+
+                    engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=MagicMock())
+
+                    def mock_bm25_search(query, top_k):
+                        # top_k=5 时首次 search_k=25，二次扩大 search_k=50
+                        if top_k < 50:
+                            # 初次 over-fetch 只返回归档笔记
+                            return [{"note_id": archived.id, "score": 0.9}]
+                        # 二次扩大后返回活跃笔记
+                        return [{"note_id": active.id, "score": 0.9}]
+
+                    engine.bm25_index.search = mock_bm25_search
+
+                    results = engine._keyword_search("alpha", top_k=5)
+                    assert len(results) == 1
+                    assert results[0]["id"] == active.id
