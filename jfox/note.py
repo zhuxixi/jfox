@@ -298,7 +298,8 @@ def archive_note(note_id: str) -> bool:
 
     if n.archived:
         logger.info(f"Note {note_id} is already archived")
-        return True
+        # 幂等路径仍刷新 updated 时间戳以符合设计语义
+        return update_note(n)
 
     n.archived = True
     return update_note(n)
@@ -321,7 +322,8 @@ def unarchive_note(note_id: str) -> bool:
 
     if not n.archived:
         logger.info(f"Note {note_id} is not archived")
-        return True
+        # 幂等路径仍刷新 updated 时间戳以符合设计语义
+        return update_note(n)
 
     n.archived = False
     return update_note(n)
@@ -381,6 +383,15 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
                 bm25_index.add_document(note_obj.id, content)
             except Exception as e:
                 logger.warning(f"Failed to update BM25 index: {e}")
+
+        # 同步刷新 NoteIndex 缓存，避免同进程内读取到旧的归档状态
+        try:
+            from .note_index import get_note_index
+
+            idx = get_note_index()
+            idx.update_note_meta(note_obj)
+        except Exception as e:
+            logger.warning(f"Failed to update note index cache: {e}")
 
         return True
 

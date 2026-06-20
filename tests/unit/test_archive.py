@@ -1,7 +1,7 @@
 """测试类型: 单元测试 / 目标模块: jfox.archive (归档/软删除)"""
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -61,6 +61,28 @@ class TestArchiveModel:
         note.archived = True
         data = note.to_dict()
         assert data["archived"] is True
+
+    def test_archived_yaml_string_false(self):
+        """archived: 'false' 等 YAML 字符串应被正确解析为 False"""
+        with temp_kb_registered() as kb_name:
+            with use_kb(kb_name):
+                from jfox.config import config as zk_config
+                from jfox.note_index import NoteIndex
+
+                note = create_note("test", title="Test", note_type=NoteType.PERMANENT)
+                save_note(note, add_to_index=False)
+
+                # 手动写入字符串形式的 archived: "false"
+                md = note.filepath.read_text(encoding="utf-8")
+                md = md.replace("---\n", '---\narchived: "false"\n')
+                note.filepath.write_text(md, encoding="utf-8")
+
+                restored = load_note_by_id(note.id)
+                assert restored.archived is False
+
+                idx = NoteIndex(zk_config)
+                idx.rebuild()
+                assert idx.find_by_id(note.id).archived is False
 
 
 class TestNoteIndexArchiveFilter:
@@ -244,15 +266,196 @@ class TestArchiveCommands:
             with use_kb(kb_name):
                 note = create_note("content", title="Note", note_type=NoteType.PERMANENT)
                 save_note(note, add_to_index=False)
+                original_updated = note.updated
 
                 assert archive_note(note.id) is True
                 archived = load_note_by_id(note.id)
                 assert archived is not None
                 assert archived.archived is True
                 assert "archived: true" in archived.filepath.read_text(encoding="utf-8")
+                first_updated = archived.updated
+                assert first_updated > original_updated
+
+                # 幂等归档仍应刷新 updated 时间戳
+                assert archive_note(note.id) is True
+                re_archived = load_note_by_id(note.id)
+                assert re_archived.updated >= first_updated
 
                 assert unarchive_note(note.id) is True
                 restored = load_note_by_id(note.id)
                 assert restored is not None
                 assert restored.archived is False
                 assert "archived" not in restored.filepath.read_text(encoding="utf-8")
+
+                # 幂等取消归档也应刷新 updated 时间戳
+                assert unarchive_note(note.id) is True
+                re_restored = load_note_by_id(note.id)
+                assert re_restored.updated >= restored.updated
+
+
+class TestArchiveCacheConsistency:
+    """测试归档后的索引缓存一致性"""
+
+    def test_archive_updates_note_index_cache(self):
+        """归档后同一进程内 NoteIndex 缓存立即反映新的 archived 状态"""
+        with temp_kb_registered() as kb_name:
+            with use_kb(kb_name):
+                from jfox.config import config as zk_config
+                from jfox.note_index import get_note_index
+
+                note = create_note("content", title="Note", note_type=NoteType.PERMANENT)
+                save_note(note, add_to_index=False)
+
+                idx = get_note_index(zk_config)
+                assert idx.find_by_id(note.id).archived is False
+
+                archive_note(note.id)
+
+                # 不触发重建，直接读取缓存应已同步
+                assert idx.find_by_id(note.id).archived is True
+
+
+class TestArchiveSearchModes:
+    """覆盖语义/混合搜索的归档过滤（含 over-fetch 回填）"""
+
+    @staticmethod
+    def _create_active_and_archived():
+        active = create_note("active alpha", title="Active Alpha", note_type=NoteType.PERMANENT)
+        archived = create_note("archived alpha", title="Archived Alpha", note_type=NoteType.PERMANENT)
+        archived.archived = True
+        save_note(active, add_to_index=False)
+        save_note(archived, add_to_index=False)
+        return active, archived
+
+    def test_semantic_search_excludes_archived(self, temp_kb, mock_embedding_backend):
+        """语义搜索默认排除归档笔记"""
+        with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+            with temp_kb_registered() as kb_name:
+                with use_kb(kb_name):
+                    from jfox.config import config as zk_config
+                    from jfox.search_engine import HybridSearchEngine
+
+                    active, archived = self._create_active_and_archived()
+
+                    # 确保 NoteIndex 缓存已构建
+                    from jfox.note_index import get_note_index
+
+                    get_note_index(zk_config)
+
+                    engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=MagicMock())
+
+                    def mock_vector_search(query, top_k, note_type=None, tags=None):
+                        return [
+                            {
+                                "id": active.id,
+                                "document": active.content,
+                                "metadata": {"title": active.title},
+                                "distance": 0.1,
+                                "score": 0.9,
+                            },
+                            {
+                                "id": archived.id,
+                                "document": archived.content,
+                                "metadata": {"title": archived.title},
+                                "distance": 0.2,
+                                "score": 0.8,
+                            },
+                        ]
+
+                    engine.vector_store.search = mock_vector_search
+
+                    results = engine._semantic_search("alpha", top_k=5)
+                    assert len(results) == 1
+                    assert results[0]["id"] == active.id
+
+    def test_hybrid_search_excludes_archived(self, temp_kb, mock_embedding_backend):
+        """混合搜索默认排除归档笔记"""
+        with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+            with temp_kb_registered() as kb_name:
+                with use_kb(kb_name):
+                    from jfox.config import config as zk_config
+                    from jfox.search_engine import HybridSearchEngine
+
+                    active, archived = self._create_active_and_archived()
+
+                    from jfox.note_index import get_note_index
+
+                    get_note_index(zk_config)
+
+                    engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=MagicMock())
+
+                    def mock_vector_search(query, top_k, note_type=None, tags=None):
+                        return [
+                            {
+                                "id": active.id,
+                                "document": active.content,
+                                "metadata": {"title": active.title},
+                                "distance": 0.1,
+                                "score": 0.9,
+                            },
+                            {
+                                "id": archived.id,
+                                "document": archived.content,
+                                "metadata": {"title": archived.title},
+                                "distance": 0.2,
+                                "score": 0.8,
+                            },
+                        ]
+
+                    def mock_bm25_search(query, top_k):
+                        return [
+                            {"note_id": active.id, "score": 0.9},
+                            {"note_id": archived.id, "score": 0.8},
+                        ]
+
+                    engine.vector_store.search = mock_vector_search
+                    engine.bm25_index.search = mock_bm25_search
+
+                    results = engine._hybrid_search("alpha", top_k=5)
+                    assert len(results) == 1
+                    assert results[0]["id"] == active.id
+
+    def test_semantic_search_overfetch_fallback(self, temp_kb, mock_embedding_backend):
+        """高密度归档场景下，语义搜索会二次扩大检索回填活跃笔记"""
+        with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+            with temp_kb_registered() as kb_name:
+                with use_kb(kb_name):
+                    from jfox.config import config as zk_config
+                    from jfox.search_engine import HybridSearchEngine
+
+                    active, archived = self._create_active_and_archived()
+
+                    from jfox.note_index import get_note_index
+
+                    get_note_index(zk_config)
+
+                    engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=MagicMock())
+
+                    def mock_vector_search(query, top_k, note_type=None, tags=None):
+                        if top_k <= 20:
+                            # 初次 over-fetch 只返回归档笔记
+                            return [
+                                {
+                                    "id": archived.id,
+                                    "document": archived.content,
+                                    "metadata": {"title": archived.title},
+                                    "distance": 0.1,
+                                    "score": 0.9,
+                                },
+                            ]
+                        # 二次扩大后返回活跃笔记
+                        return [
+                            {
+                                "id": active.id,
+                                "document": active.content,
+                                "metadata": {"title": active.title},
+                                "distance": 0.1,
+                                "score": 0.9,
+                            },
+                        ]
+
+                    engine.vector_store.search = mock_vector_search
+
+                    results = engine._semantic_search("alpha", top_k=5)
+                    assert len(results) == 1
+                    assert results[0]["id"] == active.id

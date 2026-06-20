@@ -10,6 +10,19 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 
+def _to_bool(value: Any) -> bool:
+    """将 frontmatter 中的值安全转换为 bool，正确处理 YAML 字符串。
+
+    YAML 中 archived: "false" 会被解析为字符串 "false"，
+    直接用 bool() 会误判为 True，因此需要显式处理常见假值字符串。
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in ("false", "0", "", "no", "off", "null", "none")
+    return bool(value)
+
+
 class NoteType(Enum):
     """笔记类型"""
 
@@ -139,7 +152,7 @@ class Note:
             backlinks=fm.get("backlinks", []),
             source=fm.get("source"),
             topic=fm.get("topic"),
-            archived=bool(fm.get("archived", False)),
+            archived=_to_bool(fm.get("archived", False)),
         )
 
     def to_dict(self) -> Dict[str, Any]:

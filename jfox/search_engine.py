@@ -124,6 +124,17 @@ class HybridSearchEngine:
             for r in results:
                 r["search_mode"] = "semantic"
             filtered = self._filter_archived_results(results, include_archived)
+
+            # 高密度归档场景下，初次过滤结果可能不足 top_k，二次扩大检索回填
+            if not include_archived and len(filtered) < top_k:
+                search_k = max(top_k * 10, 50)
+                results = self.vector_store.search(
+                    query, top_k=search_k, note_type=note_type, tags=tags
+                )
+                for r in results:
+                    r["search_mode"] = "semantic"
+                filtered = self._filter_archived_results(results, include_archived)
+
             return filtered[:top_k]
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
@@ -182,25 +193,16 @@ class HybridSearchEngine:
             logger.error(f"Keyword search failed: {e}")
             return []
 
-    def _hybrid_search(
+    def _hybrid_search_with_k(
         self,
         query: str,
         top_k: int,
+        search_k: int,
         note_type: Optional[str] = None,
         tags: Optional[List[str]] = None,
         include_archived: bool = False,
     ) -> List[Dict[str, Any]]:
-        """
-        混合搜索：RRF 融合
-
-        公式: score = Σ 1 / (k + rank)
-        """
-        # 1. 执行两种搜索（获取更多结果用于融合/归档过滤）
-        if include_archived:
-            search_k = max(top_k * 2, 10)
-        else:
-            search_k = max(top_k * 5, 20)
-
+        """使用指定 search_k 执行一次混合搜索（RRF 融合）"""
         semantic_results = []
         bm25_results = []
 
@@ -244,7 +246,7 @@ class HybridSearchEngine:
                 r["search_mode"] = "semantic"
             return filtered[:top_k]
 
-        # 2. RRF 融合
+        # RRF 融合
         fused_scores: Dict[str, float] = {}
         result_data: Dict[str, Dict] = {}
 
@@ -282,7 +284,7 @@ class HybridSearchEngine:
                             },
                         }
 
-        # 3. 排序并过滤归档后返回 top_k
+        # 排序并过滤归档后返回 top_k
         sorted_ids = sorted(fused_scores.keys(), key=lambda x: fused_scores[x], reverse=True)
 
         from .note_index import get_note_index
@@ -301,6 +303,37 @@ class HybridSearchEngine:
             if len(results) >= top_k:
                 break
 
+        return results
+
+    def _hybrid_search(
+        self,
+        query: str,
+        top_k: int,
+        note_type: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        include_archived: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        混合搜索：RRF 融合
+
+        公式: score = Σ 1 / (k + rank)
+        """
+        if include_archived:
+            search_k = max(top_k * 2, 10)
+            return self._hybrid_search_with_k(
+                query, top_k, search_k, note_type, tags, include_archived
+            )
+
+        # 默认排除归档时，先按 5 倍 over-fetch；结果不足则二次扩大到 10 倍
+        search_k = max(top_k * 5, 20)
+        results = self._hybrid_search_with_k(
+            query, top_k, search_k, note_type, tags, include_archived
+        )
+        if len(results) < top_k:
+            search_k = max(top_k * 10, 50)
+            results = self._hybrid_search_with_k(
+                query, top_k, search_k, note_type, tags, include_archived
+            )
         return results
 
     def rebuild_bm25_index(self) -> bool:
