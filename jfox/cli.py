@@ -3072,9 +3072,10 @@ def _get_uv_tool_dir() -> Optional[Path]:
 
 
 def _path_has_contiguous_parts(path: Path, parts: tuple[str, ...]) -> bool:
-    """判断规范化路径是否包含连续的目录切片序列。
+    """判断规范化路径是否包含连续的目录切片序列（大小写不敏感）。
 
-    用于在主检测路径失败时做受约束的降级匹配，避免非连续片段组合造成的误命中。
+    用于在主检测路径失败时做受约束的降级匹配，避免非连续片段组合造成的误命中，
+    同时兼容 Windows 或大写目录等大小写不一致的场景。
     """
     try:
         path_parts = path.resolve().parts
@@ -3082,8 +3083,10 @@ def _path_has_contiguous_parts(path: Path, parts: tuple[str, ...]) -> bool:
         return False
     if len(parts) > len(path_parts):
         return False
-    for i in range(len(path_parts) - len(parts) + 1):
-        if path_parts[i : i + len(parts)] == parts:
+    parts_lower = tuple(p.lower() for p in parts)
+    path_parts_lower = tuple(p.lower() for p in path_parts)
+    for i in range(len(path_parts_lower) - len(parts_lower) + 1):
+        if path_parts_lower[i : i + len(parts_lower)] == parts_lower:
             return True
     return False
 
@@ -3237,6 +3240,9 @@ def _update_impl() -> dict:
             "previous_version": previous_version,
             "current_version": previous_version,
             "command": None,
+            "output": "",
+            "stderr": "",
+            "error": "",
             "message": "开发模式请使用：git pull && uv sync --extra dev",
         }
 
@@ -3268,6 +3274,7 @@ def _update_impl() -> dict:
             "current_version": previous_version,
             "command": command_str,
             "output": stdout,
+            "stderr": stderr,
             "error": stderr or str(e),
             "message": f"升级失败，请手动执行：{command_str}",
         }
@@ -3281,6 +3288,7 @@ def _update_impl() -> dict:
         "command": command_str,
         "output": upgrade_result["stdout"],
         "stderr": upgrade_result["stderr"],
+        "error": "",
     }
 
 

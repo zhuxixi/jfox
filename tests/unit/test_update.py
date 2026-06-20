@@ -271,6 +271,12 @@ class TestPathHasContiguousParts:
         path.mkdir()
         assert _path_has_contiguous_parts(path, ("a", "b", "c")) is False
 
+    def test_matches_case_insensitive(self, tmp_path):
+        """大小写不一致时仍能命中"""
+        path = tmp_path / "UV" / "Tools" / "JFOX-CLI"
+        path.mkdir(parents=True)
+        assert _path_has_contiguous_parts(path, ("uv", "tools", "jfox-cli")) is True
+
 
 class TestUpdateImpl:
     """_update_impl 行为测试"""
@@ -347,7 +353,7 @@ class TestUpdateImpl:
                                 assert "--user" in result["command"]
 
     def test_upgrade_failure_returns_manual_command(self):
-        """升级失败时返回手动执行命令"""
+        """升级失败时返回统一 schema：output/stderr/error 均存在"""
         error = subprocess.CalledProcessError(1, ["uv", "tool", "upgrade", "jfox-cli"])
         error.stderr = "network error"
 
@@ -356,11 +362,12 @@ class TestUpdateImpl:
                 with patch("jfox.cli._run_upgrade", side_effect=error):
                     result = _update_impl()
                     assert result["success"] is False
+                    assert "network error" in result["stderr"]
                     assert "network error" in result["error"]
                     assert "uv tool upgrade jfox-cli" in result["message"]
 
     def test_upgrade_timeout_returns_failure(self):
-        """升级超时时返回结构化失败"""
+        """升级超时时返回统一 schema"""
         error = subprocess.TimeoutExpired(["uv", "tool", "upgrade", "jfox-cli"], timeout=300)
 
         with patch("jfox.cli._detect_install_method", return_value="uv"):
@@ -368,10 +375,12 @@ class TestUpdateImpl:
                 with patch("jfox.cli._run_upgrade", side_effect=error):
                     result = _update_impl()
                     assert result["success"] is False
+                    assert "stderr" in result
+                    assert "error" in result
                     assert "uv tool upgrade jfox-cli" in result["message"]
 
     def test_success_separates_stdout_and_stderr(self):
-        """成功路径保持 output=stdout，stderr 放入单独 key"""
+        """成功路径保持统一 schema：output/stderr/error 均存在，error 为空"""
         with patch("jfox.cli._detect_install_method", return_value="uv"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch(
@@ -383,6 +392,7 @@ class TestUpdateImpl:
                         assert result["success"] is True
                         assert result["output"] == "stdout msg"
                         assert result["stderr"] == "stderr msg"
+                        assert result["error"] == ""
 
 
 class TestRunUpgrade:
@@ -457,7 +467,7 @@ class TestUpdateCommand:
                     assert "uv tool upgrade jfox-cli" in result.output
 
     def test_json_output_success(self):
-        """--json 输出合法 JSON"""
+        """--json 输出合法 JSON 且 schema 统一"""
         with patch("jfox.cli._detect_install_method", return_value="uv"):
             with patch("jfox.__version__", "1.0.0"):
                 with patch(
@@ -472,6 +482,8 @@ class TestUpdateCommand:
                         assert data["method"] == "uv"
                         assert data["previous_version"] == "1.0.0"
                         assert data["current_version"] == "1.1.0"
+                        assert "stderr" in data
+                        assert data["error"] == ""
 
     def test_json_output_failure(self):
         """失败时 --json 输出 success=false"""
