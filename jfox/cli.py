@@ -3071,6 +3071,23 @@ def _get_uv_tool_dir() -> Optional[Path]:
     return None
 
 
+def _path_has_contiguous_parts(path: Path, parts: tuple[str, ...]) -> bool:
+    """判断规范化路径是否包含连续的目录切片序列。
+
+    用于在主检测路径失败时做受约束的降级匹配，避免非连续片段组合造成的误命中。
+    """
+    try:
+        path_parts = path.resolve().parts
+    except (OSError, ValueError):
+        return False
+    if len(parts) > len(path_parts):
+        return False
+    for i in range(len(path_parts) - len(parts) + 1):
+        if path_parts[i : i + len(parts)] == parts:
+            return True
+    return False
+
+
 def _is_uv_tool_installation(package_file: Path) -> bool:
     """判断当前是否为 uv tool 安装"""
     uv_dir = _get_uv_tool_dir()
@@ -3080,9 +3097,9 @@ def _is_uv_tool_installation(package_file: Path) -> bool:
         except ValueError:
             pass
 
-    # 降级匹配已移除：非连续路径片段匹配容易误命中（如 ~/uv/backup/tools/old/jfox-cli/），
-    # 直接返回 False 走默认 pip 分支更安全。
-    return False
+    # 降级匹配：受约束的连续路径切片，避免非连续片段误命中
+    # （如 ~/uv/backup/tools/old/jfox-cli/ 不会被命中）。
+    return _path_has_contiguous_parts(package_file, ("uv", "tools", "jfox-cli"))
 
 
 def _get_pipx_home() -> Optional[Path]:
@@ -3120,8 +3137,8 @@ def _is_pipx_installation(package_file: Path) -> bool:
         except ValueError:
             pass
 
-    # 降级匹配已移除：非连续路径片段匹配容易误命中，直接返回 False 走默认 pip 分支。
-    return False
+    # 降级匹配：受约束的连续路径切片
+    return _path_has_contiguous_parts(package_file, ("pipx", "venvs", "jfox-cli"))
 
 
 def _detect_install_method() -> str:
@@ -3156,8 +3173,8 @@ def _build_upgrade_command(method: str) -> Optional[List[str]]:
     return None
 
 
-def _run_upgrade(command: List[str]) -> str:
-    """执行升级命令并返回标准输出与错误输出（合并）"""
+def _run_upgrade(command: List[str]) -> dict:
+    """执行升级命令并分别返回标准输出与错误输出"""
     result = subprocess.run(
         command,
         check=True,
@@ -3167,10 +3184,10 @@ def _run_upgrade(command: List[str]) -> str:
         errors="replace",
         timeout=300,
     )
-    output = result.stdout or ""
-    if result.stderr:
-        output += ("\n" if output else "") + result.stderr
-    return output.strip()
+    return {
+        "stdout": (result.stdout or "").strip(),
+        "stderr": (result.stderr or "").strip(),
+    }
 
 
 def _get_installed_version() -> str:
@@ -3234,7 +3251,7 @@ def _update_impl() -> dict:
         command_str = None
 
     try:
-        output = _run_upgrade(command)
+        upgrade_result = _run_upgrade(command)
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
@@ -3262,7 +3279,8 @@ def _update_impl() -> dict:
         "previous_version": previous_version,
         "current_version": current_version,
         "command": command_str,
-        "output": output,
+        "output": upgrade_result["stdout"],
+        "stderr": upgrade_result["stderr"],
     }
 
 
@@ -3295,6 +3313,8 @@ def update(
                 console.print(f"执行: {result['command']}")
                 if result.get("output"):
                     console.print(result["output"].rstrip(), markup=False)
+                if result.get("stderr"):
+                    console.print(result["stderr"].rstrip(), markup=False)
                 if result["success"]:
                     console.print(
                         f"[green]升级完成: {result['previous_version']} → "
