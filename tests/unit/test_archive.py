@@ -434,7 +434,8 @@ class TestArchiveSearchModes:
                     engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=MagicMock())
 
                     def mock_vector_search(query, top_k, note_type=None, tags=None):
-                        if top_k <= 20:
+                        # top_k=5 时首次 search_k=25，二次扩大 search_k=50
+                        if top_k < 50:
                             # 初次 over-fetch 只返回归档笔记
                             return [
                                 {
