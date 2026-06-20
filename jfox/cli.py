@@ -3094,6 +3094,7 @@ def _get_pipx_home() -> Optional[Path]:
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
         path = Path(result.stdout.strip())
@@ -3104,6 +3105,7 @@ def _get_pipx_home() -> Optional[Path]:
         subprocess.TimeoutExpired,
         FileNotFoundError,
         OSError,
+        UnicodeDecodeError,
     ):
         pass
     return None
@@ -3163,6 +3165,7 @@ def _run_upgrade(command: List[str]) -> str:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        errors="replace",
         timeout=300,
     )
     return result.stdout
@@ -3186,6 +3189,7 @@ def _get_installed_version() -> str:
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
+                errors="replace",
                 timeout=30,
             )
             return result.stdout.strip().replace("jfox ", "")
@@ -3194,6 +3198,7 @@ def _get_installed_version() -> str:
             subprocess.TimeoutExpired,
             FileNotFoundError,
             OSError,
+            UnicodeDecodeError,
         ):
             continue
     return "unknown"
@@ -3226,6 +3231,7 @@ def _update_impl(output_format: str = "table") -> dict:
         subprocess.TimeoutExpired,
         FileNotFoundError,
         OSError,
+        UnicodeDecodeError,
     ) as e:
         stderr = getattr(e, "stderr", None) or ""
         stdout = getattr(e, "stdout", None) or ""
