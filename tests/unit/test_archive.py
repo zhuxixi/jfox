@@ -321,7 +321,9 @@ class TestArchiveSearchModes:
     @staticmethod
     def _create_active_and_archived():
         active = create_note("active alpha", title="Active Alpha", note_type=NoteType.PERMANENT)
-        archived = create_note("archived alpha", title="Archived Alpha", note_type=NoteType.PERMANENT)
+        archived = create_note(
+            "archived alpha", title="Archived Alpha", note_type=NoteType.PERMANENT
+        )
         archived.archived = True
         save_note(active, add_to_index=False)
         save_note(archived, add_to_index=False)
