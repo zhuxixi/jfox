@@ -3080,9 +3080,9 @@ def _is_uv_tool_installation(package_file: Path) -> bool:
         except ValueError:
             pass
 
-    # 路径特征降级匹配
-    parts = [p.lower() for p in package_file.parts]
-    return "uv" in parts and "tools" in parts and "jfox-cli" in parts
+    # 降级匹配已移除：非连续路径片段匹配容易误命中（如 ~/uv/backup/tools/old/jfox-cli/），
+    # 直接返回 False 走默认 pip 分支更安全。
+    return False
 
 
 def _get_pipx_home() -> Optional[Path]:
@@ -3120,9 +3120,8 @@ def _is_pipx_installation(package_file: Path) -> bool:
         except ValueError:
             pass
 
-    # 路径特征降级匹配
-    parts = [p.lower() for p in package_file.parts]
-    return "pipx" in parts and "venvs" in parts and "jfox-cli" in parts
+    # 降级匹配已移除：非连续路径片段匹配容易误命中，直接返回 False 走默认 pip 分支。
+    return False
 
 
 def _detect_install_method() -> str:
@@ -3158,7 +3157,7 @@ def _build_upgrade_command(method: str) -> Optional[List[str]]:
 
 
 def _run_upgrade(command: List[str]) -> str:
-    """执行升级命令并返回标准输出"""
+    """执行升级命令并返回标准输出与错误输出（合并）"""
     result = subprocess.run(
         command,
         check=True,
@@ -3168,7 +3167,10 @@ def _run_upgrade(command: List[str]) -> str:
         errors="replace",
         timeout=300,
     )
-    return result.stdout
+    output = result.stdout or ""
+    if result.stderr:
+        output += ("\n" if output else "") + result.stderr
+    return output.strip()
 
 
 def _get_installed_version() -> str:
@@ -3204,7 +3206,7 @@ def _get_installed_version() -> str:
     return "unknown"
 
 
-def _update_impl(output_format: str = "table") -> dict:
+def _update_impl() -> dict:
     """update 命令的内部实现"""
     from . import __version__
 
@@ -3222,7 +3224,14 @@ def _update_impl(output_format: str = "table") -> dict:
         }
 
     command = _build_upgrade_command(method)
-    command_str = shlex.join(command) if command else None
+    if command:
+        # 按平台生成可展示/可手动执行的命令字符串
+        if sys.platform == "win32":
+            command_str = subprocess.list2cmdline(command)
+        else:
+            command_str = shlex.join(command)
+    else:
+        command_str = None
 
     try:
         output = _run_upgrade(command)
@@ -3273,7 +3282,7 @@ def update(
             console.print("[red]X[/red] Error: --format 必须是 table 或 json")
             raise typer.Exit(2)
 
-        result = _update_impl(output_format=output_format)
+        result = _update_impl()
 
         if output_format == "json":
             print(output_json(result))
