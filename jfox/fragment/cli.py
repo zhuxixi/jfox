@@ -33,6 +33,9 @@ def list_cmd(
     store = FragmentStore()
     try:
         rows = store.query(session_id=session, fragment_type=type, limit=limit)
+    except Exception as e:
+        console.print(f"[red]读取碎片失败：{e}[/red]")
+        raise typer.Exit(code=1)
     finally:
         store.close()
 
@@ -65,6 +68,9 @@ def show_cmd(
     store = FragmentStore()
     try:
         row = store.get(fragment_id)
+    except Exception as e:
+        console.print(f"[red]读取碎片失败：{e}[/red]")
+        raise typer.Exit(code=1)
     finally:
         store.close()
     if row is None:

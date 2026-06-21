@@ -156,8 +156,13 @@ class FragmentCaptureConfig:
             enabled = raw_enabled.strip().lower() not in ("false", "0", "no", "off", "")
         else:
             enabled = bool(raw_enabled)
+        # 安全 int：非数字字符串不应抛 ValueError（否则 GlobalConfigManager._load 的 except
+        # 会吞掉异常并重置整份全局配置——auto_summary、KB 列表、默认 KB 全失效）
         raw_max = data.get("max_content_chars", 500)
-        max_content_chars = int(raw_max) if raw_max is not None else 500
+        try:
+            max_content_chars = int(raw_max) if raw_max is not None else 500
+        except (TypeError, ValueError):
+            max_content_chars = 500
         return cls(
             enabled=enabled,
             correction_keywords=(

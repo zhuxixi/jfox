@@ -72,8 +72,8 @@ def ingest_event(
     if store is None:
         return {"status": "error", "message": "fragment store unavailable (daemon not initialized)"}
 
-    ftype, content = classify(event, config)
     try:
+        ftype, content = classify(event, config)
         if ftype == "session_summary":
             counts = store.counts_by_type(session_id)
             content = _summary_message(counts)

@@ -278,21 +278,20 @@ def list_fragments(
     type: Optional[str] = None,
     limit: int = Query(default=20, ge=1, le=1000),
 ):
-    """按 session / type 查询碎片（最新在前）。复用 daemon 常驻 store，避免每请求重建连接。"""
+    """按 session / type 查询碎片（最新在前）。复用 daemon 常驻 store；未启用则返回空。"""
     from ..fragment.service import get_default_store
-    from ..fragment.store import FragmentStore
 
     store = get_default_store()
-    owned = False
     if store is None:
-        # daemon 未初始化（如直连/测试）时兜底开一个临时连接
-        store = FragmentStore()
-        owned = True
+        # 未启用（enabled=false）或 daemon 未初始化：不创建 store，返回空（尊重禁用决策，
+        # 避免 enabled=false 时兜底创建 fragments.db）
+        return {"fragments": [], "total": 0}
     try:
         rows = store.query(session_id=session, fragment_type=type, limit=limit)
-    finally:
-        if owned:
-            store.close()
+    except Exception as e:
+        # 含 shutdown 竞态：请求持有 store 引用后 lifespan 关闭了连接 → ProgrammingError
+        logger.exception("list_fragments: 查询失败: %s", e)
+        return {"fragments": [], "total": 0, "error": str(e)}
     return {"fragments": rows, "total": len(rows)}
 
 

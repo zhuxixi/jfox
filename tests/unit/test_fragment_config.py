@@ -49,3 +49,8 @@ def test_enabled_string_false_parses_false():
 
 def test_max_content_chars_null_uses_default():
     assert FragmentCaptureConfig.from_dict({"max_content_chars": None}).max_content_chars == 500
+
+
+def test_max_content_chars_non_numeric_string_does_not_crash():
+    """非数字字符串不应抛异常（否则会连累整份全局配置被重置）"""
+    assert FragmentCaptureConfig.from_dict({"max_content_chars": "abc"}).max_content_chars == 500

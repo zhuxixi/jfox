@@ -29,7 +29,7 @@ def default_db_path() -> Path:
     """默认碎片库路径，可被 JFOX_FRAGMENTS_DB 覆盖。"""
     env = os.environ.get("JFOX_FRAGMENTS_DB")
     if env:
-        return Path(env).expanduser()
+        return Path(env).expanduser().resolve()
     return Path.home() / ".zettelkasten" / "fragments.db"
 
 
@@ -38,7 +38,7 @@ class FragmentStore:
 
     def __init__(self, db_path: Optional[Path] = None) -> None:
         self.db_path: Path = Path(db_path) if db_path is not None else default_db_path()
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         # 同一进程内多线程读写的锁（sqlite3 连接默认 check_same_thread=True）
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)

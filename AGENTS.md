@@ -162,7 +162,7 @@ uv run jfox --version
 | `note_index.py` | 笔记索引管理（文件名↔ID 映射） |
 | `indexer.py` | 文件监控（watchdog）+ 增量索引 |
 | `daemon/` | Embedding 模型 HTTP 守护进程（server/client/process） |
-| `fragment/` | 碎片采集：detector 事件分类 + store SQLite(WAL) + service 编排，daemon `/api/fragment` |
+| `fragment/` | 碎片采集：detector 分类 + store SQLite + service 编排 |
 
 ### 笔记类型
 
