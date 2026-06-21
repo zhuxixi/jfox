@@ -6,5 +6,6 @@
   "homepage": "https://github.com/zhuxixi/jfox",
   "repository": "https://github.com/zhuxixi/jfox",
   "license": "MIT",
-  "keywords": ["zettelkasten", "knowledge-management", "cli"]
+  "keywords": ["zettelkasten", "knowledge-management", "cli"],
+  "hooks": "./hooks/hooks.json"
 }
