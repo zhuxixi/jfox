@@ -85,8 +85,9 @@ def ingest_event(
             metadata=event,
         )
     except Exception as e:
-        logger.exception("ingest_event: 写入碎片失败: %s", e)
-        return {"status": "error", "message": f"store error: {e}"}
+        # classify 与 store 操作都在此 try 内；用中性消息，避免把分类失败误报为 store error
+        logger.exception("ingest_event: 处理失败: %s", e)
+        return {"status": "error", "message": f"ingest error: {e}"}
 
     message = content if ftype == "session_summary" else "ok"
     return {"fragment_id": fid, "fragment_type": ftype, "message": message}
