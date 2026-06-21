@@ -9,10 +9,7 @@ import json
 import subprocess
 from unittest.mock import patch
 
-import pytest
 from typer.testing import CliRunner
-
-pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
 from jfox.cli import (
     _detect_install_method,
@@ -58,6 +55,47 @@ class TestDetectInstallMethod:
 
         with patch("jfox.cli.__file__", str(package)):
             assert _detect_install_method() == "dev"
+
+    def test_dev_mode_uv_sync_venv(self, tmp_path):
+        """uv sync 场景：.venv/bin/python + 源码目录判定为 dev"""
+        repo = tmp_path / "jfox"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / "pyproject.toml").write_text(
+            '[project]\nname = "jfox-cli"\nversion = "1.0.0"\n',
+            encoding="utf-8",
+        )
+        venv_python = repo / ".venv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True)
+        venv_python.write_text("", encoding="utf-8")
+        package = repo / "jfox" / "cli.py"
+        package.parent.mkdir(parents=True)
+        package.write_text("", encoding="utf-8")
+
+        with patch("jfox.cli.__file__", str(package)):
+            with patch("jfox.cli.sys.executable", str(venv_python)):
+                assert _detect_install_method() == "dev"
+
+    def test_uv_sync_venv_with_wrong_project_name_is_not_dev(self, tmp_path):
+        """.venv 目录存在但 project.name 不是 jfox-cli 时不应误判为 dev"""
+        repo = tmp_path / "some-project"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        (repo / "pyproject.toml").write_text(
+            '[project]\nname = "other-project"\nversion = "1.0.0"\n',
+            encoding="utf-8",
+        )
+        venv_python = repo / ".venv" / "bin" / "python"
+        venv_python.parent.mkdir(parents=True)
+        venv_python.write_text("", encoding="utf-8")
+        package = repo / "jfox" / "cli.py"
+        package.parent.mkdir(parents=True)
+        package.write_text("", encoding="utf-8")
+
+        with patch("jfox.cli.__file__", str(package)):
+            with patch("jfox.cli.sys.executable", str(venv_python)):
+                # 没有正确的 project.name，应走默认 pip 分支
+                assert _detect_install_method() == "pip"
 
     def test_uv_tool_installation(self, tmp_path):
         """uv tool 路径判定为 uv"""

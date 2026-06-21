@@ -3044,6 +3044,27 @@ def _is_dev_installation(package_file: Path) -> bool:
     except (OSError, ValueError):
         pass
 
+    # uv sync 场景：解释器位于源码目录下的 .venv/bin/python，
+    # 且源码目录包含 pyproject.toml + .git + project.name == jfox-cli。
+    try:
+        exe = Path(sys.executable).resolve()
+        if exe.name.lower().startswith("python") and exe.parent.name == "bin":
+            venv_dir = exe.parent.parent
+            if venv_dir.name == ".venv":
+                project_root = venv_dir.parent
+                pyproject = project_root / "pyproject.toml"
+                git_marker = project_root / ".git"
+                if (
+                    pyproject.exists()
+                    and git_marker.exists()
+                    and package_file.is_relative_to(project_root)
+                ):
+                    name = _read_pyproject_name(pyproject)
+                    if name == "jfox-cli":
+                        return True
+    except (OSError, ValueError):
+        pass
+
     return False
 
 
@@ -3338,6 +3359,7 @@ def update(
     except typer.Exit:
         raise
     except Exception as e:
+        logger.error("jfox update failed: %s", e, exc_info=True)
         if output_format == "json":
             print(output_json({"success": False, "error": str(e)}))
         else:
