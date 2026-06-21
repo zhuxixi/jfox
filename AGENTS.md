@@ -46,6 +46,7 @@ jfox/
 │   ├── kb_manager.py          # 知识库管理器
 │   ├── embedding_backend.py   # 嵌入模型后端（支持 daemon 代理）
 │   ├── daemon/                # Embedding 模型 HTTP 守护进程
+│   ├── fragment/              # 碎片采集（Hook → daemon API → SQLite）
 │   ├── vector_store.py        # ChromaDB 向量存储
 │   ├── bm25_index.py          # BM25 关键词索引
 │   ├── search_engine.py       # 混合搜索引擎（RRF 融合）
@@ -161,6 +162,7 @@ uv run jfox --version
 | `note_index.py` | 笔记索引管理（文件名↔ID 映射） |
 | `indexer.py` | 文件监控（watchdog）+ 增量索引 |
 | `daemon/` | Embedding 模型 HTTP 守护进程（server/client/process） |
+| `fragment/` | 碎片采集：detector 分类 + store SQLite + service 编排 |
 
 ### 笔记类型
 

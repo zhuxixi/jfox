@@ -103,6 +103,11 @@ from .auto_summary.cli import auto_summary_app  # noqa: E402
 
 app.add_typer(auto_summary_app, name="auto-summary")
 
+# Fragments 子命令组（查看 Hook 采集的 session 碎片）
+from .fragment.cli import fragments_app  # noqa: E402
+
+app.add_typer(fragments_app, name="fragments", help="查看 Hook 采集的 session 碎片")
+
 console = Console(legacy_windows=False)
 
 

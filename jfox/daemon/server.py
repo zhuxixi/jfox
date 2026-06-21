@@ -13,7 +13,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,41 @@ def _load_model():
     except Exception as e:
         logger.error(f"Daemon: 模型加载失败，进程退出: {e}")
         os._exit(1)
+
+
+def _maybe_init_fragment_store() -> None:
+    """daemon 启动时按配置打开常驻 FragmentStore（热连接，单一写者）；禁用则跳过。"""
+    from ..fragment import set_default_store
+    from ..fragment.store import FragmentStore
+    from ..global_config import get_global_config_manager
+
+    try:
+        cfg = get_global_config_manager().get_fragment_capture_config()
+        if not cfg.enabled:
+            logger.info("Daemon: fragment_capture 未启用，跳过 FragmentStore 初始化")
+            set_default_store(None)
+            return
+        set_default_store(FragmentStore())
+        logger.info("Daemon: FragmentStore 已初始化")
+    except Exception as e:
+        logger.exception("Daemon: 初始化 FragmentStore 失败（碎片采集不可用）: %s", e)
+        set_default_store(None)
+
+
+def _maybe_close_fragment_store() -> None:
+    """daemon 关闭时释放 store 连接，确保全局引用被清空"""
+    from ..fragment import set_default_store
+    from ..fragment.service import get_default_store
+
+    try:
+        try:
+            store = get_default_store()
+            if store is not None:
+                store.close()
+        finally:
+            set_default_store(None)
+    except Exception as e:
+        logger.warning("Daemon: 关闭 FragmentStore 时异常: %s", e)
 
 
 def _maybe_start_auto_summary() -> None:
@@ -103,10 +138,12 @@ async def _maybe_stop_auto_summary() -> None:
 async def lifespan(app):
     _load_model()
     _maybe_start_auto_summary()
+    _maybe_init_fragment_store()
     try:
         yield
     finally:
         await _maybe_stop_auto_summary()
+        _maybe_close_fragment_store()
 
 
 app = FastAPI(title="JFox Embedding Daemon", lifespan=lifespan)
@@ -217,6 +254,45 @@ def auto_summary_status():
         "task_running": running,
         "ledger": ledger_stats,
     }
+
+
+# =============================================================================
+# 碎片采集（Phase 1：Hook → Daemon REST API）
+# =============================================================================
+
+
+@app.post("/api/fragment")
+def capture_fragment(event: dict):
+    """接收 CC hook POST 的原始事件 JSON，分类后写入 SQLite。
+
+    请求体即 CC 事件的 stdin JSON（UserPromptSubmit / PostToolUse / Stop）。
+    """
+    from ..fragment import ingest_event
+
+    return ingest_event(event)
+
+
+@app.get("/api/fragments")
+def list_fragments(
+    session: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = Query(default=20, ge=1, le=1000),
+):
+    """按 session / type 查询碎片（最新在前）。复用 daemon 常驻 store；未启用则返回空。"""
+    from ..fragment.service import get_default_store
+
+    store = get_default_store()
+    if store is None:
+        # 未启用（enabled=false）或 daemon 未初始化：不创建 store，返回空（尊重禁用决策，
+        # 避免 enabled=false 时兜底创建 fragments.db）
+        return {"fragments": [], "total": 0}
+    try:
+        rows = store.query(session_id=session, fragment_type=type, limit=limit)
+    except Exception as e:
+        # 含 shutdown 竞态：请求持有 store 引用后 lifespan 关闭了连接 → ProgrammingError
+        logger.exception("list_fragments: 查询失败: %s", e)
+        return {"fragments": [], "total": 0, "error": str(e)}
+    return {"fragments": rows, "total": len(rows)}
 
 
 # =============================================================================

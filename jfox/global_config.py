@@ -113,18 +113,87 @@ class AutoSummaryConfig:
 
 
 @dataclass
+class FragmentCaptureConfig:
+    """Claude Code Hook 碎片采集配置（默认启用）"""
+
+    enabled: bool = True
+    # 纠正信号关键词（命中 → fragment_type=correction）
+    correction_keywords: List[str] = field(
+        default_factory=lambda: [
+            "不对",
+            "错了",
+            "应该",
+            "不要",
+            "等等",
+            "停",
+            "不是",
+            "别",
+            "换一种",
+            "反过来",
+        ]
+    )
+    # 决策信号关键词（命中 → fragment_type=decision）
+    decision_keywords: List[str] = field(
+        default_factory=lambda: ["用方案", "选", "因为", "理由是", "我决定", "就这样", "先不做"]
+    )
+    # content 字段截断长度
+    max_content_chars: int = 500
+
+    def __post_init__(self) -> None:
+        # 与 AutoSummaryConfig 一致：非正值回退到默认，避免 0/负数破坏截断逻辑
+        if not isinstance(self.max_content_chars, int) or self.max_content_chars < 1:
+            self.max_content_chars = 500
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "FragmentCaptureConfig":
+        if not data:
+            return cls()
+        raw_enabled = data.get("enabled", True)
+        if isinstance(raw_enabled, str):
+            enabled = raw_enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        else:
+            enabled = bool(raw_enabled)
+        # 安全 int：非数字字符串不应抛 ValueError（否则 GlobalConfigManager._load 的 except
+        # 会吞掉异常并重置整份全局配置——auto_summary、KB 列表、默认 KB 全失效）
+        raw_max = data.get("max_content_chars", 500)
+        try:
+            max_content_chars = int(raw_max) if raw_max is not None else 500
+        except (TypeError, ValueError):
+            max_content_chars = 500
+        return cls(
+            enabled=enabled,
+            correction_keywords=(
+                list(data["correction_keywords"])
+                if isinstance(data.get("correction_keywords"), list)
+                else cls().correction_keywords
+            ),
+            decision_keywords=(
+                list(data["decision_keywords"])
+                if isinstance(data.get("decision_keywords"), list)
+                else cls().decision_keywords
+            ),
+            max_content_chars=max_content_chars,
+        )
+
+
+@dataclass
 class GlobalConfig:
     """全局配置"""
 
     default: str = DEFAULT_KB_NAME
     knowledge_bases: Dict[str, KnowledgeBaseEntry] = field(default_factory=dict)
     auto_summary: AutoSummaryConfig = field(default_factory=AutoSummaryConfig)
+    fragment_capture: FragmentCaptureConfig = field(default_factory=FragmentCaptureConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "default": self.default,
             "knowledge_bases": {name: kb.to_dict() for name, kb in self.knowledge_bases.items()},
             "auto_summary": self.auto_summary.to_dict(),
+            "fragment_capture": self.fragment_capture.to_dict(),
         }
 
     @classmethod
@@ -137,6 +206,7 @@ class GlobalConfig:
             default=data.get("default", DEFAULT_KB_NAME),
             knowledge_bases=kbs,
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
+            fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
         )
 
 
@@ -424,6 +494,19 @@ class GlobalConfigManager:
         current = asdict(config.auto_summary)
         current.update({k: v for k, v in changes.items() if k in current})
         config.auto_summary = AutoSummaryConfig.from_dict(current)
+        self._config = config
+        return self._save()
+
+    def get_fragment_capture_config(self) -> FragmentCaptureConfig:
+        """获取碎片采集配置"""
+        return self._load().fragment_capture
+
+    def update_fragment_capture_config(self, **changes: Any) -> bool:
+        """更新碎片采集配置中的若干字段，未传入的字段保持原样"""
+        config = self._load()
+        current = asdict(config.fragment_capture)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.fragment_capture = FragmentCaptureConfig.from_dict(current)
         self._config = config
         return self._save()
 
