@@ -126,7 +126,7 @@ created_at: ...
 | `jfox/gem_synth/anchors.py` | 从 fragments.db 查未处理的高信号锚点 |
 | `jfox/gem_synth/transcript.py` | 读 CC transcript.jsonl，按 timestamp 取"一轮"上下文 |
 | `jfox/gem_synth/synthesizer.py` | 编排：上下文 + 永久笔记检索 → LLM → candidate 笔记 |
-| `jfox/gem_synth/llm.py` | LLM 调用封装（复用 auto_summary 的 claude/kimi 调用模式） |
+| `jfox/gem_synth/llm.py` | 独立 LLM 调用封装（不与 auto_summary 耦合，见 §9） |
 | `jfox/gem_synth/loop.py` | daemon 后台循环（仿 auto_summary/loop.py） |
 | `jfox/gem_synth/cli.py` | `jfox candidates list` 子命令 |
 | `jfox/models.py` | NoteType 加 `candidate`；新增 `GemLevel` 枚举 |
@@ -135,7 +135,7 @@ created_at: ...
 
 ## 9. 待定 / 风险
 
-- **LLM 调用**：复用 auto_summary 已有的 claude/kimi 调用基础设施（`auto_summary/runner.py` 的 `_run_claude` 模式）。需确认能否复用。
+- **LLM 调用**：gem_synth 建独立的 LLM 调用（不耦合 auto_summary）。理由：auto_summary 的「知识沉淀」角色可能被宝石合成取代（auto_summary 保留作「周工作简报」用途），不应把新系统绑在可能被淘汰的设施上。若 auto_summary 的调用封装能 trivially 借鉴则参考，否则独立实现。
 - **transcript 解析**：CC transcript JSONL 格式需实地确认（role/内容字段结构）。
 - **永久笔记检索**：复用 `HybridSearchEngine`，限定 `--type permanent`。
 - **GemLevel 成熟度机制**（L4）与**晋升规则**（L5） deliberately 留白。
