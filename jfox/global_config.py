@@ -120,7 +120,16 @@ class FragmentCaptureConfig:
     # 纠正信号关键词（命中 → fragment_type=correction）
     correction_keywords: List[str] = field(
         default_factory=lambda: [
-            "不对", "错了", "应该", "不要", "等等", "停", "不是", "别", "换一种", "反过来",
+            "不对",
+            "错了",
+            "应该",
+            "不要",
+            "等等",
+            "停",
+            "不是",
+            "别",
+            "换一种",
+            "反过来",
         ]
     )
     # 决策信号关键词（命中 → fragment_type=decision）

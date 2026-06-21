@@ -22,7 +22,12 @@ def set_default_store(store: Optional[FragmentStore]) -> None:
 def _summary_message(counts: Dict[str, int]) -> str:
     total = sum(counts.values())
     parts = []
-    label_map = {"correction": "纠正", "decision": "决策", "tool_call": "工具", "user_input": "输入"}
+    label_map = {
+        "correction": "纠正",
+        "decision": "决策",
+        "tool_call": "工具",
+        "user_input": "输入",
+    }
     for k in ("correction", "decision", "tool_call", "user_input"):
         if counts.get(k):
             parts.append(f"{label_map[k]} {counts[k]}")

@@ -6,7 +6,9 @@ from jfox.global_config import FragmentCaptureConfig
 
 def test_userprompt_correction():
     cfg = FragmentCaptureConfig()
-    ftype, content = classify({"hook_event_name": "UserPromptSubmit", "prompt": "不对，应该用 patch"}, cfg)
+    ftype, content = classify(
+        {"hook_event_name": "UserPromptSubmit", "prompt": "不对，应该用 patch"}, cfg
+    )
     assert ftype == "correction"
     assert content == "不对，应该用 patch"
 
@@ -20,13 +22,17 @@ def test_userprompt_decision():
 def test_correction_takes_priority_over_decision():
     """同时命中时纠正优先（被纠正的信号更强）"""
     cfg = FragmentCaptureConfig()
-    ftype, _ = classify({"hook_event_name": "UserPromptSubmit", "prompt": "不对，我决定换一种"}, cfg)
+    ftype, _ = classify(
+        {"hook_event_name": "UserPromptSubmit", "prompt": "不对，我决定换一种"}, cfg
+    )
     assert ftype == "correction"
 
 
 def test_userprompt_plain_input():
     cfg = FragmentCaptureConfig()
-    ftype, content = classify({"hook_event_name": "UserPromptSubmit", "prompt": "帮我写个函数"}, cfg)
+    ftype, content = classify(
+        {"hook_event_name": "UserPromptSubmit", "prompt": "帮我写个函数"}, cfg
+    )
     assert ftype == "user_input"
     assert content == "帮我写个函数"
 
