@@ -49,6 +49,34 @@ def _load_model():
         os._exit(1)
 
 
+def _maybe_init_fragment_store() -> None:
+    """daemon 启动时打开常驻 FragmentStore（热连接，单一写者）"""
+    try:
+        from ..fragment import set_default_store
+        from ..fragment.store import FragmentStore
+
+        set_default_store(FragmentStore())
+        logger.info("Daemon: FragmentStore 已初始化")
+    except Exception as e:
+        logger.exception("Daemon: 初始化 FragmentStore 失败（碎片采集不可用）: %s", e)
+        from ..fragment import set_default_store
+
+        set_default_store(None)
+
+
+def _maybe_close_fragment_store() -> None:
+    """daemon 关闭时释放 store 连接"""
+    try:
+        from ..fragment import set_default_store
+        from ..fragment.service import _default_store
+
+        if _default_store is not None:
+            _default_store.close()
+        set_default_store(None)
+    except Exception as e:
+        logger.warning("Daemon: 关闭 FragmentStore 时异常: %s", e)
+
+
 def _maybe_start_auto_summary() -> None:
     """如果用户启用了 auto-summary，启动后台循环 task"""
     global _auto_summary_task, _auto_summary_stop_event
@@ -103,10 +131,12 @@ async def _maybe_stop_auto_summary() -> None:
 async def lifespan(app):
     _load_model()
     _maybe_start_auto_summary()
+    _maybe_init_fragment_store()
     try:
         yield
     finally:
         await _maybe_stop_auto_summary()
+        _maybe_close_fragment_store()
 
 
 app = FastAPI(title="JFox Embedding Daemon", lifespan=lifespan)
@@ -217,6 +247,39 @@ def auto_summary_status():
         "task_running": running,
         "ledger": ledger_stats,
     }
+
+
+# =============================================================================
+# 碎片采集（Phase 1：Hook → Daemon REST API）
+# =============================================================================
+
+
+@app.post("/api/fragment")
+def capture_fragment(event: dict):
+    """接收 CC hook POST 的原始事件 JSON，分类后写入 SQLite。
+
+    请求体即 CC 事件的 stdin JSON（UserPromptSubmit / PostToolUse / Stop）。
+    """
+    from ..fragment import ingest_event
+
+    return ingest_event(event)
+
+
+@app.get("/api/fragments")
+def list_fragments(
+    session: Optional[str] = None,
+    type: Optional[str] = None,
+    limit: int = 20,
+):
+    """按 session / type 查询碎片（最新在前）。"""
+    from ..fragment.store import FragmentStore
+
+    store = FragmentStore()
+    try:
+        rows = store.query(session_id=session, fragment_type=type, limit=limit)
+    finally:
+        store.close()
+    return {"fragments": rows, "total": len(rows)}
 
 
 # =============================================================================
