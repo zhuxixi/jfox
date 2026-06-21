@@ -23,6 +23,7 @@ Choose the right search approach based on user intent:
 | Explore related topics | Graph traversal | `jfox query "<topic>" --depth 2 --json` |
 | What links to note X | Backlinks | `jfox refs --search "<title>" --format json` |
 | What should I link to | Link suggestions | `jfox suggest-links "<content>" --format json` |
+| Filter by note type | Type filter | `jfox search "<query>" --type permanent --format json` |
 
 **Default strategy**: `--mode hybrid` (best balance of precision and recall).
 
@@ -31,8 +32,10 @@ Choose the right search approach based on user intent:
 ### Single Search
 
 ```bash
-jfox search "<query>" --mode hybrid --top 10 --format json
+jfox search "<query>" --mode hybrid --type permanent --top 10 --format json
 ```
+
+> **提示**: 搜索 permanent 知识或参考内容时，建议加上 `--type permanent` 过滤，避免被大量 session/fleeting 笔记淹没。
 
 Parse the JSON output and present results as:
 
