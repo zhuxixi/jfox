@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "JFox Zettelkasten 知识管理工具的 Claude Code 集成",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
       "name": "jfox",
       "source": "./packages/cc-plugin",
       "description": "JFox 知识管理 CLI 的 Claude Code 集成——搜索、写入工作流（导入/整理/会话总结）与知识库管理",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": { "name": "zhuxixi" },
       "keywords": ["zettelkasten", "knowledge-management"],
       "category": "workflow"
