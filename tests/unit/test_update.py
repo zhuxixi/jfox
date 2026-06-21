@@ -432,6 +432,34 @@ class TestUpdateImpl:
                         assert result["stderr"] == "stderr msg"
                         assert result["error"] == ""
 
+    def test_uv_upgrade_already_latest(self):
+        """uv 输出 Nothing to upgrade 时应标记 already_latest"""
+        with patch("jfox.cli._detect_install_method", return_value="uv"):
+            with patch("jfox.__version__", "1.1.0"):
+                with patch(
+                    "jfox.cli._run_upgrade",
+                    return_value={"stdout": "Nothing to upgrade", "stderr": ""},
+                ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        result = _update_impl()
+                        assert result["success"] is True
+                        assert result["already_latest"] is True
+                        assert result["previous_version"] == "1.1.0"
+                        assert result["current_version"] == "1.1.0"
+
+    def test_uv_upgrade_already_latest_in_stderr(self):
+        """Nothing to upgrade 也可能出现在 stderr"""
+        with patch("jfox.cli._detect_install_method", return_value="uv"):
+            with patch("jfox.__version__", "1.1.0"):
+                with patch(
+                    "jfox.cli._run_upgrade",
+                    return_value={"stdout": "", "stderr": "Nothing to upgrade"},
+                ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        result = _update_impl()
+                        assert result["success"] is True
+                        assert result["already_latest"] is True
+
 
 class TestRunUpgrade:
     """_run_upgrade 辅助函数测试"""
@@ -490,6 +518,21 @@ class TestUpdateCommand:
                         assert "Upgraded" in result.output
                         assert "warning: old metadata" in result.output
 
+    def test_table_output_already_latest(self):
+        """已是最新版本时 table 输出显示当前版本，而非升级完成"""
+        with patch("jfox.cli._detect_install_method", return_value="uv"):
+            with patch("jfox.__version__", "1.1.0"):
+                with patch(
+                    "jfox.cli._run_upgrade",
+                    return_value={"stdout": "Nothing to upgrade", "stderr": ""},
+                ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        result = runner.invoke(app, ["update"])
+                        assert result.exit_code == 0
+                        assert "当前已是最新版本" in result.output
+                        assert "1.1.0" in result.output
+                        assert "→" not in result.output
+
     def test_table_output_failure(self):
         """升级失败时 table 输出显示错误和手动命令"""
         error = subprocess.CalledProcessError(1, ["uv", "tool", "upgrade", "jfox-cli"])
@@ -503,6 +546,23 @@ class TestUpdateCommand:
                     assert "升级失败" in result.output
                     assert "network error" in result.output
                     assert "uv tool upgrade jfox-cli" in result.output
+
+    def test_json_output_already_latest(self):
+        """已是最新版本时 --json 输出包含 already_latest"""
+        with patch("jfox.cli._detect_install_method", return_value="uv"):
+            with patch("jfox.__version__", "1.1.0"):
+                with patch(
+                    "jfox.cli._run_upgrade",
+                    return_value={"stdout": "Nothing to upgrade", "stderr": ""},
+                ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        result = runner.invoke(app, ["update", "--json"])
+                        assert result.exit_code == 0
+                        data = json.loads(result.output)
+                        assert data["success"] is True
+                        assert data["already_latest"] is True
+                        assert data["previous_version"] == "1.1.0"
+                        assert data["current_version"] == "1.1.0"
 
     def test_json_output_success(self):
         """--json 输出合法 JSON 且 schema 统一"""

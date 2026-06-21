@@ -3561,6 +3561,7 @@ def _update_impl() -> dict:
             "method": "dev",
             "previous_version": previous_version,
             "current_version": previous_version,
+            "already_latest": True,
             "command": None,
             "output": "",
             "stderr": "",
@@ -3594,6 +3595,7 @@ def _update_impl() -> dict:
             "method": method,
             "previous_version": previous_version,
             "current_version": previous_version,
+            "already_latest": False,
             "command": command_str,
             "output": stdout,
             "stderr": stderr,
@@ -3601,12 +3603,17 @@ def _update_impl() -> dict:
             "message": f"升级失败，请手动执行：{command_str}",
         }
 
+    # uv tool upgrade / pipx upgrade 等工具在已是最新版本时仍会返回 0，
+    # 需要通过输出内容判断是否真的发生了升级。
+    already_latest = "Nothing to upgrade" in (upgrade_result["stdout"] + upgrade_result["stderr"])
+
     current_version = _get_installed_version()
     return {
         "success": True,
         "method": method,
         "previous_version": previous_version,
         "current_version": current_version,
+        "already_latest": already_latest,
         "command": command_str,
         "output": upgrade_result["stdout"],
         "stderr": upgrade_result["stderr"],
@@ -3646,10 +3653,15 @@ def update(
                 if result.get("stderr"):
                     console.print(result["stderr"].rstrip(), markup=False)
                 if result["success"]:
-                    console.print(
-                        f"[green]升级完成: {result['previous_version']} → "
-                        f"{result['current_version']}[/green]"
-                    )
+                    if result.get("already_latest"):
+                        console.print(
+                            f"[green]当前已是最新版本: {result['current_version']}[/green]"
+                        )
+                    else:
+                        console.print(
+                            f"[green]升级完成: {result['previous_version']} → "
+                            f"{result['current_version']}[/green]"
+                        )
                 else:
                     console.print(f"[red]升级失败: {result.get('error', 'unknown error')}[/red]")
                     console.print(f"[yellow]请手动执行: {result['command']}[/yellow]")
