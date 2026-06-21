@@ -18,7 +18,7 @@ def classify(event: dict, config: FragmentCaptureConfig) -> Tuple[str, Optional[
     limit = config.max_content_chars
 
     if name == "PostToolUse":
-        resp = event.get("tool_response", event.get("tool_input", ""))
+        resp = event.get("tool_response") or event.get("tool_input") or ""
         text = resp if isinstance(resp, str) else json.dumps(resp, ensure_ascii=False)
         return "tool_call", text[:limit]
 

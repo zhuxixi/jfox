@@ -1,8 +1,17 @@
 """service.ingest_event 编排测试（临时 store，无 daemon/模型）。"""
 
-from jfox.fragment.service import ingest_event
+import pytest
+
+from jfox.fragment.service import ingest_event, set_default_store
 from jfox.fragment.store import FragmentStore
 from jfox.global_config import FragmentCaptureConfig
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_store():
+    """每个测试后清空 service 模块的全局 store 单例，避免污染其它测试/真实磁盘。"""
+    yield
+    set_default_store(None)
 
 
 def test_userprompt_correction_inserted(tmp_path):

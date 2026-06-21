@@ -68,3 +68,10 @@ def test_default_db_path_respects_env(tmp_path, monkeypatch):
     store = FragmentStore()
     store.insert("s1", "user_input", "UserPromptSubmit", "hi", {})
     assert (tmp_path / "env.db").exists()
+
+
+def test_close_is_idempotent(tmp_path):
+    """close() 可被重复调用而不抛异常（daemon lifespan 关闭路径需要）"""
+    store = _store(tmp_path)
+    store.close()
+    store.close()  # 不应抛 ProgrammingError

@@ -47,6 +47,7 @@ class FragmentStore:
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
+        self._closed: bool = False
 
     def insert(
         self,
@@ -66,7 +67,11 @@ class FragmentStore:
                     fragment_type,
                     source_event,
                     content,
-                    json.dumps(metadata, ensure_ascii=False) if metadata is not None else None,
+                    (
+                        json.dumps(metadata, ensure_ascii=False, default=str)
+                        if metadata is not None
+                        else None
+                    ),
                 ),
             )
             self._conn.commit()
@@ -110,7 +115,10 @@ class FragmentStore:
 
     def close(self) -> None:
         with self._lock:
+            if self._closed:
+                return
             self._conn.close()
+            self._closed = True
 
 
 __all__ = ["FragmentStore", "default_db_path"]
