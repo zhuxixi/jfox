@@ -76,3 +76,23 @@ def test_stop_returns_summary_message():
         body = json.loads(r.read())
     assert body["fragment_type"] == "session_summary"
     assert "碎片" in body["message"]
+
+
+def test_hook_prints_stop_summary_with_real_cc_format():
+    """CC 的 stdin JSON 冒号后带空格；hook 必须仍能识别 Stop 并打印摘要行。
+    回归 guard：防止 bash glob 重新引入空格敏感 bug（曾导致验收#5 静默失败）。"""
+    # 先攒一条碎片，让 Stop 摘要有内容可统计
+    seed = json.dumps(
+        {"hook_event_name": "PostToolUse", "session_id": "it-sess-3", "tool_response": "x"}
+    )
+    subprocess.run(["bash", str(HOOK)], input=seed, capture_output=True, text=True, timeout=5)
+    # 真实 CC 格式：冒号后带空格
+    stop_payload = (
+        '{ "hook_event_name": "Stop", "session_id": "it-sess-3", "permission_mode": "default" }'
+    )
+    proc = subprocess.run(
+        ["bash", str(HOOK)], input=stop_payload, capture_output=True, text=True, timeout=5
+    )
+    assert proc.returncode == 0
+    assert "JFox 碎片采集:" in proc.stdout
+    assert "工具" in proc.stdout

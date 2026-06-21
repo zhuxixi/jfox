@@ -20,7 +20,8 @@ def set_default_store(store: Optional[FragmentStore]) -> None:
 
 
 def _summary_message(counts: Dict[str, int]) -> str:
-    total = sum(counts.values())
+    # 排除历史 session_summary 行，避免同一 session 多次 Stop 时计数虚高
+    total = sum(v for k, v in counts.items() if k != "session_summary")
     parts = []
     label_map = {
         "correction": "纠正",

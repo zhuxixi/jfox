@@ -12,9 +12,20 @@ RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 1 -X POST \
     --data-binary @- 2>/dev/null || true)"
 
 # Stop 事件：打印 daemon 返回的一行采集摘要
+# 用 python3 权威解析（CC 的 stdin JSON 冒号后带空格，bash glob 不可靠）；
+# 先用粗筛 *Stop* 避免在每个事件上都 spawn python（热路径保持 <10ms）
 case "$PAYLOAD" in
-  *'"hook_event_name":"Stop"'*)
-    MSG="$(printf '%s' "$RESP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("message",""))' 2>/dev/null || true)"
+  *Stop*)
+    MSG="$(python3 -c '
+import sys, json
+try:
+    if json.loads(sys.argv[1]).get("hook_event_name") == "Stop":
+        resp = json.loads(sys.argv[2])
+        if resp.get("fragment_type") == "session_summary":
+            print(resp.get("message", ""))
+except Exception:
+    pass
+' "$PAYLOAD" "$RESP" 2>/dev/null || true)"
     [ -n "$MSG" ] && echo "JFox 碎片采集: $MSG"
     ;;
 esac
