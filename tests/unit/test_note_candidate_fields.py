@@ -57,3 +57,30 @@ def test_non_candidate_note_has_no_candidate_fields():
     md = note.to_markdown()
     assert "gem_level" not in md
     assert "confidence" not in md
+
+
+def test_candidate_to_dict_includes_candidate_fields():
+    note = _candidate_note()
+    d = note.to_dict()
+    assert d["gem_level"] == "flawed"
+    assert d["confidence"] == 0.82
+    assert d["source_fragments"] == [12, 15]
+    assert d["grounded_by"] == ["已有永久笔记A"]
+    assert d["knowledge_type"] == "procedural"
+    assert d["status"] == "pending"
+
+
+def test_non_candidate_to_dict_has_no_candidate_fields():
+    from datetime import datetime
+
+    note = Note(
+        id="20260621143100",
+        title="普通永久",
+        content="x",
+        type=NoteType.PERMANENT,
+        created=datetime(2026, 6, 21, 14, 30),
+        updated=datetime(2026, 6, 21, 14, 30),
+    )
+    d = note.to_dict()
+    assert "gem_level" not in d
+    assert "confidence" not in d

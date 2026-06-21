@@ -196,7 +196,7 @@ class Note:
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 JSON 输出）"""
-        return {
+        d = {
             "id": self.id,
             "title": self.title,
             "content": self.content[:200] + "..." if len(self.content) > 200 else self.content,
@@ -211,3 +211,17 @@ class Note:
             "hop": self.hop,
             "topic": self.topic,
         }
+        # candidate 专属字段（仅 type=CANDIDATE 时输出，与 to_markdown 保持一致）
+        if self.type == NoteType.CANDIDATE:
+            d["gem_level"] = self.gem_level or GemLevel.FLAWED.value
+            if self.confidence is not None:
+                d["confidence"] = self.confidence
+            if self.source_fragments:
+                d["source_fragments"] = self.source_fragments
+            if self.grounded_by:
+                d["grounded_by"] = self.grounded_by
+            if self.knowledge_type:
+                d["knowledge_type"] = self.knowledge_type
+            if self.status:
+                d["status"] = self.status
+        return d

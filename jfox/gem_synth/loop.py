@@ -29,32 +29,35 @@ def _tick_once(stop_event: threading.Event) -> str:
 
     log = SynthesisLog()
     try:
-        from jfox.fragment.store import default_db_path
-
-        anchors = find_anchors(
-            fragments_db=default_db_path(),
-            log=log,
-            anchor_types=cfg.anchor_types,
-        )
-    except Exception as e:
-        logger.exception("gem-synth 找锚点失败: %s", e)
-        return f"找锚点异常: {e}"
-
-    if not anchors:
-        return "无待合成锚点"
-
-    success = 0
-    for anchor in anchors:
-        if stop_event.is_set():
-            break
         try:
-            result = synthesize_anchor(anchor, log=log, cfg=cfg, kb=cfg.target_kb)
-            if result is not None:
-                success += 1
-        except Exception as e:
-            logger.exception("gem-synth 合成锚点 #%s 异常: %s", anchor.get("fragment_id"), e)
+            from jfox.fragment.store import default_db_path
 
-    return f"待合成 {len(anchors)}, 成功 {success}"
+            anchors = find_anchors(
+                fragments_db=default_db_path(),
+                log=log,
+                anchor_types=cfg.anchor_types,
+            )
+        except Exception as e:
+            logger.exception("gem-synth 找锚点失败: %s", e)
+            return f"找锚点异常: {e}"
+
+        if not anchors:
+            return "无待合成锚点"
+
+        success = 0
+        for anchor in anchors:
+            if stop_event.is_set():
+                break
+            try:
+                result = synthesize_anchor(anchor, log=log, cfg=cfg, kb=cfg.target_kb)
+                if result is not None:
+                    success += 1
+            except Exception as e:
+                logger.exception("gem-synth 合成锚点 #%s 异常: %s", anchor.get("fragment_id"), e)
+
+        return f"待合成 {len(anchors)}, 成功 {success}"
+    finally:
+        log.close()
 
 
 async def gem_synth_loop(stop_event: threading.Event, interval_minutes: int = 30) -> None:
