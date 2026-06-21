@@ -35,3 +35,17 @@ def test_to_dict_roundtrip():
     d = cfg.to_dict()
     assert d["correction_keywords"] == ["x"]
     assert FragmentCaptureConfig.from_dict(d).correction_keywords == ["x"]
+
+
+def test_max_content_chars_non_positive_clamped():
+    assert FragmentCaptureConfig(max_content_chars=-1).max_content_chars == 500
+    assert FragmentCaptureConfig(max_content_chars=0).max_content_chars == 500
+
+
+def test_enabled_string_false_parses_false():
+    assert FragmentCaptureConfig.from_dict({"enabled": "false"}).enabled is False
+    assert FragmentCaptureConfig.from_dict({"enabled": "true"}).enabled is True
+
+
+def test_max_content_chars_null_uses_default():
+    assert FragmentCaptureConfig.from_dict({"max_content_chars": None}).max_content_chars == 500

@@ -3,13 +3,16 @@
 纯函数式（依赖注入 store/config），daemon 路由与单测都直接调用，不加载 embedding 模型。
 """
 
+import logging
 from typing import Any, Dict, Optional
 
 from ..global_config import FragmentCaptureConfig, get_global_config_manager
 from .detector import classify
 from .store import FragmentStore
 
-# daemon 常驻的 store 单例（lifespan 初始化时设置）
+logger = logging.getLogger(__name__)
+
+# daemon 常驻的 store 单例（lifespan 初始化时设置；此处不懒创建，避免并发竞态与连接泄漏）
 _default_store: Optional[FragmentStore] = None
 
 
@@ -17,6 +20,11 @@ def set_default_store(store: Optional[FragmentStore]) -> None:
     """daemon lifespan 启动/关闭时调用，注入或清空常驻 store。"""
     global _default_store
     _default_store = store
+
+
+def get_default_store() -> Optional[FragmentStore]:
+    """读取 daemon 常驻的 store 单例（供 daemon 关闭路径对称访问，避免引用私有变量）。"""
+    return _default_store
 
 
 def _summary_message(counts: Dict[str, int]) -> str:
@@ -44,9 +52,9 @@ def ingest_event(
     """处理一个 CC 事件，写入碎片，返回响应 dict。
 
     返回形如：
-      {fragment_id, fragment_type, message}            正常写入
-      {status: "skipped"}                              配置禁用
-      {status: "error", message}                       输入异常（如缺 session_id）
+      {fragment_id, fragment_type, message}   正常写入
+      {status: "skipped"}                     配置禁用
+      {status: "error", message}              输入异常 / store 不可用 / 写入异常
     """
     if config is None:
         config = get_global_config_manager().get_fragment_capture_config()
@@ -57,26 +65,31 @@ def ingest_event(
     if not session_id:
         return {"status": "error", "message": "missing session_id in event"}
 
+    # store 由 daemon lifespan 单点初始化；此处不懒创建，避免并发竞态、连接泄漏，
+    # 以及绕过 daemon 初始化失败时的「采集不可用」决策。
     if store is None:
-        if _default_store is None:
-            set_default_store(FragmentStore())
-        store = _default_store  # type: ignore[assignment]
+        store = _default_store
+    if store is None:
+        return {"status": "error", "message": "fragment store unavailable (daemon not initialized)"}
 
     ftype, content = classify(event, config)
+    try:
+        if ftype == "session_summary":
+            counts = store.counts_by_type(session_id)
+            content = _summary_message(counts)
+        fid = store.insert(
+            session_id=session_id,
+            fragment_type=ftype,
+            source_event=event.get("hook_event_name", "Unknown"),
+            content=content,
+            metadata=event,
+        )
+    except Exception as e:
+        logger.exception("ingest_event: 写入碎片失败: %s", e)
+        return {"status": "error", "message": f"store error: {e}"}
 
-    if ftype == "session_summary":
-        counts = store.counts_by_type(session_id)
-        content = _summary_message(counts)
-
-    fid = store.insert(
-        session_id=session_id,
-        fragment_type=ftype,
-        source_event=event.get("hook_event_name", "Unknown"),
-        content=content,
-        metadata=event,
-    )
     message = content if ftype == "session_summary" else "ok"
     return {"fragment_id": fid, "fragment_type": ftype, "message": message}
 
 
-__all__ = ["ingest_event", "set_default_store"]
+__all__ = ["ingest_event", "set_default_store", "get_default_store"]

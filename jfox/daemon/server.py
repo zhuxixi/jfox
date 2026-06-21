@@ -13,7 +13,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -50,29 +50,36 @@ def _load_model():
 
 
 def _maybe_init_fragment_store() -> None:
-    """daemon 启动时打开常驻 FragmentStore（热连接，单一写者）"""
-    try:
-        from ..fragment import set_default_store
-        from ..fragment.store import FragmentStore
+    """daemon 启动时按配置打开常驻 FragmentStore（热连接，单一写者）；禁用则跳过。"""
+    from ..fragment import set_default_store
+    from ..fragment.store import FragmentStore
+    from ..global_config import get_global_config_manager
 
+    try:
+        cfg = get_global_config_manager().get_fragment_capture_config()
+        if not cfg.enabled:
+            logger.info("Daemon: fragment_capture 未启用，跳过 FragmentStore 初始化")
+            set_default_store(None)
+            return
         set_default_store(FragmentStore())
         logger.info("Daemon: FragmentStore 已初始化")
     except Exception as e:
         logger.exception("Daemon: 初始化 FragmentStore 失败（碎片采集不可用）: %s", e)
-        from ..fragment import set_default_store
-
         set_default_store(None)
 
 
 def _maybe_close_fragment_store() -> None:
-    """daemon 关闭时释放 store 连接"""
-    try:
-        from ..fragment import set_default_store
-        from ..fragment.service import _default_store
+    """daemon 关闭时释放 store 连接，确保全局引用被清空"""
+    from ..fragment import set_default_store
+    from ..fragment.service import get_default_store
 
-        if _default_store is not None:
-            _default_store.close()
-        set_default_store(None)
+    try:
+        try:
+            store = get_default_store()
+            if store is not None:
+                store.close()
+        finally:
+            set_default_store(None)
     except Exception as e:
         logger.warning("Daemon: 关闭 FragmentStore 时异常: %s", e)
 
@@ -269,16 +276,23 @@ def capture_fragment(event: dict):
 def list_fragments(
     session: Optional[str] = None,
     type: Optional[str] = None,
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=1000),
 ):
-    """按 session / type 查询碎片（最新在前）。"""
+    """按 session / type 查询碎片（最新在前）。复用 daemon 常驻 store，避免每请求重建连接。"""
+    from ..fragment.service import get_default_store
     from ..fragment.store import FragmentStore
 
-    store = FragmentStore()
+    store = get_default_store()
+    owned = False
+    if store is None:
+        # daemon 未初始化（如直连/测试）时兜底开一个临时连接
+        store = FragmentStore()
+        owned = True
     try:
         rows = store.query(session_id=session, fragment_type=type, limit=limit)
     finally:
-        store.close()
+        if owned:
+            store.close()
     return {"fragments": rows, "total": len(rows)}
 
 

@@ -139,6 +139,11 @@ class FragmentCaptureConfig:
     # content 字段截断长度
     max_content_chars: int = 500
 
+    def __post_init__(self) -> None:
+        # 与 AutoSummaryConfig 一致：非正值回退到默认，避免 0/负数破坏截断逻辑
+        if not isinstance(self.max_content_chars, int) or self.max_content_chars < 1:
+            self.max_content_chars = 500
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -146,8 +151,15 @@ class FragmentCaptureConfig:
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "FragmentCaptureConfig":
         if not data:
             return cls()
+        raw_enabled = data.get("enabled", True)
+        if isinstance(raw_enabled, str):
+            enabled = raw_enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        else:
+            enabled = bool(raw_enabled)
+        raw_max = data.get("max_content_chars", 500)
+        max_content_chars = int(raw_max) if raw_max is not None else 500
         return cls(
-            enabled=bool(data.get("enabled", True)),
+            enabled=enabled,
             correction_keywords=(
                 list(data["correction_keywords"])
                 if isinstance(data.get("correction_keywords"), list)
@@ -158,7 +170,7 @@ class FragmentCaptureConfig:
                 if isinstance(data.get("decision_keywords"), list)
                 else cls().decision_keywords
             ),
-            max_content_chars=int(data.get("max_content_chars", 500)),
+            max_content_chars=max_content_chars,
         )
 
 

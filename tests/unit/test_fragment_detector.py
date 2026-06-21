@@ -67,3 +67,20 @@ def test_unknown_event_fallback():
     cfg = FragmentCaptureConfig()
     ftype, _ = classify({"hook_event_name": "Whatever"}, cfg)
     assert ftype == "user_input"
+
+
+def test_posttooluse_empty_response_preserved():
+    """空 tool_response（falsy 但合法）不应回退到 tool_input"""
+    cfg = FragmentCaptureConfig()
+    ftype, content = classify({"hook_event_name": "PostToolUse", "tool_response": {}}, cfg)
+    assert ftype == "tool_call"
+    assert content == "{}"
+
+
+def test_posttooluse_no_response_falls_back_to_input():
+    cfg = FragmentCaptureConfig()
+    ftype, content = classify(
+        {"hook_event_name": "PostToolUse", "tool_input": {"command": "ls"}}, cfg
+    )
+    assert ftype == "tool_call"
+    assert "ls" in content

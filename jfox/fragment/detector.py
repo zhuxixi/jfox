@@ -18,8 +18,13 @@ def classify(event: dict, config: FragmentCaptureConfig) -> Tuple[str, Optional[
     limit = config.max_content_chars
 
     if name == "PostToolUse":
-        resp = event.get("tool_response") or event.get("tool_input") or ""
-        text = resp if isinstance(resp, str) else json.dumps(resp, ensure_ascii=False)
+        # 按键存在性判断：tool_response 为 falsy 但合法（空串/{}/[]，如 grep 无输出）
+        # 时不应回退到 tool_input（语义错误）
+        if "tool_response" in event:
+            resp = event["tool_response"]
+        else:
+            resp = event.get("tool_input", "")
+        text = resp if isinstance(resp, str) else json.dumps(resp, ensure_ascii=False, default=str)
         return "tool_call", text[:limit]
 
     if name == "UserPromptSubmit":
