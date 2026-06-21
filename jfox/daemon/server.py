@@ -28,6 +28,10 @@ _server = None
 _auto_summary_task: Optional[asyncio.Task] = None
 _auto_summary_stop_event: Optional[threading.Event] = None
 
+# gem-synthesis 后台 task 与停止信号
+_gem_synth_task: Optional[asyncio.Task] = None
+_gem_synth_stop_event: Optional[threading.Event] = None
+
 
 def _load_model():
     """启动时加载模型（标记为 daemon 进程，防止自引用）"""
@@ -134,14 +138,63 @@ async def _maybe_stop_auto_summary() -> None:
     _auto_summary_stop_event = None
 
 
+def _maybe_start_gem_synth() -> None:
+    """如果用户启用了 gem-synthesis，启动后台循环 task"""
+    global _gem_synth_task, _gem_synth_stop_event
+    try:
+        from ..gem_synth.loop import gem_synth_loop
+        from ..global_config import get_global_config_manager
+
+        cfg = get_global_config_manager().get_gem_synthesis_config()
+        if not cfg.enabled:
+            logger.info("Daemon: gem-synthesis 未启用（config.gem_synthesis.enabled=false）")
+            return
+
+        _gem_synth_stop_event = threading.Event()
+        _gem_synth_task = asyncio.create_task(
+            gem_synth_loop(_gem_synth_stop_event, cfg.interval_minutes)
+        )
+        logger.info("Daemon: gem-synthesis 后台循环已启动 (interval=%dm)", cfg.interval_minutes)
+    except Exception as e:
+        logger.exception("Daemon: 启动 gem-synthesis 后台循环失败: %s", e)
+
+
+async def _maybe_stop_gem_synth() -> None:
+    """关闭 gem-synthesis 后台循环（lifespan shutdown 阶段调用）"""
+    global _gem_synth_task, _gem_synth_stop_event
+    if _gem_synth_stop_event is not None:
+        _gem_synth_stop_event.set()
+    if _gem_synth_task is not None:
+        try:
+            await asyncio.wait_for(_gem_synth_task, timeout=10)
+        except asyncio.TimeoutError:
+            logger.warning("Daemon: gem-synthesis task 10s 内未退出，取消之")
+            _gem_synth_task.cancel()
+            try:
+                await asyncio.gather(_gem_synth_task, return_exceptions=True)
+            except Exception as inner:
+                logger.warning("Daemon: 等待 gem-synthesis 取消时异常: %s", inner)
+        except Exception as e:
+            logger.warning("Daemon: 等待 gem-synthesis 退出时异常: %s", e)
+            _gem_synth_task.cancel()
+            try:
+                await asyncio.gather(_gem_synth_task, return_exceptions=True)
+            except Exception:
+                pass
+    _gem_synth_task = None
+    _gem_synth_stop_event = None
+
+
 @asynccontextmanager
 async def lifespan(app):
     _load_model()
     _maybe_start_auto_summary()
+    _maybe_start_gem_synth()
     _maybe_init_fragment_store()
     try:
         yield
     finally:
+        await _maybe_stop_gem_synth()
         await _maybe_stop_auto_summary()
         _maybe_close_fragment_store()
 
