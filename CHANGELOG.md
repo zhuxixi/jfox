@@ -2,6 +2,19 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.1.1] - 2026-06-21
+
+### Features
+- Claude Code Hook 碎片采集（#261 Phase 1） (#269)
+
+### Fixes
+- **update**: 已是最新版本时显示正确提示 (#268)
+
+### Changes
+- gitignore .claude/settings.local.json and untrack it (#266)
+
+[1.1.1]: https://github.com/zhuxixi/jfox/compare/v1.1.0...v1.1.1
+
 ## [1.1.0] - 2026-06-21
 
 ### Features
