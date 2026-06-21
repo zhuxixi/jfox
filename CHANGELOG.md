@@ -5,6 +5,7 @@ All notable changes to jfox-cli will be documented in this file.
 ## [1.1.0] - 2026-06-21
 
 ### Features
+- **cli**: add self-update command (#258)
 - 笔记归档/软删除功能（archive/unarchive） (#260)
 
 ### Fixes
