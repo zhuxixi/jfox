@@ -60,6 +60,14 @@ class Note:
     topic: Optional[str] = None  # 会话主题（session 类型）
     archived: bool = False  # 是否已归档（软删除标记）
 
+    # candidate 专属字段（仅 type=CANDIDATE 时序列化；其它类型忽略）
+    gem_level: Optional[str] = None
+    confidence: Optional[float] = None
+    source_fragments: List[int] = field(default_factory=list)
+    grounded_by: List[str] = field(default_factory=list)
+    knowledge_type: Optional[str] = None  # factual/procedural/preference/constraint
+    status: Optional[str] = None  # pending → (L5) promoted/rejected
+
     # 运行时字段（不持久化到 frontmatter）
     embedding: Optional[List[float]] = None  # 向量
     score: Optional[float] = None  # 检索得分
@@ -115,12 +123,26 @@ class Note:
         if self.archived:
             frontmatter["archived"] = self.archived
 
+        # candidate 专属字段（仅 type=CANDIDATE 时写入 frontmatter）
+        if self.type == NoteType.CANDIDATE:
+            frontmatter["gem_level"] = self.gem_level or GemLevel.FLAWED.value
+            if self.confidence is not None:
+                frontmatter["confidence"] = self.confidence
+            if self.source_fragments:
+                frontmatter["source_fragments"] = self.source_fragments
+            if self.grounded_by:
+                frontmatter["grounded_by"] = self.grounded_by
+            if self.knowledge_type:
+                frontmatter["knowledge_type"] = self.knowledge_type
+            if self.status:
+                frontmatter["status"] = self.status
+
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
 
         return f"---\n{fm_yaml}---\n\n# {self.title}\n\n{self.content}\n"
 
     @classmethod
-    def from_markdown(cls, content: str, filepath: Path) -> "Note":
+    def from_markdown(cls, content: str, filepath: Optional[Path] = None) -> "Note":
         """从 Markdown 解析"""
         # 解析 frontmatter
         match = re.match(r"^---\n(.*?)\n---\n+(.*)", content, re.DOTALL)
@@ -164,6 +186,12 @@ class Note:
             source=fm.get("source"),
             topic=fm.get("topic"),
             archived=_to_bool(fm.get("archived", False)),
+            gem_level=fm.get("gem_level"),
+            confidence=fm.get("confidence"),
+            source_fragments=fm.get("source_fragments", []),
+            grounded_by=fm.get("grounded_by", []),
+            knowledge_type=fm.get("knowledge_type"),
+            status=fm.get("status"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
