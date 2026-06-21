@@ -108,6 +108,11 @@ from .fragment.cli import fragments_app  # noqa: E402
 
 app.add_typer(fragments_app, name="fragments", help="查看 Hook 采集的 session 碎片")
 
+# Candidates 子命令组（查看 L3 合成的候选知识宝石）
+from .gem_synth.cli import candidates_app  # noqa: E402
+
+app.add_typer(candidates_app, name="candidates", help="查看 L3 合成的候选知识宝石")
+
 console = Console(legacy_windows=False)
 
 
