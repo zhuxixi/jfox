@@ -432,8 +432,8 @@ class TestUpdateImpl:
                         assert result["stderr"] == "stderr msg"
                         assert result["error"] == ""
 
-    def test_uv_upgrade_already_latest(self):
-        """uv 输出 Nothing to upgrade 时应标记 already_latest"""
+    def test_upgrade_already_latest_by_version(self):
+        """升级前后版本一致时应标记 already_latest，不依赖工具输出文案"""
         with patch("jfox.cli._detect_install_method", return_value="uv"):
             with patch("jfox.__version__", "1.1.0"):
                 with patch(
@@ -447,13 +447,26 @@ class TestUpdateImpl:
                         assert result["previous_version"] == "1.1.0"
                         assert result["current_version"] == "1.1.0"
 
-    def test_uv_upgrade_already_latest_in_stderr(self):
-        """Nothing to upgrade 也可能出现在 stderr"""
-        with patch("jfox.cli._detect_install_method", return_value="uv"):
+    def test_pip_upgrade_already_latest_by_version(self):
+        """pip 方式升级前后版本一致时也应正确标记 already_latest"""
+        with patch("jfox.cli._detect_install_method", return_value="pip"):
             with patch("jfox.__version__", "1.1.0"):
                 with patch(
                     "jfox.cli._run_upgrade",
-                    return_value={"stdout": "", "stderr": "Nothing to upgrade"},
+                    return_value={"stdout": "Requirement already satisfied", "stderr": ""},
+                ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        result = _update_impl()
+                        assert result["success"] is True
+                        assert result["already_latest"] is True
+
+    def test_pipx_upgrade_already_latest_by_version(self):
+        """pipx 方式升级前后版本一致时也应正确标记 already_latest"""
+        with patch("jfox.cli._detect_install_method", return_value="pipx"):
+            with patch("jfox.__version__", "1.1.0"):
+                with patch(
+                    "jfox.cli._run_upgrade",
+                    return_value={"stdout": "already up-to-date", "stderr": ""},
                 ):
                     with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = _update_impl()
@@ -524,7 +537,7 @@ class TestUpdateCommand:
             with patch("jfox.__version__", "1.1.0"):
                 with patch(
                     "jfox.cli._run_upgrade",
-                    return_value={"stdout": "Nothing to upgrade", "stderr": ""},
+                    return_value={"stdout": "up-to-date", "stderr": ""},
                 ):
                     with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = runner.invoke(app, ["update"])
@@ -553,7 +566,7 @@ class TestUpdateCommand:
             with patch("jfox.__version__", "1.1.0"):
                 with patch(
                     "jfox.cli._run_upgrade",
-                    return_value={"stdout": "Nothing to upgrade", "stderr": ""},
+                    return_value={"stdout": "up-to-date", "stderr": ""},
                 ):
                     with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
                         result = runner.invoke(app, ["update", "--json"])

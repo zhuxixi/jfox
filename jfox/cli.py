@@ -3603,11 +3603,11 @@ def _update_impl() -> dict:
             "message": f"升级失败，请手动执行：{command_str}",
         }
 
-    # uv tool upgrade / pipx upgrade 等工具在已是最新版本时仍会返回 0，
-    # 需要通过输出内容判断是否真的发生了升级。
-    already_latest = "Nothing to upgrade" in (upgrade_result["stdout"] + upgrade_result["stderr"])
-
     current_version = _get_installed_version()
+
+    # 通过版本比较判断是否已经是最新版本，不依赖各工具的具体输出文案。
+    # 这样可以统一覆盖 uv / pipx / pip 等所有安装方式。
+    already_latest = previous_version == current_version
     return {
         "success": True,
         "method": method,
