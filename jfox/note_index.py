@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 import yaml
 
 from .config import ZKConfig
-from .models import NoteType
+from .models import Note, NoteType, _to_bool
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class NoteMeta:
     filepath: str = ""
     links: List[str] = field(default_factory=list)
     backlinks: List[str] = field(default_factory=list)
+    archived: bool = False
 
 
 _MAX_FRONTMATTER_LINES = 200
@@ -126,6 +127,7 @@ class NoteIndex:
                         filepath=str(filepath),
                         links=_to_list(fm.get("links")),
                         backlinks=_to_list(fm.get("backlinks")),
+                        archived=_to_bool(fm.get("archived", False)),
                     )
 
                     self._by_id[meta.id] = meta
@@ -167,12 +169,20 @@ class NoteIndex:
         note_type: Optional[NoteType] = None,
         tags: Optional[List[str]] = None,
         limit: Optional[int] = None,
+        archived_only: bool = False,
+        include_archived: bool = False,
     ) -> List[NoteMeta]:
-        """列出元数据，支持类型/标签过滤和 limit 截断"""
+        """列出元数据，支持类型/标签/归档状态过滤和 limit 截断"""
         if note_type:
             result = list(self._by_type.get(note_type, []))
         else:
             result = list(self._by_id.values())
+
+        # 归档状态过滤
+        if archived_only:
+            result = [m for m in result if m.archived]
+        elif not include_archived:
+            result = [m for m in result if not m.archived]
 
         if tags:
             result = [m for m in result if all(t in m.tags for t in tags)]
@@ -189,6 +199,43 @@ class NoteIndex:
     def get_invalid_files(self) -> List[str]:
         """返回无效文件路径列表"""
         return list(self._invalid_files)
+
+    def update_note_meta(self, note: Note) -> None:
+        """增量更新单个笔记的元数据，保持同进程内索引缓存一致。
+
+        当笔记标题或类型变化时，同步更新 title 与 type 索引。
+        如果该笔记尚未在索引中，则触发全量重建。
+        """
+        meta = self._by_id.get(note.id)
+        if meta is None:
+            self.rebuild()
+            return
+
+        # 类型变化时，先从旧类型列表移除
+        old_type = meta.type
+        new_type = note.type
+        if old_type != new_type:
+            self._by_type[old_type] = [m for m in self._by_type[old_type] if m.id != note.id]
+            self._by_type.setdefault(new_type, []).append(meta)
+            meta.type = new_type
+
+        # 标题变化时，同步 title 索引
+        new_lower_title = note.title.lower()
+        if meta.title.lower() != new_lower_title:
+            # 删除旧 title 映射（仅当该映射指向当前笔记时）
+            old_lower_title = meta.title.lower()
+            if self._by_title.get(old_lower_title) is meta:
+                del self._by_title[old_lower_title]
+            self._by_title[new_lower_title] = meta
+
+        # 更新其余字段
+        meta.title = note.title
+        meta.tags = list(note.tags) if note.tags else []
+        meta.updated = note.updated.isoformat() if note.updated else ""
+        meta.filepath = str(note.filepath)
+        meta.links = list(note.links) if note.links else []
+        meta.backlinks = list(note.backlinks) if note.backlinks else []
+        meta.archived = note.archived
 
 
 # 模块级缓存：同一命令进程内只构建一次
