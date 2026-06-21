@@ -35,7 +35,8 @@ Choose the right search approach based on user intent:
 jfox search "<query>" --mode hybrid --type permanent --top 10 --format json
 ```
 
-> **提示**: 搜索 permanent 知识或参考内容时，建议加上 `--type permanent` 过滤，避免被大量 session/fleeting 笔记淹没。
+> **提示**: 搜索 permanent 知识或参考内容时，建议加上 `--type permanent` 过滤，
+> 避免被大量 session/fleeting 笔记淹没。
 
 Parse the JSON output and present results as:
 
