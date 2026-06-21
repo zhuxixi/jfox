@@ -30,6 +30,17 @@ class NoteType(Enum):
     LITERATURE = "literature"  # 文献笔记
     PERMANENT = "permanent"  # 永久笔记
     SESSION = "session"  # AI Agent 会话记录
+    CANDIDATE = "candidate"  # AI 合成的候选知识宝石（破损级，待 L5 审阅）
+
+
+class GemLevel(str, Enum):
+    """知识宝石等级（碎裂→破损→完整→完美→无暇）。L3 仅产出 FLAWED。"""
+
+    CHIPPED = "chipped"  # 碎裂 — raw 碎片（fragments.db，非笔记）
+    FLAWED = "flawed"  # 破损 — L3 合成的 candidate
+    NORMAL = "normal"  # 完整 — L4/L5 成熟后
+    FLAWLESS = "flawless"  # 完美
+    PERFECT = "perfect"  # 无暇 — 晋升 permanent 的候选终态
 
 
 @dataclass
