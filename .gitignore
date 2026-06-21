@@ -42,6 +42,7 @@ cache/
 .claude/scheduled_tasks.json
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+.claude/settings.local.json
 
 # Temporary analysis files
 analysis_report.md
