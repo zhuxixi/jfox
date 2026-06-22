@@ -279,3 +279,78 @@ class TestListNotesViaIndex:
 
         result = list_notes(limit=3, cfg=kb_with_many_notes)
         assert len(result) == 3
+
+
+class TestNoteIndexFindNotesReferencingTitle:
+    """测试 find_notes_referencing_title"""
+
+    @pytest.fixture
+    def kb_with_wiki_links(self, temp_kb):
+        """创建包含维基链接引用的知识库"""
+        cfg = ZKConfig(base_dir=temp_kb)
+        cfg.ensure_dirs()
+
+        notes = [
+            Note(
+                id="20260428001",
+                title="笔记A",
+                content="笔记A 正文，引用了 [[笔记B]]。",
+                type=NoteType.PERMANENT,
+                created=datetime(2026, 4, 28, 0, 1),
+                updated=datetime(2026, 4, 28, 0, 1),
+            ),
+            Note(
+                id="20260428002",
+                title="笔记B",
+                content="笔记B 正文。",
+                type=NoteType.PERMANENT,
+                created=datetime(2026, 4, 28, 0, 2),
+                updated=datetime(2026, 4, 28, 0, 2),
+            ),
+            Note(
+                id="20260428003",
+                title="笔记C",
+                content="笔记C 引用了 [[笔记A]] 和 [[笔记B]]。",
+                type=NoteType.PERMANENT,
+                created=datetime(2026, 4, 28, 0, 3),
+                updated=datetime(2026, 4, 28, 0, 3),
+            ),
+        ]
+
+        for n in notes:
+            note_dir = cfg.notes_dir / n.type.value
+            note_dir.mkdir(parents=True, exist_ok=True)
+            note_file = note_dir / f"{n.id}.md"
+            note_file.write_text(n.to_markdown(), encoding="utf-8")
+
+        return cfg
+
+    def test_find_notes_referencing_title(self, kb_with_wiki_links):
+        """能找出正文中引用了指定标题的笔记"""
+        idx = NoteIndex(kb_with_wiki_links)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        assert "20260428001" in ids
+        assert "20260428003" in ids
+        assert "20260428002" not in ids
+
+    def test_find_notes_referencing_title_case_insensitive(self, kb_with_wiki_links):
+        """标题匹配大小写不敏感"""
+        idx = NoteIndex(kb_with_wiki_links)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记a")
+        ids = {m.id for m in refs}
+
+        assert "20260428003" in ids
+
+    def test_find_notes_referencing_title_not_found(self, kb_with_wiki_links):
+        """不存在引用时返回空列表"""
+        idx = NoteIndex(kb_with_wiki_links)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("不存在的笔记")
+        assert refs == []

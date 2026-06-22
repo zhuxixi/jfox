@@ -1,6 +1,7 @@
 """轻量级元数据索引，只解析 frontmatter 不读正文"""
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -163,6 +164,40 @@ class NoteIndex:
         """按标题前缀模糊匹配"""
         prefix_lower = prefix.lower()
         return [m for m in self._by_id.values() if m.title.lower().startswith(prefix_lower)]
+
+    def find_notes_referencing_title(self, title: str) -> List[NoteMeta]:
+        """查找正文中引用了指定标题的笔记（[[标题]] 语法）。
+
+        基于索引中已缓存的文件路径直接读取内容，避免全量加载 Note 对象。
+        匹配规则为大小写不敏感的精确标题匹配。
+
+        Args:
+            title: 被引用的笔记标题
+
+        Returns:
+            引用了该标题的 NoteMeta 列表
+        """
+        title_lower = title.lower()
+        pattern = re.compile(r"\[\[(.*?)\]\]")
+        results: List[NoteMeta] = []
+
+        for meta in self._by_id.values():
+            filepath = Path(meta.filepath)
+            if not filepath.exists():
+                continue
+
+            try:
+                text = filepath.read_text(encoding="utf-8")
+            except OSError:
+                continue
+
+            for match in pattern.finditer(text):
+                link_text = match.group(1).strip()
+                if link_text.lower() == title_lower:
+                    results.append(meta)
+                    break
+
+        return results
 
     def list_meta(
         self,

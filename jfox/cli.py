@@ -518,6 +518,37 @@ def _add_note_impl(
                     note.save_note(target_note, add_to_index=False)
                     backlink_updated += 1
 
+        # Backward 回填：正文中引用了新笔记标题但 links 未包含新笔记 ID 的笔记
+        # 把新笔记 ID 回填进它们的 links，并同步更新新笔记的 backlinks
+        from .note_index import get_note_index
+
+        idx = get_note_index()
+        idx.update_note_meta(new_note)
+
+        original_backlinks_count = len(new_note.backlinks)
+        forward_backfilled = 0
+        for ref_meta in idx.find_notes_referencing_title(new_note.title):
+            if ref_meta.id == new_note.id:
+                continue
+            ref_note = note.load_note_by_id(ref_meta.id)
+            if not ref_note:
+                continue
+
+            changed = False
+            if new_note.id not in ref_note.links:
+                ref_note.links.append(new_note.id)
+                changed = True
+            if ref_note.id not in new_note.backlinks:
+                new_note.backlinks.append(ref_note.id)
+                changed = True
+
+            if changed:
+                note.save_note(ref_note, add_to_index=False)
+                forward_backfilled += 1
+
+        if len(new_note.backlinks) != original_backlinks_count:
+            note.save_note(new_note, add_to_index=False)
+
         result = {
             "success": True,
             "note": {
@@ -546,6 +577,10 @@ def _add_note_impl(
             )
             if backlink_updated > 0:
                 console.print(f"[dim]  Backlinks updated: {backlink_updated} note(s)[/dim]")
+            if forward_backfilled > 0:
+                console.print(
+                    f"[dim]  Forward links backfilled: {forward_backfilled} note(s)[/dim]"
+                )
             if unresolved:
                 console.print(
                     f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
