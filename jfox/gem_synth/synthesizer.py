@@ -11,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from ..config import use_kb
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
 from ..note import save_note
@@ -46,29 +45,35 @@ def _save_candidate_note(
     """把 LLM 结果存成 candidate 笔记，返回 note id。失败返回 None。
 
     笔记落盘路径：<kb>/notes/candidate/<id>-<slug>.md（由 Note.filepath 根据
-    NoteType.CANDIDATE + 全局 config.notes_dir 推导）。多 KB 支持通过 use_kb(kb)
-    上下文切换全局 config 实现。
+    NoteType.CANDIDATE + 全局 config.notes_dir 推导）。KB 上下文由调用方
+    （daemon loop 外层 use_kb）提供，本函数不再内部 use_kb。
+
+    整个构造 + 落盘都包在 try 内：anchor 字段缺失（KeyError）或 Note 构造异常
+    都转成"跳过该锚点"（返回 None），不抛穿到循环导致整轮失败。
     """
-    now = datetime.now()
-    # 追加 anchor fragment_id 保证 id 唯一（同一秒合成的两个 candidate 也不会撞名）
-    note_id = now.strftime("%Y%m%d%H%M%S") + f"-{anchor['fragment_id']}"
-    title = llm_result.get("title") or "未命名候选宝石"
-    content = llm_result.get("content") or ""
-
-    # 追加来源 / 基准 / 置信度元信息（便于 L5 审阅与溯源）
-    source_section = (
-        f"\n\n## 来源\n- 碎片 #{anchor['fragment_id']} @ {anchor['timestamp']}\n"
-        f"- session `{anchor['session_id']}`\n"
-    )
-    grounding_section = ""
-    grounded_by = _coerce_grounded_by(llm_result.get("grounded_by"))
-    if grounded_by:
-        links = ", ".join(f"[[{g}]]" for g in grounded_by)
-        grounding_section = f"\n## 参考的永久笔记\n{links}\n"
-    conf_section = f"\n## 置信度\n{llm_result.get('confidence', '?')}\n"
-
     try:
-        # Note() 构造也放进 try：任何字段异常（如类型/格式）都应转成"跳过"而非抛穿
+        now = datetime.now()
+        # 纯 14 位时间戳 id（约定）。合成在 daemon 串行循环中执行，单次合成 >1s，
+        # 同秒碰撞概率近乎零；-fragment_id 后缀破坏了纯数字 id 约定，故回退。
+        note_id = now.strftime("%Y%m%d%H%M%S")
+        title = llm_result.get("title") or "未命名候选宝石"
+        content = llm_result.get("content") or ""
+
+        # 追加来源 / 基准 / 置信度元信息（便于 L5 审阅与溯源）
+        # anchor['fragment_id']/['timestamp']/['session_id'] 在 try 内访问：
+        # 缺键时 KeyError 被捕获 → 返回 None 跳过该锚点，而非抛穿循环
+        source_section = (
+            f"\n\n## 来源\n- 碎片 #{anchor['fragment_id']} @ {anchor['timestamp']}\n"
+            f"- session `{anchor['session_id']}`\n"
+        )
+        grounding_section = ""
+        grounded_by = _coerce_grounded_by(llm_result.get("grounded_by"))
+        if grounded_by:
+            links = ", ".join(f"[[{g}]]" for g in grounded_by)
+            grounding_section = f"\n## 参考的永久笔记\n{links}\n"
+        conf_section = f"\n## 置信度\n{llm_result.get('confidence', '?')}\n"
+
+        # Note() 构造也在 try 内：任何字段异常（如类型/格式）都应转成"跳过"而非抛穿
         note = Note(
             id=note_id,
             title=title,
@@ -93,16 +98,13 @@ def _save_candidate_note(
 def _persist_note(note: Note, kb: Optional[str]) -> None:
     """实际落盘。封装一层适配 note.py 的 save API。
 
-    note.save_note(note, add_to_index=True) 依赖全局 config.notes_dir 决定写入目录，
-    且 add_to_index=True 会触发 vector_store/bm25 单例——daemon 进程内这些单例
-    可能绑定到别的 KB 或未初始化。故：
-      1. 用 use_kb(kb) 上下文切换全局 config，使 filepath 指向目标 KB；
-      2. add_to_index=False，只落盘不建索引（candidate 是待审草稿，索引可由
-         Phase G/H 或显式 reindex 补上）。
+    不再 use_kb(kb)：调用方（daemon loop 的 _tick_once 外层 use_kb(cfg.target_kb)）
+    已切到目标 KB，内部再 use_kb 会每锚点 _reset_singletons（重载 embedding 模型）。
+    add_to_index=False：避免在 daemon 进程里意外触发向量/BM25 索引（candidate 是
+    待审草稿，索引可由 Phase G/H 或显式 reindex 补上）。
     """
-    with use_kb(kb):
-        # add_to_index=False：避免在 daemon 进程里意外触发向量/BM25 索引
-        ok = save_note(note, add_to_index=False)
+    # kb 参数保留以维持签名稳定；KB 上下文由调用方负责
+    ok = save_note(note, add_to_index=False)
     if not ok:
         raise RuntimeError(f"save_note 返回 False（note_id={note.id}）")
 

@@ -1,5 +1,6 @@
 """LLM 调用封装测试（mock subprocess，不真调 claude）。"""
 
+import io
 import json
 import threading
 from unittest.mock import MagicMock, patch
@@ -53,8 +54,9 @@ def test_synthesize_returns_none_on_exception():
 def test_invoke_claude_cmd_restricts_tools():
     """合成 claude 调用必须禁用工具（--allowed-tools ''）防注入。
 
-    _invoke_claude 用 Popen + poll，故 mock subprocess.Popen。FakePopen.poll() 先返回
-    None（模拟进程在跑），下一次返回 0（结束），stdout.read() 给 JSON 包装。
+    _invoke_claude 用 Popen + poll + 后台 stderr 排空线程，故 mock subprocess.Popen。
+    FakePopen.poll() 先返回 None（模拟进程在跑），下一次返回 0（结束）。
+    stdin/stdout/stderr 用 io.StringIO，兼容 .read() 与 .read(4096)（drainer 调用）。
     """
     import jfox.gem_synth.llm as llm_mod
 
@@ -63,17 +65,11 @@ def test_invoke_claude_cmd_restricts_tools():
     class FakePopen:
         def __init__(self, cmd, **kw):
             captured_cmd["cmd"] = cmd
-            self.stdin = self
-            self.stdout = self
-            self.stderr = self
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO('{"result": "{}"}')
+            self.stderr = io.StringIO("")
             self.pid = 12345
             self._polled = False
-
-        def write(self, s):
-            pass
-
-        def close(self):
-            pass
 
         def poll(self):
             if not self._polled:
@@ -81,8 +77,8 @@ def test_invoke_claude_cmd_restricts_tools():
                 return None
             return 0
 
-        def read(self):
-            return '{"result": "{}"}'
+        def wait(self, timeout=None):
+            return 0
 
     with (
         patch.object(llm_mod.subprocess, "Popen", side_effect=FakePopen),
@@ -100,28 +96,22 @@ def test_invoke_claude_interruptible_by_stop_event():
     """stop_event 置位时，_invoke_claude 必须中断挂起的 claude 调用并杀进程组。
 
     TDD：FakePopen.poll() 永远返回 None（claude 一直没退出），stop_event 预先 set，
-    应抛 RuntimeError 含"中断"，并调用 killpg 清理。
+    应抛 RuntimeError 含"中断"，并调用 killpg 清理（_kill_proc_group 单一 kill 点）。
     """
     import jfox.gem_synth.llm as llm_mod
 
     class HangingPopen:
         def __init__(self, cmd, **kw):
-            self.stdin = self
-            self.stdout = self
-            self.stderr = self
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("")
             self.pid = 12345
-
-        def write(self, s):
-            pass
-
-        def close(self):
-            pass
 
         def poll(self):
             return None  # claude 永不结束
 
-        def read(self):
-            return ""
+        def wait(self, timeout=None):
+            return 0
 
     ev = threading.Event()
     ev.set()
@@ -139,3 +129,42 @@ def test_invoke_claude_interruptible_by_stop_event():
             )
     # killpg 被调（中断路径必杀进程组）
     assert mock_killpg.called
+
+
+def test_invoke_claude_drains_stderr_no_deadlock():
+    """stderr 后台排空：进程正常退出且写了 stderr 时，不阻塞、能返回 stdout。
+
+    TDD：模拟 claude 写若干 stderr（如警告日志）后正常退出（rc=0）。
+    drainer 线程读光 stderr，poll 返回 0 → 返回 stdout。若未排空 stderr，且 stderr
+    数据 > 64KB，真实场景会死锁；此处验证排空路径被触发且函数正常完成。
+    """
+    import jfox.gem_synth.llm as llm_mod
+
+    class StderrPopen:
+        def __init__(self, cmd, **kw):
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO('{"result": "{}"}')
+            # 模拟 claude 写入若干 stderr 后关闭
+            self.stderr = io.StringIO("warn: something\nwarn: more\n")
+            self.pid = 12345
+            self._polled = False
+
+        def poll(self):
+            if not self._polled:
+                self._polled = True
+                return None
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    with (
+        patch.object(llm_mod.subprocess, "Popen", side_effect=StderrPopen),
+        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.time, "sleep"),
+    ):
+        # 应正常返回 stdout，不挂起
+        out = llm_mod._invoke_claude(
+            "prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None)
+        )
+    assert "result" in out

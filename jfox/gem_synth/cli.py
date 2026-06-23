@@ -42,20 +42,23 @@ def show_cmd(
             raise typer.Exit(code=1)
 
         if output_format == "json":
-            # to_dict() 会把 content 截断到 200 字符，这里用完整 markdown 覆盖
+            # content 字段用纯正文（note.content），不含 frontmatter（避免与 top-level
+            # 字段重复）。to_dict() 会把 content 截断到 200 字符，这里用完整正文覆盖。
             data = note.to_dict()
-            data["content"] = note.to_markdown()
+            data["content"] = note.content
             # 用 typer.echo 直接输出，避免 Rich console 对 \n 二次转义（破坏 JSON）
             typer.echo(_json.dumps(data, ensure_ascii=False, indent=2))
             return
 
-        # 默认输出完整原始 markdown（与 jfox show 一致）
+        # 默认输出完整原始 markdown（与 jfox show 一致）。
+        # 用 typer.echo 而非 console.print：Rich 会解析正文中的 [xxx] 标记（如笔记里的
+        # [链接]、[red] 等字面量）当成 markup/颜色标签，导致输出错乱或丢失字面量。
         try:
-            console.print(note.filepath.read_text(encoding="utf-8"))
+            typer.echo(note.filepath.read_text(encoding="utf-8"))
         except Exception as e:
-            # 文件读取失败时回退到内存中的 markdown 表示
+            # 文件读取失败时回退到内存中的 markdown 表示（同样用 typer.echo 避免 markup）
             console.print(f"[yellow]读取文件失败，使用内存表示：{e}[/yellow]")
-            console.print(note.to_markdown())
+            typer.echo(note.to_markdown())
 
 
 @candidates_app.command("list")

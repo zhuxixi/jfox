@@ -91,7 +91,7 @@ def test_list_and_show_with_real_temp_kb():
         assert "这一段是填充内容用于超过两百字符阈值" in show_md.stdout
         assert "测试候选" in show_md.stdout
 
-        # show --format json：content 字段为完整 markdown，覆盖截断
+        # show --format json：content 字段为纯正文（note.content，不含 frontmatter）
         show_json = CliRunner().invoke(
             candidates_app,
             ["show", "20260621143000-1", "--kb", kb_name, "--format", "json"],
@@ -99,7 +99,7 @@ def test_list_and_show_with_real_temp_kb():
         assert show_json.exit_code == 0
         jdata = json.loads(show_json.stdout)
         assert jdata["title"] == "测试候选"
-        # content 字段为完整 markdown（包含填充内容 + frontmatter）
+        # content 字段为完整正文（含填充内容；cc#5：不再含 frontmatter 重复）
         assert "这一段是填充内容用于超过两百字符阈值" in jdata["content"]
 
 

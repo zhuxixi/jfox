@@ -61,21 +61,38 @@ def _build_prompt(turn_context: str, grounding: List[Dict[str, Any]]) -> str:
 请合成一条知识宝石。只输出 JSON。"""
 
 
-def _kill_pgroup(pgid: int) -> None:
+def _kill_proc_group(proc: subprocess.Popen, pgid) -> None:
     """SIGTERM 进程组，短暂等待后 SIGKILL 兜底。ProcessLookupError 忽略。
 
-    daemon 跑在 Linux 上；Windows 下 start_new_session/killpg/signal 语义不同，
-    Windows 兜底未实现（项目目前只跑 Linux daemon）。
+    pgid 为 None（进程已退出/取不到）时退化为 proc.kill()。单一清理点，
+    所有异常路径都走这里，避免重复 kill。
+
+    注：killpg / SIGTERM / SIGKILL 为 POSIX 语义；Windows 下 start_new_session/
+    killpg 不可用，需用 proc.kill 兜底（项目目前只跑 Linux daemon）。
     """
-    try:
-        os.killpg(pgid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
+    killed = False
+    if pgid is not None:
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+            killed = True
+        except ProcessLookupError:
+            pass
+    if not killed:
+        try:
+            proc.kill()
+        except Exception:
+            pass
     time.sleep(0.3)
-    try:
-        os.killpg(pgid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    if pgid is not None:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    else:
+        try:
+            proc.kill()
+        except Exception:
+            pass
 
 
 def _invoke_claude(
@@ -83,12 +100,14 @@ def _invoke_claude(
     cfg: GemSynthesisConfig,
     stop_event: Optional[threading.Event] = None,
 ) -> str:
-    """调用 claude -p，返回 stdout。支持 stop_event 中断 + 超时 kill 整个进程组。
+    """调用 claude -p，返回 stdout。支持 stop_event 中断 + 超时；后台排空 stderr 防死锁。
 
-    用 Popen + 周期 poll，使 daemon shutdown / stop_event 能在 claude 运行中中断
-    （subprocess.run 无法中断，task.cancel 对已在 executor 中的 run 无效，会阻塞到
-    timeout，默认 180s）。start_new_session=True 让 claude 及其 node helper 成独立
-    进程组，killpg 一并清理，避免孤儿（subprocess.run 的 timeout 只杀直接子进程）。
+    stderr 用后台线程持续读取，避免 claude 写满 stderr 管道缓冲（~64KB）后阻塞死锁
+    （旧实现仅在 rc!=0 时读 stderr，正常路径 claude 写满缓冲会导致 poll() 永不返回，
+    退化成 180s 超时——回归 subprocess.run 的 communicate() 缺陷）。
+
+    start_new_session=True 使 claude 及 node helper 成独立进程组，killpg 一并清理，
+    避免孤儿。getpgid 在 try 内执行（进程若已退出则 pgid=None，后续走 proc.kill 兜底）。
 
     env 隔离：清除 JFOX_KB / JFOX_DAEMON_PROCESS 等会干扰子进程的变量，避免 claude
     子进程意外连到 jfox daemon 或写到错误 KB（沿用既有安全修复）。
@@ -121,9 +140,27 @@ def _invoke_claude(
         env=env,
         start_new_session=True,
     )
-    pgid = os.getpgid(proc.pid)
+    # 后台线程持续排空 stderr，防止管道缓冲写满导致 claude 阻塞死锁
+    stderr_chunks: list = []
+
+    def _drain_stderr() -> None:
+        try:
+            for chunk in iter(lambda: proc.stderr.read(4096), ""):
+                stderr_chunks.append(chunk)
+        except Exception:
+            pass
+
+    drainer = threading.Thread(target=_drain_stderr, daemon=True)
+    drainer.start()
+
+    pgid = None
     deadline = time.monotonic() + timeout
     try:
+        # getpgid 放在 try 内：进程若已退出会抛 ProcessLookupError，此处兜底为 None
+        try:
+            pgid = os.getpgid(proc.pid)
+        except ProcessLookupError:
+            pgid = None  # 进程已退出，后续 kill 走 proc.kill() 兜底
         try:
             proc.stdin.write(prompt)
             proc.stdin.close()
@@ -133,21 +170,31 @@ def _invoke_claude(
         while True:
             rc = proc.poll()
             if rc is not None:
+                drainer.join(timeout=2)
                 if rc != 0:
-                    err = (proc.stderr.read() or "")[:300]
+                    err = "".join(stderr_chunks)[:300]
                     raise RuntimeError(f"claude 退出码 {rc}: {err}")
                 return proc.stdout.read()
             if stop_event is not None and stop_event.is_set():
-                _kill_pgroup(pgid)
                 raise RuntimeError("claude 调用被中断（stop_event）")
             if time.monotonic() >= deadline:
-                _kill_pgroup(pgid)
                 raise TimeoutError(f"claude 超时（{timeout}s）")
             time.sleep(0.5)
-    except Exception:
-        # 任何异常路径（中断/超时/非零退出码）兜底杀进程组，避免孤儿
-        _kill_pgroup(pgid)
+    except (RuntimeError, TimeoutError):
+        # 单一 kill 点：中断/超时路径统一走这里（非零退出码的 RuntimeError 也命中）
+        _kill_proc_group(proc, pgid)
         raise
+    finally:
+        # reap 僵尸 + 关闭所有管道，避免 FD 累积（旧实现未关 stdin/stdout/stderr）
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        for pipe in (proc.stdin, proc.stdout, proc.stderr):
+            try:
+                pipe.close()
+            except Exception:
+                pass
 
 
 def synthesize_with_llm(
