@@ -42,7 +42,16 @@ def show_cmd(
                 console.print(f"[red]读取 candidate 失败：{e}[/red]")
             raise typer.Exit(code=1)
         if note is None:
-            console.print(f"[red]找不到笔记 ID={note_id}[/red]")
+            # 与 except 分支一致：--format json 时输出结构化错误，否则打印红色提示
+            if output_format == "json":
+                typer.echo(
+                    _json.dumps(
+                        {"success": False, "error": f"找不到笔记 ID={note_id}"},
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                console.print(f"[red]找不到笔记 ID={note_id}[/red]")
             raise typer.Exit(code=1)
 
         if output_format == "json":
@@ -86,9 +95,9 @@ def list_cmd(
 
     with use_kb(kb):
         # 多取一些再在内存里按 status/confidence 过滤（这些字段在 frontmatter，索引层不过滤）
-        fetch_limit = limit * 3 if limit > 0 else limit
+        # limit 经上面 clamp 必 >= 1，直接 limit*3（原 `if limit > 0 else limit` 分支已死）
         try:
-            notes = list_notes(note_type=NoteType.CANDIDATE, limit=fetch_limit)
+            notes = list_notes(note_type=NoteType.CANDIDATE, limit=limit * 3)
         except Exception as e:
             # 未初始化/空库应返回空列表而非抛错；真正读取失败才报错退出
             # --format json 时输出结构化错误（AGENTS.md 约定），否则打印红色提示

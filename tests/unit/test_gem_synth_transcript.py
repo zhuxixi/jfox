@@ -77,6 +77,28 @@ def test_iter_messages_skips_non_conversation_lines(tmp_path):
     assert len(msgs) == 1  # 只 yield user/assistant
 
 
+def test_iter_messages_skips_non_dict_lines(tmp_path):
+    """非 dict 的 JSON 行（裸数字/数组）不应导致崩溃"""
+    p = tmp_path / "t.jsonl"
+    p.write_text(
+        "12345\n"  # 裸数字
+        '["array", "line"]\n'  # 数组
+        '"string line"\n'  # 字符串
+        + json.dumps(
+            {
+                "type": "user",
+                "message": {"role": "user", "content": "ok"},
+                "timestamp": "t",
+                "uuid": "u",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    msgs = list(_iter_messages(p))
+    assert len(msgs) == 1  # 只有那条 user dict 被 yield，非 dict 行跳过不崩
+
+
 def test_extract_prefers_exact_substring_over_earlier_prefix(tmp_path):
     """早先消息仅共享前缀（不含完整锚点子串）时，精确子串匹配优先。
 

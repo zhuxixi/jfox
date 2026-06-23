@@ -24,6 +24,8 @@ def _iter_messages(transcript_path: Path) -> Iterator[dict]:
                     d = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(d, dict):
+                    continue  # 非 dict 行（裸数字/数组/字符串），跳过
                 if d.get("type") in ("user", "assistant"):
                     yield d
     except FileNotFoundError:
