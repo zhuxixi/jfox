@@ -66,3 +66,13 @@ def test_synthesize_anchor_skips_when_no_transcript(tmp_path):
     a = _anchor(44, tmp_path)
     a["transcript_path"] = None
     assert synthesize_anchor(a, log=log, cfg=MagicMock(grounding_top_k=5), kb="default") is None
+
+
+def test_synthesize_handles_non_numeric_confidence(tmp_path):
+    """LLM 返回非数值 confidence 不应崩（safe float 回退）"""
+    from jfox.gem_synth.synthesizer import _safe_float
+
+    assert _safe_float("high") == 0.0
+    assert _safe_float(0.85) == 0.85
+    assert _safe_float(None) == 0.0
+    assert _safe_float("0.9") == 0.9

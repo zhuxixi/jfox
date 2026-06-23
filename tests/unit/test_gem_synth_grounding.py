@@ -29,3 +29,16 @@ def test_fetch_grounding_handles_exception():
     with patch("jfox.gem_synth.grounding.HybridSearchEngine") as Mock:
         Mock.return_value.search.side_effect = RuntimeError("boom")
         assert fetch_grounding("x", top_k=5, kb="default") == []
+
+
+def test_fetch_grounding_filters_out_non_permanent():
+    """post-filter：只保留 permanent 笔记（BM25 路径不过滤 note_type）"""
+    fake = [
+        {"title": "永久A", "content": "cA", "id": "1", "metadata": {"type": "permanent"}},
+        {"title": "临时B", "content": "cB", "id": "2", "metadata": {"type": "fleeting"}},
+    ]
+    with patch("jfox.gem_synth.grounding.HybridSearchEngine") as Mock:
+        Mock.return_value.search.return_value = fake
+        out = fetch_grounding("x", top_k=5, kb="default")
+    titles = [g["title"] for g in out]
+    assert "永久A" in titles and "临时B" not in titles

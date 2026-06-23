@@ -75,6 +75,9 @@ def extract_turn_around(transcript_path: Path, anchor_user_text: str) -> str:
 
     锚点 content 可能被碎片截断过，故用子串匹配（transcript 完整文本包含锚点文本，
     或 transcript 文本以锚点文本前 40 字符开头）。
+
+    匹配策略：两轮——先尝试精确子串匹配（anchor in full），命中即止；找不到再退而
+    求其次用前缀匹配。单轮 + or 短路会因前缀相似而误取早先消息，两轮可降低误匹配。
     """
     transcript_path = Path(transcript_path)
     if not transcript_path.exists():
@@ -84,14 +87,17 @@ def extract_turn_around(transcript_path: Path, anchor_user_text: str) -> str:
         return ""
 
     msgs = list(_iter_messages(transcript_path))
-    anchor_idx = None
-    for i, m in enumerate(msgs):
-        if m.get("type") != "user":
-            continue
-        full = _user_text(m)
-        if anchor in full or full.startswith(anchor[:40]):
-            anchor_idx = i
-            break
+    user_indices = [i for i, m in enumerate(msgs) if m.get("type") == "user"]
+
+    def _full_text(i):
+        return _user_text(msgs[i])
+
+    # 优先精确子串匹配（锚点文本完整出现在某条 user 消息里）
+    anchor_idx = next((i for i in user_indices if anchor in _full_text(i)), None)
+    # 退而求其次：前缀匹配（锚点被截断时）
+    if anchor_idx is None:
+        prefix = anchor[:40]
+        anchor_idx = next((i for i in user_indices if _full_text(i).startswith(prefix)), None)
     if anchor_idx is None:
         return ""
 

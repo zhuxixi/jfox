@@ -208,17 +208,27 @@ class GemSynthesisConfig:
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "GemSynthesisConfig":
         if not data:
             return cls()
+
+        # 安全 int：非数字字符串不应抛 ValueError（否则 GlobalConfigManager._load 的 except
+        # 会吞掉异常并重置整份全局配置——auto_summary、KB 列表、默认 KB 全失效）。
+        # 与 FragmentCaptureConfig / AutoSummaryConfig 保持一致的防御性解析。
+        def _safe_int(v, default):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
         return cls(
             enabled=bool(data.get("enabled", False)),
-            interval_minutes=int(data.get("interval_minutes", 30)),
+            interval_minutes=_safe_int(data.get("interval_minutes"), 30),
             anchor_types=(
                 list(data["anchor_types"])
                 if isinstance(data.get("anchor_types"), list)
                 else cls().anchor_types
             ),
-            grounding_top_k=int(data.get("grounding_top_k", 5)),
+            grounding_top_k=_safe_int(data.get("grounding_top_k"), 5),
             target_kb=data.get("target_kb"),
-            claude_timeout_seconds=int(data.get("claude_timeout_seconds", 180)),
+            claude_timeout_seconds=_safe_int(data.get("claude_timeout_seconds"), 180),
             claude_binary=data.get("claude_binary"),
         )
 

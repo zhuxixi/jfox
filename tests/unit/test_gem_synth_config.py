@@ -24,3 +24,10 @@ def test_from_dict_explicit():
 def test_roundtrip():
     cfg = GemSynthesisConfig(grounding_top_k=7)
     assert GemSynthesisConfig.from_dict(cfg.to_dict()).grounding_top_k == 7
+
+
+def test_from_dict_non_numeric_does_not_crash():
+    """非数字字符串/None 不应抛 ValueError（与 FragmentCaptureConfig 一致）"""
+    cfg = GemSynthesisConfig.from_dict({"interval_minutes": "abc", "grounding_top_k": None})
+    assert cfg.interval_minutes == 30
+    assert cfg.grounding_top_k == 5

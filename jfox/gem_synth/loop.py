@@ -11,6 +11,7 @@ import asyncio
 import logging
 import threading
 
+from ..config import use_kb
 from ..global_config import get_global_config_manager
 from .anchors import find_anchors
 from .store import SynthesisLog
@@ -45,15 +46,20 @@ def _tick_once(stop_event: threading.Event) -> str:
             return "无待合成锚点"
 
         success = 0
-        for anchor in anchors:
-            if stop_event.is_set():
-                break
-            try:
-                result = synthesize_anchor(anchor, log=log, cfg=cfg, kb=cfg.target_kb)
-                if result is not None:
-                    success += 1
-            except Exception as e:
-                logger.exception("gem-synth 合成锚点 #%s 异常: %s", anchor.get("fragment_id"), e)
+        # 整轮只切一次 KB，避免每锚点都 use_kb → _reset_singletons 重载 embedding 模型
+        # （use_kb(None) 会早退出，target_kb 未设时无副作用）
+        with use_kb(cfg.target_kb):
+            for anchor in anchors:
+                if stop_event.is_set():
+                    break
+                try:
+                    result = synthesize_anchor(anchor, log=log, cfg=cfg, kb=cfg.target_kb)
+                    if result is not None:
+                        success += 1
+                except Exception as e:
+                    logger.exception(
+                        "gem-synth 合成锚点 #%s 异常: %s", anchor.get("fragment_id"), e
+                    )
 
         return f"待合成 {len(anchors)}, 成功 {success}"
     finally:

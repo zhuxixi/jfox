@@ -21,6 +21,24 @@ from .transcript import extract_turn_around
 logger = logging.getLogger(__name__)
 
 
+def _safe_float(value, default: float = 0.0) -> float:
+    """安全转 float：LLM 可能返回 "high" 等非数值字符串，直接 float() 会抛 ValueError。"""
+    try:
+        return float(value) if value is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_grounded_by(value) -> list:
+    """grounded_by 类型安全：LLM 偶发返回字符串（如 "笔记A"），list() 会拆成字符。
+    统一成 list；非 list/非空 字符串包成单元素列表。"""
+    if isinstance(value, list):
+        return value
+    if value:
+        return [value]
+    return []
+
+
 def _save_candidate_note(
     llm_result: Dict[str, Any], anchor: Dict[str, Any], kb: Optional[str]
 ) -> Optional[str]:
@@ -31,7 +49,8 @@ def _save_candidate_note(
     上下文切换全局 config 实现。
     """
     now = datetime.now()
-    note_id = now.strftime("%Y%m%d%H%M%S")
+    # 追加 anchor fragment_id 保证 id 唯一（同一秒合成的两个 candidate 也不会撞名）
+    note_id = now.strftime("%Y%m%d%H%M%S") + f"-{anchor['fragment_id']}"
     title = llm_result.get("title") or "未命名候选宝石"
     content = llm_result.get("content") or ""
 
@@ -41,26 +60,28 @@ def _save_candidate_note(
         f"- session `{anchor['session_id']}`\n"
     )
     grounding_section = ""
-    if llm_result.get("grounded_by"):
-        links = ", ".join(f"[[{g}]]" for g in llm_result["grounded_by"])
+    grounded_by = _coerce_grounded_by(llm_result.get("grounded_by"))
+    if grounded_by:
+        links = ", ".join(f"[[{g}]]" for g in grounded_by)
         grounding_section = f"\n## 参考的永久笔记\n{links}\n"
     conf_section = f"\n## 置信度\n{llm_result.get('confidence', '?')}\n"
 
-    note = Note(
-        id=note_id,
-        title=title,
-        content=content + source_section + grounding_section + conf_section,
-        type=NoteType.CANDIDATE,
-        created=now,
-        updated=now,
-        gem_level=GemLevel.FLAWED.value,
-        confidence=float(llm_result.get("confidence") or 0),
-        source_fragments=[anchor["fragment_id"]],
-        grounded_by=list(llm_result.get("grounded_by") or []),
-        knowledge_type=llm_result.get("knowledge_type"),
-        status="pending",
-    )
     try:
+        # Note() 构造也放进 try：任何字段异常（如类型/格式）都应转成"跳过"而非抛穿
+        note = Note(
+            id=note_id,
+            title=title,
+            content=content + source_section + grounding_section + conf_section,
+            type=NoteType.CANDIDATE,
+            created=now,
+            updated=now,
+            gem_level=GemLevel.FLAWED.value,
+            confidence=_safe_float(llm_result.get("confidence"), 0.0),
+            source_fragments=[anchor["fragment_id"]],
+            grounded_by=grounded_by,
+            knowledge_type=llm_result.get("knowledge_type"),
+            status="pending",
+        )
         _persist_note(note, kb)
         return note_id
     except Exception as e:

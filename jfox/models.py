@@ -23,6 +23,20 @@ def _to_bool(value: Any) -> bool:
     return bool(value)
 
 
+def _to_float(value, default=None):
+    """安全转 float，非数值返回 default。
+
+    YAML 解析出的 confidence 可能是 int（1）、str（"0.9"）或其它；统一成 float，
+    保证 dataclass 字段类型一致，避免后续比较/序列化歧义。
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class NoteType(Enum):
     """笔记类型"""
 
@@ -187,7 +201,7 @@ class Note:
             topic=fm.get("topic"),
             archived=_to_bool(fm.get("archived", False)),
             gem_level=fm.get("gem_level"),
-            confidence=fm.get("confidence"),
+            confidence=_to_float(fm.get("confidence")),
             source_fragments=fm.get("source_fragments", []),
             grounded_by=fm.get("grounded_by", []),
             knowledge_type=fm.get("knowledge_type"),

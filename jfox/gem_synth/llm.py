@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..global_config import GemSynthesisConfig
@@ -28,9 +29,13 @@ SYSTEM_PROMPT = """你是知识合成器。给定一段对话上下文和若干�
 
 
 def _resolve_claude_binary(cfg: GemSynthesisConfig) -> str:
-    """解析 claude 二进制路径：优先 cfg.claude_binary，否则从 PATH 找。"""
+    """解析 claude 二进制路径：优先 cfg.claude_binary，否则从 PATH 找。
+
+    返回 normalize 后的绝对路径（expanduser + resolve），避免相对路径/符号链接
+    导致的解析歧义。
+    """
     if cfg.claude_binary:
-        return cfg.claude_binary
+        return str(Path(cfg.claude_binary).expanduser().resolve())
     found = shutil.which("claude")
     if not found:
         raise RuntimeError("找不到 claude 二进制（PATH 无 claude，且 cfg.claude_binary 未设）")
@@ -69,6 +74,9 @@ def _invoke_claude(prompt: str, cfg: GemSynthesisConfig) -> str:
         SYSTEM_PROMPT,
         "--permission-mode",
         "bypassPermissions",
+        # 合成只需文本生成，禁用所有工具（防注入执行；synthesis 输入含不可信 transcript/笔记）
+        "--allowed-tools",
+        "",
     ]
     env = os.environ.copy()
     for noisy in ("JFOX_KB", "JFOX_DAEMON_PROCESS"):
@@ -102,10 +110,12 @@ def synthesize_with_llm(
         parsed = json.loads(inner) if isinstance(inner, str) else inner
         if not isinstance(parsed, dict) or "title" not in parsed:
             logger.warning("LLM 输出缺 title: %r", parsed)
+            logger.debug("LLM raw output: %r", raw)
             return None
         return parsed
     except Exception as e:
         logger.exception("LLM 合成失败: %s", e)
+        logger.debug("LLM raw output on exception: %r", locals().get("raw"))
         return None
 
 

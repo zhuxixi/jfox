@@ -75,3 +75,31 @@ def test_iter_messages_skips_non_conversation_lines(tmp_path):
     )
     msgs = list(_iter_messages(p))
     assert len(msgs) == 1  # 只 yield user/assistant
+
+
+def test_extract_prefers_exact_substring_over_earlier_prefix(tmp_path):
+    """早先消息仅共享前缀（不含完整锚点子串）时，精确子串匹配优先。
+
+    锚点 >40 字符：早先消息以锚点前 40 字符开头但随后分歧——既满足前缀匹配、
+    又因只共享前 40 字符而不含完整锚点子串；旧实现（`anchor in full or
+    full.startswith(prefix)` + break）会因前缀短路而误取早先消息，新实现
+    两轮先精确后前缀，命中后面那条。
+    """
+    p = tmp_path / "t.jsonl"
+    # 长锚点（>40 字符），保证 anchor[:40] 是真前缀、非完整锚点
+    anchor = "这是一个需要超过四十个字符长度的锚点文本用来区分精确子串匹配与前缀匹配两种策略的场景XYZ结束"
+    assert len(anchor) > 40
+    prefix_only = anchor[:40] + "AAA早先独有后缀"
+    exact_msg = "用户提问：" + anchor + "，请问怎么办？"
+    _write(
+        p,
+        [
+            _user(prefix_only, "2026-06-21T06:24:00"),
+            _assistant("r0", "2026-06-21T06:24:10"),
+            _user(exact_msg, "2026-06-21T06:26:00"),
+            _assistant("最终回复", "2026-06-21T06:26:10"),
+        ],
+    )
+    turn = extract_turn_around(p, anchor_user_text=anchor)
+    assert "最终回复" in turn
+    assert "AAA早先独有后缀" not in turn

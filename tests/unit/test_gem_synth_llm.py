@@ -45,3 +45,21 @@ def test_synthesize_returns_none_on_invalid_json():
 def test_synthesize_returns_none_on_exception():
     with patch("jfox.gem_synth.llm._invoke_claude", side_effect=RuntimeError("boom")):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None
+
+
+def test_invoke_claude_cmd_restricts_tools():
+    """合成 claude 调用必须禁用工具（--allowed-tools ''）防注入"""
+    import jfox.gem_synth.llm as llm_mod
+
+    captured_cmd = {}
+
+    def fake_run(cmd, **kw):
+        captured_cmd["cmd"] = cmd
+        return type("R", (), {"returncode": 0, "stdout": '{"result": "{}"}', "stderr": ""})()
+
+    with patch.object(llm_mod.subprocess, "run", side_effect=fake_run):
+        llm_mod._invoke_claude("prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None))
+    assert "--allowed-tools" in captured_cmd["cmd"]
+    # 紧跟空字符串
+    idx = captured_cmd["cmd"].index("--allowed-tools")
+    assert captured_cmd["cmd"][idx + 1] == ""

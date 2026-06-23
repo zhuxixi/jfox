@@ -84,3 +84,17 @@ def test_non_candidate_to_dict_has_no_candidate_fields():
     d = note.to_dict()
     assert "gem_level" not in d
     assert "confidence" not in d
+
+
+def test_from_markdown_confidence_int_becomes_float():
+    """YAML 解析 confidence: 1 得到 int，from_markdown 应强制转 float"""
+    md = (
+        "---\n"
+        "id: '20260621143000'\ntitle: t\ntype: candidate\n"
+        "created: '2026-06-21T14:30:00'\nupdated: '2026-06-21T14:30:00'\n"
+        "gem_level: flawed\nconfidence: 1\n"
+        "---\n\n# t\n"
+    )
+    note = Note.from_markdown(md)
+    assert note.confidence == 1.0
+    assert isinstance(note.confidence, float)
