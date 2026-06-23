@@ -108,3 +108,42 @@ def test_show_nonexistent_id_graceful():
     result = CliRunner().invoke(candidates_app, ["show", "99999999999999-1"])
     assert result.exit_code == 1
     assert "找不到" in result.stdout or "Traceback" not in (result.stdout + result.output)
+
+
+def test_list_limit_clamped():
+    """list --limit 非正值（0 或负）应回退默认 50，exit 0 不崩。
+
+    回归：未 clamp 时 limit<=0 使 fetch_limit=0，list_notes 拉不到任何笔记，
+    虽不会抛错但行为错误；clamp 后应与默认等价。
+    """
+    # 空库下，limit=-5 应与默认行为一致（exit 0，输出 0 条）
+    result_neg = CliRunner().invoke(candidates_app, ["list", "--limit", "-5"])
+    assert result_neg.exit_code == 0
+
+    result_zero = CliRunner().invoke(candidates_app, ["list", "--limit", "0"])
+    assert result_zero.exit_code == 0
+
+
+def test_list_json_error_structure():
+    """list 读取失败且 --format json 时，应输出结构化 JSON 错误（AGENTS.md 约定）。
+
+    通过 monkeypatch 让 list_notes 抛错触发 except 分支，验证输出为
+    {"success": false, "error": ...} 而非红色提示文本。
+    """
+    # list_cmd 函数体内 `from ..note import list_notes` 在调用时解析，
+    # 故 patch jfox.note.list_notes 模块属性即可生效。
+    import jfox.note as note_mod
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom-for-test")
+
+    orig_list_notes = note_mod.list_notes
+    note_mod.list_notes = _boom
+    try:
+        result = CliRunner().invoke(candidates_app, ["list", "--format", "json"])
+        assert result.exit_code == 1
+        data = json.loads(result.stdout)
+        assert data["success"] is False
+        assert "boom-for-test" in data["error"]
+    finally:
+        note_mod.list_notes = orig_list_notes

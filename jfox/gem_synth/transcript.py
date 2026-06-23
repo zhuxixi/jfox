@@ -29,8 +29,9 @@ def _iter_messages(transcript_path: Path) -> Iterator[dict]:
     except FileNotFoundError:
         logger.warning("transcript 不存在: %s", transcript_path)
         return
-    except Exception as e:
-        logger.exception("读 transcript 异常 %s: %s", transcript_path, e)
+    except (OSError, UnicodeDecodeError) as e:
+        # 文件读取层预期失败（权限/编码等），用 warning 而非 exception 标记
+        logger.warning("读 transcript 异常 %s: %s", transcript_path, e)
         return
 
 

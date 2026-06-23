@@ -35,7 +35,11 @@ def show_cmd(
         try:
             note = load_note_by_id(note_id)
         except Exception as e:
-            console.print(f"[red]读取 candidate 失败：{e}[/red]")
+            # --format json 时输出结构化错误（AGENTS.md 约定），否则打印红色提示
+            if output_format == "json":
+                typer.echo(_json.dumps({"success": False, "error": str(e)}, ensure_ascii=False))
+            else:
+                console.print(f"[red]读取 candidate 失败：{e}[/red]")
             raise typer.Exit(code=1)
         if note is None:
             console.print(f"[red]找不到笔记 ID={note_id}[/red]")
@@ -76,6 +80,10 @@ def list_cmd(
     from ..models import NoteType
     from ..note import list_notes
 
+    # 非正 --limit（0 或负值）回退默认，避免 fetch_limit 变 0 拉不到数据
+    if limit < 1:
+        limit = 50
+
     with use_kb(kb):
         # 多取一些再在内存里按 status/confidence 过滤（这些字段在 frontmatter，索引层不过滤）
         fetch_limit = limit * 3 if limit > 0 else limit
@@ -83,7 +91,11 @@ def list_cmd(
             notes = list_notes(note_type=NoteType.CANDIDATE, limit=fetch_limit)
         except Exception as e:
             # 未初始化/空库应返回空列表而非抛错；真正读取失败才报错退出
-            console.print(f"[red]读取 candidate 失败：{e}[/red]")
+            # --format json 时输出结构化错误（AGENTS.md 约定），否则打印红色提示
+            if output_format == "json":
+                typer.echo(_json.dumps({"success": False, "error": str(e)}, ensure_ascii=False))
+            else:
+                console.print(f"[red]读取 candidate 失败：{e}[/red]")
             raise typer.Exit(code=1)
 
         rows = []
