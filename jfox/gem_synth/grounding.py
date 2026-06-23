@@ -1,21 +1,21 @@
 """检索 permanent 笔记 top-K，作为合成基准（防幻觉佐证）。"""
 
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from ..search_engine import HybridSearchEngine, SearchMode
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_grounding(query: str, top_k: int = 5, kb: Optional[str] = None) -> List[Dict]:
+def fetch_grounding(query: str, top_k: int = 5) -> List[Dict]:
     """返回 [{title, content, id, score}]，仅 permanent 笔记。空查询或异常返回 []。
 
     结果字典结构适配 search_engine 实际返回（顶层 id/document/metadata.title/score），
     同时兼容 mock 中使用的顶层 title/content。
 
-    注：kb 参数保留以维持 API 稳定，但此处不再 use_kb——调用方（daemon loop 的
-    _tick_once 外层已 use_kb(cfg.target_kb)）负责 KB 上下文。此处再 use_kb 会每锚点
+    注：调用方必须处于正确的 KB 上下文（daemon loop 的 _tick_once 外层
+    use_kb(cfg.target_kb) 已切换）。此处不再内部 use_kb——再 use_kb 会每锚点
     _reset_singletons（重载 embedding 模型 30-60s）。独立调用方需自行 use_kb 包裹。
     """
     if not (query or "").strip():

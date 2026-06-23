@@ -168,3 +168,90 @@ def test_invoke_claude_drains_stderr_no_deadlock():
             "prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None)
         )
     assert "result" in out
+
+
+def test_invoke_claude_drains_stdout_no_deadlock():
+    """stdout 后台排空：输出 > 64KB 时不阻塞、能完整返回。
+
+    TDD（cc#4）：R2 只排空 stderr，大 JSON 输出写满 stdout 管道缓冲会让 claude
+    阻塞在 write，poll() 永不返回 → 退化成超时。drainer 线程对称排空 stdout，
+    poll 返回 0 → 从累积块拼接返回完整内容。
+    """
+    import jfox.gem_synth.llm as llm_mod
+
+    # > 64KB 的 stdout 内容，验证排空路径不挂起
+    big_payload = '{"result": "' + "x" * (70 * 1024) + '"}'
+
+    class BigStdoutPopen:
+        def __init__(self, cmd, **kw):
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO(big_payload)
+            self.stderr = io.StringIO("")
+            self.pid = 12345
+            self._polled = False
+
+        def poll(self):
+            if not self._polled:
+                self._polled = True
+                return None
+            return 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    with (
+        patch.object(llm_mod.subprocess, "Popen", side_effect=BigStdoutPopen),
+        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.time, "sleep"),
+    ):
+        out = llm_mod._invoke_claude(
+            "prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None)
+        )
+    # 完整内容被 drainer 排空后拼接返回，无截断、无挂起
+    assert out == big_payload
+
+
+def test_invoke_claude_finally_kills_on_unexpected_exception():
+    """finally 兜底 kill：非 RuntimeError/TimeoutError 的意外异常（如 OSError）也必须杀进程组。
+
+    TDD（kimi#1/cc#3）：R2 的 except (RuntimeError, TimeoutError) 只覆盖两类异常，
+    其它异常路径（OSError 等）跳过 kill → 孤儿进程。新实现 finally 为单一 kill 权威点：
+    只要 poll() is None 就 kill，覆盖任意异常路径。
+    """
+    import jfox.gem_synth.llm as llm_mod
+
+    class HangingPopen:
+        def __init__(self, cmd, **kw):
+            self.stdin = io.StringIO()
+            self.stdout = io.StringIO("")
+            self.stderr = io.StringIO("")
+            self.pid = 12345
+
+        def poll(self):
+            return None  # 进程始终未退出 → finally 必杀
+
+        def wait(self, timeout=None):
+            return 0
+
+    # monotonic 第一次调用算 deadline（正常返回），第二次（while 循环内）抛 OSError
+    monotonic_state = {"first": True}
+
+    def fake_monotonic():
+        if monotonic_state["first"]:
+            monotonic_state["first"] = False
+            return 1000.0
+        raise OSError("unexpected")
+
+    with (
+        patch.object(llm_mod.subprocess, "Popen", side_effect=HangingPopen),
+        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.os, "killpg") as mock_killpg,
+        patch.object(llm_mod.time, "sleep"),
+        patch.object(llm_mod.time, "monotonic", side_effect=fake_monotonic),
+    ):
+        with pytest.raises(OSError, match="unexpected"):
+            llm_mod._invoke_claude(
+                "prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None)
+            )
+    # OSError 路径也触发 kill（finally 兜底，非仅 RuntimeError/TimeoutError）
+    assert mock_killpg.called

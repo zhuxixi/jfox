@@ -26,7 +26,7 @@ def test_fetch_grounding_returns_top_k():
     with patch("jfox.gem_synth.grounding.HybridSearchEngine") as Mock:
         inst = Mock.return_value
         inst.search.return_value = fake
-        out = fetch_grounding("锚点", top_k=2, kb="default")
+        out = fetch_grounding("锚点", top_k=2)
     assert [g["title"] for g in out] == ["笔记A", "笔记B"]
     inst.search.assert_called_once()
     _, kwargs = inst.search.call_args
@@ -35,13 +35,13 @@ def test_fetch_grounding_returns_top_k():
 
 def test_fetch_grounding_empty_query_returns_empty():
     with patch("jfox.gem_synth.grounding.HybridSearchEngine"):
-        assert fetch_grounding("", top_k=5, kb="default") == []
+        assert fetch_grounding("", top_k=5) == []
 
 
 def test_fetch_grounding_handles_exception():
     with patch("jfox.gem_synth.grounding.HybridSearchEngine") as Mock:
         Mock.return_value.search.side_effect = RuntimeError("boom")
-        assert fetch_grounding("x", top_k=5, kb="default") == []
+        assert fetch_grounding("x", top_k=5) == []
 
 
 def test_fetch_grounding_filters_out_non_permanent():
@@ -52,7 +52,7 @@ def test_fetch_grounding_filters_out_non_permanent():
     ]
     with patch("jfox.gem_synth.grounding.HybridSearchEngine") as Mock:
         Mock.return_value.search.return_value = fake
-        out = fetch_grounding("x", top_k=5, kb="default")
+        out = fetch_grounding("x", top_k=5)
     titles = [g["title"] for g in out]
     assert "永久A" in titles and "临时B" not in titles
 
@@ -69,6 +69,6 @@ def test_fetch_grounding_drops_missing_type_metadata():
     ]
     with patch("jfox.gem_synth.grounding.HybridSearchEngine") as Mock:
         Mock.return_value.search.return_value = fake
-        out = fetch_grounding("x", top_k=5, kb="default")
+        out = fetch_grounding("x", top_k=5)
     titles = [g["title"] for g in out]
     assert "永久B" in titles and "无类型A" not in titles

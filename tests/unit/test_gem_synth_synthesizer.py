@@ -38,9 +38,7 @@ def test_synthesize_anchor_produces_candidate_note(tmp_path):
             return_value="candidate_20260621143000",
         ),
     ):
-        result = synthesize_anchor(
-            _anchor(42, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5), kb="default"
-        )
+        result = synthesize_anchor(_anchor(42, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5))
     assert result is not None
     assert result["candidate_note_id"] == "candidate_20260621143000"
     assert result["title"] == "用 patch 而非 sed"
@@ -54,9 +52,7 @@ def test_synthesize_anchor_skips_when_llm_returns_none(tmp_path):
         patch("jfox.gem_synth.synthesizer.fetch_grounding", return_value=[]),
         patch("jfox.gem_synth.synthesizer.synthesize_with_llm", return_value=None),
     ):
-        result = synthesize_anchor(
-            _anchor(43, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5), kb="default"
-        )
+        result = synthesize_anchor(_anchor(43, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5))
     assert result is None
     assert log.is_processed(43) is False  # 失败不记账，下轮可重试
 
@@ -65,7 +61,7 @@ def test_synthesize_anchor_skips_when_no_transcript(tmp_path):
     log = SynthesisLog(db_path=tmp_path / "syn.db")
     a = _anchor(44, tmp_path)
     a["transcript_path"] = None
-    assert synthesize_anchor(a, log=log, cfg=MagicMock(grounding_top_k=5), kb="default") is None
+    assert synthesize_anchor(a, log=log, cfg=MagicMock(grounding_top_k=5)) is None
 
 
 def test_synthesize_handles_non_numeric_confidence(tmp_path):

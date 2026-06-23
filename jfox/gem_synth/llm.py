@@ -100,14 +100,15 @@ def _invoke_claude(
     cfg: GemSynthesisConfig,
     stop_event: Optional[threading.Event] = None,
 ) -> str:
-    """调用 claude -p，返回 stdout。支持 stop_event 中断 + 超时；后台排空 stderr 防死锁。
+    """调用 claude -p，返回 stdout。后台排空 stdout+stderr 防管道死锁；finally 兜底 kill 防孤儿。
 
-    stderr 用后台线程持续读取，避免 claude 写满 stderr 管道缓冲（~64KB）后阻塞死锁
-    （旧实现仅在 rc!=0 时读 stderr，正常路径 claude 写满缓冲会导致 poll() 永不返回，
-    退化成 180s 超时——回归 subprocess.run 的 communicate() 缺陷）。
+    stdout 和 stderr 都用后台线程持续读取：任一管道缓冲（~64KB）写满都会让 claude
+    阻塞在 write 上，导致 poll() 永不返回 → 退化成超时（同 communicate() 缺陷类）。
+    R2 只排空 stderr，大 JSON 输出（>64KB）写满 stdout 仍会死锁——此处对称排空两条管道。
 
     start_new_session=True 使 claude 及 node helper 成独立进程组，killpg 一并清理，
-    避免孤儿。getpgid 在 try 内执行（进程若已退出则 pgid=None，后续走 proc.kill 兜底）。
+    避免孤儿。finally 为单一 kill 权威点：只要进程还活着（poll() is None）就 kill 进程组，
+    覆盖任意异常路径（不仅 RuntimeError/TimeoutError，含 OSError 等意外异常）。
 
     env 隔离：清除 JFOX_KB / JFOX_DAEMON_PROCESS 等会干扰子进程的变量，避免 claude
     子进程意外连到 jfox daemon 或写到错误 KB（沿用既有安全修复）。
@@ -140,18 +141,21 @@ def _invoke_claude(
         env=env,
         start_new_session=True,
     )
-    # 后台线程持续排空 stderr，防止管道缓冲写满导致 claude 阻塞死锁
+    # 后台线程持续排空 stdout + stderr，防止任一管道缓冲写满（~64KB）导致 claude 阻塞死锁
+    stdout_chunks: list = []
     stderr_chunks: list = []
 
-    def _drain_stderr() -> None:
+    def _drain(pipe, sink) -> None:
         try:
-            for chunk in iter(lambda: proc.stderr.read(4096), ""):
-                stderr_chunks.append(chunk)
+            for chunk in iter(lambda: pipe.read(4096), ""):
+                sink.append(chunk)
         except Exception:
             pass
 
-    drainer = threading.Thread(target=_drain_stderr, daemon=True)
-    drainer.start()
+    out_drainer = threading.Thread(target=_drain, args=(proc.stdout, stdout_chunks), daemon=True)
+    err_drainer = threading.Thread(target=_drain, args=(proc.stderr, stderr_chunks), daemon=True)
+    out_drainer.start()
+    err_drainer.start()
 
     pgid = None
     deadline = time.monotonic() + timeout
@@ -170,21 +174,23 @@ def _invoke_claude(
         while True:
             rc = proc.poll()
             if rc is not None:
-                drainer.join(timeout=2)
+                out_drainer.join(timeout=2)
+                err_drainer.join(timeout=2)
                 if rc != 0:
                     err = "".join(stderr_chunks)[:300]
                     raise RuntimeError(f"claude 退出码 {rc}: {err}")
-                return proc.stdout.read()
+                # stdout 由 drainer 线程拥有，从累积块拼接读取（不能 proc.stdout.read）
+                return "".join(stdout_chunks)
             if stop_event is not None and stop_event.is_set():
                 raise RuntimeError("claude 调用被中断（stop_event）")
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"claude 超时（{timeout}s）")
             time.sleep(0.5)
-    except (RuntimeError, TimeoutError):
-        # 单一 kill 点：中断/超时路径统一走这里（非零退出码的 RuntimeError 也命中）
-        _kill_proc_group(proc, pgid)
-        raise
     finally:
+        # 兜底：无论哪条异常路径（RuntimeError/TimeoutError/OSError/任意异常），
+        # 只要进程还活着就 kill 进程组，防孤儿。单一 kill 权威点，覆盖所有路径。
+        if proc.poll() is None:
+            _kill_proc_group(proc, pgid)
         # reap 僵尸 + 关闭所有管道，避免 FD 累积（旧实现未关 stdin/stdout/stderr）
         try:
             proc.wait(timeout=5)

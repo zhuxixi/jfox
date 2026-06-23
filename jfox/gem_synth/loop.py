@@ -57,7 +57,6 @@ def _tick_once(stop_event: threading.Event) -> str:
                         anchor,
                         log=log,
                         cfg=cfg,
-                        kb=cfg.target_kb,
                         stop_event=stop_event,
                     )
                     if result is not None:

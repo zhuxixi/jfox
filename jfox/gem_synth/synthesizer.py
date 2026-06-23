@@ -39,9 +39,7 @@ def _coerce_grounded_by(value) -> list:
     return []
 
 
-def _save_candidate_note(
-    llm_result: Dict[str, Any], anchor: Dict[str, Any], kb: Optional[str]
-) -> Optional[str]:
+def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> Optional[str]:
     """把 LLM 结果存成 candidate 笔记，返回 note id。失败返回 None。
 
     笔记落盘路径：<kb>/notes/candidate/<id>-<slug>.md（由 Note.filepath 根据
@@ -53,9 +51,8 @@ def _save_candidate_note(
     """
     try:
         now = datetime.now()
-        # 纯 14 位时间戳 id（约定）。合成在 daemon 串行循环中执行，单次合成 >1s，
-        # 同秒碰撞概率近乎零；-fragment_id 后缀破坏了纯数字 id 约定，故回退。
-        note_id = now.strftime("%Y%m%d%H%M%S")
+        # 时间戳 + 微秒，避免同秒碰撞（candidate 不进 note_index，14 位约定不适用）
+        note_id = now.strftime("%Y%m%d%H%M%S") + "-" + now.strftime("%f")
         title = llm_result.get("title") or "未命名候选宝石"
         content = llm_result.get("content") or ""
 
@@ -88,14 +85,14 @@ def _save_candidate_note(
             knowledge_type=llm_result.get("knowledge_type"),
             status="pending",
         )
-        _persist_note(note, kb)
+        _persist_note(note)
         return note_id
     except Exception as e:
         logger.exception("保存 candidate 笔记失败: %s", e)
         return None
 
 
-def _persist_note(note: Note, kb: Optional[str]) -> None:
+def _persist_note(note: Note) -> None:
     """实际落盘。封装一层适配 note.py 的 save API。
 
     不再 use_kb(kb)：调用方（daemon loop 的 _tick_once 外层 use_kb(cfg.target_kb)）
@@ -103,7 +100,6 @@ def _persist_note(note: Note, kb: Optional[str]) -> None:
     add_to_index=False：避免在 daemon 进程里意外触发向量/BM25 索引（candidate 是
     待审草稿，索引可由 Phase G/H 或显式 reindex 补上）。
     """
-    # kb 参数保留以维持签名稳定；KB 上下文由调用方负责
     ok = save_note(note, add_to_index=False)
     if not ok:
         raise RuntimeError(f"save_note 返回 False（note_id={note.id}）")
@@ -113,7 +109,6 @@ def synthesize_anchor(
     anchor: Dict[str, Any],
     log,
     cfg: GemSynthesisConfig,
-    kb: Optional[str] = None,
     stop_event: Optional[threading.Event] = None,
 ) -> Optional[Dict[str, Any]]:
     """合成单个锚点。成功返回 {candidate_note_id, title, confidence}，跳过/失败返回 None。
@@ -138,7 +133,7 @@ def synthesize_anchor(
         logger.info("锚点 #%s 提取不到上下文，跳过", anchor["fragment_id"])
         return None
 
-    grounding = fetch_grounding(anchor.get("content") or "", top_k=cfg.grounding_top_k, kb=kb)
+    grounding = fetch_grounding(anchor.get("content") or "", top_k=cfg.grounding_top_k)
 
     llm_result = synthesize_with_llm(
         turn_context=turn, grounding=grounding, cfg=cfg, stop_event=stop_event
@@ -150,7 +145,7 @@ def synthesize_anchor(
         )
         return None
 
-    note_id = _save_candidate_note(llm_result, anchor, kb)
+    note_id = _save_candidate_note(llm_result, anchor)
     if note_id is None:
         return None
 

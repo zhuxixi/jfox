@@ -48,7 +48,7 @@ def test_synthesize_one_anchor_produces_candidate(tmp_path):
             "gem_synthesis 未启用；先 `jfox config set gem_synthesis.enabled true` 并 daemon restart"
         )
 
-    result = synthesize_anchor(anchor, log=log, cfg=cfg, kb=None)
+    result = synthesize_anchor(anchor, log=log, cfg=cfg)
     assert result is not None
     assert result["candidate_note_id"]
     assert log.is_processed(fid)
