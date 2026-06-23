@@ -174,6 +174,19 @@ class NoteType(Enum):
     LITERATURE = "literature"   # 文献笔记 - 读书笔记
     PERMANENT = "permanent"     # 永久笔记 - 整理后的知识
     SESSION = "session"         # AI Agent 会话记录
+    CANDIDATE = "candidate"     # AI 合成的候选知识宝石（破损级，待 L5 审阅）
+```
+
+知识宝石等级（candidate / permanent 笔记的 `gem_level` frontmatter 字段）：
+
+```python
+class GemLevel(str, Enum):
+    """知识宝石等级：chipped→flawed→normal→flawless→perfect。L3 合成产出 flawed。"""
+    CHIPPED = "chipped"    # 碎裂 — raw 碎片（fragments.db，非笔记）
+    FLAWED = "flawed"      # 破损 — L3 合成的 candidate
+    NORMAL = "normal"      # 完整 — L4/L5 成熟后
+    FLAWLESS = "flawless"  # 完美
+    PERFECT = "perfect"    # 无暇 — 晋升 permanent 的候选终态
 ```
 
 各类型文件名格式：
