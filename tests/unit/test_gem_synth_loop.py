@@ -1,7 +1,7 @@
 """gem_synth 循环：_tick_once 编排（mock 各组件）。"""
 
 import threading
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from jfox.gem_synth.loop import _tick_once
 
@@ -35,7 +35,7 @@ def test_tick_enabled_processes_anchors():
                     "metadata": {},
                 }
             ],
-        ) as fa,
+        ),
         patch(
             "jfox.gem_synth.loop.synthesize_anchor",
             return_value={"candidate_note_id": "c1", "title": "T", "confidence": 0.8},

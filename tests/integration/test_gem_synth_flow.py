@@ -13,8 +13,8 @@ pytestmark = pytest.mark.integration
 def test_synthesize_one_anchor_produces_candidate(tmp_path):
     """用真实 fragment + 临时 transcript，跑 synthesizer 全链路（含真 claude 调用）。"""
     from jfox.fragment.store import FragmentStore
-    from jfox.gem_synth.synthesizer import synthesize_anchor
     from jfox.gem_synth.store import SynthesisLog
+    from jfox.gem_synth.synthesizer import synthesize_anchor
     from jfox.global_config import get_global_config_manager
 
     transcript = tmp_path / "t.jsonl"
