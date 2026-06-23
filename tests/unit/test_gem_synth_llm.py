@@ -1,7 +1,10 @@
 """LLM 调用封装测试（mock subprocess，不真调 claude）。"""
 
 import json
+import threading
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from jfox.gem_synth.llm import _build_prompt, synthesize_with_llm
 
@@ -48,18 +51,91 @@ def test_synthesize_returns_none_on_exception():
 
 
 def test_invoke_claude_cmd_restricts_tools():
-    """合成 claude 调用必须禁用工具（--allowed-tools ''）防注入"""
+    """合成 claude 调用必须禁用工具（--allowed-tools ''）防注入。
+
+    _invoke_claude 用 Popen + poll，故 mock subprocess.Popen。FakePopen.poll() 先返回
+    None（模拟进程在跑），下一次返回 0（结束），stdout.read() 给 JSON 包装。
+    """
     import jfox.gem_synth.llm as llm_mod
 
     captured_cmd = {}
 
-    def fake_run(cmd, **kw):
-        captured_cmd["cmd"] = cmd
-        return type("R", (), {"returncode": 0, "stdout": '{"result": "{}"}', "stderr": ""})()
+    class FakePopen:
+        def __init__(self, cmd, **kw):
+            captured_cmd["cmd"] = cmd
+            self.stdin = self
+            self.stdout = self
+            self.stderr = self
+            self.pid = 12345
+            self._polled = False
 
-    with patch.object(llm_mod.subprocess, "run", side_effect=fake_run):
+        def write(self, s):
+            pass
+
+        def close(self):
+            pass
+
+        def poll(self):
+            if not self._polled:
+                self._polled = True
+                return None
+            return 0
+
+        def read(self):
+            return '{"result": "{}"}'
+
+    with (
+        patch.object(llm_mod.subprocess, "Popen", side_effect=FakePopen),
+        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.time, "sleep"),
+    ):
         llm_mod._invoke_claude("prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None))
     assert "--allowed-tools" in captured_cmd["cmd"]
     # 紧跟空字符串
     idx = captured_cmd["cmd"].index("--allowed-tools")
     assert captured_cmd["cmd"][idx + 1] == ""
+
+
+def test_invoke_claude_interruptible_by_stop_event():
+    """stop_event 置位时，_invoke_claude 必须中断挂起的 claude 调用并杀进程组。
+
+    TDD：FakePopen.poll() 永远返回 None（claude 一直没退出），stop_event 预先 set，
+    应抛 RuntimeError 含"中断"，并调用 killpg 清理。
+    """
+    import jfox.gem_synth.llm as llm_mod
+
+    class HangingPopen:
+        def __init__(self, cmd, **kw):
+            self.stdin = self
+            self.stdout = self
+            self.stderr = self
+            self.pid = 12345
+
+        def write(self, s):
+            pass
+
+        def close(self):
+            pass
+
+        def poll(self):
+            return None  # claude 永不结束
+
+        def read(self):
+            return ""
+
+    ev = threading.Event()
+    ev.set()
+    with (
+        patch.object(llm_mod.subprocess, "Popen", side_effect=HangingPopen),
+        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.os, "killpg") as mock_killpg,
+        patch.object(llm_mod.time, "sleep"),
+    ):
+        with pytest.raises(RuntimeError, match="中断"):
+            llm_mod._invoke_claude(
+                "prompt",
+                MagicMock(claude_timeout_seconds=300, claude_binary=None),
+                stop_event=ev,
+            )
+    # killpg 被调（中断路径必杀进程组）
+    assert mock_killpg.called

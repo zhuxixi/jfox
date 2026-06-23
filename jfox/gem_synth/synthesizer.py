@@ -6,6 +6,7 @@ synthesize_anchor；本模块只负责"一个锚点 -> 一条 candidate"的单�
 """
 
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -107,7 +108,11 @@ def _persist_note(note: Note, kb: Optional[str]) -> None:
 
 
 def synthesize_anchor(
-    anchor: Dict[str, Any], log, cfg: GemSynthesisConfig, kb: Optional[str] = None
+    anchor: Dict[str, Any],
+    log,
+    cfg: GemSynthesisConfig,
+    kb: Optional[str] = None,
+    stop_event: Optional[threading.Event] = None,
 ) -> Optional[Dict[str, Any]]:
     """合成单个锚点。成功返回 {candidate_note_id, title, confidence}，跳过/失败返回 None。
 
@@ -117,6 +122,9 @@ def synthesize_anchor(
       3. fetch_grounding 检索 permanent 基准
       4. synthesize_with_llm 调 LLM；None → 跳过（不记账，下轮重试）
       5. _save_candidate_note 落盘 + log.mark_processed 记账
+
+    stop_event 透传给 synthesize_with_llm → _invoke_claude，使 daemon shutdown /
+    任务中断能在 claude 调用进行中触发（而非等满 timeout）。
     """
     transcript_path = anchor.get("transcript_path")
     if not transcript_path:
@@ -130,7 +138,9 @@ def synthesize_anchor(
 
     grounding = fetch_grounding(anchor.get("content") or "", top_k=cfg.grounding_top_k, kb=kb)
 
-    llm_result = synthesize_with_llm(turn_context=turn, grounding=grounding, cfg=cfg)
+    llm_result = synthesize_with_llm(
+        turn_context=turn, grounding=grounding, cfg=cfg, stop_event=stop_event
+    )
     if llm_result is None:
         logger.info(
             "锚点 #%s LLM 合成失败/无效，跳过（不记账，下轮重试）",

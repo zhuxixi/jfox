@@ -8,7 +8,10 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -58,11 +61,37 @@ def _build_prompt(turn_context: str, grounding: List[Dict[str, Any]]) -> str:
 请合成一条知识宝石。只输出 JSON。"""
 
 
-def _invoke_claude(prompt: str, cfg: GemSynthesisConfig) -> str:
-    """调用 claude -p，返回 stdout。
+def _kill_pgroup(pgid: int) -> None:
+    """SIGTERM 进程组，短暂等待后 SIGKILL 兜底。ProcessLookupError 忽略。
 
-    env 隔离：清除 JFOX_KB / JFOX_DAEMON_PROCESS 等会干扰子进程的变量，
-    避免 claude 子进程意外连到 jfox daemon 或写到错误 KB。
+    daemon 跑在 Linux 上；Windows 下 start_new_session/killpg/signal 语义不同，
+    Windows 兜底未实现（项目目前只跑 Linux daemon）。
+    """
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    time.sleep(0.3)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _invoke_claude(
+    prompt: str,
+    cfg: GemSynthesisConfig,
+    stop_event: Optional[threading.Event] = None,
+) -> str:
+    """调用 claude -p，返回 stdout。支持 stop_event 中断 + 超时 kill 整个进程组。
+
+    用 Popen + 周期 poll，使 daemon shutdown / stop_event 能在 claude 运行中中断
+    （subprocess.run 无法中断，task.cancel 对已在 executor 中的 run 无效，会阻塞到
+    timeout，默认 180s）。start_new_session=True 让 claude 及其 node helper 成独立
+    进程组，killpg 一并清理，避免孤儿（subprocess.run 的 timeout 只杀直接子进程）。
+
+    env 隔离：清除 JFOX_KB / JFOX_DAEMON_PROCESS 等会干扰子进程的变量，避免 claude
+    子进程意外连到 jfox daemon 或写到错误 KB（沿用既有安全修复）。
     """
     binary = _resolve_claude_binary(cfg)
     cmd = [
@@ -81,30 +110,63 @@ def _invoke_claude(prompt: str, cfg: GemSynthesisConfig) -> str:
     env = os.environ.copy()
     for noisy in ("JFOX_KB", "JFOX_DAEMON_PROCESS"):
         env.pop(noisy, None)
-    proc = subprocess.run(
+
+    timeout = max(30, cfg.claude_timeout_seconds)
+    proc = subprocess.Popen(
         cmd,
-        input=prompt,
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=cfg.claude_timeout_seconds,
         env=env,
+        start_new_session=True,
     )
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude 退出码 {proc.returncode}: {proc.stderr[:300]}")
-    return proc.stdout
+    pgid = os.getpgid(proc.pid)
+    deadline = time.monotonic() + timeout
+    try:
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError) as e:
+            # 进程可能已提前退出，继续走 poll 让 returncode 处理
+            logger.debug("子进程 stdin 写入失败（进程可能已退出）: %s", e)
+        while True:
+            rc = proc.poll()
+            if rc is not None:
+                if rc != 0:
+                    err = (proc.stderr.read() or "")[:300]
+                    raise RuntimeError(f"claude 退出码 {rc}: {err}")
+                return proc.stdout.read()
+            if stop_event is not None and stop_event.is_set():
+                _kill_pgroup(pgid)
+                raise RuntimeError("claude 调用被中断（stop_event）")
+            if time.monotonic() >= deadline:
+                _kill_pgroup(pgid)
+                raise TimeoutError(f"claude 超时（{timeout}s）")
+            time.sleep(0.5)
+    except Exception:
+        # 任何异常路径（中断/超时/非零退出码）兜底杀进程组，避免孤儿
+        _kill_pgroup(pgid)
+        raise
 
 
 def synthesize_with_llm(
-    turn_context: str, grounding: List[Dict[str, Any]], cfg: GemSynthesisConfig
+    turn_context: str,
+    grounding: List[Dict[str, Any]],
+    cfg: GemSynthesisConfig,
+    stop_event: Optional[threading.Event] = None,
 ) -> Optional[Dict[str, Any]]:
     """返回合成 dict（title/content/confidence/knowledge_type/grounded_by），失败返回 None。
 
     claude --output-format json 返回 {result: "..."} 包装，result 内才是模型 JSON 输出，
     故需两层解析。缺 title 或异常一律返回 None（调用方据此跳过/重试）。
+
+    stop_event 透传给 _invoke_claude，使 daemon shutdown / 任务中断能在 claude 调用
+    进行中触发（而非等满 timeout）。
     """
     try:
         prompt = _build_prompt(turn_context, grounding)
-        raw = _invoke_claude(prompt, cfg)
+        raw = _invoke_claude(prompt, cfg, stop_event)
         wrapper = json.loads(raw)
         inner = wrapper.get("result", raw) if isinstance(wrapper, dict) else raw
         parsed = json.loads(inner) if isinstance(inner, str) else inner

@@ -53,7 +53,13 @@ def _tick_once(stop_event: threading.Event) -> str:
                 if stop_event.is_set():
                     break
                 try:
-                    result = synthesize_anchor(anchor, log=log, cfg=cfg, kb=cfg.target_kb)
+                    result = synthesize_anchor(
+                        anchor,
+                        log=log,
+                        cfg=cfg,
+                        kb=cfg.target_kb,
+                        stop_event=stop_event,
+                    )
                     if result is not None:
                         success += 1
                 except Exception as e:
