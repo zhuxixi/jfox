@@ -82,4 +82,21 @@ def find_anchors(
     return result
 
 
-__all__ = ["find_anchors"]
+def count_anchors(fragments_db: Path, anchor_types: List[str]) -> int:
+    """高信号锚点总数（不区分是否已处理）—— status 命令算 pending 用。
+
+    复用 _anchor_where 构造 WHERE 子句；空 anchor_types 直接返回 0，
+    避免空 WHERE 拉全表（find_anchors 同样的早退约定）。
+    """
+    where = _anchor_where(anchor_types)
+    if not where:
+        return 0
+    conn = sqlite3.connect(str(fragments_db))
+    try:
+        row = conn.execute(f"SELECT COUNT(*) FROM session_fragments WHERE {where}").fetchone()
+    finally:
+        conn.close()
+    return int(row[0]) if row else 0
+
+
+__all__ = ["find_anchors", "count_anchors"]

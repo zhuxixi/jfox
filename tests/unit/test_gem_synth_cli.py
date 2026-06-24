@@ -147,3 +147,97 @@ def test_list_json_error_structure():
         assert "boom-for-test" in data["error"]
     finally:
         note_mod.list_notes = orig_list_notes
+
+
+# ----------------------------------------------------------------------------
+# jfox gem-synth status 命令（进度 pending/success/failed + 失败复核）
+# ----------------------------------------------------------------------------
+
+
+def test_gem_synth_status_shows_counts(tmp_path, monkeypatch):
+    """jfox gem-synth status 显示 pending/success/failed。
+
+    通过 JFOX_FRAGMENTS_DB / JFOX_SYNTHESIS_DB 环境变量隔离测试 DB。
+    """
+    from jfox.fragment.store import FragmentStore
+    from jfox.gem_synth.cli import gem_synth_app
+    from jfox.gem_synth.store import SynthesisLog
+
+    fdb = tmp_path / "f.db"
+    sdb = tmp_path / "syn.db"
+    monkeypatch.setenv("JFOX_FRAGMENTS_DB", str(fdb))
+    monkeypatch.setenv("JFOX_SYNTHESIS_DB", str(sdb))
+
+    store = FragmentStore(db_path=fdb)
+    store.insert("s", "correction", "UserPromptSubmit", "不对", {})
+    store.insert("s", "correction", "UserPromptSubmit", "错了", {})
+    store.insert("s", "correction", "UserPromptSubmit", "应该", {})
+    store.close()
+
+    log = SynthesisLog(db_path=sdb)
+    log.mark_processed(1, "c1")
+    log.mark_failed(2, "boom")
+    log.close()
+
+    result = CliRunner().invoke(gem_synth_app, ["status", "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["pending"] == 1
+    assert data["success"] == 1
+    assert data["failed"] == 1
+
+
+def test_gem_synth_status_table_runs(tmp_path, monkeypatch):
+    """status 默认 table 输出应 exit 0 不崩（空库场景）。"""
+    from jfox.gem_synth.cli import gem_synth_app
+
+    fdb = tmp_path / "f.db"
+    sdb = tmp_path / "syn.db"
+    monkeypatch.setenv("JFOX_FRAGMENTS_DB", str(fdb))
+    monkeypatch.setenv("JFOX_SYNTHESIS_DB", str(sdb))
+
+    # 触发 default_db_path() 建表（count_anchors 否则要 fragments 表存在）
+    from jfox.fragment.store import FragmentStore
+
+    store = FragmentStore(db_path=fdb)
+    store.close()
+
+    result = CliRunner().invoke(gem_synth_app, ["status"])
+    assert result.exit_code == 0
+    assert "合成进度" in result.output
+
+
+def test_gem_synth_status_failed_only(tmp_path, monkeypatch):
+    """status --failed 应列失败锚点（json）。"""
+    from jfox.fragment.store import FragmentStore
+    from jfox.gem_synth.cli import gem_synth_app
+    from jfox.gem_synth.store import SynthesisLog
+
+    fdb = tmp_path / "f.db"
+    sdb = tmp_path / "syn.db"
+    monkeypatch.setenv("JFOX_FRAGMENTS_DB", str(fdb))
+    monkeypatch.setenv("JFOX_SYNTHESIS_DB", str(sdb))
+
+    store = FragmentStore(db_path=fdb)
+    store.insert("s", "correction", "UserPromptSubmit", "不对", {})
+    store.close()
+
+    log = SynthesisLog(db_path=sdb)
+    log.mark_failed(1, "boom")
+    log.close()
+
+    result = CliRunner().invoke(gem_synth_app, ["status", "--failed", "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data["failed"]) == 1
+    assert data["failed"][0]["anchor_fragment_id"] == 1
+    assert data["failed"][0]["fail_reason"] == "boom"
+
+
+def test_gem_synth_status_help_lists_command():
+    """gem_synth_app --help 应列出 status 子命令。"""
+    from jfox.gem_synth.cli import gem_synth_app
+
+    result = CliRunner().invoke(gem_synth_app, ["--help"])
+    assert result.exit_code == 0
+    assert "status" in result.output

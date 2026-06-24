@@ -150,4 +150,90 @@ def list_cmd(
         console.print(table)
 
 
-__all__ = ["candidates_app"]
+__all__ = ["candidates_app", "gem_synth_app"]
+
+
+# ---------------------------------------------------------------------------
+# gem-synth status 子命令组：合成进度（pending/success/failed）+ 失败复核
+# ---------------------------------------------------------------------------
+
+gem_synth_app = typer.Typer(
+    name="gem-synth",
+    help="L3 宝石合成进度查看（pending/success/failed + 失败复核）",
+    no_args_is_help=True,
+)
+
+
+# 强制走子命令分发：单命令 Typer app 默认会被压平（直接当成单命令调用），
+# 导致 `gem-synth status` 把 status 当成命令的额外参数。空 callback 让 Typer
+# 始终在命令名这一层先解析，子命令（status 等）才能被识别。
+@gem_synth_app.callback()
+def _gem_synth_callback() -> None:
+    """L3 宝石合成进度查看（子命令分发入口）。"""
+    return None
+
+
+@gem_synth_app.command("status")
+def gem_synth_status(
+    failed_only: bool = typer.Option(False, "--failed", help="只列失败锚点（人工复核）"),
+    output_format: str = typer.Option("table", "--format", "-f", help="table, json"),
+) -> None:
+    """查看合成进度：待处理/成功/失败；--failed 列失败锚点"""
+    import json as _json_module
+
+    from ..fragment.store import default_db_path
+    from ..global_config import get_global_config_manager
+    from .anchors import count_anchors
+    from .store import SynthesisLog
+
+    cfg = get_global_config_manager().get_gem_synthesis_config()
+    log = SynthesisLog()
+    try:
+        counts = log.status_counts()
+        success = counts.get("success", 0)
+        failed = counts.get("failed", 0)
+        total = count_anchors(default_db_path(), anchor_types=cfg.anchor_types)
+        pending = max(0, total - success - failed)
+
+        if failed_only:
+            failed_list = log.list_failed()
+            if output_format == "json":
+                typer.echo(
+                    _json_module.dumps({"failed": failed_list}, ensure_ascii=False, indent=2)
+                )
+            else:
+                t = Table(title=f"失败锚点（共 {len(failed_list)} 条，人工复核）")
+                for c in ("碎片ID", "失败原因", "时间"):
+                    t.add_column(c)
+                for f in failed_list:
+                    t.add_row(
+                        str(f["anchor_fragment_id"]),
+                        f["fail_reason"] or "",
+                        str(f["synthesized_at"]),
+                    )
+                console.print(t)
+            return
+
+        if output_format == "json":
+            typer.echo(
+                _json_module.dumps(
+                    {"pending": pending, "success": success, "failed": failed, "total": total},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            console.print("[bold]合成进度[/bold]")
+            console.print(f"  待处理（pending）:  {pending}")
+            console.print(f"  成功（success）:    {success}")
+            console.print(f"  失败（failed）:     {failed}")
+            if failed:
+                console.print("[dim]用 `jfox gem-synth status --failed` 查看失败锚点[/dim]")
+    except Exception as e:
+        if output_format == "json":
+            typer.echo(_json_module.dumps({"success": False, "error": str(e)}, ensure_ascii=False))
+        else:
+            console.print(f"[red]读取合成进度失败：{e}[/red]")
+        raise typer.Exit(code=1)
+    finally:
+        log.close()
