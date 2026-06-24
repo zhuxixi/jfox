@@ -94,7 +94,7 @@ def test_tick_time_budget_stops_immediately_when_zero():
     }
     with (
         patch("jfox.gem_synth.loop.get_global_config_manager") as gm,
-        patch("jfox.gem_synth.loop.find_anchors", return_value=[fake_anchor]) as fa,
+        patch("jfox.gem_synth.loop.find_anchors", return_value=[fake_anchor]),
         patch(
             "jfox.gem_synth.loop.synthesize_anchor",
             return_value={"candidate_note_id": "c1"},
