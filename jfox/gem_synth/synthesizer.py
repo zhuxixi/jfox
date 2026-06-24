@@ -114,23 +114,26 @@ def synthesize_anchor(
     """合成单个锚点。成功返回 {candidate_note_id, title, confidence}，跳过/失败返回 None。
 
     流程：
-      1. 无 transcript_path → 跳过
-      2. extract_turn_around 抽不到上下文 → 跳过
+      1. 无 transcript_path → mark_failed 记账（不重试）
+      2. extract_turn_around 抽不到上下文 → mark_failed 记账（不重试）
       3. fetch_grounding 检索 permanent 基准
-      4. synthesize_with_llm 调 LLM；None → 跳过（不记账，下轮重试）
+      4. synthesize_with_llm 调 LLM；None → mark_failed 记账（不重试）
       5. _save_candidate_note 落盘 + log.mark_processed 记账
 
+    每条失败路径都调 log.mark_failed，使 daemon 过夜跑不会对坏锚点无限重试。
     stop_event 透传给 synthesize_with_llm → _invoke_claude，使 daemon shutdown /
     任务中断能在 claude 调用进行中触发（而非等满 timeout）。
     """
     transcript_path = anchor.get("transcript_path")
     if not transcript_path:
-        logger.info("锚点 #%s 无 transcript_path，跳过", anchor["fragment_id"])
+        logger.info("锚点 #%s 无 transcript_path，mark_failed", anchor["fragment_id"])
+        log.mark_failed(anchor["fragment_id"], "no transcript_path")
         return None
 
     turn = extract_turn_around(Path(transcript_path), anchor.get("content") or "")
     if not turn.strip():
-        logger.info("锚点 #%s 提取不到上下文，跳过", anchor["fragment_id"])
+        logger.info("锚点 #%s 提取不到上下文，mark_failed", anchor["fragment_id"])
+        log.mark_failed(anchor["fragment_id"], "empty transcript context")
         return None
 
     grounding = fetch_grounding(anchor.get("content") or "", top_k=cfg.grounding_top_k)
@@ -140,13 +143,15 @@ def synthesize_anchor(
     )
     if llm_result is None:
         logger.info(
-            "锚点 #%s LLM 合成失败/无效，跳过（不记账，下轮重试）",
+            "锚点 #%s LLM 合成失败/无效，mark_failed（不重试）",
             anchor["fragment_id"],
         )
+        log.mark_failed(anchor["fragment_id"], "llm synthesis failed")
         return None
 
     note_id = _save_candidate_note(llm_result, anchor)
     if note_id is None:
+        log.mark_failed(anchor["fragment_id"], "save candidate note failed")
         return None
 
     log.mark_processed(anchor_fragment_id=anchor["fragment_id"], candidate_note_id=note_id)
