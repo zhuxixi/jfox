@@ -170,10 +170,8 @@ async def _maybe_stop_gem_synth() -> None:
         except asyncio.TimeoutError:
             logger.warning("Daemon: gem-synthesis task 10s 内未退出，取消之")
             _gem_synth_task.cancel()
-            try:
-                await asyncio.gather(_gem_synth_task, return_exceptions=True)
-            except Exception as inner:
-                logger.warning("Daemon: 等待 gem-synthesis 取消时异常: %s", inner)
+            # return_exceptions=True 时 gather 不抛异常，无需 try/except
+            await asyncio.gather(_gem_synth_task, return_exceptions=True)
         except Exception as e:
             logger.warning("Daemon: 等待 gem-synthesis 退出时异常: %s", e)
             _gem_synth_task.cancel()
