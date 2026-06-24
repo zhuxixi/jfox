@@ -2,6 +2,19 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.2.0] - 2026-06-24
+
+### Features
+- L3 宝石合成（碎裂→破损 candidate 笔记，#249 Layer 3） (#274)
+
+### Fixes
+- **cc-plugin**: remove redundant hooks field from plugin.json (#280)
+
+### Changes
+- fix stale cc-plugin versioning note (3 places, current 0.4.0) (#281)
+
+[1.2.0]: https://github.com/zhuxixi/jfox/compare/v1.1.1...v1.2.0
+
 ## [1.1.1] - 2026-06-21
 
 ### Features
