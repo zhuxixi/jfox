@@ -85,7 +85,8 @@ def _kill_proc_group(proc: subprocess.Popen, pgid) -> None:
     time.sleep(0.3)
     if pgid is not None:
         try:
-            os.killpg(pgid, signal.SIGKILL)
+            # Windows 无 SIGKILL，退化为 SIGTERM（仅测试路径会触及；生产 daemon 跑 Linux）
+            os.killpg(pgid, getattr(signal, "SIGKILL", signal.SIGTERM))
         except ProcessLookupError:
             pass
     else:

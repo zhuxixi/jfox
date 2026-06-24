@@ -90,7 +90,7 @@ def test_invoke_claude_cmd_restricts_tools():
 
     with (
         patch.object(llm_mod.subprocess, "Popen", side_effect=FakePopen),
-        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.os, "getpgid", return_value=12345, create=True),
         patch.object(llm_mod.time, "sleep"),
     ):
         llm_mod._invoke_claude("prompt", MagicMock(claude_timeout_seconds=30, claude_binary=None))
@@ -125,8 +125,8 @@ def test_invoke_claude_interruptible_by_stop_event():
     ev.set()
     with (
         patch.object(llm_mod.subprocess, "Popen", side_effect=HangingPopen),
-        patch.object(llm_mod.os, "getpgid", return_value=12345),
-        patch.object(llm_mod.os, "killpg") as mock_killpg,
+        patch.object(llm_mod.os, "getpgid", return_value=12345, create=True),
+        patch.object(llm_mod.os, "killpg", create=True) as mock_killpg,
         patch.object(llm_mod.time, "sleep"),
     ):
         with pytest.raises(RuntimeError, match="中断"):
@@ -168,7 +168,7 @@ def test_invoke_claude_drains_stderr_no_deadlock():
 
     with (
         patch.object(llm_mod.subprocess, "Popen", side_effect=StderrPopen),
-        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.os, "getpgid", return_value=12345, create=True),
         patch.object(llm_mod.time, "sleep"),
     ):
         # 应正常返回 stdout，不挂起
@@ -209,7 +209,7 @@ def test_invoke_claude_drains_stdout_no_deadlock():
 
     with (
         patch.object(llm_mod.subprocess, "Popen", side_effect=BigStdoutPopen),
-        patch.object(llm_mod.os, "getpgid", return_value=12345),
+        patch.object(llm_mod.os, "getpgid", return_value=12345, create=True),
         patch.object(llm_mod.time, "sleep"),
     ):
         out = llm_mod._invoke_claude(
@@ -252,8 +252,8 @@ def test_invoke_claude_finally_kills_on_unexpected_exception():
 
     with (
         patch.object(llm_mod.subprocess, "Popen", side_effect=HangingPopen),
-        patch.object(llm_mod.os, "getpgid", return_value=12345),
-        patch.object(llm_mod.os, "killpg") as mock_killpg,
+        patch.object(llm_mod.os, "getpgid", return_value=12345, create=True),
+        patch.object(llm_mod.os, "killpg", create=True) as mock_killpg,
         patch.object(llm_mod.time, "sleep"),
         patch.object(llm_mod.time, "monotonic", side_effect=fake_monotonic),
     ):
