@@ -40,6 +40,7 @@ def _tick_once(stop_event: threading.Event) -> str:
     budget_seconds = cfg.interval_minutes * 60
     success = 0
     failed = 0
+    find_error = False  # find_anchors 抛异常 → 与"无锚点"区分（return msg 不同）
     try:
         # 整轮只切一次 KB（避免每锚点 use_kb → _reset_singletons 重载模型）
         with use_kb(cfg.target_kb):
@@ -56,13 +57,12 @@ def _tick_once(stop_event: threading.Event) -> str:
                     )
                 except Exception as e:
                     logger.exception("gem-synth 找锚点失败: %s", e)
+                    find_error = True
                     break
                 if not anchors:
                     break  # 无积压
                 try:
-                    result = synthesize_anchor(
-                        anchors[0], log=log, cfg=cfg, stop_event=stop_event
-                    )
+                    result = synthesize_anchor(anchors[0], log=log, cfg=cfg, stop_event=stop_event)
                     if result is not None:
                         success += 1
                     else:
@@ -71,9 +71,16 @@ def _tick_once(stop_event: threading.Event) -> str:
                     logger.exception(
                         "gem-synth 合成锚点 #%s 异常: %s", anchors[0].get("fragment_id"), e
                     )
+                    # 防止抛异常的锚点被反复取回 busy-loop：mark_failed 隔离它
+                    try:
+                        log.mark_failed(anchors[0]["fragment_id"], f"unhandled: {e}")
+                    except Exception:
+                        pass
                     failed += 1
     finally:
         log.close()
+    if find_error:
+        return f"find_anchors 异常提前终止（已处理 success={success} failed={failed}）"
     return f"本轮 success={success} failed={failed}（预算 {cfg.interval_minutes}min）"
 
 

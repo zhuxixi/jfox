@@ -37,15 +37,28 @@ class SynthesisLog:
         self._closed: bool = False
 
     def _maybe_migrate(self) -> None:
-        """旧表升级：补 status / fail_reason 列（1.2.0 前的表没有）。新表已含，跳过。"""
+        """旧表升级：补 status / fail_reason 列（1.2.0 前的表没有）。新表已含，跳过。
+
+        每个 ALTER 都包 try/except：daemon 与 status CLI 可能同时迁移同一库，
+        PRAGMA 看到列不存在 → 两进程都尝试 ALTER → 后者拿到 "duplicate column name"。
+        该错误视为已迁移完成（幂等），其余异常向上抛。
+        """
         # PRAGMA table_info 行：cid, name, type, notnull, dflt_value, pk → name 在第 1 列
         cols = {row[1] for row in self._conn.execute("PRAGMA table_info(synthesis_log)")}
         if "status" not in cols:
-            self._conn.execute(
-                "ALTER TABLE synthesis_log ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
-            )
+            try:
+                self._conn.execute(
+                    "ALTER TABLE synthesis_log ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
+                )
+            except Exception as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
         if "fail_reason" not in cols:
-            self._conn.execute("ALTER TABLE synthesis_log ADD COLUMN fail_reason TEXT")
+            try:
+                self._conn.execute("ALTER TABLE synthesis_log ADD COLUMN fail_reason TEXT")
+            except Exception as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
         self._conn.commit()
 
     def is_processed(self, anchor_fragment_id: int) -> bool:

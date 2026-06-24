@@ -91,3 +91,15 @@ def test_migration_adds_columns_to_old_table(tmp_path):
     log.mark_failed(2, "x")
     assert log.status_counts() == {"success": 1, "failed": 1}
     log.close()
+
+
+def test_migration_idempotent_when_columns_exist(tmp_path):
+    """列已存在时 _maybe_migrate 不应抛 duplicate column（多进程同时迁移场景）"""
+    from jfox.gem_synth.store import SynthesisLog
+
+    log = SynthesisLog(db_path=tmp_path / "s.db")  # 首次建表已含列
+    # 再开一次 → _maybe_migrate 看到 status/fail_reason 已存在 → 跳过，不抛
+    log2 = SynthesisLog(db_path=tmp_path / "s.db")
+    log2.status_counts()  # 不抛即通过
+    log.close()
+    log2.close()

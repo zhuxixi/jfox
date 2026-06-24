@@ -19,8 +19,12 @@ def _anchor_where(anchor_types: List[str]) -> str:
     if "decision" in anchor_types:
         clauses.append("fragment_type = 'decision'")
     if "ask_user_question" in anchor_types:
-        # AskUserQuestion 走 PostToolUse；用 metadata_json LIKE 粗筛，Python 里二次确认
-        clauses.append("(source_event = 'PostToolUse' AND metadata_json LIKE '%AskUserQuestion%')")
+        # AskUserQuestion 走 PostToolUse；用 json_extract 精确匹配 tool_name
+        # （SQL 层精确 → count_anchors 与 find_anchors 过滤一致；find_anchors 的
+        # Python 二次确认保留为无害冗余检查）
+        clauses.append(
+            "(source_event = 'PostToolUse' AND json_extract(metadata_json, '$.tool_name') = 'AskUserQuestion')"
+        )
     return "(" + " OR ".join(clauses) + ")" if clauses else ""
 
 

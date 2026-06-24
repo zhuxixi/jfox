@@ -76,6 +76,75 @@ def test_tick_synthesize_exception_does_not_crash():
     assert isinstance(msg, str)
 
 
+def test_tick_exception_marks_failed_no_busy_loop():
+    """synthesize_anchor 抛异常时，loop 必须 mark_failed 隔离坏锚点（不 busy-loop）"""
+    from jfox.gem_synth.loop import _tick_once
+
+    cfg = MagicMock(
+        enabled=True,
+        anchor_types=["correction"],
+        grounding_top_k=5,
+        target_kb=None,
+        interval_minutes=30,
+    )
+    call_count = {"n": 0}
+
+    def fake_find(*a, **k):
+        call_count["n"] += 1
+        # 第1次返回锚点，第2次+返回空（若没 mark_failed 会一直返回同一锚点 → 死循环）
+        return (
+            [
+                {
+                    "fragment_id": 99,
+                    "session_id": "s",
+                    "timestamp": "t",
+                    "content": "c",
+                    "transcript_path": "/x",
+                    "metadata": {},
+                }
+            ]
+            if call_count["n"] == 1
+            else []
+        )
+
+    mock_log = MagicMock()
+    mock_log.mark_failed = MagicMock()
+    with (
+        patch("jfox.gem_synth.loop.get_global_config_manager") as gm,
+        patch("jfox.gem_synth.loop.find_anchors", side_effect=fake_find),
+        patch("jfox.gem_synth.loop.synthesize_anchor", side_effect=RuntimeError("boom")),
+        patch("jfox.gem_synth.loop.SynthesisLog", return_value=mock_log),
+    ):
+        gm.return_value.get_gem_synthesis_config.return_value = cfg
+        msg = _tick_once(threading.Event())
+    # mark_failed 被调（坏锚点被隔离）
+    mock_log.mark_failed.assert_called()
+    assert "failed=1" in msg
+
+
+def test_tick_find_anchors_exception_distinct_message():
+    """find_anchors 抛异常时，返回 msg 应与'无锚点'区分（含 find_anchors 字样）"""
+    from jfox.gem_synth.loop import _tick_once
+
+    cfg = MagicMock(
+        enabled=True,
+        anchor_types=["correction"],
+        grounding_top_k=5,
+        target_kb=None,
+        interval_minutes=30,
+    )
+    mock_log = MagicMock()
+    with (
+        patch("jfox.gem_synth.loop.get_global_config_manager") as gm,
+        patch("jfox.gem_synth.loop.find_anchors", side_effect=RuntimeError("db locked")),
+        patch("jfox.gem_synth.loop.SynthesisLog", return_value=mock_log),
+    ):
+        gm.return_value.get_gem_synthesis_config.return_value = cfg
+        msg = _tick_once(threading.Event())
+    assert "find_anchors" in msg
+    assert "异常" in msg
+
+
 def test_tick_time_budget_stops_immediately_when_zero():
     """interval_minutes=0 → 预算 0，不处理任何锚点（时间检查在合成前）"""
     cfg = MagicMock()

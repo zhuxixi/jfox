@@ -186,9 +186,10 @@ def gem_synth_status(
     from .anchors import count_anchors
     from .store import SynthesisLog
 
-    cfg = get_global_config_manager().get_gem_synthesis_config()
-    log = SynthesisLog()
+    log = None  # 先声明，finally 安全引用（SynthesisLog 构造失败时仍要 close 守卫）
     try:
+        cfg = get_global_config_manager().get_gem_synthesis_config()
+        log = SynthesisLog()
         counts = log.status_counts()
         success = counts.get("success", 0)
         failed = counts.get("failed", 0)
@@ -230,10 +231,13 @@ def gem_synth_status(
             if failed:
                 console.print("[dim]用 `jfox gem-synth status --failed` 查看失败锚点[/dim]")
     except Exception as e:
+        # 错误响应用 ok（bool），与正常响应里的 success（int 计数）区分，避免语义冲突
         if output_format == "json":
-            typer.echo(_json_module.dumps({"success": False, "error": str(e)}, ensure_ascii=False))
+            typer.echo(_json_module.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))
         else:
             console.print(f"[red]读取合成进度失败：{e}[/red]")
         raise typer.Exit(code=1)
     finally:
-        log.close()
+        # log 可能为 None（构造时抛异常 → 上面 log = SynthesisLog() 未赋值成功）
+        if log is not None:
+            log.close()
