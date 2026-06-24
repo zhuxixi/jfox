@@ -57,9 +57,7 @@ def test_synthesize_anchor_skips_when_llm_returns_none(tmp_path):
     assert result is None
     assert log.is_processed(43) is True  # 失败也记账，下轮不重试
     failed = log.list_failed()
-    assert any(
-        f["anchor_fragment_id"] == 43 and "llm" in f["fail_reason"].lower() for f in failed
-    )
+    assert any(f["anchor_fragment_id"] == 43 and "llm" in f["fail_reason"].lower() for f in failed)
 
 
 def test_synthesize_anchor_skips_when_no_transcript(tmp_path):
@@ -70,9 +68,7 @@ def test_synthesize_anchor_skips_when_no_transcript(tmp_path):
     assert synthesize_anchor(a, log=log, cfg=MagicMock(grounding_top_k=5)) is None
     assert log.is_processed(44) is True
     failed = log.list_failed()
-    assert any(
-        f["anchor_fragment_id"] == 44 and "transcript" in f["fail_reason"] for f in failed
-    )
+    assert any(f["anchor_fragment_id"] == 44 and "transcript" in f["fail_reason"] for f in failed)
 
 
 def test_synthesize_marks_failed_when_no_transcript(tmp_path):
@@ -86,15 +82,11 @@ def test_synthesize_marks_failed_when_no_transcript(tmp_path):
         "transcript_path": None,
         "metadata": {},
     }
-    result = synthesize_anchor(
-        anchor, log=log, cfg=MagicMock(grounding_top_k=5), stop_event=None
-    )
+    result = synthesize_anchor(anchor, log=log, cfg=MagicMock(grounding_top_k=5), stop_event=None)
     assert result is None
     assert log.is_processed(44) is True  # failed 也算已处理
     failed = log.list_failed()
-    assert any(
-        f["anchor_fragment_id"] == 44 and "transcript" in f["fail_reason"] for f in failed
-    )
+    assert any(f["anchor_fragment_id"] == 44 and "transcript" in f["fail_reason"] for f in failed)
     log.close()
 
 
@@ -123,9 +115,7 @@ def test_synthesize_marks_failed_when_llm_none(tmp_path):
         )
     assert result is None
     failed = log.list_failed()
-    assert any(
-        f["anchor_fragment_id"] == 45 and "llm" in f["fail_reason"].lower() for f in failed
-    )
+    assert any(f["anchor_fragment_id"] == 45 and "llm" in f["fail_reason"].lower() for f in failed)
     log.close()
 
 
