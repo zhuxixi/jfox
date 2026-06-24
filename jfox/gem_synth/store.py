@@ -10,7 +10,9 @@ from .paths import default_synthesis_db_path
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS synthesis_log (
     anchor_fragment_id  INTEGER PRIMARY KEY,
-    candidate_note_id   TEXT NOT NULL,
+    candidate_note_id   TEXT,
+    status              TEXT NOT NULL DEFAULT 'success',
+    fail_reason         TEXT,
     synthesized_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -25,11 +27,26 @@ class SynthesisLog:
         # 同一进程内多线程读写的锁（sqlite3 连接默认 check_same_thread=True）
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+        # row_factory=Row 让结果行可用 r["col"] 访问；旧代码用 r[0] 仍兼容
+        self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
+        self._maybe_migrate()
         self._closed: bool = False
+
+    def _maybe_migrate(self) -> None:
+        """旧表升级：补 status / fail_reason 列（1.2.0 前的表没有）。新表已含，跳过。"""
+        # PRAGMA table_info 行：cid, name, type, notnull, dflt_value, pk → name 在第 1 列
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(synthesis_log)")}
+        if "status" not in cols:
+            self._conn.execute(
+                "ALTER TABLE synthesis_log ADD COLUMN status TEXT NOT NULL DEFAULT 'success'"
+            )
+        if "fail_reason" not in cols:
+            self._conn.execute("ALTER TABLE synthesis_log ADD COLUMN fail_reason TEXT")
+        self._conn.commit()
 
     def is_processed(self, anchor_fragment_id: int) -> bool:
         with self._lock:
@@ -56,10 +73,49 @@ class SynthesisLog:
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO synthesis_log "
-                "(anchor_fragment_id, candidate_note_id) VALUES (?, ?)",
+                "(anchor_fragment_id, candidate_note_id, status) VALUES (?, ?, 'success')",
                 (anchor_fragment_id, candidate_note_id),
             )
             self._conn.commit()
+
+    def mark_failed(self, anchor_fragment_id: int, fail_reason: str) -> None:
+        """失败锚点记账：status='failed' + 原因，candidate_note_id 留空。
+        记账后 is_processed 为 True → 不再重试（过夜跑不 thrash）。
+        """
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO synthesis_log "
+                "(anchor_fragment_id, candidate_note_id, status, fail_reason) "
+                "VALUES (?, '', 'failed', ?)",
+                (anchor_fragment_id, fail_reason),
+            )
+            self._conn.commit()
+
+    def status_counts(self) -> dict:
+        """返回 {status: count}，如 {'success': 3, 'failed': 1}。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT status, COUNT(*) AS n FROM synthesis_log GROUP BY status"
+            ).fetchall()
+        return {r["status"]: int(r["n"]) for r in rows}
+
+    def list_failed(self, limit: int = 100) -> List[dict]:
+        """返回失败锚点列表（最新在前），供 status --failed 人工复核。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT anchor_fragment_id, fail_reason, synthesized_at "
+                "FROM synthesis_log WHERE status = 'failed' "
+                "ORDER BY synthesized_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "anchor_fragment_id": r["anchor_fragment_id"],
+                "fail_reason": r["fail_reason"],
+                "synthesized_at": r["synthesized_at"],
+            }
+            for r in rows
+        ]
 
     def close(self) -> None:
         with self._lock:
