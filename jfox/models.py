@@ -23,6 +23,20 @@ def _to_bool(value: Any) -> bool:
     return bool(value)
 
 
+def _to_float(value, default=None):
+    """安全转 float，非数值返回 default。
+
+    YAML 解析出的 confidence 可能是 int（1）、str（"0.9"）或其它；统一成 float，
+    保证 dataclass 字段类型一致，避免后续比较/序列化歧义。
+    """
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class NoteType(Enum):
     """笔记类型"""
 
@@ -30,6 +44,17 @@ class NoteType(Enum):
     LITERATURE = "literature"  # 文献笔记
     PERMANENT = "permanent"  # 永久笔记
     SESSION = "session"  # AI Agent 会话记录
+    CANDIDATE = "candidate"  # AI 合成的候选知识宝石（破损级，待 L5 审阅）
+
+
+class GemLevel(str, Enum):
+    """知识宝石等级（碎裂→破损→完整→完美→无暇）。L3 仅产出 FLAWED。"""
+
+    CHIPPED = "chipped"  # 碎裂 — raw 碎片（fragments.db，非笔记）
+    FLAWED = "flawed"  # 破损 — L3 合成的 candidate
+    NORMAL = "normal"  # 完整 — L4/L5 成熟后
+    FLAWLESS = "flawless"  # 完美
+    PERFECT = "perfect"  # 无暇 — 晋升 permanent 的候选终态
 
 
 @dataclass
@@ -48,6 +73,14 @@ class Note:
     source: Optional[str] = None  # 来源（文献笔记）
     topic: Optional[str] = None  # 会话主题（session 类型）
     archived: bool = False  # 是否已归档（软删除标记）
+
+    # candidate 专属字段（仅 type=CANDIDATE 时序列化；其它类型忽略）
+    gem_level: Optional[str] = None
+    confidence: Optional[float] = None
+    source_fragments: List[int] = field(default_factory=list)
+    grounded_by: List[str] = field(default_factory=list)
+    knowledge_type: Optional[str] = None  # factual/procedural/preference/constraint
+    status: Optional[str] = None  # pending → (L5) promoted/rejected
 
     # 运行时字段（不持久化到 frontmatter）
     embedding: Optional[List[float]] = None  # 向量
@@ -104,12 +137,26 @@ class Note:
         if self.archived:
             frontmatter["archived"] = self.archived
 
+        # candidate 专属字段（仅 type=CANDIDATE 时写入 frontmatter）
+        if self.type == NoteType.CANDIDATE:
+            frontmatter["gem_level"] = self.gem_level or GemLevel.FLAWED.value
+            if self.confidence is not None:
+                frontmatter["confidence"] = self.confidence
+            if self.source_fragments:
+                frontmatter["source_fragments"] = self.source_fragments
+            if self.grounded_by:
+                frontmatter["grounded_by"] = self.grounded_by
+            if self.knowledge_type:
+                frontmatter["knowledge_type"] = self.knowledge_type
+            if self.status:
+                frontmatter["status"] = self.status
+
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
 
         return f"---\n{fm_yaml}---\n\n# {self.title}\n\n{self.content}\n"
 
     @classmethod
-    def from_markdown(cls, content: str, filepath: Path) -> "Note":
+    def from_markdown(cls, content: str, filepath: Optional[Path] = None) -> "Note":
         """从 Markdown 解析"""
         # 解析 frontmatter
         match = re.match(r"^---\n(.*?)\n---\n+(.*)", content, re.DOTALL)
@@ -153,11 +200,17 @@ class Note:
             source=fm.get("source"),
             topic=fm.get("topic"),
             archived=_to_bool(fm.get("archived", False)),
+            gem_level=fm.get("gem_level"),
+            confidence=_to_float(fm.get("confidence")),
+            source_fragments=fm.get("source_fragments", []),
+            grounded_by=fm.get("grounded_by", []),
+            knowledge_type=fm.get("knowledge_type"),
+            status=fm.get("status"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 JSON 输出）"""
-        return {
+        d = {
             "id": self.id,
             "title": self.title,
             "content": self.content[:200] + "..." if len(self.content) > 200 else self.content,
@@ -172,3 +225,17 @@ class Note:
             "hop": self.hop,
             "topic": self.topic,
         }
+        # candidate 专属字段（仅 type=CANDIDATE 时输出，与 to_markdown 保持一致）
+        if self.type == NoteType.CANDIDATE:
+            d["gem_level"] = self.gem_level or GemLevel.FLAWED.value
+            if self.confidence is not None:
+                d["confidence"] = self.confidence
+            if self.source_fragments:
+                d["source_fragments"] = self.source_fragments
+            if self.grounded_by:
+                d["grounded_by"] = self.grounded_by
+            if self.knowledge_type:
+                d["knowledge_type"] = self.knowledge_type
+            if self.status:
+                d["status"] = self.status
+        return d

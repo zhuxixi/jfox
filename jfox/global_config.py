@@ -180,6 +180,60 @@ class FragmentCaptureConfig:
 
 
 @dataclass
+class GemSynthesisConfig:
+    """L3 宝石合成配置（opt-in，默认关闭）"""
+
+    enabled: bool = False
+    interval_minutes: int = 30  # daemon 循环周期
+    anchor_types: List[str] = field(
+        default_factory=lambda: ["correction", "decision", "ask_user_question"]
+    )
+    grounding_top_k: int = 5  # 检索多少条 permanent 笔记做基准
+    target_kb: Optional[str] = None  # candidate 写入哪个 KB；None 用 default
+    claude_timeout_seconds: int = 180
+    claude_binary: Optional[str] = None  # None → 从 PATH 解析
+
+    def __post_init__(self) -> None:
+        if self.interval_minutes < 1:
+            self.interval_minutes = 30
+        if self.grounding_top_k < 1:
+            self.grounding_top_k = 5
+        if self.claude_timeout_seconds < 30:
+            self.claude_timeout_seconds = 180
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "GemSynthesisConfig":
+        if not data:
+            return cls()
+
+        # 安全 int：非数字字符串不应抛 ValueError（否则 GlobalConfigManager._load 的 except
+        # 会吞掉异常并重置整份全局配置——auto_summary、KB 列表、默认 KB 全失效）。
+        # 与 FragmentCaptureConfig / AutoSummaryConfig 保持一致的防御性解析。
+        def _safe_int(v, default):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return default
+
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            interval_minutes=_safe_int(data.get("interval_minutes"), 30),
+            anchor_types=(
+                list(data["anchor_types"])
+                if isinstance(data.get("anchor_types"), list)
+                else cls().anchor_types
+            ),
+            grounding_top_k=_safe_int(data.get("grounding_top_k"), 5),
+            target_kb=data.get("target_kb"),
+            claude_timeout_seconds=_safe_int(data.get("claude_timeout_seconds"), 180),
+            claude_binary=data.get("claude_binary"),
+        )
+
+
+@dataclass
 class GlobalConfig:
     """全局配置"""
 
@@ -187,6 +241,7 @@ class GlobalConfig:
     knowledge_bases: Dict[str, KnowledgeBaseEntry] = field(default_factory=dict)
     auto_summary: AutoSummaryConfig = field(default_factory=AutoSummaryConfig)
     fragment_capture: FragmentCaptureConfig = field(default_factory=FragmentCaptureConfig)
+    gem_synthesis: GemSynthesisConfig = field(default_factory=GemSynthesisConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -194,6 +249,7 @@ class GlobalConfig:
             "knowledge_bases": {name: kb.to_dict() for name, kb in self.knowledge_bases.items()},
             "auto_summary": self.auto_summary.to_dict(),
             "fragment_capture": self.fragment_capture.to_dict(),
+            "gem_synthesis": self.gem_synthesis.to_dict(),
         }
 
     @classmethod
@@ -207,6 +263,7 @@ class GlobalConfig:
             knowledge_bases=kbs,
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
             fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
+            gem_synthesis=GemSynthesisConfig.from_dict(data.get("gem_synthesis")),
         )
 
 
@@ -507,6 +564,19 @@ class GlobalConfigManager:
         current = asdict(config.fragment_capture)
         current.update({k: v for k, v in changes.items() if k in current})
         config.fragment_capture = FragmentCaptureConfig.from_dict(current)
+        self._config = config
+        return self._save()
+
+    def get_gem_synthesis_config(self) -> GemSynthesisConfig:
+        """获取 L3 宝石合成配置"""
+        return self._load().gem_synthesis
+
+    def update_gem_synthesis_config(self, **changes: Any) -> bool:
+        """更新宝石合成配置中的若干字段，未传入的字段保持原样"""
+        config = self._load()
+        current = asdict(config.gem_synthesis)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.gem_synthesis = GemSynthesisConfig.from_dict(current)
         self._config = config
         return self._save()
 

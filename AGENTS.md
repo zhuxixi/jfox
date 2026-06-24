@@ -47,6 +47,7 @@ jfox/
 │   ├── embedding_backend.py   # 嵌入模型后端（支持 daemon 代理）
 │   ├── daemon/                # Embedding 模型 HTTP 守护进程
 │   ├── fragment/              # 碎片采集（Hook → daemon API → SQLite）
+│   ├── gem_synth/             # L3 宝石合成（碎裂→破损 candidate 笔记，daemon 循环）
 │   ├── vector_store.py        # ChromaDB 向量存储
 │   ├── bm25_index.py          # BM25 关键词索引
 │   ├── search_engine.py       # 混合搜索引擎（RRF 融合）
@@ -163,6 +164,7 @@ uv run jfox --version
 | `indexer.py` | 文件监控（watchdog）+ 增量索引 |
 | `daemon/` | Embedding 模型 HTTP 守护进程（server/client/process） |
 | `fragment/` | 碎片采集：detector 分类 + store SQLite + service 编排 |
+| `gem_synth/` | L3 宝石合成：daemon 循环 + transcript 解析 + grounding 检索 + LLM 合成 |
 
 ### 笔记类型
 
@@ -172,6 +174,19 @@ class NoteType(Enum):
     LITERATURE = "literature"   # 文献笔记 - 读书笔记
     PERMANENT = "permanent"     # 永久笔记 - 整理后的知识
     SESSION = "session"         # AI Agent 会话记录
+    CANDIDATE = "candidate"     # AI 合成的候选知识宝石（破损级，待 L5 审阅）
+```
+
+知识宝石等级（candidate / permanent 笔记的 `gem_level` frontmatter 字段）：
+
+```python
+class GemLevel(str, Enum):
+    """知识宝石等级：chipped→flawed→normal→flawless→perfect。L3 合成产出 flawed。"""
+    CHIPPED = "chipped"    # 碎裂 — raw 碎片（fragments.db，非笔记）
+    FLAWED = "flawed"      # 破损 — L3 合成的 candidate
+    NORMAL = "normal"      # 完整 — L4/L5 成熟后
+    FLAWLESS = "flawless"  # 完美
+    PERFECT = "perfect"    # 无暇 — 晋升 permanent 的候选终态
 ```
 
 各类型文件名格式：
