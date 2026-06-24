@@ -10,6 +10,14 @@ import pytest
 from jfox.gem_synth.llm import _build_prompt, synthesize_with_llm
 
 
+@pytest.fixture(autouse=True)
+def _mock_resolve_claude_binary():
+    """CI 无 claude CLI；默认 mock _resolve_claude_binary，使 _invoke_claude 测试
+    不依赖 PATH 上有 claude 二进制（本地有、CI 没有会导致同一测试本地过 CI 红）。"""
+    with patch("jfox.gem_synth.llm._resolve_claude_binary", return_value="claude"):
+        yield
+
+
 def test_build_prompt_contains_context_and_grounding():
     prompt = _build_prompt(
         turn_context="用户说：不对，应该用 patch",
