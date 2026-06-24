@@ -1,5 +1,7 @@
 """gem_synth 循环：_tick_once 编排（mock 各组件）。"""
 
+import logging
+import sqlite3
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -143,6 +145,59 @@ def test_tick_find_anchors_exception_distinct_message():
         msg = _tick_once(threading.Event())
     assert "find_anchors" in msg
     assert "异常" in msg
+
+
+def test_tick_mark_failed_failure_logs_warning(caplog):
+    """mark_failed 自身失败时不应静默吞 → 记 warning 便于排查（cc R2#2）。
+
+    mark_failed 持续失败会让 busy-loop 防护静默失效且无日志。修复：except 记 warning。
+    """
+    from jfox.gem_synth.loop import _tick_once
+
+    cfg = MagicMock(
+        enabled=True,
+        anchor_types=["correction"],
+        grounding_top_k=5,
+        target_kb=None,
+        interval_minutes=30,
+    )
+    mock_log = MagicMock()
+    # mark_failed 自身抛（database locked / disk full 等）
+    mock_log.mark_failed = MagicMock(side_effect=sqlite3.OperationalError("database is locked"))
+    call_count = {"n": 0}
+
+    def fake_find(*a, **k):
+        call_count["n"] += 1
+        # 第1次返回锚点（触发 synthesize_anchor 抛异常 → 进 mark_failed 失败路径），之后空
+        return (
+            [
+                {
+                    "fragment_id": 7,
+                    "session_id": "s",
+                    "timestamp": "t",
+                    "content": "c",
+                    "transcript_path": "/x",
+                    "metadata": {},
+                }
+            ]
+            if call_count["n"] == 1
+            else []
+        )
+
+    with (
+        patch("jfox.gem_synth.loop.get_global_config_manager") as gm,
+        patch("jfox.gem_synth.loop.find_anchors", side_effect=fake_find),
+        patch("jfox.gem_synth.loop.synthesize_anchor", side_effect=RuntimeError("boom")),
+        patch("jfox.gem_synth.loop.SynthesisLog", return_value=mock_log),
+    ):
+        gm.return_value.get_gem_synthesis_config.return_value = cfg
+        with caplog.at_level(logging.WARNING, logger="jfox.gem_synth.loop"):
+            msg = _tick_once(threading.Event())
+    # mark_failed 被尝试调用（隔离坏锚点）
+    mock_log.mark_failed.assert_called()
+    # 失败被记 warning（不再静默吞）
+    assert any("mark_failed" in r.message for r in caplog.records)
+    assert "failed=1" in msg
 
 
 def test_tick_time_budget_stops_immediately_when_zero():

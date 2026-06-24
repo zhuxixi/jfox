@@ -21,9 +21,14 @@ def _anchor_where(anchor_types: List[str]) -> str:
     if "ask_user_question" in anchor_types:
         # AskUserQuestion 走 PostToolUse；用 json_extract 精确匹配 tool_name
         # （SQL 层精确 → count_anchors 与 find_anchors 过滤一致；find_anchors 的
-        # Python 二次确认保留为无害冗余检查）
+        # Python 二次确认保留为无害冗余检查）。
+        # CASE WHEN json_valid 守卫：json_extract 对非法 JSON 抛 OperationalError（实测
+        # SQLite 3.45），WHERE 中只要结果集任一行 metadata_json 非法整查询即崩 →
+        # count_anchors(status) 崩 / find_anchors(daemon) 每 tick 抛。json_valid 不抛，
+        # CASE 只在 JSON 合法时才求值 json_extract；历史脏数据/写入中断的非法行被跳过。
         clauses.append(
-            "(source_event = 'PostToolUse' AND json_extract(metadata_json, '$.tool_name') = 'AskUserQuestion')"
+            "(source_event = 'PostToolUse' AND CASE WHEN json_valid(metadata_json) "
+            "THEN json_extract(metadata_json, '$.tool_name') = 'AskUserQuestion' END)"
         )
     return "(" + " OR ".join(clauses) + ")" if clauses else ""
 
@@ -66,7 +71,12 @@ def find_anchors(
     for r in rows:
         if r["fragment_id"] not in unprocessed:
             continue
-        md = json.loads(r["metadata_json"] or "{}")
+        try:
+            md = json.loads(r["metadata_json"] or "{}")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # 历史脏数据/写入中断的非法 metadata_json（correction/decision 行不走
+            # json_valid 守卫）：降级为空 metadata，不崩整查询（cc R2#1 同类健壮性）
+            md = {}
         # ask_user_question 精确二次确认（避免 LIKE 误命中正文）
         is_ask = md.get("tool_name") == "AskUserQuestion"
         if r["fragment_type"] not in ("correction", "decision") and not is_ask:

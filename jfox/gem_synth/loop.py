@@ -74,8 +74,14 @@ def _tick_once(stop_event: threading.Event) -> str:
                     # 防止抛异常的锚点被反复取回 busy-loop：mark_failed 隔离它
                     try:
                         log.mark_failed(anchors[0]["fragment_id"], f"unhandled: {e}")
-                    except Exception:
-                        pass
+                    except Exception as me:
+                        # mark_failed 自身失败（database locked / disk full / conn closed）
+                        # → busy-loop 防护实际未生效。记 warning 便于排查，不再静默吞（cc R2#2）
+                        logger.warning(
+                            "gem-synth mark_failed 失败，锚点 #%s 可能被重试: %s",
+                            anchors[0].get("fragment_id"),
+                            me,
+                        )
                     failed += 1
     finally:
         log.close()
