@@ -636,7 +636,7 @@ def _add_note_impl(
                 console.print(
                     f"  [red]Warning: Forward link rollback failed for "
                     f"{len(rollback_failures)} note(s): {', '.join(rollback_failures)}. "
-                    f"Run 'jfox rebuild --backlinks' to repair.[/red]"
+                    f"Run 'jfox index rebuild --backlinks' to repair.[/red]"
                 )
             if unresolved:
                 console.print(
