@@ -526,6 +526,7 @@ def _add_note_impl(
         original_backlinks_count = len(new_note.backlinks)
         forward_backfilled = 0
         failed_refs: List[str] = []
+        backfilled_ref_ids: List[str] = []
         for ref_meta in idx.find_notes_referencing_title(new_note.title):
             if ref_meta.id == new_note.id:
                 continue
@@ -548,6 +549,7 @@ def _add_note_impl(
             if note.save_note(ref_note, add_to_index=False):
                 forward_backfilled += 1
                 idx.update_note_meta(ref_note)
+                backfilled_ref_ids.append(ref_note.id)
             else:
                 # save_note 内部已吞掉所有异常并返回 False；回滚内存修改保持双向一致
                 if new_note.id in ref_note.links:
@@ -557,11 +559,28 @@ def _add_note_impl(
                 failed_refs.append(ref_note.id)
                 logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败")
 
+        new_note_backfill_save_failed = False
         if len(new_note.backlinks) != original_backlinks_count:
             if note.save_note(new_note, add_to_index=False):
                 idx.update_note_meta(new_note)
             else:
+                new_note_backfill_save_failed = True
                 logger.warning("回填后保存新笔记 backlinks 失败")
+                # 回滚已持久化的 ref_note 正向链接，避免 links/backlinks 不一致
+                for ref_id in backfilled_ref_ids:
+                    rb_note = note.load_note_by_id(ref_id)
+                    if not rb_note:
+                        failed_refs.append(ref_id)
+                        continue
+                    if new_note.id in rb_note.links:
+                        rb_note.links.remove(new_note.id)
+                        if note.save_note(rb_note, add_to_index=False):
+                            idx.update_note_meta(rb_note)
+                        else:
+                            failed_refs.append(ref_id)
+                            logger.warning(f"回滚 ref_note {ref_id} 正向链接失败")
+                # 回滚内存中的 new_note.backlinks
+                new_note.backlinks = new_note.backlinks[:original_backlinks_count]
 
         result = {
             "success": True,
@@ -578,6 +597,8 @@ def _add_note_impl(
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
         if failed_refs:
             result["backfill_failures"] = failed_refs
+        if new_note_backfill_save_failed:
+            result["backfill_note_save_failed"] = True
 
         if output_format == "json":
             print(output_json(result))
@@ -596,6 +617,11 @@ def _add_note_impl(
             if forward_backfilled > 0:
                 console.print(
                     f"[dim]  Forward links backfilled: {forward_backfilled} note(s)[/dim]"
+                )
+            if new_note_backfill_save_failed:
+                console.print(
+                    "  [yellow]Warning: Failed to save new note backlinks; "
+                    "forward backfill has been rolled back[/yellow]"
                 )
             if failed_refs:
                 console.print(
