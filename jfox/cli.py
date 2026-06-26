@@ -525,6 +525,7 @@ def _add_note_impl(
 
         original_backlinks_count = len(new_note.backlinks)
         forward_backfilled = 0
+        failed_refs: List[str] = []
         for ref_meta in idx.find_notes_referencing_title(new_note.title):
             if ref_meta.id == new_note.id:
                 continue
@@ -532,20 +533,42 @@ def _add_note_impl(
             if not ref_note:
                 continue
 
-            changed = False
-            if new_note.id not in ref_note.links:
-                ref_note.links.append(new_note.id)
-                changed = True
-            if ref_note.id not in new_note.backlinks:
-                new_note.backlinks.append(ref_note.id)
-                changed = True
+            ref_changed = new_note.id not in ref_note.links
+            backlink_changed = ref_note.id not in new_note.backlinks
 
-            if changed:
-                note.save_note(ref_note, add_to_index=False)
-                forward_backfilled += 1
+            if ref_changed:
+                ref_note.links.append(new_note.id)
+            if backlink_changed:
+                new_note.backlinks.append(ref_note.id)
+
+            if not ref_changed:
+                # ref_note.links 已包含新笔记，只需补齐 new_note.backlinks
+                continue
+
+            try:
+                if note.save_note(ref_note, add_to_index=False):
+                    forward_backfilled += 1
+                    idx.update_note_meta(ref_note)
+                else:
+                    failed_refs.append(ref_note.id)
+                    logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败")
+            except Exception as e:
+                # 回滚内存中的修改，保持双向一致
+                if new_note.id in ref_note.links:
+                    ref_note.links.remove(new_note.id)
+                if backlink_changed and ref_note.id in new_note.backlinks:
+                    new_note.backlinks.remove(ref_note.id)
+                failed_refs.append(ref_note.id)
+                logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败: {e}")
 
         if len(new_note.backlinks) != original_backlinks_count:
-            note.save_note(new_note, add_to_index=False)
+            try:
+                if note.save_note(new_note, add_to_index=False):
+                    idx.update_note_meta(new_note)
+                else:
+                    logger.warning("回填后保存新笔记 backlinks 失败")
+            except Exception as e:
+                logger.warning(f"回填后保存新笔记 backlinks 失败: {e}")
 
         result = {
             "success": True,

@@ -20,8 +20,35 @@ _WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
 
 
 def extract_wiki_links_from_text(text: str) -> List[str]:
-    """从文本中提取 [[...]] 格式的维基链接"""
-    return [m.group(1).strip() for m in _WIKI_LINK_RE.finditer(text)]
+    """从文本中提取 [[...]] 格式的维基链接。
+
+    支持常见变体：
+    - [[标题]]
+    - [[标题|别名]] -> 取标题部分
+    - [[标题#锚点]] -> 取标题部分
+    """
+    raw_links = [m.group(1).strip() for m in _WIKI_LINK_RE.finditer(text)]
+    return [_normalize_wiki_link_title(link) for link in raw_links]
+
+
+def _normalize_wiki_link_title(link_text: str) -> str:
+    """把 [[标题|别名]] / [[标题#锚点]] 归一化为纯标题。"""
+    # 先取管道符左侧的显示标题/目标
+    target = link_text.split("|", 1)[0]
+    # 再取锚点左侧的标题主体
+    return target.split("#", 1)[0].strip()
+
+
+def _strip_wiki_link_exclusions(text: str) -> str:
+    """移除不应参与 wiki-link 匹配的 Markdown 区域（fenced code block、HTML 注释）。
+
+    这是轻量级处理，覆盖最常见的误匹配场景；不保证解析所有 Markdown 边界情况。
+    """
+    # fenced code block（支持可选语言标识）
+    text = re.sub(r"```[\s\S]*?```", "", text)
+    # HTML 注释
+    text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    return text
 
 
 @dataclass
@@ -96,7 +123,7 @@ def _read_body_after_frontmatter(filepath: Path) -> str:
 
             # 有开始标记但没有结束标记，视为无效 frontmatter
             return ""
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return ""
 
 
@@ -200,7 +227,11 @@ class NoteIndex:
         """查找正文中引用了指定标题的笔记（[[标题]] 语法）。
 
         基于索引中已缓存的文件路径直接读取正文，避免全量加载 Note 对象。
-        匹配规则为大小写不敏感的精确标题匹配；frontmatter 中的 [[...]] 不参与匹配。
+        匹配规则为大小写不敏感的精确标题匹配；frontmatter、 fenced code block、
+        HTML 注释中的 [[...]] 不参与匹配。支持 [[标题|别名]] / [[标题#锚点]] 变体。
+
+        注意：与正向解析 find_note_id_by_title_or_id 的“标题包含”子串 fallback 不同，
+        反向回填只回填精确标题引用，避免把 [[Foo]] 错误回填到标题为 "Foo Bar" 的笔记。
 
         Args:
             title: 被引用的笔记标题
@@ -217,6 +248,7 @@ class NoteIndex:
                 continue
 
             body = _read_body_after_frontmatter(filepath)
+            body = _strip_wiki_link_exclusions(body)
             for link_text in extract_wiki_links_from_text(body):
                 if link_text.lower() == title_lower:
                     results.append(meta)
