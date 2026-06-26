@@ -19,8 +19,17 @@ def _anchor_where(anchor_types: List[str]) -> str:
     if "decision" in anchor_types:
         clauses.append("fragment_type = 'decision'")
     if "ask_user_question" in anchor_types:
-        # AskUserQuestion 走 PostToolUse；用 metadata_json LIKE 粗筛，Python 里二次确认
-        clauses.append("(source_event = 'PostToolUse' AND metadata_json LIKE '%AskUserQuestion%')")
+        # AskUserQuestion 走 PostToolUse；用 json_extract 精确匹配 tool_name
+        # （SQL 层精确 → count_anchors 与 find_anchors 过滤一致；find_anchors 的
+        # Python 二次确认保留为无害冗余检查）。
+        # CASE WHEN json_valid 守卫：json_extract 对非法 JSON 抛 OperationalError（实测
+        # SQLite 3.45），WHERE 中只要结果集任一行 metadata_json 非法整查询即崩 →
+        # count_anchors(status) 崩 / find_anchors(daemon) 每 tick 抛。json_valid 不抛，
+        # CASE 只在 JSON 合法时才求值 json_extract；历史脏数据/写入中断的非法行被跳过。
+        clauses.append(
+            "(source_event = 'PostToolUse' AND CASE WHEN json_valid(metadata_json) "
+            "THEN json_extract(metadata_json, '$.tool_name') = 'AskUserQuestion' END)"
+        )
     return "(" + " OR ".join(clauses) + ")" if clauses else ""
 
 
@@ -62,7 +71,12 @@ def find_anchors(
     for r in rows:
         if r["fragment_id"] not in unprocessed:
             continue
-        md = json.loads(r["metadata_json"] or "{}")
+        try:
+            md = json.loads(r["metadata_json"] or "{}")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # 历史脏数据/写入中断的非法 metadata_json（correction/decision 行不走
+            # json_valid 守卫）：降级为空 metadata，不崩整查询（cc R2#1 同类健壮性）
+            md = {}
         # ask_user_question 精确二次确认（避免 LIKE 误命中正文）
         is_ask = md.get("tool_name") == "AskUserQuestion"
         if r["fragment_type"] not in ("correction", "decision") and not is_ask:
@@ -82,4 +96,21 @@ def find_anchors(
     return result
 
 
-__all__ = ["find_anchors"]
+def count_anchors(fragments_db: Path, anchor_types: List[str]) -> int:
+    """高信号锚点总数（不区分是否已处理）—— status 命令算 pending 用。
+
+    复用 _anchor_where 构造 WHERE 子句；空 anchor_types 直接返回 0，
+    避免空 WHERE 拉全表（find_anchors 同样的早退约定）。
+    """
+    where = _anchor_where(anchor_types)
+    if not where:
+        return 0
+    conn = sqlite3.connect(str(fragments_db))
+    try:
+        row = conn.execute(f"SELECT COUNT(*) FROM session_fragments WHERE {where}").fetchone()
+    finally:
+        conn.close()
+    return int(row[0]) if row else 0
+
+
+__all__ = ["find_anchors", "count_anchors"]

@@ -113,6 +113,11 @@ from .gem_synth.cli import candidates_app  # noqa: E402
 
 app.add_typer(candidates_app, name="candidates", help="查看 L3 合成的候选知识宝石")
 
+# gem-synth 子命令组（查看 L3 合成进度：pending/success/failed + 失败复核）
+from .gem_synth.cli import gem_synth_app  # noqa: E402
+
+app.add_typer(gem_synth_app, name="gem-synth", help="L3 宝石合成进度查看")
+
 console = Console(legacy_windows=False)
 
 
