@@ -279,3 +279,206 @@ class TestListNotesViaIndex:
 
         result = list_notes(limit=3, cfg=kb_with_many_notes)
         assert len(result) == 3
+
+
+class TestNoteIndexFindNotesReferencingTitle:
+    """测试 find_notes_referencing_title"""
+
+    @pytest.fixture
+    def kb_with_wiki_links(self, temp_kb):
+        """创建包含维基链接引用的知识库"""
+        cfg = ZKConfig(base_dir=temp_kb)
+        cfg.ensure_dirs()
+
+        notes = [
+            Note(
+                id="20260428001",
+                title="笔记A",
+                content="笔记A 正文，引用了 [[笔记B]]。",
+                type=NoteType.PERMANENT,
+                created=datetime(2026, 4, 28, 0, 1),
+                updated=datetime(2026, 4, 28, 0, 1),
+            ),
+            Note(
+                id="20260428002",
+                title="笔记B",
+                content="笔记B 正文。",
+                type=NoteType.PERMANENT,
+                created=datetime(2026, 4, 28, 0, 2),
+                updated=datetime(2026, 4, 28, 0, 2),
+            ),
+            Note(
+                id="20260428003",
+                title="笔记C",
+                content="笔记C 引用了 [[笔记A]] 和 [[笔记B]]。",
+                type=NoteType.PERMANENT,
+                created=datetime(2026, 4, 28, 0, 3),
+                updated=datetime(2026, 4, 28, 0, 3),
+            ),
+        ]
+
+        for n in notes:
+            note_dir = cfg.notes_dir / n.type.value
+            note_dir.mkdir(parents=True, exist_ok=True)
+            note_file = note_dir / f"{n.id}.md"
+            note_file.write_text(n.to_markdown(), encoding="utf-8")
+
+        return cfg
+
+    def test_find_notes_referencing_title(self, kb_with_wiki_links):
+        """能找出正文中引用了指定标题的笔记"""
+        idx = NoteIndex(kb_with_wiki_links)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        assert "20260428001" in ids
+        assert "20260428003" in ids
+        assert "20260428002" not in ids
+
+    def test_find_notes_referencing_title_case_insensitive(self, kb_with_wiki_links):
+        """标题匹配大小写不敏感"""
+        idx = NoteIndex(kb_with_wiki_links)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记a")
+        ids = {m.id for m in refs}
+
+        assert "20260428003" in ids
+
+    def test_find_notes_referencing_title_not_found(self, kb_with_wiki_links):
+        """不存在引用时返回空列表"""
+        idx = NoteIndex(kb_with_wiki_links)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("不存在的笔记")
+        assert refs == []
+
+    def test_find_notes_referencing_title_skips_frontmatter(self, kb_with_wiki_links):
+        """frontmatter 中的 [[...]] 不应被误判为正文引用"""
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        # 手动构造一篇笔记：title 里带 [[笔记B]]，但正文没有引用
+        note_file = note_dir / "20260428004.md"
+        note_file.write_text(
+            "---\n"
+            "id: '20260428004'\n"
+            "title: '[[笔记B]] 的标题只在 frontmatter'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:04:00'\n"
+            "updated: '2026-04-28T00:04:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n"
+            "# 标题\n\n"
+            "正文没有任何维基链接。\n",
+            encoding="utf-8",
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        # 原来的 20260428001 和 20260428003 仍然命中
+        assert "20260428001" in ids
+        assert "20260428003" in ids
+        # 新加的这篇因为只在 frontmatter 里出现，不应命中
+        assert "20260428004" not in ids
+
+    def test_find_notes_referencing_title_alias_and_anchor(self, kb_with_wiki_links):
+        """支持 [[标题|别名]] 和 [[标题#锚点]] 变体"""
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        note_file = note_dir / "20260428005.md"
+        note_file.write_text(
+            "---\n"
+            "id: '20260428005'\n"
+            "title: '变体引用'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:05:00'\n"
+            "updated: '2026-04-28T00:05:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n"
+            "正文引用了 [[笔记B|别名]] 和 [[笔记B#章节]]。\n",
+            encoding="utf-8",
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        assert "20260428005" in ids
+
+    def test_find_notes_referencing_title_skips_code_block_and_comment(self, kb_with_wiki_links):
+        """fenced code block 和 HTML 注释中的 [[...]] 不应被误判"""
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        note_file = note_dir / "20260428006.md"
+        note_file.write_text(
+            "---\n"
+            "id: '20260428006'\n"
+            "title: '代码块和注释'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:06:00'\n"
+            "updated: '2026-04-28T00:06:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n"
+            "```\n"
+            "这里出现 [[笔记B]] 但属于代码块\n"
+            "```\n\n"
+            "<!-- [[笔记B]] 这是 HTML 注释 -->\n\n"
+            "正文没有实际引用。\n",
+            encoding="utf-8",
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        assert "20260428006" not in ids
+
+    def test_find_notes_referencing_title_unicode_decode_error(self, kb_with_wiki_links):
+        """遇到非 UTF-8 文件时不抛异常，而是跳过该文件"""
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        # 写入非法 UTF-8 字节
+        corrupt_file = note_dir / "20260428007.md"
+        corrupt_file.write_bytes(
+            b"---\n"
+            b"id: '20260428007'\n"
+            b"title: '\xff\xfe'\n"
+            b"type: permanent\n"
+            b"---\n\n"
+            b"\xff\xfe [[\xb1\xca\xc7\xf0]]"
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        # 不应抛出 UnicodeDecodeError
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        # 非法文件本身不会被识别为笔记（frontmatter 解析也会失败），
+        # 但重点是查询过程不崩溃
+        assert "20260428007" not in ids

@@ -7,7 +7,6 @@ Provides:
 - Hub and authority analysis
 """
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -17,6 +16,7 @@ from rich.console import Console
 
 from .config import ZKConfig
 from .models import Note
+from .note_index import extract_wiki_links_from_text
 
 console = Console()
 
@@ -94,7 +94,7 @@ class KnowledgeGraph:
 
         # Third pass: extract and add wiki links from content [[...]]
         for note_id, note in self._note_cache.items():
-            wiki_links = self._extract_wiki_links(note.content)
+            wiki_links = extract_wiki_links_from_text(note.content)
             for link_text in wiki_links:
                 linked_id = self._resolve_link(link_text)
                 if linked_id and linked_id in self._note_cache:
@@ -103,12 +103,6 @@ class KnowledgeGraph:
                         self.graph.add_edge(note_id, linked_id, type="wiki_link")
 
         return self
-
-    def _extract_wiki_links(self, content: str) -> List[str]:
-        """Extract [[...]] wiki links from content."""
-        pattern = r"\[\[(.*?)\]\]"
-        matches = re.findall(pattern, content)
-        return [m.strip() for m in matches]
 
     def _resolve_link(self, link_text: str) -> Optional[str]:
         """Resolve a link text to a note ID."""

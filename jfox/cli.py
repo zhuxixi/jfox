@@ -255,11 +255,9 @@ def _print_action_table(action: str, fields: dict):
 
 def extract_wiki_links(content: str) -> List[str]:
     """从内容中提取 [[...]] 格式的维基链接"""
-    import re
+    from .note_index import extract_wiki_links_from_text
 
-    pattern = r"\[\[(.*?)\]\]"
-    matches = re.findall(pattern, content)
-    return [m.strip() for m in matches]
+    return extract_wiki_links_from_text(content)
 
 
 def find_note_id_by_title_or_id(
@@ -380,8 +378,8 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     changed_note_ids: List[str] = []
 
     for n in notes:
-        # 注意：cli.py 模块级存在名为 list 的命令函数，会遮蔽 built-in list()，
-        # 因此这里使用切片复制列表。
+        # list 命令函数已重命名为 list_notes，不再遮蔽 built-in list()。
+        # 保留切片复制以避免原地修改遍历中的列表。
         old_links = n.links[:]
         old_backlinks = n.backlinks[:]
         new_links_sorted = merged_links[n.id]
@@ -528,6 +526,74 @@ def _add_note_impl(
                     note.save_note(target_note, add_to_index=False)
                     backlink_updated += 1
 
+        # Backward 回填：正文中引用了新笔记标题但 links 未包含新笔记 ID 的笔记
+        # 把新笔记 ID 回填进它们的 links，并同步更新新笔记的 backlinks
+        from .note_index import get_note_index
+
+        idx = get_note_index()
+        idx.update_note_meta(new_note)
+
+        original_backlinks_count = len(new_note.backlinks)
+        forward_backfilled = 0
+        failed_refs: List[str] = []
+        rollback_failures: List[str] = []
+        backfilled_ref_ids: List[str] = []
+        for ref_meta in idx.find_notes_referencing_title(new_note.title):
+            if ref_meta.id == new_note.id:
+                continue
+            ref_note = note.load_note_by_id(ref_meta.id)
+            if not ref_note:
+                continue
+
+            ref_changed = new_note.id not in ref_note.links
+            backlink_changed = ref_note.id not in new_note.backlinks
+
+            if ref_changed:
+                ref_note.links.append(new_note.id)
+            if backlink_changed:
+                new_note.backlinks.append(ref_note.id)
+
+            if not ref_changed:
+                # ref_note.links 已包含新笔记，只需补齐 new_note.backlinks
+                continue
+
+            if note.save_note(ref_note, add_to_index=False):
+                forward_backfilled += 1
+                idx.update_note_meta(ref_note)
+                backfilled_ref_ids.append(ref_note.id)
+            else:
+                # save_note 内部已吞掉所有异常并返回 False；回滚内存修改保持双向一致
+                if new_note.id in ref_note.links:
+                    ref_note.links.remove(new_note.id)
+                if backlink_changed and ref_note.id in new_note.backlinks:
+                    new_note.backlinks.remove(ref_note.id)
+                failed_refs.append(ref_note.id)
+                logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败")
+
+        new_note_backfill_save_failed = False
+        if len(new_note.backlinks) != original_backlinks_count:
+            if note.save_note(new_note, add_to_index=False):
+                idx.update_note_meta(new_note)
+            else:
+                new_note_backfill_save_failed = True
+                logger.warning("回填后保存新笔记 backlinks 失败")
+                # 回滚已持久化的 ref_note 正向链接，避免 links/backlinks 不一致
+                for ref_id in backfilled_ref_ids:
+                    rb_note = note.load_note_by_id(ref_id)
+                    if not rb_note:
+                        rollback_failures.append(ref_id)
+                        logger.warning(f"回滚时无法加载 ref_note {ref_id}")
+                        continue
+                    if new_note.id in rb_note.links:
+                        rb_note.links.remove(new_note.id)
+                        if note.save_note(rb_note, add_to_index=False):
+                            idx.update_note_meta(rb_note)
+                        else:
+                            rollback_failures.append(ref_id)
+                            logger.warning(f"回滚 ref_note {ref_id} 正向链接失败")
+                # 回滚内存中的 new_note.backlinks
+                new_note.backlinks = new_note.backlinks[:original_backlinks_count]
+
         result = {
             "success": True,
             "note": {
@@ -541,6 +607,12 @@ def _add_note_impl(
 
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
+        if failed_refs:
+            result["backfill_failures"] = failed_refs
+        if rollback_failures:
+            result["rollback_failures"] = rollback_failures
+        if new_note_backfill_save_failed:
+            result["backfill_note_save_failed"] = True
 
         if output_format == "json":
             print(output_json(result))
@@ -556,6 +628,26 @@ def _add_note_impl(
             )
             if backlink_updated > 0:
                 console.print(f"[dim]  Backlinks updated: {backlink_updated} note(s)[/dim]")
+            if forward_backfilled > 0:
+                console.print(
+                    f"[dim]  Forward links backfilled: {forward_backfilled} note(s)[/dim]"
+                )
+            if new_note_backfill_save_failed:
+                console.print(
+                    "  [yellow]Warning: Failed to save new note backlinks; "
+                    "forward backfill has been rolled back[/yellow]"
+                )
+            if failed_refs:
+                console.print(
+                    f"  [yellow]Warning: Forward link backfill failed for "
+                    f"{len(failed_refs)} note(s): {', '.join(failed_refs)}[/yellow]"
+                )
+            if rollback_failures:
+                console.print(
+                    f"  [red]Warning: Forward link rollback failed for "
+                    f"{len(rollback_failures)} note(s): {', '.join(rollback_failures)}. "
+                    f"Run 'jfox index rebuild --backlinks' to repair.[/red]"
+                )
             if unresolved:
                 console.print(
                     f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
@@ -1028,8 +1120,8 @@ def _list_impl(
         raise ValueError(f"Unsupported format: {output_format}")
 
 
-@app.command()
-def list(
+@app.command(name="list")
+def list_notes(
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
     tags: Optional[List[str]] = typer.Option(
         None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"
