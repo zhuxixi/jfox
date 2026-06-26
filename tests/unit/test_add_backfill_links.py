@@ -68,6 +68,9 @@ class TestAddBackwardBackfill:
                 b_data = json.loads(b_result.output)
                 b_id = b_data["note"]["id"]
 
+                # add --json 返回的 links 字段应包含回填/解析后的结果
+                assert a_id in b_data["note"]["links"], "B 的 JSON 输出 links 应包含 A"
+
                 # 3. 验证 A 的 links 已回填 B，且 backlinks 包含 B
                 refs_a = runner.invoke(app, ["refs", "--note", a_id, "--kb", kb_name, "--json"])
                 assert refs_a.exit_code == 0, refs_a.output

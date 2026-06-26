@@ -15,6 +15,14 @@ from .models import Note, NoteType, _to_bool
 
 logger = logging.getLogger(__name__)
 
+# 维基链接正则：匹配 [[标题]] 语法（非贪婪，不支持跨行）
+_WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
+
+
+def extract_wiki_links_from_text(text: str) -> List[str]:
+    """从文本中提取 [[...]] 格式的维基链接"""
+    return [m.group(1).strip() for m in _WIKI_LINK_RE.finditer(text)]
+
 
 @dataclass
 class NoteMeta:
@@ -67,6 +75,29 @@ def _parse_frontmatter_only(filepath: Path) -> Optional[dict]:
 
     except (yaml.YAMLError, UnicodeDecodeError, OSError, AttributeError):
         return None
+
+
+def _read_body_after_frontmatter(filepath: Path) -> str:
+    """读取文件正文部分（跳过 frontmatter）。
+
+    若文件没有 frontmatter，则返回全文。
+    读取失败时返回空字符串。
+    """
+    try:
+        with open(filepath, "r", encoding="utf-8-sig") as f:
+            first_line = f.readline()
+            if first_line.strip() != "---":
+                # 没有 frontmatter，返回剩余全部内容
+                return first_line + f.read()
+
+            for line in f:
+                if line.strip() == "---":
+                    return f.read()
+
+            # 有开始标记但没有结束标记，视为无效 frontmatter
+            return ""
+    except OSError:
+        return ""
 
 
 class NoteIndex:
@@ -168,8 +199,8 @@ class NoteIndex:
     def find_notes_referencing_title(self, title: str) -> List[NoteMeta]:
         """查找正文中引用了指定标题的笔记（[[标题]] 语法）。
 
-        基于索引中已缓存的文件路径直接读取内容，避免全量加载 Note 对象。
-        匹配规则为大小写不敏感的精确标题匹配。
+        基于索引中已缓存的文件路径直接读取正文，避免全量加载 Note 对象。
+        匹配规则为大小写不敏感的精确标题匹配；frontmatter 中的 [[...]] 不参与匹配。
 
         Args:
             title: 被引用的笔记标题
@@ -178,7 +209,6 @@ class NoteIndex:
             引用了该标题的 NoteMeta 列表
         """
         title_lower = title.lower()
-        pattern = re.compile(r"\[\[(.*?)\]\]")
         results: List[NoteMeta] = []
 
         for meta in self._by_id.values():
@@ -186,13 +216,8 @@ class NoteIndex:
             if not filepath.exists():
                 continue
 
-            try:
-                text = filepath.read_text(encoding="utf-8")
-            except OSError:
-                continue
-
-            for match in pattern.finditer(text):
-                link_text = match.group(1).strip()
+            body = _read_body_after_frontmatter(filepath)
+            for link_text in extract_wiki_links_from_text(body):
                 if link_text.lower() == title_lower:
                     results.append(meta)
                     break

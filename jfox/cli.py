@@ -245,11 +245,9 @@ def _print_action_table(action: str, fields: dict):
 
 def extract_wiki_links(content: str) -> List[str]:
     """从内容中提取 [[...]] 格式的维基链接"""
-    import re
+    from .note_index import extract_wiki_links_from_text
 
-    pattern = r"\[\[(.*?)\]\]"
-    matches = re.findall(pattern, content)
-    return [m.strip() for m in matches]
+    return extract_wiki_links_from_text(content)
 
 
 def find_note_id_by_title_or_id(
@@ -370,8 +368,8 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     changed_note_ids: List[str] = []
 
     for n in notes:
-        # 注意：cli.py 模块级存在名为 list 的命令函数，会遮蔽 built-in list()，
-        # 因此这里使用切片复制列表。
+        # list 命令函数已重命名为 list_notes，不再遮蔽 built-in list()。
+        # 保留切片复制以避免原地修改遍历中的列表。
         old_links = n.links[:]
         old_backlinks = n.backlinks[:]
         new_links_sorted = merged_links[n.id]
@@ -1053,8 +1051,8 @@ def _list_impl(
         raise ValueError(f"Unsupported format: {output_format}")
 
 
-@app.command()
-def list(
+@app.command(name="list")
+def list_notes(
     note_type: Optional[str] = typer.Option(None, "--type", "-t", help="筛选笔记类型"),
     tags: Optional[List[str]] = typer.Option(
         None, "--tag", help="按标签筛选（可多次使用，AND 逻辑）"

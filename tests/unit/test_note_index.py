@@ -354,3 +354,39 @@ class TestNoteIndexFindNotesReferencingTitle:
 
         refs = idx.find_notes_referencing_title("不存在的笔记")
         assert refs == []
+
+    def test_find_notes_referencing_title_skips_frontmatter(self, kb_with_wiki_links):
+        """frontmatter 中的 [[...]] 不应被误判为正文引用"""
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        # 手动构造一篇笔记：title 里带 [[笔记B]]，但正文没有引用
+        note_file = note_dir / "20260428004.md"
+        note_file.write_text(
+            "---\n"
+            "id: '20260428004'\n"
+            "title: '[[笔记B]] 的标题只在 frontmatter'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:04:00'\n"
+            "updated: '2026-04-28T00:04:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n"
+            "# 标题\n\n"
+            "正文没有任何维基链接。\n",
+            encoding="utf-8",
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        refs = idx.find_notes_referencing_title("笔记B")
+        ids = {m.id for m in refs}
+
+        # 原来的 20260428001 和 20260428003 仍然命中
+        assert "20260428001" in ids
+        assert "20260428003" in ids
+        # 新加的这篇因为只在 frontmatter 里出现，不应命中
+        assert "20260428004" not in ids
