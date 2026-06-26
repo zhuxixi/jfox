@@ -526,6 +526,7 @@ def _add_note_impl(
         original_backlinks_count = len(new_note.backlinks)
         forward_backfilled = 0
         failed_refs: List[str] = []
+        rollback_failures: List[str] = []
         backfilled_ref_ids: List[str] = []
         for ref_meta in idx.find_notes_referencing_title(new_note.title):
             if ref_meta.id == new_note.id:
@@ -570,14 +571,15 @@ def _add_note_impl(
                 for ref_id in backfilled_ref_ids:
                     rb_note = note.load_note_by_id(ref_id)
                     if not rb_note:
-                        failed_refs.append(ref_id)
+                        rollback_failures.append(ref_id)
+                        logger.warning(f"回滚时无法加载 ref_note {ref_id}")
                         continue
                     if new_note.id in rb_note.links:
                         rb_note.links.remove(new_note.id)
                         if note.save_note(rb_note, add_to_index=False):
                             idx.update_note_meta(rb_note)
                         else:
-                            failed_refs.append(ref_id)
+                            rollback_failures.append(ref_id)
                             logger.warning(f"回滚 ref_note {ref_id} 正向链接失败")
                 # 回滚内存中的 new_note.backlinks
                 new_note.backlinks = new_note.backlinks[:original_backlinks_count]
@@ -597,6 +599,8 @@ def _add_note_impl(
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
         if failed_refs:
             result["backfill_failures"] = failed_refs
+        if rollback_failures:
+            result["rollback_failures"] = rollback_failures
         if new_note_backfill_save_failed:
             result["backfill_note_save_failed"] = True
 
@@ -627,6 +631,12 @@ def _add_note_impl(
                 console.print(
                     f"  [yellow]Warning: Forward link backfill failed for "
                     f"{len(failed_refs)} note(s): {', '.join(failed_refs)}[/yellow]"
+                )
+            if rollback_failures:
+                console.print(
+                    f"  [red]Warning: Forward link rollback failed for "
+                    f"{len(rollback_failures)} note(s): {', '.join(rollback_failures)}. "
+                    f"Run 'jfox rebuild --backlinks' to repair.[/red]"
                 )
             if unresolved:
                 console.print(

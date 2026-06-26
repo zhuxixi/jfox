@@ -222,16 +222,12 @@ class TestAddBackwardBackfill:
                     b_data["note"]["id"] not in backward_a
                 ), "保存失败的引用方不应出现在 A 的 backlinks"
 
-    def test_add_backfill_new_note_save_failure_rolls_back_refs(
-        self, mock_embedding_backend
-    ):
+    def test_add_backfill_new_note_save_failure_rolls_back_refs(self, mock_embedding_backend):
         """回填后保存新笔记 backlinks 失败时，应回滚已保存的 ref_note 并暴露失败"""
         import jfox.cli as cli_module
 
         with temp_kb_registered() as kb_name:
-            with patch(
-                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
-            ):
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
                 # 1. 创建笔记 A，引用尚不存在的笔记 B
                 a_result = runner.invoke(
                     app,
@@ -289,3 +285,61 @@ class TestAddBackwardBackfill:
                 refs_a_data = json.loads(refs_a.output)
                 forward_a = {link["id"] for link in refs_a_data.get("forward_links", [])}
                 assert b_data["note"]["id"] not in forward_a, "新笔记保存失败后 A 的 links 应被回滚"
+
+    def test_add_backfill_rollback_failure_exposed(self, mock_embedding_backend):
+        """new_note backlinks 保存失败且 ref_note 回滚也失败时，应单独暴露 rollback_failures"""
+        import jfox.cli as cli_module
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                # 1. 创建笔记 A
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "笔记A 正文，引用了 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                original_save_note = cli_module.note.save_note
+                b_save_count = {"count": 0}
+
+                def fake_save_note(note, add_to_index=True):
+                    if note.title == "笔记B":
+                        b_save_count["count"] += 1
+                        if b_save_count["count"] >= 2:
+                            return False
+                    # 回滚阶段 A 的保存也失败
+                    if note.title == "笔记A" and b_save_count["count"] >= 2:
+                        return False
+                    return original_save_note(note, add_to_index)
+
+                with patch.object(cli_module.note, "save_note", side_effect=fake_save_note):
+                    b_result = runner.invoke(
+                        app,
+                        [
+                            "add",
+                            "笔记B 正文，引用了 [[笔记A]]。",
+                            "--title",
+                            "笔记B",
+                            "--type",
+                            "permanent",
+                            "--kb",
+                            kb_name,
+                            "--json",
+                        ],
+                    )
+                    assert b_result.exit_code == 0, b_result.output
+                    b_data = json.loads(b_result.output)
+
+                    assert b_data.get("backfill_note_save_failed") is True
+                    assert a_id in b_data.get("rollback_failures", [])
