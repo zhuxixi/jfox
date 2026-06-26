@@ -545,30 +545,23 @@ def _add_note_impl(
                 # ref_note.links 已包含新笔记，只需补齐 new_note.backlinks
                 continue
 
-            try:
-                if note.save_note(ref_note, add_to_index=False):
-                    forward_backfilled += 1
-                    idx.update_note_meta(ref_note)
-                else:
-                    failed_refs.append(ref_note.id)
-                    logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败")
-            except Exception as e:
-                # 回滚内存中的修改，保持双向一致
+            if note.save_note(ref_note, add_to_index=False):
+                forward_backfilled += 1
+                idx.update_note_meta(ref_note)
+            else:
+                # save_note 内部已吞掉所有异常并返回 False；回滚内存修改保持双向一致
                 if new_note.id in ref_note.links:
                     ref_note.links.remove(new_note.id)
                 if backlink_changed and ref_note.id in new_note.backlinks:
                     new_note.backlinks.remove(ref_note.id)
                 failed_refs.append(ref_note.id)
-                logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败: {e}")
+                logger.warning(f"回填正向链接时保存笔记 {ref_note.id} 失败")
 
         if len(new_note.backlinks) != original_backlinks_count:
-            try:
-                if note.save_note(new_note, add_to_index=False):
-                    idx.update_note_meta(new_note)
-                else:
-                    logger.warning("回填后保存新笔记 backlinks 失败")
-            except Exception as e:
-                logger.warning(f"回填后保存新笔记 backlinks 失败: {e}")
+            if note.save_note(new_note, add_to_index=False):
+                idx.update_note_meta(new_note)
+            else:
+                logger.warning("回填后保存新笔记 backlinks 失败")
 
         result = {
             "success": True,
@@ -583,6 +576,8 @@ def _add_note_impl(
 
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
+        if failed_refs:
+            result["backfill_failures"] = failed_refs
 
         if output_format == "json":
             print(output_json(result))
@@ -601,6 +596,11 @@ def _add_note_impl(
             if forward_backfilled > 0:
                 console.print(
                     f"[dim]  Forward links backfilled: {forward_backfilled} note(s)[/dim]"
+                )
+            if failed_refs:
+                console.print(
+                    f"  [yellow]Warning: Forward link backfill failed for "
+                    f"{len(failed_refs)} note(s): {', '.join(failed_refs)}[/yellow]"
                 )
             if unresolved:
                 console.print(

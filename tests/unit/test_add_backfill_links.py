@@ -156,3 +156,64 @@ class TestAddBackwardBackfill:
 
                 assert backward_a.count(b_id) == 1
                 assert backward_a.count(c_id) == 1
+
+    def test_add_backfill_failed_refs_rolled_back(self, mock_embedding_backend):
+        """回填某篇引用方保存失败时，应回滚并暴露 failed_refs"""
+        import jfox.cli as cli_module
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                # 1. 创建笔记 A，引用尚不存在的笔记 B
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "笔记A 正文，引用了 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                original_save_note = cli_module.note.save_note
+
+                def fake_save_note(note, add_to_index=True):
+                    # 让回填 A 时保存失败，其他保存走原逻辑
+                    if note.id == a_id:
+                        return False
+                    return original_save_note(note, add_to_index)
+
+                # 2. 创建 B，触发 A 的回填；A 的保存会失败
+                with patch.object(cli_module.note, "save_note", side_effect=fake_save_note):
+                    b_result = runner.invoke(
+                        app,
+                        [
+                            "add",
+                            "笔记B 正文，引用了 [[笔记A]]。",
+                            "--title",
+                            "笔记B",
+                            "--type",
+                            "permanent",
+                            "--kb",
+                            kb_name,
+                            "--json",
+                        ],
+                    )
+                    assert b_result.exit_code == 0, b_result.output
+                    b_data = json.loads(b_result.output)
+
+                    # JSON 中应暴露失败信息
+                    assert a_id in b_data.get("backfill_failures", []), "失败引用方应出现在 backfill_failures"
+
+                # A 的 backlinks 不应包含 B（已回滚）
+                refs_a = runner.invoke(app, ["refs", "--note", a_id, "--kb", kb_name, "--json"])
+                assert refs_a.exit_code == 0, refs_a.output
+                refs_a_data = json.loads(refs_a.output)
+                backward_a = {link["id"] for link in refs_a_data.get("backward_links", [])}
+                assert b_data["note"]["id"] not in backward_a, "保存失败的引用方不应出现在 A 的 backlinks"
