@@ -49,6 +49,142 @@ def test_synthesize_returns_parsed_dict():
     assert result["knowledge_type"] == "procedural"
 
 
+def test_synthesize_strips_json_code_fence():
+    """claude 把 JSON 包在 ```json ... ``` 围栏里时，必须剥围栏后解析。
+
+    真实 claude --output-format json 返回 envelope，其 result 字段常被模型包在
+    markdown 代码围栏里（即使 SYSTEM_PROMPT 要求裸 JSON）。不剥围栏会让 json.loads
+    碰到首字符反引号直接崩（JSONDecodeError: Expecting value char 0）→ 合成全失败。
+    """
+    inner_json = json.dumps(
+        {
+            "title": "应优先用 patch",
+            "content": "修改文件优先用 patch",
+            "confidence": 0.8,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    fenced = f"```json\n{inner_json}\n```"
+    # 模拟真实 claude 返回：envelope.result 是带围栏的字符串
+    fake_output = json.dumps({"type": "result", "subtype": "success", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "应优先用 patch"
+    assert result["confidence"] == 0.8
+
+
+def test_synthesize_strips_bare_code_fence():
+    """围栏无语言标签（``` ... ```）时也要正确剥。"""
+    inner_json = json.dumps({"title": "裸围栏", "content": "x", "confidence": 0.5})
+    fenced = f"```\n{inner_json}\n```"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "裸围栏"
+
+
+def test_synthesize_strips_fence_with_preamble():
+    """模型在围栏前加解释文本时（如"这是 JSON:"），也要正确提取围栏内 JSON。"""
+    inner_json = json.dumps({"title": "带前导文本", "content": "x", "confidence": 0.7})
+    fenced = f"这是合成的 JSON：\n```json\n{inner_json}\n```\n（如上）"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "带前导文本"
+
+
+def test_synthesize_prefers_json_fenced_block_over_earlier_code_fence():
+    """模型在 JSON 围栏前还输出别的代码围栏时，应优先取 ```json 块（不误取前面的）。"""
+    inner_json = json.dumps({"title": "正确的 JSON", "content": "x", "confidence": 0.6})
+    fenced = f"```python\nprint('hi')\n```\n```json\n{inner_json}\n```"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "正确的 JSON"
+
+
+def test_synthesize_preserves_clean_json_with_code_fence_in_content():
+    """模型返回裸 JSON（无外层围栏），但其 content 字段含 ``` 代码示例时，
+    不能误把内部代码块当外层围栏提取（会截断 JSON 致 json.loads 失败）。
+
+    回归 kimi R3 issue-4：regex 全文搜索会把 content 内的 ```python...``` 误当外层围栏。
+    修法：首字符 { 的裸 JSON 原样返回，绝不 regex。
+    """
+    content_with_code = "示例：\n```python\nprint('hi')\n```\n如上"
+    inner_json = json.dumps(
+        {
+            "title": "含代码的知识",
+            "content": content_with_code,
+            "confidence": 0.8,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    # 裸 JSON（无外层围栏），envelope.result 直接是它
+    fake_output = json.dumps({"type": "result", "result": inner_json})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "含代码的知识"
+    assert "print('hi')" in result["content"]
+
+
+def test_synthesize_fenced_json_with_code_fence_in_content():
+    """模型把 JSON 包在 ```json 围栏里，且 content 字段内又含 ```python 代码示例时，
+    不能把内部代码块当外层围栏终点、截断 JSON（kimi R4 issue-5）。
+
+    这是代码宝石的高频场景（content 常含代码示例）。正则 fence-strip 在此必崩；
+    解析式（raw_decode）尊重字符串字面量，content 内的 ``` 不干扰。
+    """
+    content_with_code = "示例：\n```python\nprint('hi')\n```\n如上"
+    inner_json = json.dumps(
+        {
+            "title": "含代码的宝石",
+            "content": content_with_code,
+            "confidence": 0.8,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    # 外层 ```json 围栏包裹，content 内又嵌 ```python
+    fenced = f"```json\n{inner_json}\n```"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "含代码的宝石"
+    assert "print('hi')" in result["content"]
+
+
+def test_synthesize_picks_largest_json_object_over_earlier_brace_code():
+    """模型在目标 JSON 前还输出含 { 的代码块（如 python 字典示例）时，
+    应取跨度最大的 JSON 对象（gem），不误取前面的小 {...}（kimi R5 issue-6）。
+
+    单 { 版本会取到前面的小字典就停；扫描所有 { 取最大者才对。
+    """
+    inner_json = json.dumps(
+        {
+            "title": "目标宝石",
+            "content": "x",
+            "confidence": 0.7,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    # 前面有个含 { 的 python 字典示例（恰好是合法 JSON 语法的小对象），后面才是 gem
+    fenced = f'```python\nd = {{"a": 1, "b": 2}}\n```\n```json\n{inner_json}\n```'
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "目标宝石"
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None

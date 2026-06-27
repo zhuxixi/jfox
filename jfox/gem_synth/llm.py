@@ -28,7 +28,8 @@ SYSTEM_PROMPT = """你是知识合成器。给定一段对话上下文和若干�
   "knowledge_type": "factual|procedural|preference|constraint",
   "grounded_by": ["引用的永久笔记标题列表"]
 }
-若上下文不足以合成有效知识，confidence 给低分（<0.3）并简述原因。不要编造基准里没有的事实。"""
+若上下文不足以合成有效知识，confidence 给低分（<0.3）并简述原因。不要编造基准里没有的事实。
+直接输出 JSON 对象本身，不要用 markdown 代码围栏包裹（不要 ```json ... ```）。"""
 
 
 def _resolve_claude_binary(cfg: GemSynthesisConfig) -> str:
@@ -204,6 +205,46 @@ def _invoke_claude(
                 pass
 
 
+def _parse_json_lenient(inner: Any) -> Optional[Dict[str, Any]]:
+    """从模型输出解析 JSON 对象，容忍 markdown 围栏 / 前导解释文本 / 前置代码块 / 尾部噪声。
+
+    模型常把 JSON 包在 ```json ... ``` 里，或前后加解释文本/代码示例。早期用 fence-strip
+    正则提取，但当 JSON 的 content 字段内部含 ``` 代码示例（代码宝石常见）时，正则会把
+    内部 ``` 当外层围栏终点、截断 JSON（kimi R3/R4 issue-4/5）。正则路径本质脆弱。
+
+    改解析式（JSON 解析器尊重字符串字面量，content 内的 ``` / { 干扰不了它）：
+    1. 直接 json.loads（裸 JSON：含 content 内代码围栏也安全，因 ``` 在字符串字面量内）
+    2. 失败则扫描所有 { 位置，各自 raw_decode，取**跨度最大**的有效 JSON 对象——目标 gem
+       比前导文本/代码块里的零散小对象（如 python 字典示例）更长，故胜出；schema 无关，
+       且 content 内的 { 其片段跨度也小于整个 gem（kimi R5 issue-6）
+    3. 都失败返回 None（调用方 mark_failed）
+    """
+    if isinstance(inner, dict):
+        return inner
+    if not isinstance(inner, str):
+        return None
+    s = inner.strip()
+    try:
+        obj = json.loads(s)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        pass
+    # 扫描所有 {，raw_decode 各自尝试，取跨度最大（字符最多）的有效 JSON 对象
+    decoder = json.JSONDecoder()
+    best: Optional[Dict[str, Any]] = None
+    best_end = -1
+    for i, ch in enumerate(s):
+        if ch != "{":
+            continue
+        try:
+            obj, end = decoder.raw_decode(s[i:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and end > best_end:
+            best, best_end = obj, end
+    return best
+
+
 def synthesize_with_llm(
     turn_context: str,
     grounding: List[Dict[str, Any]],
@@ -223,7 +264,8 @@ def synthesize_with_llm(
         raw = _invoke_claude(prompt, cfg, stop_event)
         wrapper = json.loads(raw)
         inner = wrapper.get("result", raw) if isinstance(wrapper, dict) else raw
-        parsed = json.loads(inner) if isinstance(inner, str) else inner
+        # 容忍 markdown 围栏/前导文本：解析式提取 JSON（content 内代码围栏也安全）
+        parsed = _parse_json_lenient(inner)
         if not isinstance(parsed, dict) or "title" not in parsed:
             logger.warning("LLM 输出缺 title: %r", parsed)
             logger.debug("LLM raw output: %r", raw)
