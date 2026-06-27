@@ -49,6 +49,43 @@ def test_synthesize_returns_parsed_dict():
     assert result["knowledge_type"] == "procedural"
 
 
+def test_synthesize_strips_json_code_fence():
+    """claude 把 JSON 包在 ```json ... ``` 围栏里时，必须剥围栏后解析。
+
+    真实 claude --output-format json 返回 envelope，其 result 字段常被模型包在
+    markdown 代码围栏里（即使 SYSTEM_PROMPT 要求裸 JSON）。不剥围栏会让 json.loads
+    碰到首字符反引号直接崩（JSONDecodeError: Expecting value char 0）→ 合成全失败。
+    """
+    inner_json = json.dumps(
+        {
+            "title": "应优先用 patch",
+            "content": "修改文件优先用 patch",
+            "confidence": 0.8,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    fenced = f"```json\n{inner_json}\n```"
+    # 模拟真实 claude 返回：envelope.result 是带围栏的字符串
+    fake_output = json.dumps({"type": "result", "subtype": "success", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "应优先用 patch"
+    assert result["confidence"] == 0.8
+
+
+def test_synthesize_strips_bare_code_fence():
+    """围栏无语言标签（``` ... ```）时也要正确剥。"""
+    inner_json = json.dumps({"title": "裸围栏", "content": "x", "confidence": 0.5})
+    fenced = f"```\n{inner_json}\n```"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "裸围栏"
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None

@@ -72,6 +72,9 @@ def test_tick_synthesize_exception_does_not_crash():
             side_effect=[anchor_once, []],
         ),
         patch("jfox.gem_synth.loop.synthesize_anchor", side_effect=RuntimeError("boom")),
+        # mock SynthesisLog，避免用默认路径写真实 ~/.zettelkasten/synthesis_log.db
+        # （污染用户库：曾把测试的 "unhandled: boom" 写进真实 ledger）
+        patch("jfox.gem_synth.loop.SynthesisLog", return_value=MagicMock()),
     ):
         gm.return_value.get_gem_synthesis_config.return_value = cfg
         msg = _tick_once(threading.Event())  # 不应抛

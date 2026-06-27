@@ -28,7 +28,8 @@ SYSTEM_PROMPT = """你是知识合成器。给定一段对话上下文和若干�
   "knowledge_type": "factual|procedural|preference|constraint",
   "grounded_by": ["引用的永久笔记标题列表"]
 }
-若上下文不足以合成有效知识，confidence 给低分（<0.3）并简述原因。不要编造基准里没有的事实。"""
+若上下文不足以合成有效知识，confidence 给低分（<0.3）并简述原因。不要编造基准里没有的事实。
+直接输出 JSON 对象本身，不要用 markdown 代码围栏包裹（不要 ```json ... ```）。"""
 
 
 def _resolve_claude_binary(cfg: GemSynthesisConfig) -> str:
@@ -204,6 +205,24 @@ def _invoke_claude(
                 pass
 
 
+def _strip_code_fence(s: str) -> str:
+    """剥 claude 常见的 markdown 代码围栏（```json ... ``` / ``` ... ```），返回内部文本。
+
+    模型即使被要求"裸 JSON"也常包代码围栏；不剥会让 json.loads 碰首字符反引号崩。
+    无围栏或首字符非 ``` 则原样返回（strip 首尾空白后）。
+    """
+    s = s.strip()
+    if not s.startswith("```"):
+        return s
+    lines = s.splitlines()
+    # 去首行围栏开头（``` 或 ```json 等）
+    lines = lines[1:]
+    # 去末行 ``` 收尾（若有）
+    if lines and lines[-1].strip() == "```":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
 def synthesize_with_llm(
     turn_context: str,
     grounding: List[Dict[str, Any]],
@@ -223,6 +242,9 @@ def synthesize_with_llm(
         raw = _invoke_claude(prompt, cfg, stop_event)
         wrapper = json.loads(raw)
         inner = wrapper.get("result", raw) if isinstance(wrapper, dict) else raw
+        # 剥 claude 常给的 markdown 代码围栏（```json ... ```），否则 json.loads 碰反引号崩
+        if isinstance(inner, str):
+            inner = _strip_code_fence(inner)
         parsed = json.loads(inner) if isinstance(inner, str) else inner
         if not isinstance(parsed, dict) or "title" not in parsed:
             logger.warning("LLM 输出缺 title: %r", parsed)
