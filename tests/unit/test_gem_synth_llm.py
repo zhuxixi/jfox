@@ -97,6 +97,17 @@ def test_synthesize_strips_fence_with_preamble():
     assert result["title"] == "带前导文本"
 
 
+def test_synthesize_prefers_json_fenced_block_over_earlier_code_fence():
+    """模型在 JSON 围栏前还输出别的代码围栏时，应优先取 ```json 块（不误取前面的）。"""
+    inner_json = json.dumps({"title": "正确的 JSON", "content": "x", "confidence": 0.6})
+    fenced = f"```python\nprint('hi')\n```\n```json\n{inner_json}\n```"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "正确的 JSON"
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None

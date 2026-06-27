@@ -211,13 +211,15 @@ def _strip_code_fence(s: str) -> str:
 
     模型即使被要求"裸 JSON"也常包代码围栏；不剥会让 json.loads 碰反引号崩。
     处理：整体围栏（```json ... ```）、前带解释文本的围栏、裸围栏；无围栏则原样返回。
-    多组围栏取第一个（非贪婪）；极端嵌套不专门处理（本 prompt 下不会出现）。
+    多组围栏时优先取 ```json 标记块，避免前面若有其它代码围栏（如 ```python）时误取；
+    取不到 json 标记才退回第一个围栏。极端嵌套不专门处理（本 prompt 下不会出现）。
     """
     s = s.strip()
-    # 非贪婪匹配第一个 ```...``` 围栏块（可选语言标签 json 等），取其内容
-    m = re.search(r"```(?:\w+)?\s*(.*?)```", s, re.DOTALL)
-    if m:
-        return m.group(1).strip()
+    # 优先 ```json 标记块（避免误取前面的非 JSON 代码块）；无则退回第一个围栏
+    for pattern in (r"```json\s*(.*?)```", r"```(?:\w+)?\s*(.*?)```"):
+        m = re.search(pattern, s, re.DOTALL)
+        if m:
+            return m.group(1).strip()
     return s
 
 
