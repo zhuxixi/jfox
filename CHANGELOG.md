@@ -2,6 +2,14 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.2.2] - 2026-06-28
+
+### Fixes
+- **gem-synth**: 剥 claude markdown 代码围栏，修合成全失败 (#283) (#288)
+- **add**: 创建目标笔记后回填引用方的正向 links (#276)
+
+[1.2.2]: https://github.com/zhuxixi/jfox/compare/v1.2.1...v1.2.2
+
 ## [1.2.1] - 2026-06-26
 
 ### Features
