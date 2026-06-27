@@ -7,7 +7,6 @@
 import json
 import logging
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -206,26 +205,39 @@ def _invoke_claude(
                 pass
 
 
-def _strip_code_fence(s: str) -> str:
-    """剥 claude 常见的 markdown 代码围栏，返回围栏内文本（用于解析模型 JSON 输出）。
+def _parse_json_lenient(inner: Any) -> Optional[Dict[str, Any]]:
+    """从模型输出解析 JSON 对象，容忍 markdown 围栏 / 前导解释文本 / 尾部噪声。
 
-    模型即使被要求"裸 JSON"也常包代码围栏；不剥会让 json.loads 碰反引号崩。
-    规则：
-    - 首字符是 {（裸 JSON 对象）→ 原样返回。绝不 regex 全文搜索，否则 content 字段里
-      嵌的 ``` 代码示例会被误当外层围栏提取、截断 JSON（kimi R3 issue-4 回归）。
-    - 否则（外层有围栏或前导文本）→ 优先取 ```json 标记块（避免误取前面的非 JSON 代码
-      围栏），取不到才退回第一个围栏。极端嵌套不专门处理（本 prompt 下不会出现）。
+    模型常把 JSON 包在 ```json ... ``` 里，或前后加解释文本。早期用 fence-strip 正则
+    提取，但当 JSON 的 content 字段内部含 ``` 代码示例（代码宝石常见）时，正则会把
+    内部 ``` 当外层围栏终点、截断 JSON（kimi R3/R4 issue-4/5）。正则路径本质脆弱。
+
+    改解析式（JSON 解析器尊重字符串字面量，content 内的 ``` 干扰不了它）：
+    1. 直接 json.loads（裸 JSON：含 content 内代码围栏也安全，因 ``` 在字符串字面量内）
+    2. 失败则定位首个 {，用 raw_decode 容忍前导 ```json/解释文本 + 尾部 ```（围栏场景）
+    3. 都失败返回 None（调用方 mark_failed）
+
+    唯一边界：首个 { 落在 JSON 之前的非 JSON 代码块里（极 contrived）才误取，且仍 graceful
+    （缺 title → mark_failed），不崩。
     """
-    s = s.strip()
-    # 裸 JSON 对象：直接返回，不动内部（content 字段可能含 ``` 代码示例）
-    if s.startswith("{"):
-        return s
-    # 外层有围栏/前导文本：优先 ```json 标记块，无则退回第一个围栏
-    for pattern in (r"```json\s*(.*?)```", r"```(?:\w+)?\s*(.*?)```"):
-        m = re.search(pattern, s, re.DOTALL)
-        if m:
-            return m.group(1).strip()
-    return s
+    if isinstance(inner, dict):
+        return inner
+    if not isinstance(inner, str):
+        return None
+    s = inner.strip()
+    try:
+        obj = json.loads(s)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        pass
+    idx = s.find("{")
+    if idx < 0:
+        return None
+    try:
+        obj, _end = json.JSONDecoder().raw_decode(s[idx:])
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        return None
 
 
 def synthesize_with_llm(
@@ -247,10 +259,8 @@ def synthesize_with_llm(
         raw = _invoke_claude(prompt, cfg, stop_event)
         wrapper = json.loads(raw)
         inner = wrapper.get("result", raw) if isinstance(wrapper, dict) else raw
-        # 剥 claude 常给的 markdown 代码围栏（```json ... ```），否则 json.loads 碰反引号崩
-        if isinstance(inner, str):
-            inner = _strip_code_fence(inner)
-        parsed = json.loads(inner) if isinstance(inner, str) else inner
+        # 容忍 markdown 围栏/前导文本：解析式提取 JSON（content 内代码围栏也安全）
+        parsed = _parse_json_lenient(inner)
         if not isinstance(parsed, dict) or "title" not in parsed:
             logger.warning("LLM 输出缺 title: %r", parsed)
             logger.debug("LLM raw output: %r", raw)

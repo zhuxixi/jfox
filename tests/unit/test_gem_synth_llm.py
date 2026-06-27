@@ -134,6 +134,33 @@ def test_synthesize_preserves_clean_json_with_code_fence_in_content():
     assert "print('hi')" in result["content"]
 
 
+def test_synthesize_fenced_json_with_code_fence_in_content():
+    """模型把 JSON 包在 ```json 围栏里，且 content 字段内又含 ```python 代码示例时，
+    不能把内部代码块当外层围栏终点、截断 JSON（kimi R4 issue-5）。
+
+    这是代码宝石的高频场景（content 常含代码示例）。正则 fence-strip 在此必崩；
+    解析式（raw_decode）尊重字符串字面量，content 内的 ``` 不干扰。
+    """
+    content_with_code = "示例：\n```python\nprint('hi')\n```\n如上"
+    inner_json = json.dumps(
+        {
+            "title": "含代码的宝石",
+            "content": content_with_code,
+            "confidence": 0.8,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    # 外层 ```json 围栏包裹，content 内又嵌 ```python
+    fenced = f"```json\n{inner_json}\n```"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "含代码的宝石"
+    assert "print('hi')" in result["content"]
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None
