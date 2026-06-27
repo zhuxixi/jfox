@@ -210,12 +210,17 @@ def _strip_code_fence(s: str) -> str:
     """剥 claude 常见的 markdown 代码围栏，返回围栏内文本（用于解析模型 JSON 输出）。
 
     模型即使被要求"裸 JSON"也常包代码围栏；不剥会让 json.loads 碰反引号崩。
-    处理：整体围栏（```json ... ```）、前带解释文本的围栏、裸围栏；无围栏则原样返回。
-    多组围栏时优先取 ```json 标记块，避免前面若有其它代码围栏（如 ```python）时误取；
-    取不到 json 标记才退回第一个围栏。极端嵌套不专门处理（本 prompt 下不会出现）。
+    规则：
+    - 首字符是 {（裸 JSON 对象）→ 原样返回。绝不 regex 全文搜索，否则 content 字段里
+      嵌的 ``` 代码示例会被误当外层围栏提取、截断 JSON（kimi R3 issue-4 回归）。
+    - 否则（外层有围栏或前导文本）→ 优先取 ```json 标记块（避免误取前面的非 JSON 代码
+      围栏），取不到才退回第一个围栏。极端嵌套不专门处理（本 prompt 下不会出现）。
     """
     s = s.strip()
-    # 优先 ```json 标记块（避免误取前面的非 JSON 代码块）；无则退回第一个围栏
+    # 裸 JSON 对象：直接返回，不动内部（content 字段可能含 ``` 代码示例）
+    if s.startswith("{"):
+        return s
+    # 外层有围栏/前导文本：优先 ```json 标记块，无则退回第一个围栏
     for pattern in (r"```json\s*(.*?)```", r"```(?:\w+)?\s*(.*?)```"):
         m = re.search(pattern, s, re.DOTALL)
         if m:

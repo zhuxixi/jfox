@@ -108,6 +108,32 @@ def test_synthesize_prefers_json_fenced_block_over_earlier_code_fence():
     assert result["title"] == "正确的 JSON"
 
 
+def test_synthesize_preserves_clean_json_with_code_fence_in_content():
+    """模型返回裸 JSON（无外层围栏），但其 content 字段含 ``` 代码示例时，
+    不能误把内部代码块当外层围栏提取（会截断 JSON 致 json.loads 失败）。
+
+    回归 kimi R3 issue-4：regex 全文搜索会把 content 内的 ```python...``` 误当外层围栏。
+    修法：首字符 { 的裸 JSON 原样返回，绝不 regex。
+    """
+    content_with_code = "示例：\n```python\nprint('hi')\n```\n如上"
+    inner_json = json.dumps(
+        {
+            "title": "含代码的知识",
+            "content": content_with_code,
+            "confidence": 0.8,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    # 裸 JSON（无外层围栏），envelope.result 直接是它
+    fake_output = json.dumps({"type": "result", "result": inner_json})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "含代码的知识"
+    assert "print('hi')" in result["content"]
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None
