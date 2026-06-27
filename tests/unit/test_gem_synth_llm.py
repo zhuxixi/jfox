@@ -161,6 +161,30 @@ def test_synthesize_fenced_json_with_code_fence_in_content():
     assert "print('hi')" in result["content"]
 
 
+def test_synthesize_picks_largest_json_object_over_earlier_brace_code():
+    """模型在目标 JSON 前还输出含 { 的代码块（如 python 字典示例）时，
+    应取跨度最大的 JSON 对象（gem），不误取前面的小 {...}（kimi R5 issue-6）。
+
+    单 { 版本会取到前面的小字典就停；扫描所有 { 取最大者才对。
+    """
+    inner_json = json.dumps(
+        {
+            "title": "目标宝石",
+            "content": "x",
+            "confidence": 0.7,
+            "knowledge_type": "procedural",
+            "grounded_by": [],
+        }
+    )
+    # 前面有个含 { 的 python 字典示例（恰好是合法 JSON 语法的小对象），后面才是 gem
+    fenced = f'```python\nd = {{"a": 1, "b": 2}}\n```\n```json\n{inner_json}\n```'
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "目标宝石"
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None

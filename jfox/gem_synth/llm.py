@@ -206,19 +206,18 @@ def _invoke_claude(
 
 
 def _parse_json_lenient(inner: Any) -> Optional[Dict[str, Any]]:
-    """从模型输出解析 JSON 对象，容忍 markdown 围栏 / 前导解释文本 / 尾部噪声。
+    """从模型输出解析 JSON 对象，容忍 markdown 围栏 / 前导解释文本 / 前置代码块 / 尾部噪声。
 
-    模型常把 JSON 包在 ```json ... ``` 里，或前后加解释文本。早期用 fence-strip 正则
-    提取，但当 JSON 的 content 字段内部含 ``` 代码示例（代码宝石常见）时，正则会把
+    模型常把 JSON 包在 ```json ... ``` 里，或前后加解释文本/代码示例。早期用 fence-strip
+    正则提取，但当 JSON 的 content 字段内部含 ``` 代码示例（代码宝石常见）时，正则会把
     内部 ``` 当外层围栏终点、截断 JSON（kimi R3/R4 issue-4/5）。正则路径本质脆弱。
 
-    改解析式（JSON 解析器尊重字符串字面量，content 内的 ``` 干扰不了它）：
+    改解析式（JSON 解析器尊重字符串字面量，content 内的 ``` / { 干扰不了它）：
     1. 直接 json.loads（裸 JSON：含 content 内代码围栏也安全，因 ``` 在字符串字面量内）
-    2. 失败则定位首个 {，用 raw_decode 容忍前导 ```json/解释文本 + 尾部 ```（围栏场景）
+    2. 失败则扫描所有 { 位置，各自 raw_decode，取**跨度最大**的有效 JSON 对象——目标 gem
+       比前导文本/代码块里的零散小对象（如 python 字典示例）更长，故胜出；schema 无关，
+       且 content 内的 { 其片段跨度也小于整个 gem（kimi R5 issue-6）
     3. 都失败返回 None（调用方 mark_failed）
-
-    唯一边界：首个 { 落在 JSON 之前的非 JSON 代码块里（极 contrived）才误取，且仍 graceful
-    （缺 title → mark_failed），不崩。
     """
     if isinstance(inner, dict):
         return inner
@@ -230,14 +229,20 @@ def _parse_json_lenient(inner: Any) -> Optional[Dict[str, Any]]:
         return obj if isinstance(obj, dict) else None
     except json.JSONDecodeError:
         pass
-    idx = s.find("{")
-    if idx < 0:
-        return None
-    try:
-        obj, _end = json.JSONDecoder().raw_decode(s[idx:])
-        return obj if isinstance(obj, dict) else None
-    except json.JSONDecodeError:
-        return None
+    # 扫描所有 {，raw_decode 各自尝试，取跨度最大（字符最多）的有效 JSON 对象
+    decoder = json.JSONDecoder()
+    best: Optional[Dict[str, Any]] = None
+    best_end = -1
+    for i, ch in enumerate(s):
+        if ch != "{":
+            continue
+        try:
+            obj, end = decoder.raw_decode(s[i:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and end > best_end:
+            best, best_end = obj, end
+    return best
 
 
 def synthesize_with_llm(
