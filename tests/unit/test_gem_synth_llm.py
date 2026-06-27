@@ -86,6 +86,17 @@ def test_synthesize_strips_bare_code_fence():
     assert result["title"] == "裸围栏"
 
 
+def test_synthesize_strips_fence_with_preamble():
+    """模型在围栏前加解释文本时（如"这是 JSON:"），也要正确提取围栏内 JSON。"""
+    inner_json = json.dumps({"title": "带前导文本", "content": "x", "confidence": 0.7})
+    fenced = f"这是合成的 JSON：\n```json\n{inner_json}\n```\n（如上）"
+    fake_output = json.dumps({"type": "result", "result": fenced})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock())
+    assert result is not None
+    assert result["title"] == "带前导文本"
+
+
 def test_synthesize_returns_none_on_invalid_json():
     with patch("jfox.gem_synth.llm._invoke_claude", return_value="not json"):
         assert synthesize_with_llm(turn_context="x", grounding=[], cfg=MagicMock()) is None

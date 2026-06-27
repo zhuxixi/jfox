@@ -7,6 +7,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -206,21 +207,18 @@ def _invoke_claude(
 
 
 def _strip_code_fence(s: str) -> str:
-    """剥 claude 常见的 markdown 代码围栏（```json ... ``` / ``` ... ```），返回内部文本。
+    """剥 claude 常见的 markdown 代码围栏，返回围栏内文本（用于解析模型 JSON 输出）。
 
-    模型即使被要求"裸 JSON"也常包代码围栏；不剥会让 json.loads 碰首字符反引号崩。
-    无围栏或首字符非 ``` 则原样返回（strip 首尾空白后）。
+    模型即使被要求"裸 JSON"也常包代码围栏；不剥会让 json.loads 碰反引号崩。
+    处理：整体围栏（```json ... ```）、前带解释文本的围栏、裸围栏；无围栏则原样返回。
+    多组围栏取第一个（非贪婪）；极端嵌套不专门处理（本 prompt 下不会出现）。
     """
     s = s.strip()
-    if not s.startswith("```"):
-        return s
-    lines = s.splitlines()
-    # 去首行围栏开头（``` 或 ```json 等）
-    lines = lines[1:]
-    # 去末行 ``` 收尾（若有）
-    if lines and lines[-1].strip() == "```":
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
+    # 非贪婪匹配第一个 ```...``` 围栏块（可选语言标签 json 等），取其内容
+    m = re.search(r"```(?:\w+)?\s*(.*?)```", s, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return s
 
 
 def synthesize_with_llm(
