@@ -50,19 +50,15 @@ def find_anchors(
 
     conn = sqlite3.connect(str(fragments_db))
     conn.row_factory = sqlite3.Row
-    # ATTACH synthesis_log 库，用 NOT EXISTS 子查询在 SQL 层排除已处理锚点：让 LIMIT 直接
-    # 作用在未处理锚点上（修 #290 循环空转），且无 NOT IN (?,?...) 的参数数量上限
-    # （synthesis_log 只增不清，无界 NOT IN 超 SQLite 变量上限会 OperationalError 致循环
-    # stall 无自愈；#291 CR kimi#3/cc#1）。两库不同文件，须 ATTACH 才能跨库子查询。
-    exclude_processed = ""
-    try:
-        conn.execute("ATTACH DATABASE ? AS syn", (str(log.db_path),))
-        exclude_processed = (
-            " AND NOT EXISTS (SELECT 1 FROM syn.synthesis_log sl "
-            "WHERE sl.anchor_fragment_id = session_fragments.fragment_id)"
-        )
-    except sqlite3.Error:
-        pass  # ATTACH 失败（路径无效等，罕见）→ 不排除；最坏重处理（幂等覆盖）
+    # ATTACH synthesis_log + NOT EXISTS 子查询：SQL 层排除已处理锚点（修 #290），
+    # 让 LIMIT 直接作用在未处理锚点上，无 NOT IN 参数上限（#291 CR kimi#3）。
+    # ATTACH 正常不失败（db_path 由 SynthesisLog 必建）；失败即真异常上抛，由 loop
+    # find_error 接管+记日志——不静默降级（静默会重复合成、产重复 candidate）。
+    conn.execute("ATTACH DATABASE ? AS syn", (str(log.db_path),))
+    exclude_processed = (
+        " AND NOT EXISTS (SELECT 1 FROM syn.synthesis_log sl "
+        "WHERE sl.anchor_fragment_id = session_fragments.fragment_id)"
+    )
 
     sql = (
         f"SELECT fragment_id, session_id, fragment_type, timestamp, content, metadata_json "
@@ -73,7 +69,8 @@ def find_anchors(
         sql += " AND session_id = ?"
         params.append(session_id)
     sql += " ORDER BY fragment_id LIMIT ?"
-    params.append(limit * 3)  # 多取以容 Python 侧 ask_user_question 精确复核的少量剔除
+    # 多取以容 Python 侧 ask_user_question 精确复核的少量剔除
+    params.append(limit * 3)
 
     try:
         rows = conn.execute(sql, params).fetchall()

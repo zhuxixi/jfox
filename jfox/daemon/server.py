@@ -361,7 +361,8 @@ def main():
         _h = logging.StreamHandler()
         _h.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
         _jfox.addHandler(_h)
-    _jfox.setLevel(logging.INFO)
+    if _jfox.level == logging.NOTSET:  # 不覆盖调用方/测试自定义级别（kimi#6）
+        _jfox.setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser(description="JFox Embedding Daemon")
     parser.add_argument("--host", default=DEFAULT_HOST, help="监听地址")
