@@ -82,6 +82,16 @@ class SynthesisLog:
         done = {r[0] for r in rows}
         return [fid for fid in fragment_ids if fid not in done]
 
+    def processed_ids(self) -> set:
+        """所有已记账的 anchor_fragment_id（success + failed）。
+
+        供 find_anchors 在 SQL 层 NOT IN 排除——避免 LIMIT 取到一堆已处理的锚点
+        后 Python 侧全滤掉、返回空（#290：循环 limit=1 空转根因）。
+        """
+        with self._lock:
+            rows = self._conn.execute("SELECT anchor_fragment_id FROM synthesis_log").fetchall()
+        return {r[0] for r in rows}
+
     def mark_processed(self, anchor_fragment_id: int, candidate_note_id: str) -> None:
         with self._lock:
             self._conn.execute(

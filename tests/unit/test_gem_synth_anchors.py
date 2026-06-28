@@ -106,6 +106,36 @@ def test_count_anchors_empty_anchor_types(tmp_path):
     assert count_anchors(fragments_db=tmp_path / "f.db", anchor_types=[]) == 0
 
 
+def test_find_anchors_skips_clustered_processed_and_returns_unprocessed(tmp_path):
+    """已处理锚点集中在低 fragment_id 时，find_anchors(limit=1) 仍须返回未处理的（#290）。
+
+    回归根因：旧实现 `LIMIT limit*3` 只取前几条，若前 3 条全是已处理的 → Python 侧
+    filter_unprocessed 全滤掉 → 返回 0，哪怕后面还有未处理锚点。daemon 循环用 limit=1，
+    每 tick 都取到这 3 条已处理的 → 永远返回 0 → 空转、不合成。
+    修法：把"已处理"过滤下推到 SQL（NOT IN），让 LIMIT 直接作用在未处理锚点上。
+    """
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    # 前 3 条锚点（低 fragment_id）会被标记已处理；第 4 条未处理
+    a1 = store.insert("s", "correction", "UserPromptSubmit", "纠1", {})
+    a2 = store.insert("s", "correction", "UserPromptSubmit", "纠2", {})
+    a3 = store.insert("s", "correction", "UserPromptSubmit", "纠3", {})
+    a4 = store.insert("s", "correction", "UserPromptSubmit", "纠4", {})
+    store.close()
+
+    log = SynthesisLog(db_path=tmp_path / "syn.db")
+    log.mark_processed(a1, "c1")
+    log.mark_processed(a2, "c2")
+    log.mark_processed(a3, "c3")
+
+    # limit=1：旧实现 LIMIT 3 取 a1/a2/a3 全已处理 → 0；修后须跳过它们返回 a4
+    anchors = find_anchors(
+        fragments_db=tmp_path / "f.db", log=log, anchor_types=["correction"], limit=1
+    )
+    assert len(anchors) == 1
+    assert anchors[0]["fragment_id"] == a4
+    log.close()
+
+
 def test_find_anchors_tolerates_malformed_metadata_json(tmp_path):
     """session_fragments 含非法 JSON 的 metadata_json 行时，find_anchors/count_anchors
     都不应崩——坏行跳过、合法 ask_user_question 照常返回/计数。

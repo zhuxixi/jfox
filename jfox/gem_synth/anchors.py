@@ -52,11 +52,19 @@ def find_anchors(
         f"FROM session_fragments WHERE {where}"
     )
     params: List = []
+    # 已处理锚点在 SQL 层排除（NOT IN），让 LIMIT 直接作用在未处理锚点上。
+    # 旧实现只 LIMIT limit*3 再在 Python 侧 filter_unprocessed，当已处理锚点集中在低
+    # fragment_id 时，LIMIT 取到的全是已处理的 → 全滤掉 → 返回空 → 循环空转（#290）。
+    processed = log.processed_ids()
+    if processed:
+        placeholders = ",".join("?" * len(processed))
+        sql += f" AND fragment_id NOT IN ({placeholders})"
+        params.extend(sorted(processed))
     if session_id:
         sql += " AND session_id = ?"
         params.append(session_id)
     sql += " ORDER BY fragment_id LIMIT ?"
-    params.append(limit * 3)  # 多取再在 Python 侧按精确条件过滤
+    params.append(limit * 3)  # 多取以容 Python 侧 ask_user_question 精确复核的少量剔除
 
     conn = sqlite3.connect(str(fragments_db))
     conn.row_factory = sqlite3.Row
@@ -65,12 +73,8 @@ def find_anchors(
     finally:
         conn.close()
 
-    unprocessed = set(log.filter_unprocessed([r["fragment_id"] for r in rows]))
-
     result: List[Dict] = []
     for r in rows:
-        if r["fragment_id"] not in unprocessed:
-            continue
         try:
             md = json.loads(r["metadata_json"] or "{}")
         except (json.JSONDecodeError, TypeError, ValueError):

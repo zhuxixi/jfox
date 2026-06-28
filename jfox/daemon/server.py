@@ -352,6 +352,16 @@ def list_fragments(
 def main():
     from . import DEFAULT_HOST, DEFAULT_PORT
 
+    # 配置 jfox 日志：daemon 由 `python -m jfox.daemon.server` 启动，不走 cli.py 的
+    # basicConfig；不配则用默认 lastResort handler（WARNING 级），gem_synth 等模块的
+    # INFO 日志（tick / 后台循环已启动）全被吞 → 循环活动看不见（#290 日志盲点）。
+    # process.py 已把本进程 stderr 重定向到 ~/.jfox_daemon.log，故 StreamHandler 即落盘。
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    _jfox = logging.getLogger("jfox")
+    _jfox.setLevel(logging.INFO)
+    _jfox.addHandler(_h)
+
     parser = argparse.ArgumentParser(description="JFox Embedding Daemon")
     parser.add_argument("--host", default=DEFAULT_HOST, help="监听地址")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="监听端口")
