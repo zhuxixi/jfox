@@ -47,27 +47,34 @@ def find_anchors(
     where = _anchor_where(anchor_types)
     if not where:
         return []
+
+    conn = sqlite3.connect(str(fragments_db))
+    conn.row_factory = sqlite3.Row
+    # ATTACH synthesis_log 库，用 NOT EXISTS 子查询在 SQL 层排除已处理锚点：让 LIMIT 直接
+    # 作用在未处理锚点上（修 #290 循环空转），且无 NOT IN (?,?...) 的参数数量上限
+    # （synthesis_log 只增不清，无界 NOT IN 超 SQLite 变量上限会 OperationalError 致循环
+    # stall 无自愈；#291 CR kimi#3/cc#1）。两库不同文件，须 ATTACH 才能跨库子查询。
+    exclude_processed = ""
+    try:
+        conn.execute("ATTACH DATABASE ? AS syn", (str(log.db_path),))
+        exclude_processed = (
+            " AND NOT EXISTS (SELECT 1 FROM syn.synthesis_log sl "
+            "WHERE sl.anchor_fragment_id = session_fragments.fragment_id)"
+        )
+    except sqlite3.Error:
+        pass  # ATTACH 失败（路径无效等，罕见）→ 不排除；最坏重处理（幂等覆盖）
+
     sql = (
         f"SELECT fragment_id, session_id, fragment_type, timestamp, content, metadata_json "
-        f"FROM session_fragments WHERE {where}"
+        f"FROM session_fragments WHERE {where}{exclude_processed}"
     )
     params: List = []
-    # 已处理锚点在 SQL 层排除（NOT IN），让 LIMIT 直接作用在未处理锚点上。
-    # 旧实现只 LIMIT limit*3 再在 Python 侧 filter_unprocessed，当已处理锚点集中在低
-    # fragment_id 时，LIMIT 取到的全是已处理的 → 全滤掉 → 返回空 → 循环空转（#290）。
-    processed = log.processed_ids()
-    if processed:
-        placeholders = ",".join("?" * len(processed))
-        sql += f" AND fragment_id NOT IN ({placeholders})"
-        params.extend(sorted(processed))
     if session_id:
         sql += " AND session_id = ?"
         params.append(session_id)
     sql += " ORDER BY fragment_id LIMIT ?"
     params.append(limit * 3)  # 多取以容 Python 侧 ask_user_question 精确复核的少量剔除
 
-    conn = sqlite3.connect(str(fragments_db))
-    conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(sql, params).fetchall()
     finally:

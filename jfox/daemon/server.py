@@ -356,11 +356,12 @@ def main():
     # basicConfig；不配则用默认 lastResort handler（WARNING 级），gem_synth 等模块的
     # INFO 日志（tick / 后台循环已启动）全被吞 → 循环活动看不见（#290 日志盲点）。
     # process.py 已把本进程 stderr 重定向到 ~/.jfox_daemon.log，故 StreamHandler 即落盘。
-    _h = logging.StreamHandler()
-    _h.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
     _jfox = logging.getLogger("jfox")
+    if not _jfox.handlers:  # 幂等：同进程多次调 main()（测试/手动）不重复挂 handler（#291 CR）
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+        _jfox.addHandler(_h)
     _jfox.setLevel(logging.INFO)
-    _jfox.addHandler(_h)
 
     parser = argparse.ArgumentParser(description="JFox Embedding Daemon")
     parser.add_argument("--host", default=DEFAULT_HOST, help="监听地址")
