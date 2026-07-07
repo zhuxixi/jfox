@@ -5,7 +5,7 @@ from utils.temp_kb import temp_kb_registered
 
 from jfox.config import use_kb
 from jfox.models import Note, NoteType
-from jfox.note import create_note, load_note_by_id, promote_note, save_note
+from jfox.note import create_note, load_note_by_id, promote_note, reject_note, save_note
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
@@ -109,3 +109,28 @@ def test_promote_nonexistent_returns_false():
     with temp_kb_registered() as kb_name:
         with use_kb(kb_name):
             assert promote_note("999999999999999") is False
+
+
+def test_reject_archives_and_records_reason():
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            c = _make_candidate("要拒的", "内容")
+            assert reject_note(c.id, reason="不准确") is True
+            r = load_note_by_id(c.id)
+            assert r.archived is True
+            assert r.reject_reason == "不准确"
+
+
+def test_reject_without_reason_still_archives():
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            c = _make_candidate("要拒的", "内容")
+            assert reject_note(c.id) is True
+            assert load_note_by_id(c.id).archived is True
+            assert load_note_by_id(c.id).reject_reason is None
+
+
+def test_reject_nonexistent_returns_false():
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            assert reject_note("999999999999999") is False

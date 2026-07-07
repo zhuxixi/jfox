@@ -382,6 +382,18 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
     return True
 
 
+def reject_note(note_id: str, reason: Optional[str] = None, cfg: Optional[ZKConfig] = None) -> bool:
+    """candidate 归档丢弃（软删除），可选记 reject_reason。复用归档逻辑，可 unarchive 恢复。"""
+    n = load_note_by_id(note_id, cfg=cfg)
+    if not n:
+        logger.warning(f"Note {note_id} not found")
+        return False
+    n.archived = True
+    if reason:
+        n.reject_reason = reason
+    return update_note(n)
+
+
 def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
     """
     更新已有笔记
