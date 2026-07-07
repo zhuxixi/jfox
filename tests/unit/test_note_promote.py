@@ -60,21 +60,26 @@ def test_promote_moves_file_to_permanent_dir():
             assert not candidate_path.exists()
 
 
-def test_promote_clears_candidate_frontmatter_fields():
+def test_promote_clears_candidate_lifecycle_fields():
+    """清 candidate 生命周期字段（gem_level/confidence/status/knowledge_type）"""
     with temp_kb_registered() as kb_name:
         with use_kb(kb_name):
             c = _make_candidate("测试候选", "内容")
             promote_note(c.id)
             md = load_note_by_id(c.id).filepath.read_text(encoding="utf-8")
-            for field in (
-                "gem_level",
-                "confidence",
-                "status",
-                "source_fragments",
-                "grounded_by",
-                "knowledge_type",
-            ):
+            for field in ("gem_level", "confidence", "status", "knowledge_type"):
                 assert field not in md
+
+
+def test_promote_preserves_provenance_fields():
+    """c1：promote 保留 source_fragments/grounded_by 溯源（promoted permanent 可追溯到来源碎片）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            c = _make_candidate("测试候选", "内容", grounded_by=["某参考笔记"])
+            promote_note(c.id)
+            md = load_note_by_id(c.id).filepath.read_text(encoding="utf-8")
+            assert "source_fragments" in md  # [1, 2] 保留
+            assert "grounded_by" in md  # ["某参考笔记"] 保留
 
 
 def test_promote_backfills_backlinks_to_targets():
@@ -119,6 +124,7 @@ def test_reject_archives_and_records_reason():
             r = load_note_by_id(c.id)
             assert r.archived is True
             assert r.reject_reason == "不准确"
+            assert r.status == "rejected"
 
 
 def test_reject_without_reason_still_archives():
@@ -134,3 +140,51 @@ def test_reject_nonexistent_returns_false():
     with temp_kb_registered() as kb_name:
         with use_kb(kb_name):
             assert reject_note("999999999999999") is False
+
+
+def test_reject_non_candidate_returns_false():
+    """c8：reject 非 candidate 返回 False（类型守卫，与 promote 对称）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            p = create_note("永久", title="永久笔记", note_type=NoteType.PERMANENT)
+            save_note(p, add_to_index=False)
+            assert reject_note(p.id) is False
+
+
+def test_unarchive_clears_reject_reason():
+    """c9：reject→unarchive 后 reject_reason 清空（不残留拒绝语义）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            from jfox.note import unarchive_note
+
+            c = _make_candidate("要拒的", "内容")
+            reject_note(c.id, reason="不准")
+            assert load_note_by_id(c.id).reject_reason == "不准"
+            unarchive_note(c.id)
+            assert load_note_by_id(c.id).reject_reason is None
+
+
+def test_promote_clears_reject_reason_after_reject_unarchive():
+    """c6：reject→unarchive→promote 后 permanent 不残留 reject_reason"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            from jfox.note import unarchive_note
+
+            c = _make_candidate("先拒后升", "内容")
+            reject_note(c.id, reason="误判")
+            unarchive_note(c.id)
+            promote_note(c.id)
+            md = load_note_by_id(c.id).filepath.read_text(encoding="utf-8")
+            assert "reject_reason" not in md
+
+
+def test_promote_ignores_wiki_links_in_code_block():
+    """c2：正文 fenced code block 里的 [[标题]] 不被误当链接回填 backlinks"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note("目标内容", title="目标笔记", note_type=NoteType.PERMANENT)
+            save_note(target, add_to_index=False)
+            # 正文仅含 code block 里的字面量 [[目标笔记]]，不应被当真实链接
+            c = _make_candidate("代码块测试", "示例\n```\n[[目标笔记]] 是代码\n```\n")
+            promote_note(c.id)
+            assert c.id not in load_note_by_id(target.id).backlinks

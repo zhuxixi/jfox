@@ -140,19 +140,20 @@ class Note:
         if self.reject_reason:
             frontmatter["reject_reason"] = self.reject_reason
 
-        # candidate 专属字段（仅 type=CANDIDATE 时写入 frontmatter）
+        # candidate 生命周期字段（仅 type=CANDIDATE 时写入 frontmatter）
         if self.type == NoteType.CANDIDATE:
             frontmatter["gem_level"] = self.gem_level or GemLevel.FLAWED.value
             if self.confidence is not None:
                 frontmatter["confidence"] = self.confidence
-            if self.source_fragments:
-                frontmatter["source_fragments"] = self.source_fragments
-            if self.grounded_by:
-                frontmatter["grounded_by"] = self.grounded_by
             if self.knowledge_type:
                 frontmatter["knowledge_type"] = self.knowledge_type
             if self.status:
                 frontmatter["status"] = self.status
+        # 溯源字段（跨类型保留：candidate 合成产出 + promoted permanent 都可追溯到来源碎片，#249）
+        if self.source_fragments:
+            frontmatter["source_fragments"] = self.source_fragments
+        if self.grounded_by:
+            frontmatter["grounded_by"] = self.grounded_by
 
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
 
@@ -230,17 +231,18 @@ class Note:
             "hop": self.hop,
             "topic": self.topic,
         }
-        # candidate 专属字段（仅 type=CANDIDATE 时输出，与 to_markdown 保持一致）
+        # candidate 生命周期字段（仅 type=CANDIDATE 时输出）
         if self.type == NoteType.CANDIDATE:
             d["gem_level"] = self.gem_level or GemLevel.FLAWED.value
             if self.confidence is not None:
                 d["confidence"] = self.confidence
-            if self.source_fragments:
-                d["source_fragments"] = self.source_fragments
-            if self.grounded_by:
-                d["grounded_by"] = self.grounded_by
             if self.knowledge_type:
                 d["knowledge_type"] = self.knowledge_type
             if self.status:
                 d["status"] = self.status
+        # 溯源字段（跨类型输出，与 to_markdown 保持一致）
+        if self.source_fragments:
+            d["source_fragments"] = self.source_fragments
+        if self.grounded_by:
+            d["grounded_by"] = self.grounded_by
         return d

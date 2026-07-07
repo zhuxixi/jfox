@@ -97,7 +97,12 @@ def list_cmd(
         # 多取一些再在内存里按 status/confidence 过滤（这些字段在 frontmatter，索引层不过滤）
         # limit 经上面 clamp 必 >= 1，直接 limit*3（原 `if limit > 0 else limit` 分支已死）
         try:
-            notes = list_notes(note_type=NoteType.CANDIDATE, limit=limit * 3)
+            # rejected candidate 已 archived，默认 exclude_archived 会漏掉——按需包含
+            notes = list_notes(
+                note_type=NoteType.CANDIDATE,
+                limit=limit * 3,
+                include_archived=status in ("rejected", "all"),
+            )
         except Exception as e:
             # 未初始化/空库应返回空列表而非抛错；真正读取失败才报错退出
             # --format json 时输出结构化错误（AGENTS.md 约定），否则打印红色提示
@@ -161,7 +166,20 @@ def promote_cmd(
     from ..note import promote_note
 
     with use_kb(kb):
-        ok = promote_note(note_id)
+        try:
+            ok = promote_note(note_id)
+        except Exception as e:
+            # 索引损坏/IO 等异常：结构化错误（AGENTS.md 约定），不崩 traceback
+            if output_format == "json":
+                typer.echo(
+                    _json.dumps(
+                        {"promoted": note_id, "success": False, "error": str(e)},
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                console.print(f"[red]✗ 晋升异常：{e}[/red]")
+            raise typer.Exit(code=1)
         if output_format == "json":
             typer.echo(_json.dumps({"promoted": note_id, "success": ok}, ensure_ascii=False))
         elif ok:
@@ -186,7 +204,19 @@ def reject_cmd(
     from ..note import reject_note
 
     with use_kb(kb):
-        ok = reject_note(note_id, reason=reason)
+        try:
+            ok = reject_note(note_id, reason=reason)
+        except Exception as e:
+            if output_format == "json":
+                typer.echo(
+                    _json.dumps(
+                        {"rejected": note_id, "success": False, "error": str(e)},
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                console.print(f"[red]✗ 拒绝异常：{e}[/red]")
+            raise typer.Exit(code=1)
         if output_format == "json":
             typer.echo(_json.dumps({"rejected": note_id, "success": ok}, ensure_ascii=False))
         elif ok:
