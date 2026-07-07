@@ -150,6 +150,28 @@ def list_cmd(
         console.print(table)
 
 
+@candidates_app.command("promote")
+def promote_cmd(
+    note_id: str = typer.Argument(..., help="candidate 笔记 ID"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("table", "--format", "-f", help="table, json"),
+) -> None:
+    """晋升 candidate → permanent（改 type + 移文件 + 回填 backlinks）"""
+    from ..config import use_kb
+    from ..note import promote_note
+
+    with use_kb(kb):
+        ok = promote_note(note_id)
+        if output_format == "json":
+            typer.echo(_json.dumps({"promoted": note_id, "success": ok}, ensure_ascii=False))
+        elif ok:
+            console.print(f"[green]✓[/green] 晋升 {note_id} → permanent")
+        else:
+            console.print(f"[red]✗ 晋升失败：{note_id}（非 candidate 或不存在）[/red]")
+        if not ok:
+            raise typer.Exit(code=1)
+
+
 __all__ = ["candidates_app", "gem_synth_app"]
 
 
