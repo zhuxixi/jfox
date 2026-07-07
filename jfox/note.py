@@ -114,7 +114,9 @@ def save_note(note: Note, add_to_index: bool = True) -> bool:
 
                 bm25_index = get_bm25_index()
                 content = f"{note.title} {note.content}"
-                bm25_index.add_document(note.id, content)
+                bm25_index.add_document(
+                    note.id, content, note_type=note.type.value if note.type else None
+                )
             except Exception as e:
                 logger.warning(f"Failed to add note to BM25 index: {e}")
 
@@ -380,7 +382,11 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
                 bm25_index = get_bm25_index()
                 bm25_index.remove_document(note_obj.id)
                 content = f"{note_obj.title} {note_obj.content}"
-                bm25_index.add_document(note_obj.id, content)
+                bm25_index.add_document(
+                    note_obj.id,
+                    content,
+                    note_type=note_obj.type.value if note_obj.type else None,
+                )
             except Exception as e:
                 logger.warning(f"Failed to update BM25 index: {e}")
 

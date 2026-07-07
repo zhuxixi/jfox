@@ -273,7 +273,10 @@ def bulk_import_notes(
 
                 # 批量添加到 BM25 索引
                 bm25 = get_bm25_index()
-                bm25_docs = [(n.id, f"{n.title} {n.content}") for n in notes]
+                bm25_docs = [
+                    (n.id, f"{n.title} {n.content}", n.type.value if n.type else None)
+                    for n in notes
+                ]
                 bm25.add_documents_batch(bm25_docs)
 
             except Exception as e:
