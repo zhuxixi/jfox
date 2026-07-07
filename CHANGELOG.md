@@ -2,6 +2,13 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.2.3] - 2026-07-07
+
+### Fixes
+- **gem-synth**: find_anchors 在 SQL 层排除已处理，修循环空转（#290） (#291)
+
+[1.2.3]: https://github.com/zhuxixi/jfox/compare/v1.2.2...v1.2.3
+
 ## [1.2.2] - 2026-06-28
 
 ### Fixes
