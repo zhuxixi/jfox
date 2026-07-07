@@ -73,6 +73,7 @@ class Note:
     source: Optional[str] = None  # 来源（文献笔记）
     topic: Optional[str] = None  # 会话主题（session 类型）
     archived: bool = False  # 是否已归档（软删除标记）
+    reject_reason: Optional[str] = None  # candidate reject 原因（供复盘）
 
     # candidate 专属字段（仅 type=CANDIDATE 时序列化；其它类型忽略）
     gem_level: Optional[str] = None
@@ -136,6 +137,8 @@ class Note:
             frontmatter["topic"] = self.topic
         if self.archived:
             frontmatter["archived"] = self.archived
+        if self.reject_reason:
+            frontmatter["reject_reason"] = self.reject_reason
 
         # candidate 专属字段（仅 type=CANDIDATE 时写入 frontmatter）
         if self.type == NoteType.CANDIDATE:
@@ -200,6 +203,7 @@ class Note:
             source=fm.get("source"),
             topic=fm.get("topic"),
             archived=_to_bool(fm.get("archived", False)),
+            reject_reason=fm.get("reject_reason"),
             gem_level=fm.get("gem_level"),
             confidence=_to_float(fm.get("confidence")),
             source_fragments=fm.get("source_fragments", []),
@@ -221,6 +225,7 @@ class Note:
             "links": self.links,
             "filepath": str(self.filepath),
             "archived": self.archived,
+            "reject_reason": self.reject_reason,
             "score": self.score,
             "hop": self.hop,
             "topic": self.topic,
