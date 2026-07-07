@@ -329,6 +329,59 @@ def unarchive_note(note_id: str) -> bool:
     return update_note(n)
 
 
+def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
+    """candidate → permanent：改 type、清 candidate 字段、移文件、回填 links/backlinks。
+
+    frontmatter 的 candidate 专属字段随 type 改变自动不再写入（to_markdown 类型绑定）；
+    溯源由正文「## 来源」段承载。backlinks 增量回填：解析正文 [[...]] → 精确标题匹配
+    → 设本笔记 links + 把本笔记加进各 target 的 backlinks。
+    """
+    from .note_index import extract_wiki_links_from_text, get_note_index
+
+    n = load_note_by_id(note_id, cfg=cfg)
+    if not n:
+        logger.warning(f"Note {note_id} not found")
+        return False
+    if n.type != NoteType.CANDIDATE:
+        logger.warning(f"Note {note_id} is not a candidate (type={n.type.value})")
+        return False
+
+    # 解析正文 wiki links → target ids（精确标题匹配，避免子串误匹配）
+    idx = get_note_index(cfg)
+    target_ids: List[str] = []
+    for link_text in extract_wiki_links_from_text(n.content):
+        tm = idx.find_by_title(link_text)
+        if tm and tm.id != n.id and tm.id not in target_ids:
+            target_ids.append(tm.id)
+
+    # 改 type + 清 candidate 生命周期字段（frontmatter 随 type 自动清；dataclass 同步清）
+    n.type = NoteType.PERMANENT
+    n.status = None
+    n.gem_level = None
+    n.confidence = None
+    n.knowledge_type = None
+    n.source_fragments = []
+    n.grounded_by = []
+    n.links = sorted(set(n.links + target_ids))
+
+    # update_note：filepath 随 type 变 → 写 permanent/ + 删 candidate/ 旧文件 + 更新索引
+    if not update_note(n):
+        return False
+
+    # 增量回填：把本笔记加进每个 target 的 backlinks（target 内容未变，只改 frontmatter + 同步索引缓存）。
+    # 单 target 写盘/索引失败只 warning 不中断——主笔记已 promote 成功，backlinks 可后续重建。
+    for tid in target_ids:
+        t = load_note_by_id(tid, cfg=cfg)
+        if t and n.id not in t.backlinks:
+            t.backlinks = sorted(set(t.backlinks + [n.id]))
+            try:
+                _atomic_write(t.filepath, t.to_markdown())
+                get_note_index(cfg).update_note_meta(t)
+            except Exception as e:
+                logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
+    return True
+
+
 def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
     """
     更新已有笔记
