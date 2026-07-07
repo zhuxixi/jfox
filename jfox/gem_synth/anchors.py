@@ -47,30 +47,36 @@ def find_anchors(
     where = _anchor_where(anchor_types)
     if not where:
         return []
-    sql = (
-        f"SELECT fragment_id, session_id, fragment_type, timestamp, content, metadata_json "
-        f"FROM session_fragments WHERE {where}"
-    )
-    params: List = []
-    if session_id:
-        sql += " AND session_id = ?"
-        params.append(session_id)
-    sql += " ORDER BY fragment_id LIMIT ?"
-    params.append(limit * 3)  # 多取再在 Python 侧按精确条件过滤
 
     conn = sqlite3.connect(str(fragments_db))
     conn.row_factory = sqlite3.Row
     try:
+        # ATTACH synthesis_log + NOT EXISTS 子查询：SQL 层排除已处理锚点（修 #290），
+        # 让 LIMIT 直接作用在未处理锚点上，无 NOT IN 参数上限（#291 CR kimi#3）。
+        # ATTACH 正常不失败（db_path 由 SynthesisLog 必建）；失败即真异常上抛，由 loop
+        # find_error 接管+记日志——不静默降级（静默会重复合成、产重复 candidate）。
+        conn.execute("ATTACH DATABASE ? AS syn", (str(log.db_path),))
+        exclude_processed = (
+            " AND NOT EXISTS (SELECT 1 FROM syn.synthesis_log sl "
+            "WHERE sl.anchor_fragment_id = session_fragments.fragment_id)"
+        )
+        sql = (
+            f"SELECT fragment_id, session_id, fragment_type, timestamp, content, "
+            f"metadata_json FROM session_fragments WHERE {where}{exclude_processed}"
+        )
+        params: List = []
+        if session_id:
+            sql += " AND session_id = ?"
+            params.append(session_id)
+        sql += " ORDER BY fragment_id LIMIT ?"
+        # 多取以容 Python 侧 ask_user_question 精确复核的少量剔除
+        params.append(limit * 3)
         rows = conn.execute(sql, params).fetchall()
     finally:
-        conn.close()
-
-    unprocessed = set(log.filter_unprocessed([r["fragment_id"] for r in rows]))
+        conn.close()  # 兜底覆盖 ATTACH + SELECT，避免 ATTACH 抛异常时连接泄漏（#291 CR R3）
 
     result: List[Dict] = []
     for r in rows:
-        if r["fragment_id"] not in unprocessed:
-            continue
         try:
             md = json.loads(r["metadata_json"] or "{}")
         except (json.JSONDecodeError, TypeError, ValueError):
