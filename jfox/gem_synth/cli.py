@@ -172,6 +172,31 @@ def promote_cmd(
             raise typer.Exit(code=1)
 
 
+@candidates_app.command("reject")
+def reject_cmd(
+    note_id: str = typer.Argument(..., help="candidate 笔记 ID"),
+    reason: Optional[str] = typer.Option(
+        None, "--reason", "-r", help="拒绝原因（记入 frontmatter）"
+    ),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("table", "--format", "-f", help="table, json"),
+) -> None:
+    """拒绝 candidate（归档丢弃，可记原因，可 jfox unarchive 恢复）"""
+    from ..config import use_kb
+    from ..note import reject_note
+
+    with use_kb(kb):
+        ok = reject_note(note_id, reason=reason)
+        if output_format == "json":
+            typer.echo(_json.dumps({"rejected": note_id, "success": ok}, ensure_ascii=False))
+        elif ok:
+            console.print(f"[green]✓[/green] 拒绝 {note_id}（已归档）")
+        else:
+            console.print(f"[red]✗ 拒绝失败：{note_id} 不存在[/red]")
+        if not ok:
+            raise typer.Exit(code=1)
+
+
 __all__ = ["candidates_app", "gem_synth_app"]
 
 

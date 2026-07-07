@@ -18,7 +18,7 @@ from jfox.cli import app
 from jfox.config import use_kb
 from jfox.gem_synth.cli import candidates_app
 from jfox.models import GemLevel, Note, NoteType
-from jfox.note import save_note
+from jfox.note import create_note, load_note_by_id, save_note
 
 # 走完整 app 路由（jfox candidates promote <id>）的测试用此 runner
 runner = CliRunner()
@@ -285,3 +285,28 @@ def test_candidates_promote_nonexistent_exits_nonzero(temp_kb, mock_embedding_ba
         runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)])
         res = runner.invoke(app, ["candidates", "promote", "999999999999999", "--kb", kb_name])
         assert res.exit_code == 1
+
+
+# ----------------------------------------------------------------------------
+# jfox candidates reject 子命令（candidate 归档丢弃 + 记原因）
+# ----------------------------------------------------------------------------
+
+
+def test_candidates_reject_command(temp_kb, mock_embedding_backend):
+    """jfox candidates reject <id> 归档 + 记 reason"""
+    kb_name = "test_reject_cli"
+    with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+        runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)])
+        with use_kb(kb_name):
+            c = create_note("内容", title="候选B", note_type=NoteType.CANDIDATE)
+            save_note(c, add_to_index=False)
+
+        res = runner.invoke(
+            app,
+            ["candidates", "reject", c.id, "--reason", "不准", "--kb", kb_name, "--format", "json"],
+        )
+        assert res.exit_code == 0, res.output
+        with use_kb(kb_name):
+            r = load_note_by_id(c.id)
+            assert r.archived is True
+            assert r.reject_reason == "不准"
