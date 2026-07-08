@@ -18,7 +18,12 @@ _default_store: Optional[FragmentStore] = None
 
 
 def _get_event_source(event: Dict[str, Any]) -> Optional[str]:
-    """从事件中提取来源标记（供 hook 或内部调用方显式声明）。"""
+    """从事件中提取来源标记（供 hook 或内部调用方显式声明）。
+
+    对外部输入做防御：event 本身、metadata 均可能不是字典。
+    """
+    if not isinstance(event, dict):
+        return None
     raw = event.get("source")
     if isinstance(raw, str) and raw:
         return raw
@@ -66,14 +71,18 @@ def ingest_event(
     """处理一个 CC 事件，写入碎片，返回响应 dict。
 
     返回形如：
-      {fragment_id, fragment_type, message}   正常写入
-      {status: "skipped"}                     配置禁用
-      {status: "error", message}              输入异常 / store 不可用 / 写入异常
+      {fragment_id, fragment_type, message}              正常写入
+      {status: "skipped"}                                配置禁用
+      {status: "skipped", reason: "ignored internal source: ..."}  内部来源跳过
+      {status: "error", message}                         输入异常 / store 不可用 / 写入异常
     """
     if config is None:
         config = get_global_config_manager().get_fragment_capture_config()
     if not config.enabled:
         return {"status": "skipped"}
+
+    if not isinstance(event, dict):
+        return {"status": "error", "message": "event must be a JSON object"}
 
     session_id = event.get("session_id")
     if not session_id:

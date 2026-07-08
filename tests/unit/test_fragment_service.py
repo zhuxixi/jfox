@@ -201,3 +201,15 @@ def test_env_var_is_not_used_by_service(tmp_path, monkeypatch):
     # 事件本身未声明 source，即使环境变量是内部来源也应正常采集
     assert result["fragment_type"] == "user_input"
     assert store.query(session_id="s1") != []
+
+
+@pytest.mark.parametrize("bad_event", [None, "string", ["list"], 123])
+def test_non_dict_event_does_not_raise(tmp_path, bad_event):
+    """event 本身非字典时不抛异常，按输入异常处理"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        bad_event,
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "error"

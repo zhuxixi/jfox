@@ -90,6 +90,18 @@ def test_hook_no_source_for_normal_session(mock_daemon):
     assert "source" not in received[0]
 
 
+def test_hook_skips_internal_session_on_invalid_json(mock_daemon):
+    """内部 session 的 payload 不是合法 JSON 时，hook 应直接跳过，不转发无 source 标记的事件。"""
+    received, daemon_url = mock_daemon
+    payload = "this is not json"
+    env = {**os.environ, "JFOX_INTERNAL_SESSION": "auto-summary", "JFOX_DAEMON_URL": daemon_url}
+    proc = subprocess.run(
+        [BASH, str(HOOK)], input=payload, capture_output=True, text=True, timeout=5, env=env
+    )
+    assert proc.returncode == 0
+    assert len(received) == 0
+
+
 def test_hook_skips_internal_session_when_python3_missing(mock_daemon, tmp_path):
     """内部 session 且环境缺少 python3 时，hook 应直接跳过，不发送任何请求。"""
     received, daemon_url = mock_daemon

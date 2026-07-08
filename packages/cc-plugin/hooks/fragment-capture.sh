@@ -17,6 +17,7 @@ case "${JFOX_INTERNAL_SESSION:-}" in
         # 注入来源标记到 payload；若 python3 不可用则直接跳过该内部 session，
         # 避免无 source 标记的内部事件进入 fragments 链路触发死循环。
         if command -v python3 >/dev/null 2>&1; then
+            # 解析失败时命令替换整体失败，hook 直接跳过，避免无 source 标记的内部事件入库。
             PAYLOAD="$(printf '%s' "$PAYLOAD" | python3 -c '
 import sys, json
 data = sys.stdin.read()
@@ -25,8 +26,8 @@ try:
     event["source"] = sys.argv[1]
     sys.stdout.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
 except Exception:
-    sys.stdout.write(data)
-' "$JFOX_INTERNAL_SESSION")"
+    sys.exit(1)
+' "$JFOX_INTERNAL_SESSION")" || exit 0
         else
             exit 0
         fi
