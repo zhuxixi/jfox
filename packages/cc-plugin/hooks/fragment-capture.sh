@@ -11,21 +11,26 @@ PAYLOAD="$(cat)"
 # 值列表必须与服务端 INTERNAL_SOURCES 保持一致。
 case "${JFOX_INTERNAL_SESSION:-}" in
     auto-summary|gem-synth)
-        PAYLOAD="$(printf '%s' "$PAYLOAD" | python3 -c '
+        # 注入来源标记到 payload；若 python3 不可用或解析失败，保留原 payload 不变。
+        if command -v python3 >/dev/null 2>&1; then
+            PAYLOAD="$(printf '%s' "$PAYLOAD" | python3 -c '
 import sys, json
+data = sys.stdin.read()
 try:
-    event = json.load(sys.stdin)
+    event = json.loads(data)
     event["source"] = sys.argv[1]
-    json.dump(event, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+    sys.stdout.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
 except Exception:
-    sys.stdout.write(sys.stdin.read())
+    sys.stdout.write(data)
 ' "$JFOX_INTERNAL_SESSION")"
+        fi
         ;;
 esac
 
 # POST 原样给 daemon；-m1 限时1秒，-s 静默，失败不报错
+JFOX_DAEMON_URL="${JFOX_DAEMON_URL:-http://127.0.0.1:18700}"
 RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 1 -X POST \
-    http://127.0.0.1:18700/api/fragment \
+    "${JFOX_DAEMON_URL}/api/fragment" \
     -H 'Content-Type: application/json' \
     --data-binary @- 2>/dev/null || true)"
 
