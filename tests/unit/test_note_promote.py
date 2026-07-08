@@ -237,3 +237,15 @@ def test_promote_clears_archived_after_reject():
             p = load_note_by_id(c.id)
             assert p.type == NoteType.PERMANENT
             assert p.archived is False  # issue-13：promote 是激活，取消软删除标记
+
+
+def test_promote_includes_grounded_by_in_links():
+    """issue-4：grounded_by 参考笔记也并入 links（spec §2.1：links = 正文 wiki link + grounded_by）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note("目标内容", title="参考笔记X", note_type=NoteType.PERMANENT)
+            save_note(target, add_to_index=False)
+            # 正文不含 [[参考笔记X]]，仅 grounded_by 指向它
+            c = _make_candidate("候选", "内容不含任何链接", grounded_by=["参考笔记X"])
+            promote_note(c.id)
+            assert target.id in load_note_by_id(c.id).links  # grounded_by → links

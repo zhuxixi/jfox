@@ -77,7 +77,9 @@ def show_cmd(
 @candidates_app.command("list")
 def list_cmd(
     status: str = typer.Option(
-        "pending", "--status", help="按 status 过滤 (pending/promoted/rejected/all)"
+        "pending",
+        "--status",
+        help="按 status 过滤 (pending/rejected/all；promoted 笔记已转 permanent，用 list --type permanent 查看)",
     ),
     min_confidence: float = typer.Option(0.0, "--min-confidence", help="最低置信度"),
     limit: int = typer.Option(50, "--limit", "-n"),

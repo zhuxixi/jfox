@@ -356,12 +356,17 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
         logger.warning(f"Note {note_id} is not a candidate (type={n.type.value})")
         return False
 
-    # 解析正文 wiki links → target ids（先剥 fenced code block/HTML 注释，避免字面量 [[标题]] 误匹配；
-    # 精确标题匹配，不子串 fallback）
+    # forward links 来源（spec §2.1）：正文 [[标题]] + frontmatter grounded_by 参考笔记。
+    # 先剥 fenced code block/HTML 注释避免字面量 [[标题]] 误匹配；精确标题匹配，不子串 fallback。
     idx = get_note_index(cfg)
     target_ids: List[str] = []
     for link_text in extract_wiki_links_from_text(_strip_wiki_link_exclusions(n.content)):
         tm = idx.find_by_title(link_text)
+        if tm and tm.id != n.id and tm.id not in target_ids:
+            target_ids.append(tm.id)
+    # grounded_by（参考笔记标题）也并入 links，与正文 wiki link 合并去重
+    for title in n.grounded_by or []:
+        tm = idx.find_by_title(title)
         if tm and tm.id != n.id and tm.id not in target_ids:
             target_ids.append(tm.id)
 
