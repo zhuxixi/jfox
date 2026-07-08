@@ -149,3 +149,71 @@ def test_internal_source_in_metadata_skipped(tmp_path):
     )
     assert result["status"] == "skipped"
     assert store.query(session_id="s1") == []
+
+
+@pytest.mark.parametrize("bad_metadata", [None, "not-a-dict", ["list"], 123])
+def test_malformed_metadata_does_not_raise(tmp_path, bad_metadata):
+    """metadata 非字典时不抛异常，按普通事件处理"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "hi",
+            "metadata": bad_metadata,
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["fragment_type"] == "user_input"
+
+
+@pytest.mark.parametrize("bad_source", [None, 123, ["list"], ""])
+def test_non_string_source_ignored(tmp_path, bad_source):
+    """source 字段非字符串时视为未声明，正常入库"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "hi",
+            "source": bad_source,
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["fragment_type"] == "user_input"
+
+
+def test_internal_source_from_env_var_skipped(tmp_path, monkeypatch):
+    """事件未声明 source 时，用 JFOX_INTERNAL_SESSION 环境变量兜底跳过"""
+    monkeypatch.setenv("JFOX_INTERNAL_SESSION", "auto-summary")
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "不对，应该改",
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "skipped"
+    assert "auto-summary" in result["reason"]
+    assert store.query(session_id="s1") == []
+
+
+def test_env_var_non_internal_source_allowed(tmp_path, monkeypatch):
+    """环境变量不是内部来源时正常采集"""
+    monkeypatch.setenv("JFOX_INTERNAL_SESSION", "some-other-tool")
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "hi",
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["fragment_type"] == "user_input"

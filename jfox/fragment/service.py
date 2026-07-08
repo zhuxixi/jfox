@@ -4,6 +4,7 @@
 """
 
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from ..global_config import FragmentCaptureConfig, get_global_config_manager
@@ -21,7 +22,15 @@ _default_store: Optional[FragmentStore] = None
 
 def _get_event_source(event: Dict[str, Any]) -> Optional[str]:
     """从事件中提取来源标记（供 hook 或内部调用方显式声明）。"""
-    return event.get("source") or event.get("metadata", {}).get("source")
+    raw = event.get("source")
+    if isinstance(raw, str) and raw:
+        return raw
+    metadata = event.get("metadata")
+    if isinstance(metadata, dict):
+        raw = metadata.get("source")
+        if isinstance(raw, str) and raw:
+            return raw
+    return None
 
 
 def set_default_store(store: Optional[FragmentStore]) -> None:
@@ -73,7 +82,7 @@ def ingest_event(
     if not session_id:
         return {"status": "error", "message": "missing session_id in event"}
 
-    source = _get_event_source(event)
+    source = _get_event_source(event) or os.environ.get("JFOX_INTERNAL_SESSION")
     if source in _INTERNAL_SOURCES:
         logger.debug("ingest_event: 跳过 JFox 内部 session 来源: %s", source)
         return {"status": "skipped", "reason": f"ignored internal source: {source}"}

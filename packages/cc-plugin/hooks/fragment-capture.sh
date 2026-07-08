@@ -7,9 +7,10 @@ set -u
 PAYLOAD="$(cat)"
 
 # 跳过 JFox 内部系统产生的 session（auto-summary / gem-synth），避免自引用死循环（Issue #297）
-if [ -n "${JFOX_INTERNAL_SESSION:-}" ]; then
-    exit 0
-fi
+# 必须与服务端 _INTERNAL_SOURCES 保持一致
+case "${JFOX_INTERNAL_SESSION:-}" in
+    auto-summary|gem-synth) exit 0 ;;
+esac
 
 # POST 原样给 daemon；-m1 限时1秒，-s 静默，失败不报错
 RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 1 -X POST \
