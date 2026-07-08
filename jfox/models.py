@@ -75,11 +75,12 @@ class Note:
     archived: bool = False  # 是否已归档（软删除标记）
     reject_reason: Optional[str] = None  # candidate reject 原因（供复盘）
 
-    # candidate 专属字段（仅 type=CANDIDATE 时序列化；其它类型忽略）
+    # candidate 字段：生命周期（gem_level/confidence/knowledge_type/status）仅 type=CANDIDATE 时序列化；
+    # 溯源（source_fragments/grounded_by）跨类型保留——非空时写，promoted permanent 仍可追溯到来源碎片（#249）
     gem_level: Optional[str] = None
     confidence: Optional[float] = None
-    source_fragments: List[int] = field(default_factory=list)
-    grounded_by: List[str] = field(default_factory=list)
+    source_fragments: List[int] = field(default_factory=list)  # 碎片溯源（跨类型保留）
+    grounded_by: List[str] = field(default_factory=list)  # 参考笔记溯源（跨类型保留）
     knowledge_type: Optional[str] = None  # factual/procedural/preference/constraint
     status: Optional[str] = None  # pending → (L5) promoted/rejected
 

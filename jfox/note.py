@@ -398,7 +398,8 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
 
 
 def reject_note(note_id: str, reason: Optional[str] = None, cfg: Optional[ZKConfig] = None) -> bool:
-    """candidate 归档丢弃（软删除），记 status=rejected，可选记 reject_reason。复用归档逻辑，可 unarchive 恢复。"""
+    """candidate 归档丢弃（软删除）：置 archived=True + status=rejected，可选记 reject_reason。
+    直接改字段 + 单次 update_note（不调 archive_note，避免二次写盘）。可 jfox unarchive 恢复。"""
     n = load_note_by_id(note_id, cfg=cfg)
     if not n:
         logger.warning(f"Note {note_id} not found")

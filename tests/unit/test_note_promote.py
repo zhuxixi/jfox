@@ -10,6 +10,38 @@ from jfox.note import create_note, load_note_by_id, promote_note, reject_note, s
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
 
+@pytest.fixture(autouse=True)
+def _mock_embedding_backend(monkeypatch):
+    """避免 promote_note/reject_note → update_note → vector_store 加载真实 sentence-transformers
+    模型（kimi round-2 issue-3）：本文件标 @pytest.mark.fast，必须秒级完成，不加载真实模型。"""
+    import numpy as np
+
+    from jfox import embedding_backend
+
+    class _Mock:
+        model_name = "mock"
+        device = "cpu"
+        _resolved_device = "cpu"
+        _resolved_model_name = "mock"
+        dimension = 384
+
+        def encode(self, texts, **kwargs):
+            if isinstance(texts, str):
+                texts = [texts]
+            return np.random.rand(len(texts), self.dimension).astype("float32")
+
+        def encode_batch(self, texts, batch_size=32):
+            return self.encode(texts)
+
+        def _resolve_device(self):
+            return "cpu"
+
+        def _resolve_model_name(self, resolved_device):
+            return "mock"
+
+    monkeypatch.setattr(embedding_backend, "get_backend", lambda: _Mock())
+
+
 def test_reject_reason_roundtrip():
     """reject_reason 字段可序列化与反序列化"""
     n = create_note("内容", title="测试", note_type=NoteType.CANDIDATE)
