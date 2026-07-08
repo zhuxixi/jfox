@@ -334,7 +334,7 @@ def unarchive_note(note_id: str) -> bool:
     return update_note(n)
 
 
-def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
+def promote_note(note_id: str) -> bool:
     """candidate → permanent：改 type、清 candidate 生命周期字段（保留溯源）、移文件、回填 links/backlinks。
 
     清 status/gem_level/confidence/knowledge_type/reject_reason；**保留 source_fragments/grounded_by**
@@ -348,7 +348,7 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
         get_note_index,
     )
 
-    n = load_note_by_id(note_id, cfg=cfg)
+    n = load_note_by_id(note_id)
     if not n:
         logger.warning(f"Note {note_id} not found")
         return False
@@ -358,7 +358,7 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
 
     # forward links 来源（spec §2.1）：正文 [[标题]] + frontmatter grounded_by 参考笔记。
     # 先剥 fenced code block/HTML 注释避免字面量 [[标题]] 误匹配；精确标题匹配，不子串 fallback。
-    idx = get_note_index(cfg)
+    idx = get_note_index()
     target_ids: List[str] = []
     for link_text in extract_wiki_links_from_text(_strip_wiki_link_exclusions(n.content)):
         tm = idx.find_by_title(link_text)
@@ -390,22 +390,22 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
     # 已落盘但某 target backlinks 缺失），用 `jfox rebuild-backlinks` 全量重算修复。
     now = datetime.now()
     for tid in target_ids:
-        t = load_note_by_id(tid, cfg=cfg)
+        t = load_note_by_id(tid)
         if t and n.id not in t.backlinks:
             t.updated = now
             t.backlinks = sorted(set(t.backlinks + [n.id]))
             try:
                 _atomic_write(t.filepath, t.to_markdown())
-                get_note_index(cfg).update_note_meta(t)
+                get_note_index().update_note_meta(t)
             except Exception as e:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
     return True
 
 
-def reject_note(note_id: str, reason: Optional[str] = None, cfg: Optional[ZKConfig] = None) -> bool:
+def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
     """candidate 归档丢弃（软删除）：置 archived=True + status=rejected，可选记 reject_reason。
     直接改字段 + 单次 update_note（不调 archive_note，避免二次写盘）。可 jfox unarchive 恢复。"""
-    n = load_note_by_id(note_id, cfg=cfg)
+    n = load_note_by_id(note_id)
     if not n:
         logger.warning(f"Note {note_id} not found")
         return False
@@ -843,7 +843,7 @@ def suggest_links(
     try:
         keywords = extract_keywords(content, max_keywords=5)
         if keywords:
-            all_notes = list_notes(limit=200, cfg=cfg)  # 获取足够多的笔记用于匹配
+            all_notes = list_notes(limit=200)  # 获取足够多的笔记用于匹配
 
             for note in all_notes:
                 if note.id in seen_ids:
