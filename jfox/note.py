@@ -364,6 +364,10 @@ def promote_note(note_id: str) -> bool:
         n.grounded_by or []
     )
     for title in link_titles:
+        if (
+            not title
+        ):  # 过滤 None/空串（YAML null / LLM 脏数据），防 find_by_title(title.lower()) 崩
+            continue
         tm = idx.find_by_title(title)
         if tm is None:
             # spec §6：链接目标不存在 → 警告不阻塞（round-4 issue-5）
