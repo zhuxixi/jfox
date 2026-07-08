@@ -113,3 +113,39 @@ def test_store_exception_is_structured(tmp_path):
         config=FragmentCaptureConfig(),
     )
     assert result["status"] == "error"
+
+
+@pytest.mark.parametrize("source", ["auto-summary", "gem-synth"])
+def test_internal_source_skipped(tmp_path, source):
+    """Issue #297：JFox 内部系统产生的 session 不应进入碎片采集链路"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "不对，应该改",
+            "source": source,
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "skipped"
+    assert source in result["reason"]
+    assert store.query(session_id="s1") == []
+
+
+def test_internal_source_in_metadata_skipped(tmp_path):
+    """source 也可以放在 metadata 对象中传递"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "不要这样",
+            "metadata": {"source": "gem-synth"},
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "skipped"
+    assert store.query(session_id="s1") == []

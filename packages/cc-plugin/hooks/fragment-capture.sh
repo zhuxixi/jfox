@@ -6,6 +6,11 @@ set -u
 
 PAYLOAD="$(cat)"
 
+# 跳过 JFox 内部系统产生的 session（auto-summary / gem-synth），避免自引用死循环（Issue #297）
+if [ -n "${JFOX_INTERNAL_SESSION:-}" ]; then
+    exit 0
+fi
+
 # POST 原样给 daemon；-m1 限时1秒，-s 静默，失败不报错
 RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 1 -X POST \
     http://127.0.0.1:18700/api/fragment \

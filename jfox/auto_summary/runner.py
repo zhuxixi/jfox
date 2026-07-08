@@ -473,6 +473,8 @@ def _invoke_claude(extracted_dialog_text: str, cfg: AutoSummaryConfig) -> str:
     env = os.environ.copy()
     for noisy in ("JFOX_KB", "JFOX_DAEMON_PROCESS"):
         env.pop(noisy, None)
+    # 标记这是 JFox 内部 session，避免被 CC 全局 hook 当成用户会话采集碎片（Issue #297）
+    env["JFOX_INTERNAL_SESSION"] = "auto-summary"
 
     stop_event = getattr(cfg, "_stop_event", None)
 

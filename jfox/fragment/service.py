@@ -12,8 +12,16 @@ from .store import FragmentStore
 
 logger = logging.getLogger(__name__)
 
+# JFox 内部系统产生的 session 不应进入碎片采集链路，避免自引用死循环（Issue #297）
+_INTERNAL_SOURCES = frozenset({"auto-summary", "gem-synth"})
+
 # daemon 常驻的 store 单例（lifespan 初始化时设置；此处不懒创建，避免并发竞态与连接泄漏）
 _default_store: Optional[FragmentStore] = None
+
+
+def _get_event_source(event: Dict[str, Any]) -> Optional[str]:
+    """从事件中提取来源标记（供 hook 或内部调用方显式声明）。"""
+    return event.get("source") or event.get("metadata", {}).get("source")
 
 
 def set_default_store(store: Optional[FragmentStore]) -> None:
@@ -64,6 +72,11 @@ def ingest_event(
     session_id = event.get("session_id")
     if not session_id:
         return {"status": "error", "message": "missing session_id in event"}
+
+    source = _get_event_source(event)
+    if source in _INTERNAL_SOURCES:
+        logger.debug("ingest_event: 跳过 JFox 内部 session 来源: %s", source)
+        return {"status": "skipped", "reason": f"ignored internal source: {source}"}
 
     # store 由 daemon lifespan 单点初始化；此处不懒创建，避免并发竞态、连接泄漏，
     # 以及绕过 daemon 初始化失败时的「采集不可用」决策。
