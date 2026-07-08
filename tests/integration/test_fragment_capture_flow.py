@@ -5,6 +5,7 @@
 """
 
 import json
+import os
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -96,3 +97,23 @@ def test_hook_prints_stop_summary_with_real_cc_format():
     assert proc.returncode == 0
     assert "JFox 碎片采集:" in proc.stdout
     assert "工具" in proc.stdout
+
+
+def test_hook_env_internal_session_skipped():
+    """验证 JFOX_INTERNAL_SESSION 环境变量能被 hook 继承，内部 session 事件被过滤。
+
+    Issue #297：auto-summary / gem-synth 调用的 claude -p 不应进入碎片采集链路。
+    无论 hook 直接跳过还是注入 source 后由 daemon 跳过，最终结果都是 0 碎片。
+    """
+    session_id = "it-sess-internal"
+    payload = json.dumps(
+        {"hook_event_name": "UserPromptSubmit", "session_id": session_id, "prompt": "不对"}
+    )
+    env = {**os.environ, "JFOX_INTERNAL_SESSION": "auto-summary"}
+    proc = subprocess.run(
+        ["bash", str(HOOK)], input=payload, capture_output=True, text=True, timeout=5, env=env
+    )
+    assert proc.returncode == 0
+    with urllib.request.urlopen(f"{DAEMON}/api/fragments?session={session_id}", timeout=5) as r:
+        body = json.loads(r.read())
+    assert body["total"] == 0

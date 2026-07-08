@@ -4,17 +4,14 @@
 """
 
 import logging
-import os
 from typing import Any, Dict, Optional
 
 from ..global_config import FragmentCaptureConfig, get_global_config_manager
 from .detector import classify
+from .internal_sources import INTERNAL_SOURCES
 from .store import FragmentStore
 
 logger = logging.getLogger(__name__)
-
-# JFox 内部系统产生的 session 不应进入碎片采集链路，避免自引用死循环（Issue #297）
-_INTERNAL_SOURCES = frozenset({"auto-summary", "gem-synth"})
 
 # daemon 常驻的 store 单例（lifespan 初始化时设置；此处不懒创建，避免并发竞态与连接泄漏）
 _default_store: Optional[FragmentStore] = None
@@ -82,8 +79,8 @@ def ingest_event(
     if not session_id:
         return {"status": "error", "message": "missing session_id in event"}
 
-    source = _get_event_source(event) or os.environ.get("JFOX_INTERNAL_SESSION")
-    if source in _INTERNAL_SOURCES:
+    source = _get_event_source(event)
+    if source in INTERNAL_SOURCES:
         logger.debug("ingest_event: 跳过 JFox 内部 session 来源: %s", source)
         return {"status": "skipped", "reason": f"ignored internal source: {source}"}
 
