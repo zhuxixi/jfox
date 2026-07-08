@@ -17,12 +17,12 @@ Choose the right search approach based on user intent:
 
 | User Intent | Strategy | Command |
 |-------------|----------|---------|
-| Exact keyword or term | Keyword (BM25) | `jfox search "<keyword>" --mode keyword --format json` |
-| Concept or idea (fuzzy) | Hybrid (BM25+semantic) | `jfox search "<concept>" --mode hybrid --format json` |
-| Pure semantic similarity | Semantic | `jfox search "<idea>" --mode semantic --format json` |
+| Exact keyword or term | Keyword (BM25) | `jfox search "<keyword>" --mode keyword --json` |
+| Concept or idea (fuzzy) | Hybrid (BM25+semantic) | `jfox search "<concept>" --mode hybrid --json` |
+| Pure semantic similarity | Semantic | `jfox search "<idea>" --mode semantic --json` |
 | Explore related topics | Graph traversal | `jfox query "<topic>" --depth 2 --json` |
-| What links to note X | Backlinks | `jfox refs --search "<title>" --format json` |
-| What should I link to | Link suggestions | `jfox suggest-links "<content>" --format json` |
+| What links to note X | Backlinks | `jfox refs --search "<title>" --json` |
+| What should I link to | Link suggestions | `jfox suggest-links "<content>" --json` |
 
 **Default strategy**: `--mode hybrid` (best balance of precision and recall).
 
@@ -31,7 +31,7 @@ Choose the right search approach based on user intent:
 ### Single Search
 
 ```bash
-jfox search "<query>" --mode hybrid --top 10 --format json
+jfox search "<query>" --mode hybrid --top 10 --json
 ```
 
 Parse the JSON output and present results as:
@@ -62,14 +62,14 @@ This returns both search results AND their graph neighbors, giving a broader vie
 
 To find what references a specific note:
 ```bash
-jfox refs --search "<title>" --format json
+jfox refs --search "<title>" --json
 ```
 
 ### Link Recommendations
 
 To find notes that should be linked from given content:
 ```bash
-jfox suggest-links "<content>" --top 10 --threshold 0.6 --format json
+jfox suggest-links "<content>" --top 10 --threshold 0.6 --json
 ```
 
 Default threshold is `0.6`. Lower to `0.3-0.5` for broader suggestions, raise to `0.7-0.8` for stricter matching.
@@ -78,27 +78,27 @@ Default threshold is `0.6`. Lower to `0.3-0.5` for broader suggestions, raise to
 
 ```bash
 # Basic search
-jfox search "<query>" --mode <hybrid|keyword|semantic> --top <N> --format json
+jfox search "<query>" --mode <hybrid|keyword|semantic> --top <N> --json
 
 # Filter by note type (fleeting|permanent)
-jfox search "<query>" --type permanent --format json
+jfox search "<query>" --type permanent --json
 
 # Graph query with traversal
 jfox query "<query>" --top <N> --depth <D> --json
 
 # Link suggestions
-jfox suggest-links "<content>" --top <N> --threshold <T> --format json
+jfox suggest-links "<content>" --top <N> --threshold <T> --json
 
 # Backlinks/references
-jfox refs --search "<title>" --format json
-jfox refs --note "<note-id>" --format json
+jfox refs --search "<title>" --json
+jfox refs --note "<note-id>" --json
 ```
 
 ## Multi-KB Search
 
 All search commands support `--kb <name>` to target a specific knowledge base:
 ```bash
-jfox search "<query>" --kb work --format json
+jfox search "<query>" --kb work --json
 ```
 
 ## Error Handling

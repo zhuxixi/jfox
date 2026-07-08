@@ -50,7 +50,7 @@ jfox inbox --json --limit 50
 1. **分析**：阅读分组内的 fleeting 笔记，提取核心知识点
 2. **查找关联**：
    ```bash
-   jfox suggest-links "<提炼后的内容摘要>" --format json
+   jfox suggest-links "<提炼后的内容摘要>" --json
    ```
    筛选 score >= 0.6 的关联笔记
 3. **生成 permanent 笔记**：将核心知识点整理为结构化内容，嵌入 `[[wiki links]]` 关联到已有笔记
@@ -81,20 +81,24 @@ jfox inbox --json --limit 50
 jfox graph --orphans --json
 ```
 
-对每条孤立的 permanent 笔记：
+对每条孤立的 permanent 笔记获取完整内容。当孤立笔记数量 ≥ 3 时，使用 **Kimi Code AgentSwarm** 并行调用 `jfox suggest-links`；否则可顺序执行。
 
-1. 获取笔记内容
-2. 查找关联：
-   ```bash
-   jfox suggest-links "<内容>" --format json
-   ```
-3. 如果有匹配度 >= 0.6 的结果，建议添加链接：
-   ```bash
-   jfox edit <孤立笔记_id> --content "原内容... [[相关笔记标题]]"
+> **AgentSwarm 约束**：调用 AgentSwarm 时，它必须是当轮唯一的 tool call。因此必须先执行 `jfox graph --orphans --json` 拿到孤儿列表，再在下一轮调用 AgentSwarm。
 
-   # 使用文件内容编辑（适合长文本）
-   jfox edit <孤立笔记_id> --content-file updated.md
-   ```
+**并行推荐链接（AgentSwarm）：**
+
+- `items`：推荐使用**孤立笔记 ID**（如 `["n1", "n2", "n3", ...]`），避免不同笔记内容相似导致 prompt 重复；子代理内部先用 `jfox show <id>` 读取内容。
+- prompt template：读取 `{{item}}` 对应笔记的内容，执行 `jfox suggest-links "<内容>" --json`，返回 score ≥ 0.6 的候选链接。
+- 主代理汇总所有候选后，统一向用户展示并确认需要添加的链接。
+
+**添加链接（必须串行执行，避免写冲突）：**
+
+```bash
+jfox edit <孤立笔记_id> --content "原内容... [[相关笔记标题]]"
+
+# 使用文件内容编辑（适合长文本）
+jfox edit <孤立笔记_id> --content-file updated.md
+```
 
 ### 确认改善
 

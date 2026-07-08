@@ -74,7 +74,7 @@ jfox add "<markdown-escaped-summary>" \
   --topic <short-topic> \
   --tag session \
   --kb <kb-name> \
-  --format json
+  --json
 ```
 
 **注意**：
@@ -101,7 +101,7 @@ jfox add --content-file /tmp/session-summary.md \
   --topic <short-topic> \
   --tag session \
   --kb <kb-name> \
-  --format json
+  --json
 ```
 
 ## 命令参考

@@ -178,25 +178,40 @@ jfox refs --search "<标题>" --json              # 查看反向链接
 
 ### 5.1 6 项指标采集
 
-```bash
-# 1. 知识库总体状态
-jfox status --json [--kb <name>]
+以下 6 个命令均为**只读操作**，相互独立，应使用 **Kimi Code AgentSwarm** 并行采集以缩短等待时间；汇总全部输出后再进入 §5.2 计算指标与评分。
 
-# 2. 图谱指标（--stats 和 --orphans 互斥，分开运行）
-jfox graph --stats --json [--kb <name>]
+> 如果用户指定了目标知识库名称，在所有命令中追加 `--kb <name>` 参数。未指定时省略，使用当前默认知识库。
 
-# 3. 孤立笔记列表
-jfox graph --orphans --json [--kb <name>]
+**并行采集命令列表（每个 item 独立执行）：**
 
-# 4. 索引完整性
-jfox index verify [--kb <name>]
-
-# 5. 笔记清单（用于类型分布和日期分析）
-jfox list --json --limit 500 [--kb <name>]
-
-# 6. 未处理收件箱（fleeting + session 笔记）
-jfox inbox --json --limit 100 [--kb <name>]
+```text
+jfox status --json
+jfox graph --stats --json
+jfox graph --orphans --json
+jfox index verify
+jfox list --json --limit 500
+jfox inbox --json --limit 100
 ```
+
+**AgentSwarm 示例：**
+
+```yaml
+description: 并行采集知识库健康检查指标
+items:
+  - "jfox status --json [--kb <name>]"
+  - "jfox graph --stats --json [--kb <name>]"
+  - "jfox graph --orphans --json [--kb <name>]"
+  - "jfox index verify [--kb <name>]"
+  - "jfox list --json --limit 500 [--kb <name>]"
+  - "jfox inbox --json --limit 100 [--kb <name>]"
+prompt_template: "执行命令 {{item}}，返回原始输出以及解析后的 JSON 数据。"
+```
+
+每个子代理执行其分配的 `{{item}}` 命令，返回原始输出与解析后的 JSON；主代理汇总 6 份结果后再进行后续分析与报告生成。
+
+> 当 AgentSwarm 被调用时，它必须是当轮唯一的 tool call。本例中 6 条命令作为一个 AgentSwarm 调用同时派发，满足该约束。
+
+** Fallback（单线程）：** 如果 AgentSwarm 不可用或命令数极少，也可顺序执行上述 6 个命令。
 
 ### 5.2 健康指标表
 

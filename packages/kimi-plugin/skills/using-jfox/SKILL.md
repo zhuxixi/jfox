@@ -58,10 +58,10 @@ jfox show <id_or_title>
 jfox list --json --limit 50
 
 # 搜索与图谱
-jfox search "<query>" --mode hybrid --format json
+jfox search "<query>" --mode hybrid --json
 jfox query "<topic>" --depth 2 --json
-jfox suggest-links "<内容>" --format json
-jfox refs --search "<标题>" --format json
+jfox suggest-links "<内容>" --json
+jfox refs --search "<标题>" --json
 jfox graph --stats --json
 jfox graph --orphans --json
 
