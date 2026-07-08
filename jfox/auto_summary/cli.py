@@ -160,9 +160,7 @@ def status(
             f"工作日 {cfg.schedule_weekday_start_hour}:00-{cfg.schedule_weekday_end_hour}:00, "
             f"周末 {cfg.schedule_weekend_start_hour}:00-{cfg.schedule_weekend_end_hour}:00",
         )
-        prog_table.add_row(
-            "当前在窗口内", "是" if progress["in_schedule_window"] else "否"
-        )
+        prog_table.add_row("当前在窗口内", "是" if progress["in_schedule_window"] else "否")
     console.print(prog_table)
 
 
@@ -176,9 +174,7 @@ def enable(
     max_per_tick: Optional[int] = typer.Option(
         None, "--max-per-tick", help="每轮最多处理几个 session"
     ),
-    schedule_enabled: bool = typer.Option(
-        False, "--schedule-enabled", help="启用时间窗口调度"
-    ),
+    schedule_enabled: bool = typer.Option(False, "--schedule-enabled", help="启用时间窗口调度"),
     schedule_weekday_window: Optional[str] = typer.Option(
         None, "--schedule-weekday-window", help="工作日时间窗口，格式如 0-6"
     ),

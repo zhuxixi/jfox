@@ -27,9 +27,12 @@ class TestEnableScheduleOptions:
                 [
                     "enable",
                     "--schedule-enabled",
-                    "--schedule-weekday-window", "1-5",
-                    "--schedule-weekend-window", "2-7",
-                    "--schedule-timezone", "UTC",
+                    "--schedule-weekday-window",
+                    "1-5",
+                    "--schedule-weekend-window",
+                    "2-7",
+                    "--schedule-timezone",
+                    "UTC",
                 ],
             )
             assert result.exit_code == 0
@@ -69,6 +72,7 @@ class TestStatusScheduleOutput:
             result = runner.invoke(auto_summary_app, ["status", "--format", "json"])
             assert result.exit_code == 0
             import json
+
             data = json.loads(result.output)
             assert data["config"]["schedule_enabled"] is True
             assert "in_schedule_window" in data["progress"] or "schedule" in data

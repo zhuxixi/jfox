@@ -30,9 +30,7 @@ class TestTickOnceScheduleWindow:
 
         with patch("jfox.auto_summary.loop.get_global_config_manager", return_value=gm_mock):
             with patch("jfox.auto_summary.loop.run_once") as run_once_mock:
-                with patch(
-                    "jfox.auto_summary.loop._is_within_schedule_window", return_value=False
-                ):
+                with patch("jfox.auto_summary.loop._is_within_schedule_window", return_value=False):
                     result = _tick_once(threading.Event())
                     run_once_mock.assert_not_called()
                     assert "不在调度窗口" in result
@@ -51,8 +49,6 @@ class TestTickOnceScheduleWindow:
         with patch("jfox.auto_summary.loop.get_global_config_manager", return_value=gm_mock):
             with patch("jfox.auto_summary.loop.run_once") as run_once_mock:
                 run_once_mock.return_value.scanned = 0
-                with patch(
-                    "jfox.auto_summary.loop._is_within_schedule_window", return_value=True
-                ):
+                with patch("jfox.auto_summary.loop._is_within_schedule_window", return_value=True):
                     _tick_once(threading.Event())
                     run_once_mock.assert_called_once()
