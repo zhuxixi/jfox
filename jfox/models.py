@@ -138,8 +138,6 @@ class Note:
             frontmatter["topic"] = self.topic
         if self.archived:
             frontmatter["archived"] = self.archived
-        if self.reject_reason:
-            frontmatter["reject_reason"] = self.reject_reason
 
         # candidate 生命周期字段（仅 type=CANDIDATE 时写入 frontmatter）
         if self.type == NoteType.CANDIDATE:
@@ -150,6 +148,8 @@ class Note:
                 frontmatter["knowledge_type"] = self.knowledge_type
             if self.status:
                 frontmatter["status"] = self.status
+            if self.reject_reason:
+                frontmatter["reject_reason"] = self.reject_reason
         # 溯源字段（跨类型保留：candidate 合成产出 + promoted permanent 都可追溯到来源碎片，#249）
         if self.source_fragments:
             frontmatter["source_fragments"] = self.source_fragments
@@ -227,7 +227,6 @@ class Note:
             "links": self.links,
             "filepath": str(self.filepath),
             "archived": self.archived,
-            "reject_reason": self.reject_reason,
             "score": self.score,
             "hop": self.hop,
             "topic": self.topic,
@@ -241,6 +240,8 @@ class Note:
                 d["knowledge_type"] = self.knowledge_type
             if self.status:
                 d["status"] = self.status
+            if self.reject_reason:
+                d["reject_reason"] = self.reject_reason
         # 溯源字段（跨类型输出，与 to_markdown 保持一致）
         if self.source_fragments:
             d["source_fragments"] = self.source_fragments

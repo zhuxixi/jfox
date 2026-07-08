@@ -28,7 +28,7 @@
 | 命令 | 作用 | 实现 |
 |------|------|------|
 | `jfox candidates promote <id>` | candidate → permanent：改 type、保留溯源清状态、移文件、更新索引、回填 backlinks | **新建**（`note.py` 无改 type 能力）|
-| `jfox candidates reject <id> [--reason <txt>]` | 归档丢弃，可选记原因 | **复用** `note.archive_note`（#259）|
+| `jfox candidates reject <id> [--reason <txt>]` | 归档丢弃，可选记原因 | 直接置 archived+status，单次 `update_note`（不调 `archive_note`）|
 
 砍掉 #249 草案的 `review`（过审在 skill 里）、`merge`（YAGNI）。保留既有 `list` / `show`。
 
@@ -95,7 +95,7 @@ candidate (type=candidate, status=pending, gem_level=flawed)
   → promote skill: 评估 → 分流 → 微调/澄清 → 用户确认
      ├─ promote: type→permanent, 保留 source_fragments/grounded_by,
      │           清 status/gem_level/confidence, 移文件, 回填 backlinks
-     └─ reject:  archive_note（软删除, +reject_reason）, 可 unarchive 恢复
+     └─ reject:  archived+status=rejected（+reject_reason）, 单次 update_note（不调 archive_note）, 可 unarchive 恢复
 ```
 
 ## 5. 模块拆分（初拟，plan 阶段细化）
@@ -103,7 +103,7 @@ candidate (type=candidate, status=pending, gem_level=flawed)
 - `jfox/note_index.py`：type 变更后更新 文件名↔ID 映射
 - `jfox/cli.py`：`candidates promote` / `candidates reject` 两个子命令 + `_impl` helper（遵循项目 `_xxx_impl` 惯例）
 - `packages/cc-plugin/skills/promote/`：新 skill（过审编排）
-- 复用：`jfox suggest-links`（补链）、`note.archive_note`（归档）、`jfox show`（展示 candidate）
+- 复用：`jfox suggest-links`（补链）、`jfox show`（展示 candidate）；reject 直接设字段（不调 archive_note）
 
 ## 6. 错误处理
 - promote 时 wiki link 目标不存在 → 警告，不阻塞（broken link 留待后续 organize 修）；是否升级为阻塞由 plan 阶段定

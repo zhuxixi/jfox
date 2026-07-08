@@ -282,7 +282,9 @@ def test_candidates_promote_nonexistent_exits_nonzero(temp_kb, mock_embedding_ba
     """promote 不存在的 ID 应 exit 1（优雅失败，不抛 traceback）"""
     kb_name = "test_promote_404"
     with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
-        runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)])
+        assert (
+            runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)]).exit_code == 0
+        )
         res = runner.invoke(app, ["candidates", "promote", "999999999999999", "--kb", kb_name])
         assert res.exit_code == 1
 
@@ -296,7 +298,9 @@ def test_candidates_reject_command(temp_kb, mock_embedding_backend):
     """jfox candidates reject <id> 归档 + 记 reason"""
     kb_name = "test_reject_cli"
     with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
-        runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)])
+        assert (
+            runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)]).exit_code == 0
+        )
         with use_kb(kb_name):
             c = create_note("内容", title="候选B", note_type=NoteType.CANDIDATE)
             save_note(c, add_to_index=False)
