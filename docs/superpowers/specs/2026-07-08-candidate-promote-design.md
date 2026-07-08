@@ -40,7 +40,7 @@
 - 文件移动：`notes/candidate/` → `notes/permanent/`，更新 `note_index`
 
 ### 2.2 reject
-调 `note.archive_note(id)`（软删除，search 默认排除，可 `jfox unarchive` 恢复）。`--reason` 写入 frontmatter `reject_reason` 字段（轻量，供复盘）。
+直接置 `archived=True` + `status=rejected`（+ 可选 `reject_reason`），单次 `update_note` 落盘——**不调 `archive_note`**（避免二次写盘；CR round-1 调整，原 spec 写复用 archive_note）。要求 `type==CANDIDATE`（守卫）。软删除，search 默认排除，可 `jfox unarchive` 恢复（恢复时清 `reject_reason` + candidate 复位 `status=pending`）。`--reason` 写入 frontmatter `reject_reason` 字段（轻量，供复盘）。
 
 ## 3. `promote` skill（过审编排，核心）
 

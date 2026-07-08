@@ -10,14 +10,19 @@
 
 ---
 
-## 关键实现决策（对 spec §2.1 的细化）
+## 关键实现决策（对 spec §2.1 的细化，含 CR 调整）
 
-`Note.to_markdown`（`models.py:141`）规定 candidate 专属字段（`source_fragments`/`grounded_by`/`status`/`gem_level`/`confidence`/`knowledge_type`）**只在 `type==CANDIDATE` 时写入 frontmatter**。因此 promote 改 `type→PERMANENT` 后，这些 frontmatter 字段**自动不再写入**（无需手动剔除）。
+`Note.to_markdown` 区分两类 candidate 字段：
+- **生命周期字段**（`status`/`gem_level`/`confidence`/`knowledge_type`/`reject_reason`）：仅 `type==CANDIDATE` 时写入 frontmatter。promote 改 `type→PERMANENT` 后自动不再写入（dataclass 也清空）。
+- **溯源字段**（`source_fragments`/`grounded_by`）：**跨类型保留**——非空时写入 frontmatter（不限 type），promoted permanent 仍可追溯到来源碎片（#249）。
 
-- spec §2.1「保留 source_fragments/grounded_by 做溯源」→ 实现上 **frontmatter 不保留**（随 type 自动清除），**溯源由正文「## 来源」「## 参考的永久笔记」段承载**（candidate 正文已有，skill 改写时保留）。
-- dataclass 字段也一并清空（避免 `to_dict` 残留）。
+> **CR round-1 c1 调整**：原计划 frontmatter 不保留、溯源靠正文「## 来源」段。CR 指出编程式 promote 或 skill 改写掉正文段时溯源会不可逆丢失，改为 frontmatter 跨类型保留（改了 `to_markdown`/`to_dict` 让 source_fragments/grounded_by 非空时跨类型写）。
 
-这样不动 `to_markdown` 的类型绑定设计，最干净。
+其他实现相对原计划的偏离（CR 过程调整，已同步 spec）：
+- `promote_note`/`reject_note` **去掉 cfg 参数**（round-4 issue-6）：原计划接受 cfg，但 `update_note` 写盘用全局 config，读 cfg 写全局会错位。改为全用全局 config，与 save/update/archive 一致。
+- `reject_note` **直接设 archived/status + 单次 update_note**（不调 archive_note，避免二次写盘）+ `type==CANDIDATE` 守卫（round-1 c8）。
+- `promote_note` links = 正文 wiki link（剥 code block）+ grounded_by（round-3 issue-4）；目标不存在 logger.warning 不阻塞（round-4 issue-5）。
+- `unarchive_note` 清 reject_reason + candidate 复位 status=pending（round-2 issue-12）；`promote_note` 清 archived（round-2 issue-13）。
 
 ---
 

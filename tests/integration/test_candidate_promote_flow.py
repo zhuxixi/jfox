@@ -46,7 +46,7 @@ def test_reject_full_flow(temp_kb, mock_embedding_backend):
     """candidate → reject → archived + reason，默认 list 不可见"""
     kb = "test_reject_e2e"
     with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
-        runner.invoke(app, ["init", "--name", kb, "--path", str(temp_kb)])
+        assert runner.invoke(app, ["init", "--name", kb, "--path", str(temp_kb)]).exit_code == 0
         with use_kb(kb):
             c = create_note("内容", title="候选Y", note_type=NoteType.CANDIDATE)
             save_note(c, add_to_index=False)

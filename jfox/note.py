@@ -356,18 +356,20 @@ def promote_note(note_id: str) -> bool:
         logger.warning(f"Note {note_id} is not a candidate (type={n.type.value})")
         return False
 
-    # forward links 来源（spec §2.1）：正文 [[标题]] + frontmatter grounded_by 参考笔记。
+    # forward links 来源（spec §2.1）：正文 [[标题]] + frontmatter grounded_by 参考笔记，合并去重。
     # 先剥 fenced code block/HTML 注释避免字面量 [[标题]] 误匹配；精确标题匹配，不子串 fallback。
     idx = get_note_index()
     target_ids: List[str] = []
-    for link_text in extract_wiki_links_from_text(_strip_wiki_link_exclusions(n.content)):
-        tm = idx.find_by_title(link_text)
-        if tm and tm.id != n.id and tm.id not in target_ids:
-            target_ids.append(tm.id)
-    # grounded_by（参考笔记标题）也并入 links，与正文 wiki link 合并去重
-    for title in n.grounded_by or []:
+    link_titles = extract_wiki_links_from_text(_strip_wiki_link_exclusions(n.content)) + list(
+        n.grounded_by or []
+    )
+    for title in link_titles:
         tm = idx.find_by_title(title)
-        if tm and tm.id != n.id and tm.id not in target_ids:
+        if tm is None:
+            # spec §6：链接目标不存在 → 警告不阻塞（round-4 issue-5）
+            logger.warning(f"promote {note_id}: 链接目标 [[{title}]] 不存在，跳过")
+            continue
+        if tm.id != n.id and tm.id not in target_ids:
             target_ids.append(tm.id)
 
     # 改 type + 清 candidate 生命周期字段；**保留 source_fragments/grounded_by 做溯源**
