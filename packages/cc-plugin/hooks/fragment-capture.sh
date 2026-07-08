@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# JFox 碎片采集 hook：读 CC stdin JSON，原样 POST 到 JFox daemon。
+# JFox 碎片采集 hook：读 CC stdin JSON，处理后 POST 到 JFox daemon。
 # 设计：永不阻塞 CC（失败静默 exit 0）。
-# 热路径（UserPromptSubmit/PostToolUse）仅 curl，<10ms；仅 Stop 分支 spawn python3 解析摘要。
+# 普通 session 热路径（UserPromptSubmit/PostToolUse）仅 curl，<10ms；
+# Stop 分支 spawn python3 解析摘要；
+# JFox 内部 session（auto-summary/gem-synth）会额外 spawn python3 注入 source 字段。
 set -u
 
 PAYLOAD="$(cat)"
@@ -12,7 +14,8 @@ PAYLOAD="$(cat)"
 # 同步测试见 tests/unit/test_fragment_internal_sources.py。
 case "${JFOX_INTERNAL_SESSION:-}" in
     auto-summary|gem-synth)
-        # 注入来源标记到 payload；若 python3 不可用或解析失败，保留原 payload 不变。
+        # 注入来源标记到 payload；若 python3 不可用则直接跳过该内部 session，
+        # 避免无 source 标记的内部事件进入 fragments 链路触发死循环。
         if command -v python3 >/dev/null 2>&1; then
             PAYLOAD="$(printf '%s' "$PAYLOAD" | python3 -c '
 import sys, json
@@ -24,6 +27,8 @@ try:
 except Exception:
     sys.stdout.write(data)
 ' "$JFOX_INTERNAL_SESSION")"
+        else
+            exit 0
         fi
         ;;
 esac

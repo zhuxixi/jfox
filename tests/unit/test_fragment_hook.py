@@ -3,6 +3,7 @@
 import http.server
 import json
 import os
+import shutil
 import socket
 import subprocess
 import threading
@@ -87,3 +88,29 @@ def test_hook_no_source_for_normal_session(mock_daemon):
     assert proc.returncode == 0
     assert len(received) == 1
     assert "source" not in received[0]
+
+
+def test_hook_skips_internal_session_when_python3_missing(mock_daemon, tmp_path):
+    """内部 session 且环境缺少 python3 时，hook 应直接跳过，不发送任何请求。"""
+    received, daemon_url = mock_daemon
+    payload = json.dumps(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s4", "prompt": "hi"}
+    )
+    # 构造一个只有 curl、没有 python3 的 PATH
+    curl_path = shutil.which("curl")
+    if not curl_path:
+        pytest.skip("当前环境未找到 curl")
+    mini_bin = tmp_path / "minibin"
+    mini_bin.mkdir()
+    shutil.copy(curl_path, mini_bin / "curl")
+    env = {
+        **os.environ,
+        "JFOX_INTERNAL_SESSION": "auto-summary",
+        "JFOX_DAEMON_URL": daemon_url,
+        "PATH": str(mini_bin),
+    }
+    proc = subprocess.run(
+        [BASH, str(HOOK)], input=payload, capture_output=True, text=True, timeout=5, env=env
+    )
+    assert proc.returncode == 0
+    assert len(received) == 0
