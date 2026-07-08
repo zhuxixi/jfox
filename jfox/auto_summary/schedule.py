@@ -52,8 +52,8 @@ def _parse_hour_window(window_str: str) -> tuple[int, int]:
     except ValueError as exc:
         raise ValueError(f"窗口小时必须是整数: {window_str!r}") from exc
 
-    if not (0 <= start < 24 and 0 <= end < 24):
-        raise ValueError(f"窗口小时必须在 [0, 24) 范围内: {window_str!r}")
+    if not (0 <= start < 24 and 0 < end <= 24):
+        raise ValueError(f"窗口小时必须在 [0, 24] 范围内（结束小时可为 24）: {window_str!r}")
     if end <= start:
         raise ValueError(f"窗口结束小时必须大于开始小时: {window_str!r}")
     return start, end

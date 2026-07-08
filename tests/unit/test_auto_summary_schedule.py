@@ -36,6 +36,9 @@ class TestParseHourWindow:
         with pytest.raises(ValueError):
             _parse_hour_window("6-6")
 
+    def test_end_hour_midnight(self):
+        assert _parse_hour_window("22-24") == (22, 24)
+
 
 class TestNoOpHolidayProvider:
     def test_saturday_is_weekend(self):
@@ -90,3 +93,29 @@ class TestIsWithinScheduleWindow:
         now = datetime(2026, 7, 6, 3, 0, tzinfo=timezone.utc)
         result = _is_within_schedule_window(cfg, now)
         assert isinstance(result, bool)
+
+    def test_window_ending_at_midnight_inside(self):
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=22,
+            schedule_weekday_end_hour=24,
+            schedule_weekend_start_hour=0,
+            schedule_weekend_end_hour=8,
+            schedule_timezone="Asia/Shanghai",
+        )
+        # 2026-07-06 Monday 23:00 CST
+        now = datetime(2026, 7, 6, 15, 0, tzinfo=timezone.utc)
+        assert _is_within_schedule_window(cfg, now) is True
+
+    def test_window_ending_at_midnight_outside(self):
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=22,
+            schedule_weekday_end_hour=24,
+            schedule_weekend_start_hour=0,
+            schedule_weekend_end_hour=8,
+            schedule_timezone="Asia/Shanghai",
+        )
+        # 2026-07-06 Monday 21:00 CST
+        now = datetime(2026, 7, 6, 13, 0, tzinfo=timezone.utc)
+        assert _is_within_schedule_window(cfg, now) is False

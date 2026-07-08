@@ -92,19 +92,27 @@ class AutoSummaryConfig:
         if isinstance(self.target_kb, str) and not self.target_kb.strip():
             self.target_kb = None
 
-        # 调度窗口小时校验：越界或 start >= end 时回退到默认值，避免 daemon 崩溃
+        # 调度窗口小时校验：越界或 start >= end 时回退到默认值，避免 daemon 崩溃。
+        # 结束小时允许为 24，表示窗口包含到午夜前的小时（如 [22, 24)）。
         def _clamp_schedule_window(
             start: int, end: int, default_start: int, default_end: int
         ) -> tuple[int, int]:
-            if not (0 <= start < 24) or not (0 < end < 24) or end <= start:
+            if not (0 <= start < 24) or not (0 < end <= 24) or end <= start:
                 return default_start, default_end
             return start, end
 
+        cls = self.__class__
         self.schedule_weekday_start_hour, self.schedule_weekday_end_hour = _clamp_schedule_window(
-            self.schedule_weekday_start_hour, self.schedule_weekday_end_hour, 0, 6
+            self.schedule_weekday_start_hour,
+            self.schedule_weekday_end_hour,
+            cls.schedule_weekday_start_hour,
+            cls.schedule_weekday_end_hour,
         )
         self.schedule_weekend_start_hour, self.schedule_weekend_end_hour = _clamp_schedule_window(
-            self.schedule_weekend_start_hour, self.schedule_weekend_end_hour, 0, 8
+            self.schedule_weekend_start_hour,
+            self.schedule_weekend_end_hour,
+            cls.schedule_weekend_start_hour,
+            cls.schedule_weekend_end_hour,
         )
         if not isinstance(self.schedule_timezone, str) or not self.schedule_timezone.strip():
             self.schedule_timezone = "Asia/Shanghai"
