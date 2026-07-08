@@ -31,10 +31,6 @@ def _tick_once(stop_event: threading.Event) -> str:
     if not cfg.enabled:
         return "auto-summary 已禁用，跳过本轮"
 
-    # Issue #298: 调度时间窗口检查
-    if cfg.schedule_enabled and not _is_within_schedule_window(cfg):
-        return "auto-summary 当前不在调度窗口内，跳过本轮"
-
     # 将 stop_event 注入 config，让 _invoke_claude → _run_claude 能检查
     cfg._stop_event = stop_event
 
@@ -80,12 +76,15 @@ async def auto_summary_loop(stop_event: threading.Event) -> None:
         interval_sec = max(60, cfg.interval_minutes * 60)
 
         if cfg.enabled:
-            try:
-                summary = await loop.run_in_executor(None, _tick_once, stop_event)
-                logger.info("auto-summary tick: %s", summary)
-            except Exception as e:
-                # daemon 后台循环的顶层 catch-all：任何 tick 内部异常都不应导致 daemon 崩溃
-                logger.exception("auto-summary tick 异常: %s", e)
+            if cfg.schedule_enabled and not _is_within_schedule_window(cfg):
+                logger.debug("auto-summary 当前不在调度窗口内，等待下一轮")
+            else:
+                try:
+                    summary = await loop.run_in_executor(None, _tick_once, stop_event)
+                    logger.info("auto-summary tick: %s", summary)
+                except Exception as e:
+                    # daemon 后台循环的顶层 catch-all：任何 tick 内部异常都不应导致 daemon 崩溃
+                    logger.exception("auto-summary tick 异常: %s", e)
         else:
             logger.debug("auto-summary 处于禁用状态，等待下一轮")
 

@@ -17,6 +17,7 @@ from jfox.global_config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_KB_NAME,
     DEFAULT_KB_PATH,
+    AutoSummaryConfig,
     GlobalConfig,
     GlobalConfigManager,
     KnowledgeBaseEntry,
@@ -651,6 +652,81 @@ class TestMigrateDefaultKbPath:
             manager._migrate_default_kb_path()
 
         assert manager._config.knowledge_bases[DEFAULT_KB_NAME].path == str(new_path)
+
+
+class TestAutoSummaryConfigSchedule:
+    """测试 AutoSummaryConfig 调度时间窗口字段"""
+
+    def test_default_schedule_values(self):
+        """测试 schedule_* 字段默认值"""
+        cfg = AutoSummaryConfig()
+
+        assert cfg.schedule_enabled is False
+        assert cfg.schedule_weekday_start_hour == 0
+        assert cfg.schedule_weekday_end_hour == 6
+        assert cfg.schedule_weekend_start_hour == 0
+        assert cfg.schedule_weekend_end_hour == 8
+        assert cfg.schedule_timezone == "Asia/Shanghai"
+        assert cfg.schedule_holiday_provider is None
+
+    def test_invalid_hour_clamping(self):
+        """非法/越界小时在 __post_init__ 中被钳回默认值"""
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=25,
+            schedule_weekday_end_hour=-1,
+            schedule_weekend_start_hour=12,
+            schedule_weekend_end_hour=12,
+            schedule_timezone="",
+        )
+
+        assert cfg.schedule_weekday_start_hour == 0
+        assert cfg.schedule_weekday_end_hour == 6
+        assert cfg.schedule_weekend_start_hour == 0
+        assert cfg.schedule_weekend_end_hour == 8
+        assert cfg.schedule_timezone == "Asia/Shanghai"
+
+    def test_from_dict_with_schedule_fields(self):
+        """from_dict 正确解析调度字段"""
+        cfg = AutoSummaryConfig.from_dict(
+            {
+                "schedule_enabled": True,
+                "schedule_weekday_start_hour": 1,
+                "schedule_weekday_end_hour": 5,
+                "schedule_weekend_start_hour": 2,
+                "schedule_weekend_end_hour": 7,
+                "schedule_timezone": "UTC",
+            }
+        )
+
+        assert cfg.schedule_enabled is True
+        assert cfg.schedule_weekday_start_hour == 1
+        assert cfg.schedule_weekday_end_hour == 5
+        assert cfg.schedule_weekend_start_hour == 2
+        assert cfg.schedule_weekend_end_hour == 7
+        assert cfg.schedule_timezone == "UTC"
+
+    def test_to_dict_includes_schedule_fields(self):
+        """to_dict 包含所有 schedule_* 字段"""
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=1,
+            schedule_weekday_end_hour=4,
+            schedule_weekend_start_hour=2,
+            schedule_weekend_end_hour=3,
+            schedule_timezone="UTC",
+            schedule_holiday_provider="noop",
+        )
+
+        data = cfg.to_dict()
+
+        assert data["schedule_enabled"] is True
+        assert data["schedule_weekday_start_hour"] == 1
+        assert data["schedule_weekday_end_hour"] == 4
+        assert data["schedule_weekend_start_hour"] == 2
+        assert data["schedule_weekend_end_hour"] == 3
+        assert data["schedule_timezone"] == "UTC"
+        assert data["schedule_holiday_provider"] == "noop"
 
 
 class TestGetGlobalConfigManager:

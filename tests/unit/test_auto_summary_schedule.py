@@ -119,3 +119,55 @@ class TestIsWithinScheduleWindow:
         # 2026-07-06 Monday 21:00 CST
         now = datetime(2026, 7, 6, 13, 0, tzinfo=timezone.utc)
         assert _is_within_schedule_window(cfg, now) is False
+
+    def test_saturday_inside_weekend_window(self):
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=0,
+            schedule_weekday_end_hour=6,
+            schedule_weekend_start_hour=0,
+            schedule_weekend_end_hour=12,
+            schedule_timezone="Asia/Shanghai",
+        )
+        # 2026-07-04 Saturday 11:00 CST
+        now = datetime(2026, 7, 4, 3, 0, tzinfo=timezone.utc)
+        assert _is_within_schedule_window(cfg, now) is True
+
+    def test_saturday_outside_weekend_window(self):
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=0,
+            schedule_weekday_end_hour=6,
+            schedule_weekend_start_hour=0,
+            schedule_weekend_end_hour=12,
+            schedule_timezone="Asia/Shanghai",
+        )
+        # 2026-07-04 Saturday 22:00 CST
+        now = datetime(2026, 7, 4, 14, 0, tzinfo=timezone.utc)
+        assert _is_within_schedule_window(cfg, now) is False
+
+    def test_sunday_inside_weekend_window(self):
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=0,
+            schedule_weekday_end_hour=6,
+            schedule_weekend_start_hour=0,
+            schedule_weekend_end_hour=12,
+            schedule_timezone="Asia/Shanghai",
+        )
+        # 2026-07-05 Sunday 11:00 CST
+        now = datetime(2026, 7, 5, 3, 0, tzinfo=timezone.utc)
+        assert _is_within_schedule_window(cfg, now) is True
+
+    def test_sunday_outside_weekend_window(self):
+        cfg = AutoSummaryConfig(
+            schedule_enabled=True,
+            schedule_weekday_start_hour=0,
+            schedule_weekday_end_hour=6,
+            schedule_weekend_start_hour=0,
+            schedule_weekend_end_hour=12,
+            schedule_timezone="Asia/Shanghai",
+        )
+        # 2026-07-05 Sunday 22:00 CST
+        now = datetime(2026, 7, 5, 14, 0, tzinfo=timezone.utc)
+        assert _is_within_schedule_window(cfg, now) is False

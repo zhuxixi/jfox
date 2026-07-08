@@ -344,9 +344,9 @@ A session is considered "finished" when its file has not been modified for `idle
 - `--idle-threshold` — Minutes of inactivity to consider a session finished (default: 30)
 - `--kb` — Target knowledge base for saved notes
 
-#### 调度时间窗口
+#### Schedule Window
 
-为了避免白天占用 GPU/嵌入模型资源，可以配置 auto-summary 仅在非工作时间运行：
+To avoid consuming GPU/embedding model resources during working hours, you can configure auto-summary to run only during off-hours:
 
 ```bash
 jfox auto-summary enable --schedule-enabled \
@@ -355,11 +355,13 @@ jfox auto-summary enable --schedule-enabled \
   --schedule-timezone Asia/Shanghai
 ```
 
-- `--schedule-weekday-window`：工作日允许运行的小时范围，默认 `0-6`
-- `--schedule-weekend-window`：周末允许运行的小时范围，默认 `0-8`
-- `--schedule-timezone`：时区，默认 `Asia/Shanghai`
+- `--schedule-weekday-window` — allowed hour range on weekdays (default `0-6`)
+- `--schedule-weekend-window` — allowed hour range on weekends (default `0-8`)
+- `--schedule-timezone` — timezone used for window checks (default `Asia/Shanghai`)
 
-手动触发不受窗口限制：
+The end hour may be `24`, meaning the window includes all hours up to midnight (e.g., `22-24` is valid).
+
+Manual runs are not restricted by the schedule window:
 
 ```bash
 jfox auto-summary run

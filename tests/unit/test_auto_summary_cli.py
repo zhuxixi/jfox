@@ -45,6 +45,20 @@ class TestEnableScheduleOptions:
             assert call_kwargs["schedule_weekend_end_hour"] == 7
             assert call_kwargs["schedule_timezone"] == "UTC"
 
+    def test_enable_no_schedule_enabled_sets_false(self):
+        gm_mock = MagicMock()
+        gm_mock.update_auto_summary_config.return_value = True
+        with patch("jfox.auto_summary.cli.get_global_config_manager", return_value=gm_mock):
+            result = runner.invoke(
+                auto_summary_app,
+                ["enable", "--no-schedule-enabled"],
+            )
+            assert result.exit_code == 0
+            gm_mock.update_auto_summary_config.assert_called_once()
+            call_kwargs = gm_mock.update_auto_summary_config.call_args.kwargs
+            assert call_kwargs["enabled"] is True
+            assert call_kwargs["schedule_enabled"] is False
+
     def test_enable_invalid_window_format(self):
         gm_mock = MagicMock()
         with patch("jfox.auto_summary.cli.get_global_config_manager", return_value=gm_mock):
