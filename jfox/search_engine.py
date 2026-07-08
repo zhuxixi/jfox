@@ -48,6 +48,15 @@ class HybridSearchEngine:
         self.bm25_index = bm25_index or get_bm25_index()
         self.rrf_k = rrf_k
 
+        # 若 BM25 索引是从 v1 迁移而来，需要全量重建以回填 doc_types
+        if self.bm25_index.needs_rebuild:
+            if self.rebuild_bm25_index():
+                self.bm25_index.needs_rebuild = False
+            else:
+                logger.warning(
+                    "Failed to rebuild BM25 index after v1 migration, will retry next time"
+                )
+
     @staticmethod
     def _filter_archived_results(
         results: List[Dict[str, Any]], include_archived: bool
@@ -99,7 +108,9 @@ class HybridSearchEngine:
                 query, top_k, note_type, tags, include_archived=include_archived
             )
         elif mode == SearchMode.KEYWORD:
-            return self._keyword_search(query, top_k, tags, include_archived=include_archived)
+            return self._keyword_search(
+                query, top_k, note_type, tags, include_archived=include_archived
+            )
         else:  # HYBRID
             return self._hybrid_search(
                 query, top_k, note_type, tags, include_archived=include_archived
@@ -144,24 +155,25 @@ class HybridSearchEngine:
         self,
         query: str,
         top_k: int,
+        note_type: Optional[str] = None,
         tags: Optional[List[str]] = None,
         include_archived: bool = False,
     ) -> List[Dict[str, Any]]:
         """纯关键词搜索 (BM25)"""
         try:
-            # 请求更多结果以补偿标签/归档过滤后的数量损失
+            # 请求更多结果以补偿标签/归档过滤后的数量损失（note_type 已在 BM25 层过滤）
             if tags or not include_archived:
                 search_k = max(top_k * 5, 20)
             else:
                 search_k = top_k
-            bm25_results = self.bm25_index.search(query, top_k=search_k)
+            bm25_results = self.bm25_index.search(query, top_k=search_k, note_type=note_type)
 
             results = self._build_keyword_results(bm25_results, tags, include_archived)
 
             # 高密度归档场景下，初次过滤结果可能不足 top_k，二次扩大检索回填
             if not include_archived and len(results) < top_k:
                 search_k = max(top_k * 10, 50)
-                bm25_results = self.bm25_index.search(query, top_k=search_k)
+                bm25_results = self.bm25_index.search(query, top_k=search_k, note_type=note_type)
                 results = self._build_keyword_results(bm25_results, tags, include_archived)
 
             return results[:top_k]
@@ -226,7 +238,7 @@ class HybridSearchEngine:
             logger.warning(f"Semantic search failed in hybrid mode: {e}")
 
         try:
-            bm25_results = self.bm25_index.search(query, top_k=search_k)
+            bm25_results = self.bm25_index.search(query, top_k=search_k, note_type=note_type)
         except Exception as e:
             logger.warning(f"BM25 search failed in hybrid mode: {e}")
 
@@ -251,7 +263,9 @@ class HybridSearchEngine:
         if not semantic_results and not bm25_results:
             return []
         elif not semantic_results:
-            return self._keyword_search(query, top_k, tags, include_archived=include_archived)
+            return self._keyword_search(
+                query, top_k, note_type, tags, include_archived=include_archived
+            )
         elif not bm25_results:
             filtered = self._filter_archived_results(semantic_results, include_archived)
             for r in filtered[:top_k]:

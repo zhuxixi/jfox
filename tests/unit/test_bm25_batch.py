@@ -174,7 +174,7 @@ class TestBulkImportBM25Integration:
         mock_bm25.add_documents_batch.assert_called_once()
         call_args = mock_bm25.add_documents_batch.call_args[0][0]
         assert len(call_args) == 1
-        assert call_args[0] == ("20260411120000", "测试笔记 这是测试内容")
+        assert call_args[0] == ("20260411120000", "测试笔记 这是测试内容", "permanent")
 
     @patch("jfox.bm25_index.get_bm25_index")
     @patch("jfox.vector_store.get_vector_store")
