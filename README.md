@@ -344,6 +344,27 @@ A session is considered "finished" when its file has not been modified for `idle
 - `--idle-threshold` — Minutes of inactivity to consider a session finished (default: 30)
 - `--kb` — Target knowledge base for saved notes
 
+#### 调度时间窗口
+
+为了避免白天占用 GPU/嵌入模型资源，可以配置 auto-summary 仅在非工作时间运行：
+
+```bash
+jfox auto-summary enable --schedule-enabled \
+  --schedule-weekday-window 0-6 \
+  --schedule-weekend-window 0-8 \
+  --schedule-timezone Asia/Shanghai
+```
+
+- `--schedule-weekday-window`：工作日允许运行的小时范围，默认 `0-6`
+- `--schedule-weekend-window`：周末允许运行的小时范围，默认 `0-8`
+- `--schedule-timezone`：时区，默认 `Asia/Shanghai`
+
+手动触发不受窗口限制：
+
+```bash
+jfox auto-summary run
+```
+
 **How it works:**
 
 - Uses `claude -p` (non-interactive mode) to generate summaries from stdin/stdout
