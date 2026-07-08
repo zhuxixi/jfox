@@ -33,7 +33,8 @@ except Exception:
         ;;
 esac
 
-# POST 原样给 daemon；-m1 限时1秒，-s 静默，失败不报错
+# POST 给 daemon（普通 session 为原 payload，内部 session 已在上方注入 source 字段）；
+# -m1 限时1秒，-s 静默，失败不报错
 JFOX_DAEMON_URL="${JFOX_DAEMON_URL:-http://127.0.0.1:18700}"
 RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 1 -X POST \
     "${JFOX_DAEMON_URL}/api/fragment" \
