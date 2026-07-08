@@ -251,10 +251,10 @@ def test_promote_includes_grounded_by_in_links():
             assert target.id in load_note_by_id(c.id).links  # grounded_by → links
 
 
-def test_promote_handles_none_in_grounded_by():
-    """cc round-4：grounded_by 含 None/空串（YAML null / LLM 脏数据）不应崩 find_by_title"""
+def test_promote_handles_dirty_grounded_by():
+    """cc round-4/5：grounded_by 含 None/空串/非字符串（YAML null/int/bool、LLM 脏数据）不应崩"""
     with temp_kb_registered() as kb_name:
         with use_kb(kb_name):
-            c = _make_candidate("候选", "内容", grounded_by=["有效但不存在", None, ""])
-            promote_note(c.id)  # None/空被过滤；"有效但不存在" 警告跳过；不崩
+            c = _make_candidate("候选", "内容", grounded_by=["有效但不存在", None, "", 123, True])
+            promote_note(c.id)  # 非 str/空被过滤；"有效但不存在" 警告跳过；不崩
             assert load_note_by_id(c.id).type == NoteType.PERMANENT
