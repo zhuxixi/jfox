@@ -365,8 +365,8 @@ def promote_note(note_id: str) -> bool:
     )
     for title in link_titles:
         if (
-            not title
-        ):  # 过滤 None/空串（YAML null / LLM 脏数据），防 find_by_title(title.lower()) 崩
+            not isinstance(title, str) or not title
+        ):  # 过滤非 str/空串（YAML null/int/bool、LLM 脏数据）防 .lower() 崩
             continue
         tm = idx.find_by_title(title)
         if tm is None:
