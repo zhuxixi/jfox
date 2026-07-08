@@ -14,6 +14,7 @@ import threading
 
 from ..global_config import get_global_config_manager
 from .runner import run_once
+from .schedule import _is_within_schedule_window
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ def _tick_once(stop_event: threading.Event) -> str:
     cfg = gm.get_auto_summary_config()
     if not cfg.enabled:
         return "auto-summary 已禁用，跳过本轮"
+
+    # Issue #298: 调度时间窗口检查
+    if cfg.schedule_enabled and not _is_within_schedule_window(cfg):
+        return "auto-summary 当前不在调度窗口内，跳过本轮"
 
     # 将 stop_event 注入 config，让 _invoke_claude → _run_claude 能检查
     cfg._stop_event = stop_event
