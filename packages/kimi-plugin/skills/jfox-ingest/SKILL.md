@@ -15,7 +15,7 @@ description: Use when user wants to import data from a local git repository into
 
 1. 知识库已存在：
    ```bash
-   jfox kb list --format json
+   jfox kb list --json
    ```
    如果没有知识库，提示用户先调用 manage 技能（`/skill:jfox-manage`）创建。
 
@@ -149,7 +149,7 @@ git-log 数据已通过 `jfox ingest-log` 完成导入，此步骤仅处理 GitH
 
 **去重检查**：导入前检查知识库中是否已有该仓库的数据：
 ```bash
-jfox search "repo-name" --format json
+jfox search "repo-name" --json
 ```
 
 如果已有记录，只导入新增的条目（通过 PR 编号、Issue 编号判断）。
@@ -227,7 +227,7 @@ gh pr view number --repo owner/repo --json comments
 gh issue list --repo owner/repo --state all --limit 30 --json number,title,body,state,author,createdAt,labels,comments
 
 # 去重检查
-jfox search "repo-name" --format json
+jfox search "repo-name" --json
 
 # 导入 GitHub 数据
 jfox bulk-import file.json --type fleeting --kb name
