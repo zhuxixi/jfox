@@ -161,7 +161,11 @@ def test_unarchive_clears_reject_reason():
             reject_note(c.id, reason="不准")
             assert load_note_by_id(c.id).reject_reason == "不准"
             unarchive_note(c.id)
-            assert load_note_by_id(c.id).reject_reason is None
+            r = load_note_by_id(c.id)
+            assert r.reject_reason is None
+            assert (
+                r.status == "pending"
+            )  # issue-12：candidate reject→unarchive 回 pending，不残留 rejected 僵尸态
 
 
 def test_promote_clears_reject_reason_after_reject_unarchive():
@@ -188,3 +192,16 @@ def test_promote_ignores_wiki_links_in_code_block():
             c = _make_candidate("代码块测试", "示例\n```\n[[目标笔记]] 是代码\n```\n")
             promote_note(c.id)
             assert c.id not in load_note_by_id(target.id).backlinks
+
+
+def test_promote_clears_archived_after_reject():
+    """issue-13：reject→直接 promote（跳 unarchive）后 archived=False（不产出被软删除的 permanent）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            c = _make_candidate("先拒后升", "内容")
+            reject_note(c.id)  # archived=True, status=rejected
+            assert load_note_by_id(c.id).archived is True
+            promote_note(c.id)  # 跳 unarchive 直接 promote
+            p = load_note_by_id(c.id)
+            assert p.type == NoteType.PERMANENT
+            assert p.archived is False  # issue-13：promote 是激活，取消软删除标记

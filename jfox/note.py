@@ -326,7 +326,11 @@ def unarchive_note(note_id: str) -> bool:
         return update_note(n)
 
     n.archived = False
-    n.reject_reason = None  # 恢复时清空 reject 语义（reject→unarchive 后不应残留 reject_reason）
+    n.reject_reason = None  # 恢复时清空 reject 语义
+    if n.type == NoteType.CANDIDATE:
+        # candidate reject→unarchive 应回 pending，否则 status='rejected' 残留成僵尸态
+        # （默认 candidates list 看不到、--status rejected 还看得到）—— round-2 issue-12
+        n.status = "pending"
     return update_note(n)
 
 
@@ -369,6 +373,7 @@ def promote_note(note_id: str, cfg: Optional[ZKConfig] = None) -> bool:
     n.confidence = None
     n.knowledge_type = None
     n.reject_reason = None
+    n.archived = False  # promote 是激活，取消软删除（防 reject→直接 promote 产出 archived permanent）—— round-2 issue-13
     n.links = sorted(set(n.links + target_ids))
 
     # update_note：filepath 随 type 变 → 写 permanent/ + 删 candidate/ 旧文件 + 更新索引
