@@ -2,6 +2,18 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.3.0] - 2026-07-10
+
+### Features
+- **gem-synth**: L5 候选晋升层（candidate → permanent） (#296)
+- **kimi-plugin**: 为 health check 与 orphan 链接推荐引入 AgentSwarm 并行执行 (#300)
+
+### Fixes
+- **fragment**: skip internal auto-summary/gem-synth sessions to break feedback loop (#297) (#299)
+- **search**: BM25 索引支持 note_type，修复 hybrid/keyword 模式 --type 过滤失效 (#285) (#292)
+
+[1.3.0]: https://github.com/zhuxixi/jfox/compare/v1.2.3...v1.3.0
+
 ## [1.2.3] - 2026-07-07
 
 ### Fixes
