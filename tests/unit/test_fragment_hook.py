@@ -6,10 +6,20 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
 import pytest
+
+# hook 是 bash 脚本（fragment-capture.sh），由 hooks.json 通过 `bash` 调起，
+# 依赖 bash + curl + python3，仅在 Unix 上运行；Windows 无 /bin/bash，
+# 且产品在 Windows（无 git-bash）也不会经 bash 执行该 hook，
+# 故这组 hook 行为测试在 Windows 跳过（与 test_daemon_process.py 的 win32 skip 同惯例）。
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="fragment-capture.sh 是 bash 脚本，Windows 无 /bin/bash，产品不经 bash 调用该 hook",
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / "packages" / "cc-plugin" / "hooks" / "fragment-capture.sh"
