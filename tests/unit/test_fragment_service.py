@@ -113,3 +113,103 @@ def test_store_exception_is_structured(tmp_path):
         config=FragmentCaptureConfig(),
     )
     assert result["status"] == "error"
+
+
+@pytest.mark.parametrize("source", ["auto-summary", "gem-synth"])
+def test_internal_source_skipped(tmp_path, source):
+    """Issue #297：JFox 内部系统产生的 session 不应进入碎片采集链路"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "不对，应该改",
+            "source": source,
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "skipped"
+    assert source in result["reason"]
+    assert store.query(session_id="s1") == []
+
+
+def test_internal_source_in_metadata_skipped(tmp_path):
+    """source 也可以放在 metadata 对象中传递"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "不要这样",
+            "metadata": {"source": "gem-synth"},
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "skipped"
+    assert store.query(session_id="s1") == []
+
+
+@pytest.mark.parametrize("bad_metadata", [None, "not-a-dict", ["list"], 123])
+def test_malformed_metadata_does_not_raise(tmp_path, bad_metadata):
+    """metadata 非字典时不抛异常，按普通事件处理"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "hi",
+            "metadata": bad_metadata,
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["fragment_type"] == "user_input"
+
+
+@pytest.mark.parametrize("bad_source", [None, 123, ["list"], ""])
+def test_non_string_source_ignored(tmp_path, bad_source):
+    """source 字段非字符串时视为未声明，正常入库"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "hi",
+            "source": bad_source,
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["fragment_type"] == "user_input"
+
+
+def test_env_var_is_not_used_by_service(tmp_path, monkeypatch):
+    """daemon 是长驻进程，ingest_event 不应读取全局环境变量作为来源判断"""
+    monkeypatch.setenv("JFOX_INTERNAL_SESSION", "auto-summary")
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "hi",
+        },
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    # 事件本身未声明 source，即使环境变量是内部来源也应正常采集
+    assert result["fragment_type"] == "user_input"
+    assert store.query(session_id="s1") != []
+
+
+@pytest.mark.parametrize("bad_event", [None, "string", ["list"], 123])
+def test_non_dict_event_does_not_raise(tmp_path, bad_event):
+    """event 本身非字典时不抛异常，按输入异常处理"""
+    store = FragmentStore(db_path=tmp_path / "f.db")
+    result = ingest_event(
+        bad_event,
+        store=store,
+        config=FragmentCaptureConfig(),
+    )
+    assert result["status"] == "error"

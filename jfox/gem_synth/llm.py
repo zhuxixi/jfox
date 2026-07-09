@@ -132,6 +132,8 @@ def _invoke_claude(
     env = os.environ.copy()
     for noisy in ("JFOX_KB", "JFOX_DAEMON_PROCESS"):
         env.pop(noisy, None)
+    # 标记这是 JFox 内部 session，避免被 CC 全局 hook 当成用户会话采集碎片（Issue #297）
+    env["JFOX_INTERNAL_SESSION"] = "gem-synth"
 
     timeout = max(30, cfg.claude_timeout_seconds)
     proc = subprocess.Popen(

@@ -1,14 +1,44 @@
 #!/usr/bin/env bash
-# JFox 碎片采集 hook：读 CC stdin JSON，原样 POST 到 JFox daemon。
+# JFox 碎片采集 hook：读 CC stdin JSON，处理后 POST 到 JFox daemon。
 # 设计：永不阻塞 CC（失败静默 exit 0）。
-# 热路径（UserPromptSubmit/PostToolUse）仅 curl，<10ms；仅 Stop 分支 spawn python3 解析摘要。
+# 普通 session 热路径（UserPromptSubmit/PostToolUse）仅 curl，<10ms；
+# Stop 分支 spawn python3 解析摘要；
+# JFox 内部 session（auto-summary/gem-synth）会额外 spawn python3 注入 source 字段。
 set -u
 
 PAYLOAD="$(cat)"
 
-# POST 原样给 daemon；-m1 限时1秒，-s 静默，失败不报错
+# 若这是 JFox 内部系统产生的 session，将来源标记注入 payload，让 daemon 统一过滤。
+# 这样 daemon（长驻进程）无需读取进程环境变量，避免环境变量污染导致普通用户事件被误跳过。
+# 值列表必须与服务端 jfox/fragment/internal_sources.py 中的 INTERNAL_SOURCES 保持一致；
+# 同步测试见 tests/unit/test_fragment_internal_sources.py。
+case "${JFOX_INTERNAL_SESSION:-}" in
+    auto-summary|gem-synth)
+        # 注入来源标记到 payload；若 python3 不可用则直接跳过该内部 session，
+        # 避免无 source 标记的内部事件进入 fragments 链路触发死循环。
+        if command -v python3 >/dev/null 2>&1; then
+            # 解析失败时命令替换整体失败，hook 直接跳过，避免无 source 标记的内部事件入库。
+            PAYLOAD="$(printf '%s' "$PAYLOAD" | python3 -c '
+import sys, json
+data = sys.stdin.read()
+try:
+    event = json.loads(data)
+    event["source"] = sys.argv[1]
+    sys.stdout.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+except Exception:
+    sys.exit(1)
+' "$JFOX_INTERNAL_SESSION")" || exit 0
+        else
+            exit 0
+        fi
+        ;;
+esac
+
+# POST 给 daemon（普通 session 为原 payload，内部 session 已在上方注入 source 字段）；
+# -m1 限时1秒，-s 静默，失败不报错
+JFOX_DAEMON_URL="${JFOX_DAEMON_URL:-http://127.0.0.1:18700}"
 RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 1 -X POST \
-    http://127.0.0.1:18700/api/fragment \
+    "${JFOX_DAEMON_URL}/api/fragment" \
     -H 'Content-Type: application/json' \
     --data-binary @- 2>/dev/null || true)"
 
