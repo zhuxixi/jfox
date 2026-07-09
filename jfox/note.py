@@ -800,7 +800,6 @@ def suggest_links(
     top_k: int = 5,
     threshold: float = 0.6,
     exclude_ids: Optional[List[str]] = None,
-    cfg: Optional[ZKConfig] = None,
 ) -> List[Dict[str, Any]]:
     """
     根据内容推荐可以链接的已有笔记
@@ -812,7 +811,6 @@ def suggest_links(
         top_k: 返回建议数量
         threshold: 相似度阈值（0-1）
         exclude_ids: 要排除的笔记 ID 列表
-        cfg: 可选的配置对象，默认使用全局 config
 
     Returns:
         建议链接的笔记列表，按置信度排序
