@@ -76,7 +76,14 @@ async def auto_summary_loop(stop_event: threading.Event) -> None:
         interval_sec = max(60, cfg.interval_minutes * 60)
 
         if cfg.enabled:
-            if cfg.schedule_enabled and not _is_within_schedule_window(cfg):
+            # 窗口判断异常不应中断 daemon 循环，保守放行（与 _is_within_schedule_window
+            # 内部兜底语义一致；此处为不依赖被调函数不变量的额外保护）
+            try:
+                in_window = not cfg.schedule_enabled or _is_within_schedule_window(cfg)
+            except Exception as e:
+                logger.exception("auto-summary 调度窗口判断异常，保守放行: %s", e)
+                in_window = True
+            if not in_window:
                 logger.debug("auto-summary 当前不在调度窗口内，等待下一轮")
             else:
                 try:

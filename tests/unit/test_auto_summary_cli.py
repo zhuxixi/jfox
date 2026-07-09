@@ -89,4 +89,4 @@ class TestStatusScheduleOutput:
 
             data = json.loads(result.output)
             assert data["config"]["schedule_enabled"] is True
-            assert "in_schedule_window" in data["progress"] or "schedule" in data
+            assert "in_schedule_window" in data["progress"]

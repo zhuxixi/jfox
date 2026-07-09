@@ -346,7 +346,7 @@ A session is considered "finished" when its file has not been modified for `idle
 
 #### Schedule Window
 
-To avoid consuming GPU/embedding model resources during working hours, you can configure auto-summary to run only during off-hours:
+To avoid consuming local embedding model resources and API quota during working hours, you can configure auto-summary to run only during off-hours:
 
 ```bash
 jfox auto-summary enable --schedule-enabled \

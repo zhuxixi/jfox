@@ -14,6 +14,7 @@ import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 if TYPE_CHECKING:
     from ..global_config import AutoSummaryConfig
@@ -90,10 +91,9 @@ def _is_within_schedule_window(
     tz = None
     if cfg.schedule_timezone:
         try:
-            from zoneinfo import ZoneInfo
-
             tz = ZoneInfo(cfg.schedule_timezone)
-        except Exception as e:
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            # 时区名无效时回退到系统本地时间
             logger.warning(
                 "无法解析时区 %s，回退到系统本地时间: %s",
                 cfg.schedule_timezone,
@@ -102,7 +102,7 @@ def _is_within_schedule_window(
 
     try:
         local_now = now.astimezone(tz) if tz else now.astimezone()
-    except Exception as e:
+    except (TypeError, OSError) as e:
         logger.error("时间转换异常，保守允许运行: %s", e)
         return True
 

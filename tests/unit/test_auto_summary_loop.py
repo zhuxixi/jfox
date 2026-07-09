@@ -21,7 +21,8 @@ from jfox.global_config import AutoSummaryConfig
 class TestTickOnceNoWindowCheck:
     """调度窗口判断已从 _tick_once 移除，应由外层循环负责。"""
 
-    def test_tick_runs_inside_window(self):
+    def test_tick_once_does_not_check_window(self):
+        """_tick_once 自身不调用 _is_within_schedule_window，窗口判断由外层循环负责。"""
         cfg = AutoSummaryConfig(
             enabled=True,
             schedule_enabled=True,
@@ -35,28 +36,11 @@ class TestTickOnceNoWindowCheck:
         with patch("jfox.auto_summary.loop.get_global_config_manager", return_value=gm_mock):
             with patch("jfox.auto_summary.loop.run_once") as run_once_mock:
                 run_once_mock.return_value.scanned = 0
-                with patch("jfox.auto_summary.loop._is_within_schedule_window", return_value=True):
+                with patch("jfox.auto_summary.loop._is_within_schedule_window") as window_mock:
                     _tick_once(threading.Event())
                     run_once_mock.assert_called_once()
-
-    def test_tick_runs_even_outside_window(self):
-        """_tick_once 自身不再检查窗口，即使外部判断为 False 也会执行 run_once。"""
-        cfg = AutoSummaryConfig(
-            enabled=True,
-            schedule_enabled=True,
-            schedule_weekday_start_hour=0,
-            schedule_weekday_end_hour=6,
-            schedule_timezone="Asia/Shanghai",
-        )
-        gm_mock = MagicMock()
-        gm_mock.get_auto_summary_config.return_value = cfg
-
-        with patch("jfox.auto_summary.loop.get_global_config_manager", return_value=gm_mock):
-            with patch("jfox.auto_summary.loop.run_once") as run_once_mock:
-                run_once_mock.return_value.scanned = 0
-                with patch("jfox.auto_summary.loop._is_within_schedule_window", return_value=False):
-                    _tick_once(threading.Event())
-                    run_once_mock.assert_called_once()
+                    # _tick_once 不应检查调度窗口（已移至外层循环）
+                    window_mock.assert_not_called()
 
 
 class TestLoopScheduleWindow:
