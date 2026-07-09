@@ -328,6 +328,102 @@ def unarchive_note(note_id: str) -> bool:
         return update_note(n)
 
     n.archived = False
+    n.reject_reason = None  # 恢复时清空 reject 语义
+    if n.type == NoteType.CANDIDATE:
+        # candidate reject→unarchive 应回 pending，否则 status='rejected' 残留成僵尸态
+        # （默认 candidates list 看不到、--status rejected 还看得到）—— round-2 issue-12
+        n.status = "pending"
+    return update_note(n)
+
+
+def promote_note(note_id: str) -> bool:
+    """candidate → permanent：改 type、清 candidate 生命周期字段（保留溯源）、移文件、回填 links/backlinks。
+
+    清 status/gem_level/confidence/knowledge_type/reject_reason；**保留 source_fragments/grounded_by**
+    做溯源（满足 #249「可追溯到来源碎片」），由 to_markdown 在非空时跨类型写入 frontmatter。
+    backlinks 增量回填：解析正文 [[...]]（先剥 code block/HTML 注释防误匹配）→ 精确标题匹配
+    → 设本笔记 links + 把本笔记加进各 target 的 backlinks。
+    """
+    from .note_index import (
+        _strip_wiki_link_exclusions,
+        extract_wiki_links_from_text,
+        get_note_index,
+    )
+
+    n = load_note_by_id(note_id)
+    if not n:
+        logger.warning(f"Note {note_id} not found")
+        return False
+    if n.type != NoteType.CANDIDATE:
+        logger.warning(f"Note {note_id} is not a candidate (type={n.type.value})")
+        return False
+
+    # forward links 来源（spec §2.1）：正文 [[标题]] + frontmatter grounded_by 参考笔记，合并去重。
+    # 先剥 fenced code block/HTML 注释避免字面量 [[标题]] 误匹配；精确标题匹配，不子串 fallback。
+    idx = get_note_index()
+    target_ids: List[str] = []
+    link_titles = extract_wiki_links_from_text(_strip_wiki_link_exclusions(n.content)) + list(
+        n.grounded_by or []
+    )
+    for title in link_titles:
+        if (
+            not isinstance(title, str) or not title
+        ):  # 过滤非 str/空串（YAML null/int/bool、LLM 脏数据）防 .lower() 崩
+            continue
+        tm = idx.find_by_title(title)
+        if tm is None:
+            # spec §6：链接目标不存在 → 警告不阻塞（round-4 issue-5）
+            logger.warning(f"promote {note_id}: 链接目标 [[{title}]] 不存在，跳过")
+            continue
+        if tm.id != n.id and tm.id not in target_ids:
+            target_ids.append(tm.id)
+
+    # 改 type + 清 candidate 生命周期字段；**保留 source_fragments/grounded_by 做溯源**
+    # （to_markdown 在非空时跨类型写入，promoted permanent 仍可追溯到来源碎片）。
+    n.type = NoteType.PERMANENT
+    n.status = None
+    n.gem_level = None
+    n.confidence = None
+    n.knowledge_type = None
+    n.reject_reason = None
+    n.archived = False  # promote 是激活，取消软删除（防 reject→直接 promote 产出 archived permanent）—— round-2 issue-13
+    n.links = sorted(set(n.links + target_ids))
+
+    # update_note：filepath 随 type 变 → 写 permanent/ + 删 candidate/ 旧文件 + 更新索引
+    if not update_note(n):
+        return False
+
+    # 增量回填：把本笔记加进每个 target 的 backlinks（刷 updated 时间戳，因为 backlinks 已变更）。
+    # 单 target 写盘/索引失败只 warning 不中断——主笔记已 promote 成功；若发生不对称（本笔记 links
+    # 已落盘但某 target backlinks 缺失），用 `jfox rebuild-backlinks` 全量重算修复。
+    now = datetime.now()
+    for tid in target_ids:
+        t = load_note_by_id(tid)
+        if t and n.id not in t.backlinks:
+            t.updated = now
+            t.backlinks = sorted(set(t.backlinks + [n.id]))
+            try:
+                _atomic_write(t.filepath, t.to_markdown())
+                get_note_index().update_note_meta(t)
+            except Exception as e:
+                logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
+    return True
+
+
+def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
+    """candidate 归档丢弃（软删除）：置 archived=True + status=rejected，可选记 reject_reason。
+    直接改字段 + 单次 update_note（不调 archive_note，避免二次写盘）。可 jfox unarchive 恢复。"""
+    n = load_note_by_id(note_id)
+    if not n:
+        logger.warning(f"Note {note_id} not found")
+        return False
+    if n.type != NoteType.CANDIDATE:
+        logger.warning(f"Note {note_id} is not a candidate (type={n.type.value})")
+        return False
+    n.archived = True
+    n.status = "rejected"
+    if reason:
+        n.reject_reason = reason
     return update_note(n)
 
 

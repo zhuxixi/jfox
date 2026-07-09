@@ -73,12 +73,14 @@ class Note:
     source: Optional[str] = None  # 来源（文献笔记）
     topic: Optional[str] = None  # 会话主题（session 类型）
     archived: bool = False  # 是否已归档（软删除标记）
+    reject_reason: Optional[str] = None  # candidate reject 原因（供复盘）
 
-    # candidate 专属字段（仅 type=CANDIDATE 时序列化；其它类型忽略）
+    # candidate 字段：生命周期（gem_level/confidence/knowledge_type/status）仅 type=CANDIDATE 时序列化；
+    # 溯源（source_fragments/grounded_by）跨类型保留——非空时写，promoted permanent 仍可追溯到来源碎片（#249）
     gem_level: Optional[str] = None
     confidence: Optional[float] = None
-    source_fragments: List[int] = field(default_factory=list)
-    grounded_by: List[str] = field(default_factory=list)
+    source_fragments: List[int] = field(default_factory=list)  # 碎片溯源（跨类型保留）
+    grounded_by: List[str] = field(default_factory=list)  # 参考笔记溯源（跨类型保留）
     knowledge_type: Optional[str] = None  # factual/procedural/preference/constraint
     status: Optional[str] = None  # pending → (L5) promoted/rejected
 
@@ -137,19 +139,22 @@ class Note:
         if self.archived:
             frontmatter["archived"] = self.archived
 
-        # candidate 专属字段（仅 type=CANDIDATE 时写入 frontmatter）
+        # candidate 生命周期字段（仅 type=CANDIDATE 时写入 frontmatter）
         if self.type == NoteType.CANDIDATE:
             frontmatter["gem_level"] = self.gem_level or GemLevel.FLAWED.value
             if self.confidence is not None:
                 frontmatter["confidence"] = self.confidence
-            if self.source_fragments:
-                frontmatter["source_fragments"] = self.source_fragments
-            if self.grounded_by:
-                frontmatter["grounded_by"] = self.grounded_by
             if self.knowledge_type:
                 frontmatter["knowledge_type"] = self.knowledge_type
             if self.status:
                 frontmatter["status"] = self.status
+            if self.reject_reason:
+                frontmatter["reject_reason"] = self.reject_reason
+        # 溯源字段（跨类型保留：candidate 合成产出 + promoted permanent 都可追溯到来源碎片，#249）
+        if self.source_fragments:
+            frontmatter["source_fragments"] = self.source_fragments
+        if self.grounded_by:
+            frontmatter["grounded_by"] = self.grounded_by
 
         fm_yaml = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
 
@@ -200,6 +205,7 @@ class Note:
             source=fm.get("source"),
             topic=fm.get("topic"),
             archived=_to_bool(fm.get("archived", False)),
+            reject_reason=fm.get("reject_reason"),
             gem_level=fm.get("gem_level"),
             confidence=_to_float(fm.get("confidence")),
             source_fragments=fm.get("source_fragments", []),
@@ -225,17 +231,20 @@ class Note:
             "hop": self.hop,
             "topic": self.topic,
         }
-        # candidate 专属字段（仅 type=CANDIDATE 时输出，与 to_markdown 保持一致）
+        # candidate 生命周期字段（仅 type=CANDIDATE 时输出）
         if self.type == NoteType.CANDIDATE:
             d["gem_level"] = self.gem_level or GemLevel.FLAWED.value
             if self.confidence is not None:
                 d["confidence"] = self.confidence
-            if self.source_fragments:
-                d["source_fragments"] = self.source_fragments
-            if self.grounded_by:
-                d["grounded_by"] = self.grounded_by
             if self.knowledge_type:
                 d["knowledge_type"] = self.knowledge_type
             if self.status:
                 d["status"] = self.status
+            if self.reject_reason:
+                d["reject_reason"] = self.reject_reason
+        # 溯源字段（跨类型输出，与 to_markdown 保持一致）
+        if self.source_fragments:
+            d["source_fragments"] = self.source_fragments
+        if self.grounded_by:
+            d["grounded_by"] = self.grounded_by
         return d

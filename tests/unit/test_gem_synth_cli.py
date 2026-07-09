@@ -9,14 +9,19 @@
 """
 
 import json
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
+from jfox.cli import app
 from jfox.config import use_kb
 from jfox.gem_synth.cli import candidates_app
 from jfox.models import GemLevel, Note, NoteType
-from jfox.note import save_note
+from jfox.note import create_note, load_note_by_id, save_note
+
+# 走完整 app 路由（jfox candidates promote <id>）的测试用此 runner
+runner = CliRunner()
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
@@ -241,3 +246,71 @@ def test_gem_synth_status_help_lists_command():
     result = CliRunner().invoke(gem_synth_app, ["--help"])
     assert result.exit_code == 0
     assert "status" in result.output
+
+
+# ----------------------------------------------------------------------------
+# jfox candidates promote 子命令（candidate → permanent）
+# ----------------------------------------------------------------------------
+
+
+def test_candidates_promote_command(temp_kb, mock_embedding_backend):
+    """jfox candidates promote <id> 把 candidate 改成 permanent"""
+    from jfox.models import NoteType
+    from jfox.note import create_note, load_note_by_id, save_note
+
+    kb_name = "test_promote_cli"
+    with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+        init_res = runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)])
+        assert init_res.exit_code == 0, init_res.output
+
+        with use_kb(kb_name):
+            c = create_note("内容", title="候选A", note_type=NoteType.CANDIDATE)
+            c.status = "pending"
+            save_note(c, add_to_index=False)
+
+        res = runner.invoke(
+            app, ["candidates", "promote", c.id, "--kb", kb_name, "--format", "json"]
+        )
+        assert res.exit_code == 0, res.output
+        assert json.loads(res.output)["promoted"] == c.id
+
+        with use_kb(kb_name):
+            assert load_note_by_id(c.id).type == NoteType.PERMANENT
+
+
+def test_candidates_promote_nonexistent_exits_nonzero(temp_kb, mock_embedding_backend):
+    """promote 不存在的 ID 应 exit 1（优雅失败，不抛 traceback）"""
+    kb_name = "test_promote_404"
+    with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+        assert (
+            runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)]).exit_code == 0
+        )
+        res = runner.invoke(app, ["candidates", "promote", "999999999999999", "--kb", kb_name])
+        assert res.exit_code == 1
+
+
+# ----------------------------------------------------------------------------
+# jfox candidates reject 子命令（candidate 归档丢弃 + 记原因）
+# ----------------------------------------------------------------------------
+
+
+def test_candidates_reject_command(temp_kb, mock_embedding_backend):
+    """jfox candidates reject <id> 归档 + 记 reason"""
+    kb_name = "test_reject_cli"
+    with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+        assert (
+            runner.invoke(app, ["init", "--name", kb_name, "--path", str(temp_kb)]).exit_code == 0
+        )
+        with use_kb(kb_name):
+            c = create_note("内容", title="候选B", note_type=NoteType.CANDIDATE)
+            save_note(c, add_to_index=False)
+
+        res = runner.invoke(
+            app,
+            ["candidates", "reject", c.id, "--reason", "不准", "--kb", kb_name, "--format", "json"],
+        )
+        assert res.exit_code == 0, res.output
+        with use_kb(kb_name):
+            r = load_note_by_id(c.id)
+            assert r.archived is True
+            assert r.reject_reason == "不准"
