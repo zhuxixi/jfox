@@ -46,7 +46,8 @@ def test_invoke_claude_uses_isolated_cwd(monkeypatch, tmp_path):
         return FakeProc()
 
     monkeypatch.setattr(llm_mod.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(llm_mod.os, "getpgid", lambda pid: 12345)
+    # raising=False：os.getpgid 在 Windows 不存在，默认 raising=True 会 AttributeError
+    monkeypatch.setattr(llm_mod.os, "getpgid", lambda pid: 12345, raising=False)
 
     cfg = MagicMock()
     cfg.claude_timeout_seconds = 30
