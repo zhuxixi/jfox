@@ -2,6 +2,16 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.3.1] - 2026-07-12
+
+### Features
+- **auto-summary**: add schedule time window (closes #298) (#301)
+
+### Fixes
+- **gem-synth**: 隔离 claude -p cwd，避免 auto-summary 总结 gem-synth 内部 session (#303)
+
+[1.3.1]: https://github.com/zhuxixi/jfox/compare/v1.3.0...v1.3.1
+
 ## [1.3.0] - 2026-07-10
 
 ### Features
