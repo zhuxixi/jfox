@@ -16,9 +16,11 @@ from typing import Iterator, Sequence
 
 logger = logging.getLogger(__name__)
 
-# claude -p 自身会创建 session 文件，下列子串若出现在 project 目录名中则跳过，避免递归
+# auto-summary / gem-synth 调 claude -p 会产生 session 文件；下列子串若出现在 project 目录名中
+# 则跳过，避免 auto-summary 把这些内部 session 当用户 session 总结（反馈循环根因，#297 同类）
 DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS: tuple[str, ...] = (
     "jfox-auto-summary-runs",
+    "jfox-gem-synth-runs",
     "auto-session-summary",
 )
 

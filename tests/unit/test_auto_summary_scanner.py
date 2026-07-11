@@ -113,6 +113,24 @@ class TestIterSessionFiles:
         names = {r.session_id for r in results}
         assert names == {"real"}
 
+    def test_blocklist_filters_gem_synth_runs_dir(self, tmp_path):
+        # gem-synth 调 claude -p 用 ~/.jfox-gem-synth-runs/ 隔离 cwd，对应 project 目录
+        # 必须被默认 blocklist 排除，否则 auto-summary 会总结 gem-synth 内部 session（#297 同类循环）
+        bad_proj = tmp_path / "C--Users-test--jfox-gem-synth-runs"
+        good_proj = tmp_path / "C--Users-test-real"
+        _make_session(bad_proj, "gem", 100 * 1024, mtime_offset_seconds=-60 * 60)
+        _make_session(good_proj, "real", 100 * 1024, mtime_offset_seconds=-60 * 60)
+
+        results = list(
+            iter_session_files(
+                claude_projects_dir=tmp_path,
+                idle_threshold_minutes=10,
+                project_blocklist=DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS,
+            )
+        )
+        names = {r.session_id for r in results}
+        assert names == {"real"}
+
     def test_ignores_non_jsonl_files(self, tmp_path):
         proj = tmp_path / "p1"
         proj.mkdir()
