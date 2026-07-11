@@ -18,6 +18,45 @@ def _mock_resolve_claude_binary():
         yield
 
 
+def test_invoke_claude_uses_isolated_cwd(monkeypatch, tmp_path):
+    """_invoke_claude 调 Popen 必须传 cwd=~/.jfox-gem-synth-runs 隔离目录，使 session
+    transcript 落到被 auto-summary blocklist 排除的 project 目录（#297 同类反馈循环的
+    session 选择链路补漏；fragment 链路已由 #297 修）。"""
+    import io as _io
+
+    from jfox.gem_synth import llm as llm_mod
+
+    # 隔离 _gem_synth_runs_dir 的目录创建，不污染真实 HOME
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    captured = {}
+
+    class FakeProc:
+        def __init__(self):
+            self.stdin = MagicMock()
+            self.stdout = _io.StringIO('{"result":"ok"}')
+            self.stderr = _io.StringIO("")
+            self.pid = 12345
+
+        def poll(self):
+            return 0
+
+    def fake_popen(*args, **kwargs):
+        captured.update(kwargs)
+        return FakeProc()
+
+    monkeypatch.setattr(llm_mod.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(llm_mod.os, "getpgid", lambda pid: 12345)
+
+    cfg = MagicMock()
+    cfg.claude_timeout_seconds = 30
+    result = llm_mod._invoke_claude("prompt", cfg)
+    assert result == '{"result":"ok"}'
+    assert captured.get("cwd", "").endswith(
+        ".jfox-gem-synth-runs"
+    ), "Popen 必须用 ~/.jfox-gem-synth-runs 隔离 cwd"
+
+
 def test_build_prompt_contains_context_and_grounding():
     prompt = _build_prompt(
         turn_context="用户说：不对，应该用 patch",

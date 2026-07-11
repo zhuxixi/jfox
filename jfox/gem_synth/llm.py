@@ -97,6 +97,20 @@ def _kill_proc_group(proc: subprocess.Popen, pgid) -> None:
             pass
 
 
+def _gem_synth_runs_dir() -> str:
+    """gem-synth 调 claude -p 的隔离 cwd。
+
+    让 claude 产生的 session transcript 落到 ~/.claude/projects/ 下含
+    'jfox-gem-synth-runs' 子串的 project 目录，被 auto-summary 的
+    DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS 排除，避免 auto-summary 把 gem-synth 内部
+    session 当用户 session 总结（#297 同类反馈循环根因；fragment 链路已修，此为 session
+    选择链路补漏）。沿用 auto_summary/scanner.py:isolated_runs_dir 同样模式。
+    """
+    p = os.path.join(os.path.expanduser("~"), ".jfox-gem-synth-runs")
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
 def _invoke_claude(
     prompt: str,
     cfg: GemSynthesisConfig,
@@ -143,6 +157,7 @@ def _invoke_claude(
         stderr=subprocess.PIPE,
         text=True,
         env=env,
+        cwd=_gem_synth_runs_dir(),
         start_new_session=True,
     )
     # 后台线程持续排空 stdout + stderr，防止任一管道缓冲写满（~64KB）导致 claude 阻塞死锁
