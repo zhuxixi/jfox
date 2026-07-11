@@ -69,6 +69,16 @@ class TestEnableScheduleOptions:
             assert result.exit_code != 0
             assert "窗口" in result.output or "format" in result.output.lower()
 
+    def test_enable_invalid_timezone(self):
+        gm_mock = MagicMock()
+        with patch("jfox.auto_summary.cli.get_global_config_manager", return_value=gm_mock):
+            result = runner.invoke(
+                auto_summary_app,
+                ["enable", "--schedule-timezone", "Asia/Shangai"],
+            )
+            assert result.exit_code != 0
+            assert "timezone" in result.output.lower() or "时区" in result.output
+
 
 class TestStatusScheduleOutput:
     def test_status_includes_schedule_info(self):

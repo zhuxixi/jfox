@@ -72,6 +72,9 @@ async def auto_summary_loop(stop_event: threading.Event) -> None:
 
     while not stop_event.is_set():
         gm = get_global_config_manager()
+        # 窗口外会跳过 _tick_once（其内部含 reload）；主循环需自行 reload 才能读到
+        # 最新磁盘配置，避免运行中改窗口配置不生效（stale config，#298 CR）
+        gm.reload()
         cfg = gm.get_auto_summary_config()
         interval_sec = max(60, cfg.interval_minutes * 60)
 

@@ -78,6 +78,8 @@ class TestLoopScheduleWindow:
                     mock_asyncio.get_running_loop.return_value = mock_loop
                     with patch("jfox.auto_summary.loop.asyncio", mock_asyncio):
                         asyncio.run(auto_summary_loop(stop_event))
+        # 主循环每轮应 reload 配置，避免窗口外跳过 _tick_once 时读到 stale config
+        assert gm_mock.reload.called, "主循环每轮应 reload 全局配置"
         return tick_scheduled["called"]
 
     def test_loop_skips_tick_outside_window(self, caplog):

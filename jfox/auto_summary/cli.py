@@ -16,6 +16,7 @@ from __future__ import annotations
 import json as _json
 from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 from rich.console import Console
@@ -231,6 +232,11 @@ def enable(
             console.print(f"[red]✗[/red] --schedule-weekend-window 格式错误: {e}")
             raise typer.Exit(1)
     if schedule_timezone is not None:
+        try:
+            ZoneInfo(schedule_timezone)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            console.print(f"[red]✗[/red] --schedule-timezone 无效: {e}")
+            raise typer.Exit(1)
         changes["schedule_timezone"] = schedule_timezone
 
     if get_global_config_manager().update_auto_summary_config(**changes):
