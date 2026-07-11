@@ -344,6 +344,29 @@ A session is considered "finished" when its file has not been modified for `idle
 - `--idle-threshold` — Minutes of inactivity to consider a session finished (default: 30)
 - `--kb` — Target knowledge base for saved notes
 
+#### Schedule Window
+
+To avoid consuming local embedding model resources and API quota during working hours, you can configure auto-summary to run only during off-hours:
+
+```bash
+jfox auto-summary enable --schedule-enabled \
+  --schedule-weekday-window 0-6 \
+  --schedule-weekend-window 0-8 \
+  --schedule-timezone Asia/Shanghai
+```
+
+- `--schedule-weekday-window` — allowed hour range on weekdays (default `0-6`)
+- `--schedule-weekend-window` — allowed hour range on weekends (default `0-8`)
+- `--schedule-timezone` — timezone used for window checks (default `Asia/Shanghai`)
+
+The end hour may be `24`, meaning the window includes all hours up to midnight (e.g., `22-24` is valid).
+
+Manual runs are not restricted by the schedule window:
+
+```bash
+jfox auto-summary run
+```
+
 **How it works:**
 
 - Uses `claude -p` (non-interactive mode) to generate summaries from stdin/stdout

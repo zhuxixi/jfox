@@ -16,6 +16,7 @@ from __future__ import annotations
 import json as _json
 from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 from rich.console import Console
@@ -26,6 +27,7 @@ from . import ledger as ledger_module
 from .ledger import Ledger
 from .runner import run_once, scan_pending
 from .scanner import list_session_files
+from .schedule import _is_within_schedule_window, _parse_hour_window
 
 # 设计说明：此模块的子命令未采用主 cli.py 的 `@app.command() → _xxx_impl()` 拆分模式。
 # 原因：(1) 每个子命令仅 20-40 行，拆分无复用价值；
@@ -101,6 +103,7 @@ def status(
         "failed": failed,
         "retryable": failed_transient,
         "percentage": pct,
+        "in_schedule_window": None if not cfg.schedule_enabled else _is_within_schedule_window(cfg),
     }
 
     if output_format == "json":
@@ -152,6 +155,14 @@ def status(
         prog_table.add_row("可重试 (retryable)", str(failed_transient))
     prog_table.add_row("永久失败 (failed)", str(failed))
     prog_table.add_row("进度", f"{pct}%")
+    if cfg.schedule_enabled:
+        prog_table.add_row(
+            "调度窗口",
+            f"工作日 {cfg.schedule_weekday_start_hour}:00-{cfg.schedule_weekday_end_hour}:00, "
+            f"周末 {cfg.schedule_weekend_start_hour}:00-{cfg.schedule_weekend_end_hour}:00",
+        )
+        prog_table.add_row("时区", cfg.schedule_timezone)
+        prog_table.add_row("当前在窗口内", "是" if progress["in_schedule_window"] else "否")
     console.print(prog_table)
 
 
@@ -164,6 +175,18 @@ def enable(
     kb: Optional[str] = typer.Option(None, "--kb", help="写入哪个知识库（默认 default）"),
     max_per_tick: Optional[int] = typer.Option(
         None, "--max-per-tick", help="每轮最多处理几个 session"
+    ),
+    schedule_enabled: Optional[bool] = typer.Option(
+        None, "--schedule-enabled/--no-schedule-enabled", help="启用或禁用时间窗口调度"
+    ),
+    schedule_weekday_window: Optional[str] = typer.Option(
+        None, "--schedule-weekday-window", help="工作日时间窗口，格式如 0-6"
+    ),
+    schedule_weekend_window: Optional[str] = typer.Option(
+        None, "--schedule-weekend-window", help="周末时间窗口，格式如 0-8"
+    ),
+    schedule_timezone: Optional[str] = typer.Option(
+        None, "--schedule-timezone", help="调度时区，默认 Asia/Shanghai"
     ),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
@@ -186,6 +209,35 @@ def enable(
             console.print("[red]✗[/red] max-per-tick 必须 >= 1")
             raise typer.Exit(1)
         changes["max_per_tick"] = max_per_tick
+
+    # Issue #298: 时间窗口配置
+    if schedule_enabled is True:
+        changes["schedule_enabled"] = True
+    elif schedule_enabled is False:
+        changes["schedule_enabled"] = False
+    if schedule_weekday_window is not None:
+        try:
+            start, end = _parse_hour_window(schedule_weekday_window)
+            changes["schedule_weekday_start_hour"] = start
+            changes["schedule_weekday_end_hour"] = end
+        except ValueError as e:
+            console.print(f"[red]✗[/red] --schedule-weekday-window 格式错误: {e}")
+            raise typer.Exit(1)
+    if schedule_weekend_window is not None:
+        try:
+            start, end = _parse_hour_window(schedule_weekend_window)
+            changes["schedule_weekend_start_hour"] = start
+            changes["schedule_weekend_end_hour"] = end
+        except ValueError as e:
+            console.print(f"[red]✗[/red] --schedule-weekend-window 格式错误: {e}")
+            raise typer.Exit(1)
+    if schedule_timezone is not None:
+        try:
+            ZoneInfo(schedule_timezone)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            console.print(f"[red]✗[/red] --schedule-timezone 无效: {e}")
+            raise typer.Exit(1)
+        changes["schedule_timezone"] = schedule_timezone
 
     if get_global_config_manager().update_auto_summary_config(**changes):
         if output_format == "json":

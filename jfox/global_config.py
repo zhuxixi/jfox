@@ -61,6 +61,15 @@ class AutoSummaryConfig:
     session_sources: List[str] = field(default_factory=lambda: ["claude", "kimi"])  # 启用的扫描来源
     kimi_sessions_dir: Optional[str] = None  # None → ~/.kimi-code/sessions
 
+    # 调度时间窗口配置（Issue #298）
+    schedule_enabled: bool = False  # 是否启用运行时间窗口
+    schedule_weekday_start_hour: int = 0  # 工作日窗口开始小时（含）
+    schedule_weekday_end_hour: int = 6  # 工作日窗口结束小时（不含）
+    schedule_weekend_start_hour: int = 0  # 周末窗口开始小时（含）
+    schedule_weekend_end_hour: int = 8  # 周末窗口结束小时（不含）
+    schedule_timezone: str = "Asia/Shanghai"  # 时间窗口判断时区
+    schedule_holiday_provider: Optional[str] = None  # 节假日数据源，预留扩展
+
     def __post_init__(self) -> None:
         # 把负值/0 当成"用默认值"而非崩溃；空字符串 target_kb 等价于 None
         if self.interval_minutes < 1:
@@ -82,6 +91,37 @@ class AutoSummaryConfig:
             self.min_session_size_kb = max(0, self.max_session_size_mb * 1024 - 1)
         if isinstance(self.target_kb, str) and not self.target_kb.strip():
             self.target_kb = None
+
+        # 调度窗口小时校验：越界或 start >= end 时回退到默认值，避免 daemon 崩溃。
+        # 结束小时允许为 24，表示窗口包含到午夜前的小时（如 [22, 24)）。
+        def _clamp_schedule_window(
+            start: int, end: int, default_start: int, default_end: int
+        ) -> tuple[int, int]:
+            if not (0 <= start < 24) or not (0 < end <= 24) or end <= start:
+                return default_start, default_end
+            return start, end
+
+        cls = self.__class__
+        self.schedule_weekday_start_hour, self.schedule_weekday_end_hour = _clamp_schedule_window(
+            self.schedule_weekday_start_hour,
+            self.schedule_weekday_end_hour,
+            cls.schedule_weekday_start_hour,
+            cls.schedule_weekday_end_hour,
+        )
+        self.schedule_weekend_start_hour, self.schedule_weekend_end_hour = _clamp_schedule_window(
+            self.schedule_weekend_start_hour,
+            self.schedule_weekend_end_hour,
+            cls.schedule_weekend_start_hour,
+            cls.schedule_weekend_end_hour,
+        )
+        if not isinstance(self.schedule_timezone, str) or not self.schedule_timezone.strip():
+            self.schedule_timezone = "Asia/Shanghai"
+        if (
+            isinstance(self.schedule_holiday_provider, str)
+            and not self.schedule_holiday_provider.strip()
+        ):
+            self.schedule_holiday_provider = None
+
         # 运行时 stop_event，由 daemon loop 注入，不序列化
         object.__setattr__(self, "_stop_event", None)
 
@@ -92,6 +132,13 @@ class AutoSummaryConfig:
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "AutoSummaryConfig":
         if not data:
             return cls()
+
+        def _safe_int(v: Any, default: int) -> int:
+            try:
+                return int(v)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return default
+
         return cls(
             enabled=bool(data.get("enabled", False)),
             interval_minutes=int(data.get("interval_minutes", 30)),
@@ -109,6 +156,13 @@ class AutoSummaryConfig:
                 else ["claude", "kimi"]
             ),
             kimi_sessions_dir=data.get("kimi_sessions_dir"),
+            schedule_enabled=bool(data.get("schedule_enabled", False)),
+            schedule_weekday_start_hour=_safe_int(data.get("schedule_weekday_start_hour"), 0),
+            schedule_weekday_end_hour=_safe_int(data.get("schedule_weekday_end_hour"), 6),
+            schedule_weekend_start_hour=_safe_int(data.get("schedule_weekend_start_hour"), 0),
+            schedule_weekend_end_hour=_safe_int(data.get("schedule_weekend_end_hour"), 8),
+            schedule_timezone=data.get("schedule_timezone", "Asia/Shanghai") or "Asia/Shanghai",
+            schedule_holiday_provider=data.get("schedule_holiday_provider") or None,
         )
 
 

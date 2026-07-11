@@ -14,6 +14,7 @@ import threading
 
 from ..global_config import get_global_config_manager
 from .runner import run_once
+from .schedule import _is_within_schedule_window
 
 logger = logging.getLogger(__name__)
 
@@ -71,16 +72,29 @@ async def auto_summary_loop(stop_event: threading.Event) -> None:
 
     while not stop_event.is_set():
         gm = get_global_config_manager()
+        # 窗口外会跳过 _tick_once（其内部含 reload）；主循环需自行 reload 才能读到
+        # 最新磁盘配置，避免运行中改窗口配置不生效（stale config，#298 CR）
+        gm.reload()
         cfg = gm.get_auto_summary_config()
         interval_sec = max(60, cfg.interval_minutes * 60)
 
         if cfg.enabled:
+            # 窗口判断异常不应中断 daemon 循环，保守放行（与 _is_within_schedule_window
+            # 内部兜底语义一致；此处为不依赖被调函数不变量的额外保护）
             try:
-                summary = await loop.run_in_executor(None, _tick_once, stop_event)
-                logger.info("auto-summary tick: %s", summary)
+                in_window = not cfg.schedule_enabled or _is_within_schedule_window(cfg)
             except Exception as e:
-                # daemon 后台循环的顶层 catch-all：任何 tick 内部异常都不应导致 daemon 崩溃
-                logger.exception("auto-summary tick 异常: %s", e)
+                logger.exception("auto-summary 调度窗口判断异常，保守放行: %s", e)
+                in_window = True
+            if not in_window:
+                logger.debug("auto-summary 当前不在调度窗口内，等待下一轮")
+            else:
+                try:
+                    summary = await loop.run_in_executor(None, _tick_once, stop_event)
+                    logger.info("auto-summary tick: %s", summary)
+                except Exception as e:
+                    # daemon 后台循环的顶层 catch-all：任何 tick 内部异常都不应导致 daemon 崩溃
+                    logger.exception("auto-summary tick 异常: %s", e)
         else:
             logger.debug("auto-summary 处于禁用状态，等待下一轮")
 

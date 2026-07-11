@@ -50,3 +50,4 @@ kimi-export-*.md
 review_body*.md
 .pr_monitor_state.json
 .tmp_issue_body.md
+.worktrees/

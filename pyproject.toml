@@ -36,6 +36,7 @@ dependencies = [
     "jinja2>=3.0",
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
+    "tzdata; sys_platform == 'win32'",  # Windows 上为 zoneinfo 提供 IANA 时区数据 (#298)
 ]
 
 [project.optional-dependencies]
