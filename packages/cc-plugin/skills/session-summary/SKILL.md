@@ -6,7 +6,7 @@ description: |
 
 # JFox Session Summary
 
-将当前 Claude Code 会话的总结写入 jfox 知识库（支持用户确认和笔记类型选择）。
+将当前 Claude Code 会话的总结写入 jfox 知识库（session 类型，生成后直接写入）。
 
 ## 前置条件
 
@@ -41,36 +41,14 @@ description: |
 - [后续步骤]
 ```
 
-### Step 2: 用户确认
+### Step 2: 展示总结并写入知识库
 
-将生成的总结用普通文本输出，供用户阅读。然后使用 `AskUserQuestion` 询问：
-
-- 问题：`笔记内容是否 OK？`
-- 选项：
-  - `内容没问题` → 继续 Step 3
-  - `需要修改` → 用户在 "Other" 中输入修改意见，根据意见调整总结后回到 Step 2 重新展示和确认
-
-循环直到用户满意为止。
-
-### Step 3: 选择笔记类型
-
-用户确认内容后，使用 `AskUserQuestion` 询问笔记类型：
-
-- 问题：`选择笔记类型`
-- 选项：
-  - `session`（推荐）— AI Agent 会话记录，专为此场景设计
-  - `fleeting` — 如果只是快速记录，后续可提炼
-  - `literature` — 如果会话有明确的参考资料来源
-  - `permanent` — 如果总结已经是成熟的知识
-
-### Step 4: 写入知识库
-
-使用 Step 3 选定的笔记类型执行写入：
+将生成的总结用普通文本输出供用户阅读，**随即直接写入**（不弹 `AskUserQuestion`）：
 
 ```bash
 jfox add "<markdown-escaped-summary>" \
   --title "Session: <topic>" \
-  --type <Step 3 选定的类型> \
+  --type session \
   --topic <short-topic> \
   --tag session \
   --kb <kb-name> \
@@ -78,13 +56,14 @@ jfox add "<markdown-escaped-summary>" \
 ```
 
 **注意**：
-- 当类型为 `session` 时，`--topic` 参数必填
-- `--topic` 的值应该是简短的英文标识（如 `atomic-write`、`daemon-stop-fix`）
+- 笔记类型固定为 `session`（AI Agent 会话记录，专为此场景设计）
+- `--topic` 参数必填，值应该是简短的英文标识（如 `atomic-write`、`daemon-stop-fix`），由总结内容自动归纳
 - 标题格式统一为 `Session: <简短主题>`
 - 标签统一使用 `session`
+- 总结内容已在上方以普通文本展示，供用户阅读；如需修改，事后用 `jfox edit`
 - 内容中的双引号需要转义，或使用 `--content-file` 从临时文件读取
 
-### Step 5: 处理长内容
+### Step 3: 处理长内容
 
 如果总结超过 500 字或包含特殊字符，优先使用 `--content-file`：
 
@@ -97,7 +76,7 @@ EOF
 # 从文件导入
 jfox add --content-file /tmp/session-summary.md \
   --title "Session: <topic>" \
-  --type <Step 3 选定的类型> \
+  --type session \
   --topic <short-topic> \
   --tag session \
   --kb <kb-name> \
@@ -108,10 +87,10 @@ jfox add --content-file /tmp/session-summary.md \
 
 ```bash
 # 直接添加（短内容）
-jfox add "<summary>" --title "Session: <topic>" --type <type> --topic <short-topic> --tag session --kb <name>
+jfox add "<summary>" --title "Session: <topic>" --type session --topic <short-topic> --tag session --kb <name>
 
 # 从文件添加（长内容或含特殊字符）
-jfox add --content-file <path> --title "Session: <topic>" --type <type> --topic <short-topic> --tag session --kb <name>
+jfox add --content-file <path> --title "Session: <topic>" --type session --topic <short-topic> --tag session --kb <name>
 ```
 
 > 写入后的验证（`jfox show` / `jfox refs` 等）详见 `/jfox:manage` §4.5。
