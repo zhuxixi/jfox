@@ -71,7 +71,10 @@ show <ref> [--format json | --json] [--kb X]
 
 ### 错误处理
 
-不变。笔记不存在 → `raise ValueError` → `show` 捕获 → `Exit(1)`。
+笔记不存在 → `raise ValueError` → `show` 捕获 → `Exit(1)`。错误输出按模式分流：
+
+- **默认（markdown）模式**：`console.print("[red]✗[/red] Error: {e}")`（不变）。
+- **JSON 模式**：`print(output_json({"success": False, "error": str(e)}))`——结构化错误，便于程序化消费（否则调用方 `json.loads` 会炸）。
 
 `--format` 取值不显式校验：非 `"json"` 一律走默认 markdown 分支（等价 raw 输出）。保持简单，避免引入不必要的报错路径。
 
@@ -90,6 +93,7 @@ show <ref> [--format json | --json] [--kb X]
 - [ ] JSON 含 issue schema 的全部基础字段；`type == candidate` 时含 candidate 专属字段。
 - [ ] `content_body` 正确去除 frontmatter。
 - [ ] 默认（无 flag）输出与改动前完全一致（raw Markdown）。
+- [ ] JSON 模式下错误返回结构化 `{"success": false, "error": ...}`。
 - [ ] `jfox show --help` 列出新选项。
 - [ ] 单元测试通过（含回归）。
 
