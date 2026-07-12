@@ -100,3 +100,52 @@ def test_promote_updates_dedup_type(temp_kb, mock_embedding_backend):
         assert args[0] == temp_kb.name
         assert args[1] == n.id
         assert args[2] == "permanent"
+
+
+def test_reject_no_dedup_cleanup_when_persist_fails(temp_kb, mock_embedding_backend):
+    """Fix 4: update_note 失败时不做 dedup 清理（防保护被删 → 下轮重复合成）。"""
+    from jfox.note import reject_note, save_note
+
+    n = Note(
+        id="20260712120003-000004",
+        title="t",
+        content="c",
+        type=NoteType.CANDIDATE,
+        created=_now(),
+        updated=_now(),
+    )
+    save_note(n)
+    with (
+        patch("jfox.note.update_note", return_value=False),
+        patch("jfox.gem_synth.dedup._get_store") as ms,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+    ):
+        result = reject_note(n.id, reason="x")
+        assert result is False
+        # update_note 失败 → dedup 清理不应执行
+        ms.return_value.delete.assert_not_called()
+        rba.assert_not_called()
+
+
+def test_archive_no_dedup_cleanup_when_persist_fails(temp_kb, mock_embedding_backend):
+    """Fix 4: update_note 失败时不做 dedup 清理（防保护被删 → 下轮重复合成）。"""
+    from jfox.note import archive_note, save_note
+
+    n = Note(
+        id="20260712120004-000005",
+        title="t",
+        content="c",
+        type=NoteType.FLEETING,
+        created=_now(),
+        updated=_now(),
+    )
+    save_note(n)
+    with (
+        patch("jfox.note.update_note", return_value=False),
+        patch("jfox.gem_synth.dedup._get_store") as ms,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+    ):
+        result = archive_note(n.id)
+        assert result is False
+        ms.return_value.delete.assert_not_called()
+        rba.assert_not_called()

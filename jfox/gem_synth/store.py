@@ -31,6 +31,8 @@ class SynthesisLog:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        # 跨进程写冲突（daemon + CLI 并发）时等待 10s 而非立刻 "database is locked"
+        self._conn.execute("PRAGMA busy_timeout=10000")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
         self._maybe_migrate()
