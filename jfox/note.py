@@ -277,19 +277,22 @@ def delete_note(note_id: str) -> bool:
             logger.warning(f"Failed to remove note from BM25 index: {e}")
 
         # 从 dedup 表删除 + 释放被阻断锚点（硬删后残留行 → dedup_check 匹配已删笔记 →
-        # 未来 candidate 永久跳过；被该笔记阻断的锚点也需释放，否则知识永久丢失）
-        try:
-            from .gem_synth.dedup import (
-                _resolve_kb_name,
-                delete_dedup,
-                release_blocked_anchors,
-            )
+        # 未来 candidate 永久跳过；被该笔记阻断的锚点也需释放，否则知识永久丢失）。
+        # 仅 candidate/permanent 有 dedup 行；fleeting/literature/session 跳过，避免实例化
+        # DedupStore/SynthesisLog 给未启用 gem-synth 的用户创建 synthesis_log.db 污染。
+        if note.type in (NoteType.CANDIDATE, NoteType.PERMANENT):
+            try:
+                from .gem_synth.dedup import (
+                    _resolve_kb_name,
+                    delete_dedup,
+                    release_blocked_anchors,
+                )
 
-            kb = _resolve_kb_name(None)
-            delete_dedup(kb, note_id)
-            release_blocked_anchors(note_id)
-        except Exception as e:
-            logger.warning("delete_note dedup 清理失败 note=%s: %s", note_id, e)
+                kb = _resolve_kb_name(None)
+                delete_dedup(kb, note_id)
+                release_blocked_anchors(note_id)
+            except Exception as e:
+                logger.warning("delete_note dedup 清理失败 note=%s: %s", note_id, e)
 
         return True
 
@@ -319,9 +322,11 @@ def archive_note(note_id: str) -> bool:
         return update_note(n)
 
     n.archived = True
-    # 先持久化，成功后再做 dedup 清理（防 update_note 失败 → 保护已删 → 下轮重复合成）
+    # 先持久化，成功后再做 dedup 清理（防 update_note 失败 → 保护已删 → 下轮重复合成）。
+    # 仅 candidate/permanent 有 dedup 行；其它类型跳过，避免实例化 DedupStore/SynthesisLog
+    # 给未启用 gem-synth 的用户创建 synthesis_log.db 污染。
     ok = update_note(n)
-    if ok:
+    if ok and n.type in (NoteType.CANDIDATE, NoteType.PERMANENT):
         try:
             from .gem_synth.dedup import (
                 _resolve_kb_name,

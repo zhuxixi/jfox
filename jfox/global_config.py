@@ -6,6 +6,7 @@
 
 import json
 import logging
+import math
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -256,8 +257,19 @@ class GemSynthesisConfig:
             self.grounding_top_k = 5
         if self.claude_timeout_seconds < 30:
             self.claude_timeout_seconds = 180
-        # dedup_threshold 是余弦相似度，合法区间 [0, 1]；越界值（>1 永不命中 / <0 无意义）钳到边界
-        self.dedup_threshold = max(0.0, min(1.0, self.dedup_threshold))
+        # dedup_threshold 是余弦相似度，合法区间 [0, 1]；越界值（>1 永不命中 / <0 无意义）钳到边界。
+        # NaN/inf/非数值需先 sanitize：max/min 与 NaN 比较返回 NaN → cosine >= NaN 永假 → dedup 永不触发。
+        val = self.dedup_threshold
+        if (
+            val is None
+            or isinstance(val, bool)
+            or not isinstance(val, (int, float))
+            or math.isnan(val)
+            or math.isinf(val)
+        ):
+            self.dedup_threshold = 0.88
+        else:
+            self.dedup_threshold = max(0.0, min(1.0, float(val)))
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

@@ -106,3 +106,20 @@ def test_dedup_check_degrades_when_backend_unavailable(setup, monkeypatch):
     monkeypatch.setattr("jfox.embedding_backend.get_backend", boom)
     # daemon 挂了 → 降级返回 None，不抛
     assert dedup.dedup_check("default", "任意内容") is None
+
+
+def test_upsert_permanent_keeps_full_content(setup):
+    """Fix C: permanent 嵌完整正文，不剥元段落。若正文里恰好有 ## 来源 标题，不应被截断。"""
+    body = "核心知识结论\n\n## 来源\n- 某论文 p.42\n"
+    dedup.upsert_dedup("default", "perm-1", "permanent", body)
+    # 同正文（含 ## 来源）再 dedup_check：permanent 的 hash 应基于完整正文，
+    # 若被 _clean_candidate_content 剥掉 ## 来源，hash 会不一致 → upsert 返回 True（误判写入）
+    assert dedup.upsert_dedup("default", "perm-1", "permanent", body) is False
+
+
+def test_upsert_candidate_still_strips_meta(setup):
+    """Fix C: candidate 仍剥元段落（有 ## 来源 等追加 meta）。"""
+    body = "知识本体\n\n## 来源\n- 碎片 #1\n"
+    dedup.upsert_dedup("default", "cand-1", "candidate", body)
+    # 再灌只含"知识本体"（剥 meta 后相同）→ hash 命中 → 跳过
+    assert dedup.upsert_dedup("default", "cand-1", "candidate", "知识本体") is False

@@ -25,3 +25,14 @@ def test_dedup_threshold_clamped_to_0_1():
     assert cfg_high.dedup_threshold == 1.0
     cfg_low = GemSynthesisConfig.from_dict({"dedup_threshold": -0.5})
     assert cfg_low.dedup_threshold == 0.0
+
+
+def test_dedup_threshold_nan_sanitized_to_default():
+    """NaN: max/min 与 NaN 比较返回 NaN → cosine >= NaN 永假 → dedup 永不触发。
+    非有限值（NaN/inf）应回退到默认 0.88。"""
+    cfg_nan = GemSynthesisConfig.from_dict({"dedup_threshold": float("nan")})
+    assert cfg_nan.dedup_threshold == 0.88
+    cfg_inf = GemSynthesisConfig.from_dict({"dedup_threshold": float("inf")})
+    assert cfg_inf.dedup_threshold == 0.88
+    cfg_ninf = GemSynthesisConfig.from_dict({"dedup_threshold": float("-inf")})
+    assert cfg_ninf.dedup_threshold == 0.88

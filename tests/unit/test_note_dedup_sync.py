@@ -40,13 +40,14 @@ def _now():
 
 
 def test_archive_deletes_from_dedup(temp_kb, mock_embedding_backend):
+    """archiving a CANDIDATE note triggers dedup cleanup (candidate 有 dedup 行）。"""
     from jfox.note import archive_note, save_note
 
     n = Note(
         id="20260712120000-000001",
         title="t",
         content="c",
-        type=NoteType.FLEETING,
+        type=NoteType.CANDIDATE,
         created=_now(),
         updated=_now(),
     )
@@ -54,6 +55,73 @@ def test_archive_deletes_from_dedup(temp_kb, mock_embedding_backend):
     with patch("jfox.gem_synth.dedup._get_store") as ms:
         store = ms.return_value
         archive_note(n.id)
+        store.delete.assert_called_once_with(temp_kb.name, n.id)
+
+
+def test_archive_fleeting_skips_dedup(temp_kb, mock_embedding_backend):
+    """Fix A: archiving a non-dedup note type (FLEETING) must NOT instantiate dedup
+    (否则未启用 gem-synth 的用户也会得到 synthesis_log.db 文件污染）。"""
+    from jfox.note import archive_note, save_note
+
+    n = Note(
+        id="20260712120000-000009",
+        title="t",
+        content="c",
+        type=NoteType.FLEETING,
+        created=_now(),
+        updated=_now(),
+    )
+    save_note(n)
+    with (
+        patch("jfox.gem_synth.dedup._get_store") as ms,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+    ):
+        archive_note(n.id)
+        ms.assert_not_called()
+        rba.assert_not_called()
+
+
+def test_delete_fleeting_skips_dedup(temp_kb, mock_embedding_backend):
+    """Fix A: hard-deleting a non-dedup note type (FLEETING) must NOT instantiate dedup."""
+    from jfox.note import delete_note, save_note
+
+    n = Note(
+        id="20260712120000-000010",
+        title="t",
+        content="c",
+        type=NoteType.FLEETING,
+        created=_now(),
+        updated=_now(),
+    )
+    save_note(n)
+    with (
+        patch("jfox.gem_synth.dedup._get_store") as ms,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+    ):
+        delete_note(n.id)
+        ms.assert_not_called()
+        rba.assert_not_called()
+
+
+def test_delete_candidate_triggers_dedup(temp_kb, mock_embedding_backend):
+    """Fix A: hard-deleting a CANDIDATE note still triggers dedup cleanup."""
+    from jfox.note import delete_note, save_note
+
+    n = Note(
+        id="20260712120000-000011",
+        title="t",
+        content="c",
+        type=NoteType.CANDIDATE,
+        created=_now(),
+        updated=_now(),
+    )
+    save_note(n)
+    with (
+        patch("jfox.gem_synth.dedup._get_store") as ms,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors"),
+    ):
+        store = ms.return_value
+        delete_note(n.id)
         store.delete.assert_called_once_with(temp_kb.name, n.id)
 
 
@@ -135,7 +203,7 @@ def test_archive_no_dedup_cleanup_when_persist_fails(temp_kb, mock_embedding_bac
         id="20260712120004-000005",
         title="t",
         content="c",
-        type=NoteType.FLEETING,
+        type=NoteType.CANDIDATE,
         created=_now(),
         updated=_now(),
     )
