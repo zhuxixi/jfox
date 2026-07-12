@@ -71,3 +71,60 @@ class TestShowCommand:
 
         with pytest.raises(ValueError, match="nonexistent"):
             _show_impl("nonexistent")
+
+    def test_to_show_dict_basic_fields(self):
+        """测试 to_show_dict 基础字段 + content_body 剥 frontmatter"""
+        from datetime import datetime
+        from pathlib import Path
+
+        from jfox.models import Note, NoteType
+
+        raw = (
+            "---\nid: '202604141200001234'\ntitle: 测试\n"
+            "type: permanent\ncreated: '2026-04-14T12:00:00'\n"
+            "updated: '2026-04-14T12:00:00'\ntags: []\n---\n\n# 测试\n\n正文内容"
+        )
+        n = Note(
+            id="202604141200001234",
+            title="测试",
+            content="# 测试\n\n正文内容",
+            type=NoteType.PERMANENT,
+            created=datetime(2026, 4, 14, 12, 0, 0),
+            updated=datetime(2026, 4, 14, 12, 0, 0),
+        )
+        n.set_filepath(Path("/tmp/202604141200001234.md"))  # 固定路径，避免 config 依赖
+        d = n.to_show_dict(raw_markdown=raw)
+        assert d["id"] == "202604141200001234"
+        assert d["title"] == "测试"
+        assert d["type"] == "permanent"
+        assert d["content"] == raw
+        assert d["content_body"] == "# 测试\n\n正文内容"
+        assert d["path"] == "/tmp/202604141200001234.md"
+        # source 为 None / archived 为 False 时不输出
+        assert "source" not in d
+        assert "archived" not in d
+
+    def test_to_show_dict_candidate_fields(self):
+        """测试 candidate 笔记含专属字段"""
+        from datetime import datetime
+        from pathlib import Path
+
+        from jfox.models import GemLevel, Note, NoteType
+
+        n = Note(
+            id="202604141200001234",
+            title="候选笔记",
+            content="内容",
+            type=NoteType.CANDIDATE,
+            created=datetime(2026, 4, 14, 12, 0, 0),
+            updated=datetime(2026, 4, 14, 12, 0, 0),
+            confidence=0.8,
+            knowledge_type="factual",
+            status="pending",
+        )
+        n.set_filepath(Path("/tmp/candidate.md"))  # 固定路径，避免 config 依赖
+        d = n.to_show_dict()
+        assert d["gem_level"] == GemLevel.FLAWED.value  # 默认 FLAWED
+        assert d["confidence"] == 0.8
+        assert d["knowledge_type"] == "factual"
+        assert d["status"] == "pending"
