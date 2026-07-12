@@ -93,6 +93,44 @@ def get_changelog(root: Path, current_version: str) -> list[str]:
     return [ln for ln in out.stdout.splitlines() if ln.strip()]
 
 
+def assert_versions(root: Path, expected: str) -> None:
+    """断言三处版本号都 == expected，否则 raise AssertionError。"""
+    plugin = json.loads((root / PLUGIN_JSON_REL).read_text(encoding="utf-8"))
+    market = json.loads((root / MARKETPLACE_JSON_REL).read_text(encoding="utf-8"))
+    actuals = [
+        plugin["version"],
+        market["metadata"]["version"],
+        market["plugins"][0]["version"],
+    ]
+    if any(a != expected for a in actuals):
+        raise AssertionError(f"写后版本号校验失败: 期望 {expected}，实际 {actuals}")
+
+
+def bump_version_files(root: Path, old: str, new: str) -> list[str]:
+    """原子 bump 三处版本号。返回改动文件相对路径列表。任一命中数不符则不写并 raise ValueError。"""
+    targets = [
+        (root / PLUGIN_JSON_REL, 1),
+        (root / MARKETPLACE_JSON_REL, 2),
+    ]
+    needle = f'"version": "{old}"'
+    replacement = f'"version": "{new}"'
+    pending = []  # (path, new_text, rel)
+    for path, expected_count in targets:
+        text = path.read_text(encoding="utf-8")
+        count = text.count(needle)
+        if count != expected_count:
+            raise ValueError(
+                f"{path.relative_to(root)} 命中 {count} 次（期望 {expected_count}），"
+                f"版本号 {old}。中止，未写任何文件。"
+            )
+        pending.append((path, text.replace(needle, replacement), path.relative_to(root)))
+    # 全部计数校验通过才落盘
+    for path, new_text, _ in pending:
+        path.write_text(new_text, encoding="utf-8")
+    assert_versions(root, new)  # 写后兜底断言
+    return [str(rel) for _, _, rel in pending]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="cc-plugin release helper")
     parser.add_argument("version", help="patch | minor | major | x.y.z")
@@ -122,8 +160,19 @@ def main() -> None:
         )
         return
 
-    # 非 dry-run 写盘路径在 Task 2 实现
-    raise NotImplementedError("bump 写入在 Task 2 实现")
+    try:
+        changed = bump_version_files(PROJECT_ROOT, current, new)
+    except (ValueError, AssertionError) as e:
+        output_error(str(e))
+
+    output_json(
+        {
+            "current_version": current,
+            "new_version": new,
+            "changed_files": changed,
+            "changelog_summary": changelog,
+        }
+    )
 
 
 if __name__ == "__main__":

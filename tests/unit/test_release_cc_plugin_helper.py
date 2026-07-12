@@ -116,3 +116,56 @@ class TestChangelog:
         with patch.object(mod.subprocess, "run", return_value=fake):
             result = mod.get_changelog(tmp_path, "0.5.1")
         assert result == ["abc1234 feat: x", "def5678 fix: y"]
+
+
+# ── bump 三字段 + 原子性（直接调函数，tmp 隔离）──
+
+
+def _setup_repo(tmp_path: Path, plugin_ver="0.5.1", market_versions=("0.5.1", "0.5.1")):
+    """在 tmp_path 搭一个最小 plugin.json + marketplace.json"""
+    plugin = tmp_path / "packages" / "cc-plugin" / ".claude-plugin" / "plugin.json"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text(
+        json.dumps({"name": "jfox", "version": plugin_ver}, indent=2),
+        encoding="utf-8",
+    )
+    market = tmp_path / ".claude-plugin" / "marketplace.json"
+    market.parent.mkdir(parents=True)
+    market.write_text(
+        json.dumps(
+            {
+                "metadata": {"version": market_versions[0]},
+                "plugins": [{"name": "jfox", "version": market_versions[1]}],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return plugin, market
+
+
+class TestBumpFiles:
+    def test_bump_all_three(self, tmp_path):
+        mod = _load_helper_module()
+        plugin, market = _setup_repo(tmp_path)
+        changed = mod.bump_version_files(tmp_path, "0.5.1", "0.6.0")
+        assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "0.6.0"
+        m = json.loads(market.read_text(encoding="utf-8"))
+        assert m["metadata"]["version"] == "0.6.0"
+        assert m["plugins"][0]["version"] == "0.6.0"
+        assert "plugin.json" in changed[0]
+        assert "marketplace.json" in changed[1]
+
+    def test_count_mismatch_no_write(self, tmp_path):
+        """marketplace 命中数不符 → 报错且 plugin.json 不被改（原子性）"""
+        mod = _load_helper_module()
+        plugin, market = _setup_repo(tmp_path)
+        # 把 marketplace 第一个 version 改掉，命中数从 2 变 1
+        txt = market.read_text(encoding="utf-8").replace(
+            '"version": "0.5.1"', '"versionX": "0.5.1"', 1
+        )
+        market.write_text(txt, encoding="utf-8")
+        with pytest.raises(ValueError):
+            mod.bump_version_files(tmp_path, "0.5.1", "0.6.0")
+        # plugin.json 未被改动
+        assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "0.5.1"
