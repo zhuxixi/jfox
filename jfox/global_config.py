@@ -307,7 +307,12 @@ class GemSynthesisConfig:
             claude_timeout_seconds=_safe_int(data.get("claude_timeout_seconds"), 180),
             claude_binary=data.get("claude_binary"),
             dedup_enabled=bool(data.get("dedup_enabled", True)),
-            dedup_threshold=_safe_float(data.get("dedup_threshold"), 0.88),
+            dedup_threshold=(
+                # bool 先于 _safe_float 拦截（float(True)=1.0 会静默成合法阈值，绕过 __post_init__ 的 bool 守卫）
+                0.88
+                if isinstance(data.get("dedup_threshold"), bool)
+                else _safe_float(data.get("dedup_threshold"), 0.88)
+            ),
         )
 
 

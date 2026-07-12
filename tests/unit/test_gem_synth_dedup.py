@@ -108,12 +108,11 @@ def test_dedup_check_degrades_when_backend_unavailable(setup, monkeypatch):
     assert dedup.dedup_check("default", "任意内容") is None
 
 
-def test_upsert_permanent_keeps_full_content(setup):
-    """Fix C: permanent 嵌完整正文，不剥元段落。若正文里恰好有 ## 来源 标题，不应被截断。"""
+def test_upsert_uniform_clean_idempotent(setup):
+    """upsert 对 candidate/permanent 统一剥元段落（口径对称）。同正文二次 upsert：两次都
+    统一剥 → hash 一致 → 返回 False（幂等）。验证即便正文含 ## 来源，两端口径一致不误判。"""
     body = "核心知识结论\n\n## 来源\n- 某论文 p.42\n"
     dedup.upsert_dedup("default", "perm-1", "permanent", body)
-    # 同正文（含 ## 来源）再 dedup_check：permanent 的 hash 应基于完整正文，
-    # 若被 _clean_candidate_content 剥掉 ## 来源，hash 会不一致 → upsert 返回 True（误判写入）
     assert dedup.upsert_dedup("default", "perm-1", "permanent", body) is False
 
 

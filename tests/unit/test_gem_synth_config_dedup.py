@@ -36,3 +36,10 @@ def test_dedup_threshold_nan_sanitized_to_default():
     assert cfg_inf.dedup_threshold == 0.88
     cfg_ninf = GemSynthesisConfig.from_dict({"dedup_threshold": float("-inf")})
     assert cfg_ninf.dedup_threshold == 0.88
+
+
+def test_dedup_threshold_bool_sanitized_to_default():
+    """bool 经 _safe_float 会变 float(True)=1.0 / float(False)=0.0（合法阈值，静默绕过
+    __post_init__ 的 bool 守卫）→ 等于悄悄把 dedup 关到极端阈值。from_dict 应拦 bool→默认 0.88。"""
+    assert GemSynthesisConfig.from_dict({"dedup_threshold": True}).dedup_threshold == 0.88
+    assert GemSynthesisConfig.from_dict({"dedup_threshold": False}).dedup_threshold == 0.88

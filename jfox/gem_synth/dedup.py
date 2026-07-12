@@ -201,12 +201,11 @@ def upsert_dedup(kb: str, note_id: str, note_type: str, content: str) -> bool:
     返回 True 表示实际写入了 dedup_embeddings；False 表示跳过（内容空/hash 命中/embed 失败/异常）。
     调用方（如 backfill）据此精确计数，避免把跳过的行也算作"已灌入"。"""
     try:
-        # 仅 candidate 需剥元段落（## 来源/参考/置信度）；permanent 嵌完整正文（无元段落，
-        # 若误剥会截断真实知识）。按 spec：permanent embed FULL content。
-        if note_type == "candidate":
-            cleaned = _clean_candidate_content(content)
-        else:
-            cleaned = (content or "").strip()[:_MAX_CONTENT_CHARS]
+        # 统一剥元段落（## 来源/参考/置信度）：保证 upsert 与 dedup_check 的 embedding 口径一致
+        # （cosine 要求两端预处理相同）。candidate 有 _save_candidate_note 追加的这些段落 → 剥；
+        # permanent 通常没有 → cleaning 是 no-op。极少数正文真含这些标题的笔记会被截断，视为可
+        # 接受噪声（与 candidate 同口径；按 note_type 分叉会造成 upsert/dedup_check 口径不对称）。
+        cleaned = _clean_candidate_content(content)
         if not cleaned:
             return False
         store = _get_store()
