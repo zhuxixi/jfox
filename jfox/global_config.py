@@ -246,6 +246,8 @@ class GemSynthesisConfig:
     target_kb: Optional[str] = None  # candidate 写入哪个 KB；None 用 default
     claude_timeout_seconds: int = 180
     claude_binary: Optional[str] = None  # None → 从 PATH 解析
+    dedup_enabled: bool = True  # 存盘前用正文 embedding 余弦查重
+    dedup_threshold: float = 0.88  # 同事实重复阈值（高）；link-suggest 0.6 是"相关"，dedup 要"同一"
 
     def __post_init__(self) -> None:
         if self.interval_minutes < 1:
@@ -272,6 +274,12 @@ class GemSynthesisConfig:
             except (TypeError, ValueError):
                 return default
 
+        def _safe_float(v, default):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+
         return cls(
             enabled=bool(data.get("enabled", False)),
             interval_minutes=_safe_int(data.get("interval_minutes"), 30),
@@ -284,6 +292,8 @@ class GemSynthesisConfig:
             target_kb=data.get("target_kb"),
             claude_timeout_seconds=_safe_int(data.get("claude_timeout_seconds"), 180),
             claude_binary=data.get("claude_binary"),
+            dedup_enabled=bool(data.get("dedup_enabled", True)),
+            dedup_threshold=_safe_float(data.get("dedup_threshold"), 0.88),
         )
 
 
