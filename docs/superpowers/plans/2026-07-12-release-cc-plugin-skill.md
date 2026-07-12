@@ -170,7 +170,7 @@ class TestChangelog:
     def test_get_changelog_parses_git_log(self, tmp_path):
         mod = _load_helper_module()
         fake = MagicMock(stdout="abc1234 feat: x\ndef5678 fix: y\n", returncode=0)
-        with patch("release_cc_plugin_helper.subprocess.run", return_value=fake):
+        with patch.object(mod.subprocess, "run", return_value=fake):
             result = mod.get_changelog(tmp_path, "0.5.1")
         assert result == ["abc1234 feat: x", "def5678 fix: y"]
 ```
