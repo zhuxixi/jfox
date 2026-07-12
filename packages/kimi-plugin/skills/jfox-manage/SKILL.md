@@ -3,16 +3,19 @@ name: jfox-manage
 description: |
   Use when user wants to create, manage, or check the health of a Zettelkasten knowledge
   base, look up the canonical reference for any jfox note command (add/edit/delete/
-  list/show/refs/daily), or start/stop the embedding daemon. Triggers on "创建知识库",
-  "初始化", "知识库管理", "切换知识库", "重命名知识库", "删除知识库", "检查知识库",
-  "知识库健康", "知识库体检", "知识库诊断", "守护进程", "启动 daemon", "停止 daemon",
+  archive/unarchive/list/show/refs/daily), configure jfox runtime options, or
+  start/stop/restart the embedding daemon. Triggers on "创建知识库", "初始化",
+  "知识库管理", "切换知识库", "重命名知识库", "删除知识库", "检查知识库", "知识库健康",
+  "知识库体检", "知识库诊断", "守护进程", "启动 daemon", "停止 daemon", "重启 daemon",
   "kb status", "create knowledge base", "init", "kb management", "health check",
-  "knowledge base decay", "jfox 命令参考", "jfox CRUD", "embedding daemon".
+  "knowledge base decay", "jfox 命令参考", "jfox CRUD", "embedding daemon",
+  "归档笔记", "恢复归档", "archive note", "unarchive note", "健康检查", "jfox check",
+  "配置 jfox", "config", "jfox config", "batch size", "embedding model".
 ---
 
 # JFox 知识库管理、命令参考与健康检查
 
-管理知识库的完整生命周期；作为 jfox 笔记命令（add/edit/delete/list/show/refs/daily）的权威参考；提供定期健康检查与衰减信号检测。
+管理知识库的完整生命周期；作为 jfox 笔记命令（add/edit/delete/archive/unarchive/list/show/refs/daily）的权威参考；提供定期健康检查与衰减信号检测。
 
 ## 1. 前置条件
 
@@ -80,11 +83,17 @@ jfox status --json
 ### 3.4 切换与重命名
 
 ```bash
+jfox kb create <name>               # 创建新知识库（不切换）
+jfox kb create <name> --desc "..."  # 创建并添加描述
 jfox kb switch <name>               # 切换知识库
 jfox kb info <name> --json          # 查看详情
 jfox kb current --json              # 当前知识库
 jfox kb rename <old> <new>          # 重命名
 ```
+
+> `jfox kb create` 与 `jfox init --name` 的区别：`init` 会创建并切换到新知识库；`kb create` 仅注册目录，不切换当前默认知识库。
+>
+> `jfox kb switch <name>` 与 `jfox kb use <name>` 是等价别名，功能完全相同；下文统一使用 `switch`。
 
 ### 3.5 删除知识库
 
@@ -159,12 +168,31 @@ jfox delete <note_id>               # 需确认
 jfox delete <note_id> --force       # 跳过确认
 ```
 
-### 4.5 查看笔记
+### 4.5 归档与恢复归档
+
+归档是**软删除**：笔记文件保留在知识库中，但默认列表、搜索和图谱统计会隐藏该笔记。适合暂时下线但又不想彻底删除的内容。
+
+```bash
+jfox archive <note_id>              # 归档笔记
+jfox unarchive <note_id>            # 恢复归档笔记
+jfox list --include-archived --json # 列出时包含已归档笔记
+jfox list --archived --json         # 仅列出已归档笔记
+```
+
+**与 `delete --force` 的区别：**
+
+| 操作 | 文件是否保留 | 是否可恢复 | 默认搜索/列表 |
+|------|-------------|-----------|--------------|
+| `jfox archive <id>` | ✅ 保留 | ✅ `jfox unarchive` | ❌ 隐藏 |
+| `jfox delete <id> --force` | ❌ 删除 | ❌ 不可恢复 | -- |
+
+### 4.6 查看笔记
 
 ```bash
 jfox show <id_or_title>                         # 查看笔记完整内容（输出 Markdown，不支持 --json）
 jfox list --json --limit 50                     # 列出笔记
 jfox list --type permanent --json               # 按类型筛选
+jfox list --include-archived --json             # 包含已归档笔记
 jfox daily --json                               # 今天的笔记
 jfox daily --date 2026-04-01 --json             # 指定日期
 jfox refs --search "<标题>" --json              # 查看反向链接
@@ -172,13 +200,29 @@ jfox refs --search "<标题>" --json              # 查看反向链接
 
 ## 5. 健康检查
 
-通过组合多个 jfox 命令采集指标，综合评估知识库健康状况。没有单独的 "health" 命令，需要从多个数据源收集并综合分析。
+通过组合多个 jfox 命令采集指标，综合评估知识库健康状况。官方推荐先使用 `jfox check` 做快速体检；如需深度分析，再通过 §5.2 的 6 项指标采集进行综合评分。
 
 > 如果用户指定了目标知识库名称，在以下所有命令中追加 `--kb <name>` 参数。未指定时省略，使用当前默认知识库。
 
-### 5.1 6 项指标采集
+### 5.1 快速体检
 
-以下 6 个命令均为**只读操作**，相互独立，应使用 **Kimi Code AgentSwarm** 并行采集以缩短等待时间；汇总全部输出后再进入 §5.2 计算指标与评分。
+`jfox check` 是官方健康检查入口，可替代部分手动组合命令，适合日常巡检和导入后验证。
+
+```bash
+jfox check                        # 检测空文件/损坏文件（只读）
+jfox check --clean                # 自动清理空文件（推荐）
+jfox check --json                 # JSON 输出
+```
+
+- **空文件**：内容为空或 frontmatter 后无正文的 `.md` 文件
+- **损坏文件**：无法解析 YAML frontmatter 或文件读取出错的笔记
+- `--clean` 会删除空文件；损坏文件不会被自动删除，需要人工修复
+
+> `jfox check --clean` 是日常维护的首选命令，可替代 `list` + 手动删除空文件的组合操作。
+
+### 5.2 6 项指标采集
+
+以下 6 个命令均为**只读操作**，相互独立，应使用 **Kimi Code AgentSwarm** 并行采集以缩短等待时间；汇总全部输出后再进入 §5.3 计算指标与评分。
 
 > 如果用户指定了目标知识库名称，在所有命令中追加 `--kb <name>` 参数。未指定时省略，使用当前默认知识库。
 
@@ -211,9 +255,9 @@ prompt_template: "执行命令 {{item}}，返回原始输出以及解析后的 J
 
 > 当 AgentSwarm 被调用时，它必须是当轮唯一的 tool call。本例中 6 条命令作为一个 AgentSwarm 调用同时派发，满足该约束。
 
-** Fallback（单线程）：** 如果 AgentSwarm 不可用或命令数极少，也可顺序执行上述 6 个命令。
+**Fallback（单线程）：** 如果 AgentSwarm 不可用或命令数极少，也可顺序执行上述 6 个命令。
 
-### 5.2 健康指标表
+### 5.3 健康指标表
 
 从采集数据中计算以下指标：
 
@@ -226,7 +270,7 @@ prompt_template: "执行命令 {{item}}，返回原始输出以及解析后的 J
 | **连通率** | `(total_nodes - isolated_nodes) / total_nodes` | > 0.8 | 0.6-0.8 | < 0.6 |
 | **类型平衡** | fleeting 占 total 比例 | fleeting < 30% | 30-50% | > 50% |
 
-### 5.3 衰减信号检测
+### 5.4 衰减信号检测
 
 分析指标，检测以下 5 种衰减模式：
 
@@ -255,7 +299,7 @@ prompt_template: "执行命令 {{item}}，返回原始输出以及解析后的 J
 - **原因**：过度依赖少数"枢纽"笔记
 - **修复**：创建中间笔记以分散连接
 
-### 5.4 评分系统
+### 5.5 评分系统
 
 计算总体评分（0-100）：
 
@@ -277,7 +321,7 @@ Score = 100
 | 40-59 | D | 较差 -- 明显衰减 |
 | 0-39 | F | 危险 -- 需要立即处理 |
 
-### 5.5 报告格式
+### 5.6 报告格式
 
 按以下格式呈现健康报告：
 
@@ -310,7 +354,7 @@ Score = 100
 - ⚠️ 警告 / 需关注
 - ❌ 危险 / 异常
 
-### 5.6 运行时机建议
+### 5.7 运行时机建议
 
 - **每周一次**：作为定期知识管理流程的快速健康检查
 - **批量导入后**：验证索引和连接是否健康
@@ -322,19 +366,56 @@ Score = 100
 ```bash
 jfox daemon start                               # 启动 embedding 守护进程
 jfox daemon stop                                # 停止守护进程
+jfox daemon restart                             # 重启守护进程
 jfox daemon status                              # 查看 PID、端口、模型信息
+
+# 启动时一并控制 auto-summary（跳过交互询问）
+jfox daemon start --enable-auto-summary         # 启动并启用自动总结
+jfox daemon start --no-auto-summary             # 启动但不启用自动总结
+jfox daemon restart --enable-auto-summary       # 重启并启用自动总结
+jfox daemon restart --no-auto-summary           # 重启并禁用自动总结
 ```
 
-注意：daemon 依赖（fastapi、uvicorn）已作为必选依赖安装，`jfox daemon start` 可直接使用。批量整理 / 导入前启动 daemon 可加速 embedding 计算。
+注意：daemon 依赖（fastapi、uvicorn）已作为必选依赖安装，`jfox daemon start` 可直接使用。批量整理 / 导入前启动 daemon 可加速 embedding 计算。`--enable-auto-summary` / `--no-auto-summary` 会同步写入全局配置，无需再手动修改配置。关于 auto-summary 子命令的完整用法见 `/skill:jfox-auto-summary`。
 
-## 7. 命令参考速查
+## 7. 配置调优
 
-> 完整语法详见 §3–§6；本节按主题分组提供速查。
+通过 `jfox config set` 修改当前知识库的运行时参数。配置保存在 `<kb>/config.yaml` 中，修改后立即生效；若已启动 daemon，建议重启以应用 embedding 相关变更。
+
+```bash
+jfox config set device cpu                  # 强制使用 CPU
+jfox config set device cuda                 # 使用 NVIDIA GPU
+jfox config set device mps                  # 使用 Apple Silicon GPU
+jfox config set embedding_model <model>     # 切换 embedding 模型
+jfox config set batch_size <int>            # 设置嵌入批大小
+```
+
+**常用示例：**
+
+```bash
+jfox config set embedding_model BAAI/bge-m3
+jfox config set batch_size 32
+```
+
+**对性能与 daemon 的影响：**
+
+| 配置项 | 作用 | 注意事项 |
+|--------|------|---------|
+| `device` | 控制 embedding 计算设备 | 切换后需 `jfox daemon restart` 使 daemon 重新加载模型到指定设备 |
+| `embedding_model` | 切换向量模型 | 切换后向量维度可能变化，建议随后运行 `jfox index rebuild` 重建索引 |
+| `batch_size` | 单次嵌入的文本批量 | 调大可提升吞吐量但增加显存/内存占用；CPU 环境下可适当降低 |
+
+> 当前仅支持 `device`、`embedding_model`、`batch_size` 三个配置项。输入无效键会报错并列出可选值。
+
+## 8. 命令参考速查
+
+> 完整语法详见 §3–§7；本节按主题分组提供速查。
 
 ### 知识库生命周期
 
 ```bash
 jfox init --name <name> --desc "<desc>"     # 创建知识库
+jfox kb create <name> --desc "<desc>"       # 创建新知识库（不切换）
 jfox kb list --json                         # 列出所有知识库
 jfox kb switch <name>                       # 切换知识库
 jfox kb info <name> --json                  # 查看知识库详情
@@ -352,9 +433,12 @@ jfox add "<content>" --title "<title>" --type <type> --tag <tags>  # 添加笔�
 jfox add --content-file <path> --title "<title>"                   # 从文件添加
 jfox edit <id> --content "<new>" --title "<title>"                 # 编辑笔记
 jfox edit <id> --content-file <path>                               # 从文件编辑
+jfox archive <id>                                                  # 归档笔记
+jfox unarchive <id>                                                # 恢复归档
 jfox delete <id> --force                                           # 删除笔记
 jfox show <id_or_title>                                            # 查看笔记完整内容（无 --json）
 jfox list --json --limit <N>                                       # 列出笔记
+jfox list --include-archived --json                                # 包含已归档笔记
 jfox daily --json                                                  # 今天的笔记
 jfox daily --date YYYY-MM-DD --json                                # 指定日期
 jfox refs --search "<title>" --json                                # 反向链接
@@ -363,24 +447,37 @@ jfox refs --search "<title>" --json                                # 反向链�
 ### 健康检查
 
 ```bash
-jfox graph --stats --json                    # 图谱指标（与 --orphans 互斥，分开运行）
-jfox graph --orphans --json                  # 孤立笔记列表
-jfox index verify                            # 索引完整性验证
-jfox index rebuild                           # 重建索引
-jfox inbox --json --limit <N>                # 未处理笔记
+jfox check --clean                             # 快速体检并清理空文件
+jfox graph --stats --json                      # 图谱指标（与 --orphans 互斥，分开运行）
+jfox graph --orphans --json                    # 孤立笔记列表
+jfox index verify                              # 索引完整性验证
+jfox index rebuild                             # 重建向量索引
+jfox index rebuild-bm25                        # 重建 BM25 关键词索引
+jfox index bm25-status                         # 查看 BM25 索引状态
+jfox inbox --json --limit <N>                  # 未处理笔记
 ```
 
 ### Daemon
 
 ```bash
-jfox daemon start                            # 启动 embedding 守护进程
-jfox daemon stop                             # 停止守护进程
-jfox daemon status                           # 查看状态
+jfox daemon start                              # 启动 embedding 守护进程
+jfox daemon stop                               # 停止守护进程
+jfox daemon restart                            # 重启守护进程
+jfox daemon status                             # 查看状态
+jfox daemon start --enable-auto-summary        # 启动并启用自动总结
 ```
 
-> 搜索（search）、导入（ingest）、整理（organize）、会话总结（session-summary）等高频操作命令见对应技能文档。
+### 配置调优
 
-## 8. 错误处理
+```bash
+jfox config set device cpu|cuda|mps            # 设置计算设备
+jfox config set embedding_model <model>        # 设置 embedding 模型
+jfox config set batch_size <int>               # 设置嵌入批大小
+```
+
+> 搜索（search）、导入（ingest）、整理（organize）、会话总结（session-summary）、自动总结（auto-summary）等高频操作命令见对应技能文档。
+
+## 9. 错误处理
 
 | 场景 | 处理方式 |
 |------|---------|
