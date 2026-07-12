@@ -1,6 +1,6 @@
 ---
 name: jfox-promote
-description: Use when user wants to review/promote gem-synth candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，按 A/B/C 三档 triage（准确/半准/不准）分流，最终晋升 permanent 或拒绝归档。Triggers on "candidate 过审", "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "promote candidate", "review candidate", "L5 晋升", "broken candidate", "candidate 审核", "破损 candidate".
+description: Use when user wants to review/promote gem-synth candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，按 A/B/C 三档 triage（准确/半准/不准）分流，最终晋升 permanent 或拒绝归档；也用于在过审前监控 L3 合成进度与上游 fragments。Triggers on "candidate 过审", "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "promote candidate", "review candidate", "L5 晋升", "broken candidate", "candidate 审核", "破损 candidate", "合成进度", "碎片", "gem-synth status", "fragments".
 ---
 
 # 过审 candidate（破损→完整）
@@ -21,6 +21,39 @@ jfox kb current --json
 ```
 
 若尚未初始化，先调用 `/skill:jfox-manage` 创建知识库。
+
+## 监控 L3 合成
+
+在 candidate 进入过审流程前，可先查看 L3 合成状态与上游碎片，确认是否有新的 candidate 产出或失败锚点。
+
+### 查看合成状态
+
+```bash
+jfox gem-synth status --json
+```
+
+关注字段：
+
+- `pending_candidates` / `total_candidates`：待过审数量
+- `failed_anchors`：合成失败或无法 grounding 的 fragment 锚点，需要人工介入
+- `last_run` / `is_running`：判断当前是否正在批量合成
+
+### 查看碎片
+
+Hook 采集的 session 碎片会进入 `fragments.db`，过审前可通过 fragments 命令了解候选宝石的上游上下文。
+
+```bash
+jfox fragments list --json
+jfox fragments show <fragment_id> --json
+```
+
+`fragments list` 可用于定位 candidate 可能来源的 session 主题；`fragments show` 可查看碎片原文、所属 session、采集时间等元信息。
+
+### 何时使用
+
+- 批量合成后先执行 `gem-synth status`，按 pending 数量安排过审计划。
+- 某条 candidate 内容存疑时，用 `fragments show` 追溯其来源 fragment，辅助判档。
+- 发现 `failed_anchors` 时，可转由 `/skill:jfox-session-summary` 检查对应 session 是否已产生高质量 summary，再决定是否重新触发合成。
 
 ## 过审流程（三档分流 triage）
 
@@ -96,6 +129,14 @@ jfox edit <candidate_id> --content-file updated.md  # 将改写后的正文写�
 ```
 
 > 通用命令（`add` / `edit` / `delete` / `list` / `show`）以及 `--kb` / `--content-file` 用法详见 `/skill:jfox-manage` §4。
+
+### 合成与碎片监控命令
+
+```bash
+jfox gem-synth status --json              # 查看 L3 合成进度与失败锚点
+jfox fragments list --json                # 列出 Hook 采集的 session 碎片
+jfox fragments show <fragment_id> --json  # 查看碎片详情
+```
 
 ## 错误处理
 
