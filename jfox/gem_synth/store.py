@@ -138,7 +138,7 @@ class SynthesisLog:
             self._conn.commit()
 
     def status_counts(self) -> dict:
-        """返回 {status: count}，如 {'success': 3, 'failed': 1}。"""
+        """返回 {status: count}，如 {'success': 3, 'failed': 1, 'duplicate': 2}。"""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT status, COUNT(*) AS n FROM synthesis_log GROUP BY status"

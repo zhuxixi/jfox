@@ -143,3 +143,33 @@ def test_target_kb_none_resolves_to_active_kb_name():
     upsert_kb = mupsert.call_args[0][0]
     assert isinstance(upsert_kb, str)
     assert upsert_kb == fake_kb_name
+
+
+def test_dedup_disabled_skips_both_check_and_upsert():
+    """dedup_enabled=False 时完全跳过 dedup：既不查重也不入 dedup 库（spec §11 回原行为）。"""
+    from jfox.global_config import GemSynthesisConfig
+
+    class FakeLog:
+        def mark_processed(self, **kw):
+            pass
+
+    cfg = GemSynthesisConfig()
+    cfg.dedup_enabled = False  # type: ignore[attr-defined]
+    cfg.target_kb = "default"  # type: ignore[attr-defined]
+
+    with (
+        patch("jfox.gem_synth.synthesizer.extract_turn_around", return_value="ctx"),
+        patch("jfox.gem_synth.synthesizer.fetch_grounding", return_value=[]),
+        patch(
+            "jfox.gem_synth.synthesizer.synthesize_with_llm",
+            return_value={"title": "T", "content": "C", "confidence": 0.9},
+        ),
+        patch("jfox.gem_synth.synthesizer.dedup_check") as mcheck,
+        patch("jfox.gem_synth.synthesizer._save_candidate_note", return_value="new-id"),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup") as mupsert,
+    ):
+        result = synthesizer.synthesize_anchor(_anchor(), log=FakeLog(), cfg=cfg)
+
+    assert result is not None and result["candidate_note_id"] == "new-id"
+    mcheck.assert_not_called()  # 不查重
+    mupsert.assert_not_called()  # 不入 dedup 库（关键：曾在此漏守卫）

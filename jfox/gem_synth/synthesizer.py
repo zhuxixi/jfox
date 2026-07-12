@@ -170,8 +170,10 @@ def synthesize_anchor(
         log.mark_failed(anchor["fragment_id"], "save candidate note failed")
         return None
 
-    # 存盘成功 → 入 dedup 库（供后续锚点查重）；复用上面解析的 kb_name（同一锚点同一 KB）
-    upsert_dedup(kb_name, note_id, "candidate", llm_result.get("content") or "")
+    # 存盘成功 → 入 dedup 库（供后续锚点查重）；dedup 关闭时跳过
+    # （spec §11：dedup_enabled=False 完全关闭回到原行为，不为每条 candidate 算 embedding 灌库）
+    if getattr(cfg, "dedup_enabled", True):
+        upsert_dedup(kb_name, note_id, "candidate", llm_result.get("content") or "")
 
     log.mark_processed(anchor_fragment_id=anchor["fragment_id"], candidate_note_id=note_id)
     return {
