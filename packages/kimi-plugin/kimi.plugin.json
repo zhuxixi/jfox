@@ -1,7 +1,7 @@
 {
   "name": "jfox",
-  "version": "0.11.0",
-  "description": "JFox 知识管理 CLI 的 Kimi Code 集成——搜索、写入工作流（导入/整理/会话总结）与知识库管理",
+  "version": "0.12.0",
+  "description": "JFox 知识管理 CLI 的 Kimi Code 集成——搜索、写入工作流（导入/整理/过审/会话总结）与知识库管理",
   "skills": "./skills/",
   "sessionStart": {
     "skill": "using-jfox"
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "JFox",
     "shortDescription": "JFox Zettelkasten 知识管理集成",
-    "longDescription": "为 Kimi Code CLI 提供 JFox 知识库管理、笔记搜索、仓库导入、知识整理和会话总结保存能力。需要本地已安装 jfox-cli。",
+    "longDescription": "为 Kimi Code CLI 提供 JFox 知识库管理、笔记搜索、仓库导入、知识整理、candidate 过审和会话总结保存能力。需要本地已安装 jfox-cli。",
     "developerName": "zhuxixi",
     "websiteURL": "https://github.com/zhuxixi/jfox"
   },
