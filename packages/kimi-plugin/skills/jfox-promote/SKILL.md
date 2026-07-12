@@ -1,6 +1,13 @@
 ---
 name: jfox-promote
-description: Use when user wants to review/promote gem-synth candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，按 A/B/C 三档 triage（准确/半准/不准）分流，最终晋升 permanent 或拒绝归档；也用于在过审前监控 L3 合成进度与上游 fragments。Triggers on "candidate 过审", "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "promote candidate", "review candidate", "L5 晋升", "broken candidate", "candidate 审核", "破损 candidate", "合成进度", "碎片", "gem-synth status", "fragments".
+description: |
+  Use when user wants to review/promote gem-synth candidate notes into permanent notes,
+  or reject/archive inaccurate ones. 过审 L5 候选宝石，按 A/B/C 三档 triage
+  （准确/半准/不准）分流，最终晋升 permanent 或拒绝归档；也用于在过审前监控
+  L3 合成进度与上游 fragments。Triggers on "candidate 过审", "过审 candidate",
+  "过审宝石", "晋升候选笔记", "审阅候选宝石", "promote candidate", "review candidate",
+  "L5 晋升", "broken candidate", "candidate 审核", "破损 candidate", "合成进度",
+  "碎片", "gem-synth status", "fragments".
 ---
 
 # 过审 candidate（破损→完整）
