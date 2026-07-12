@@ -37,6 +37,10 @@ def test_synthesize_anchor_produces_candidate_note(tmp_path):
             "jfox.gem_synth.synthesizer._save_candidate_note",
             return_value="candidate_20260621143000",
         ),
+        # MagicMock cfg 使 getattr(cfg,"dedup_enabled",True) 为真 → 进入 dedup hook；
+        # 不 mock 会触发真 embedding daemon 调用 + 写 ~/.zettelkasten/synthesis_log.db
+        patch("jfox.gem_synth.synthesizer.dedup_check", return_value=None),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
     ):
         result = synthesize_anchor(_anchor(42, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5))
     assert result is not None

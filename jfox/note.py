@@ -276,6 +276,24 @@ def delete_note(note_id: str) -> bool:
         except Exception as e:
             logger.warning(f"Failed to remove note from BM25 index: {e}")
 
+        # 从 dedup 表删除 + 释放被阻断锚点（硬删后残留行 → dedup_check 匹配已删笔记 →
+        # 未来 candidate 永久跳过；被该笔记阻断的锚点也需释放，否则知识永久丢失）。
+        # 仅 candidate/permanent 有 dedup 行；fleeting/literature/session 跳过，避免实例化
+        # DedupStore/SynthesisLog 给未启用 gem-synth 的用户创建 synthesis_log.db 污染。
+        if note.type in (NoteType.CANDIDATE, NoteType.PERMANENT):
+            try:
+                from .gem_synth.dedup import (
+                    _resolve_kb_name,
+                    delete_dedup,
+                    release_blocked_anchors,
+                )
+
+                kb = _resolve_kb_name(None)
+                delete_dedup(kb, note_id)
+                release_blocked_anchors(note_id)
+            except Exception as e:
+                logger.warning("delete_note dedup 清理失败 note=%s: %s", note_id, e)
+
         return True
 
     except Exception as e:
@@ -304,7 +322,24 @@ def archive_note(note_id: str) -> bool:
         return update_note(n)
 
     n.archived = True
-    return update_note(n)
+    # 先持久化，成功后再做 dedup 清理（防 update_note 失败 → 保护已删 → 下轮重复合成）。
+    # 仅 candidate/permanent 有 dedup 行；其它类型跳过，避免实例化 DedupStore/SynthesisLog
+    # 给未启用 gem-synth 的用户创建 synthesis_log.db 污染。
+    ok = update_note(n)
+    if ok and n.type in (NoteType.CANDIDATE, NoteType.PERMANENT):
+        try:
+            from .gem_synth.dedup import (
+                _resolve_kb_name,
+                delete_dedup,
+                release_blocked_anchors,
+            )
+
+            kb = _resolve_kb_name(None)
+            delete_dedup(kb, note_id)
+            release_blocked_anchors(note_id)
+        except Exception as e:
+            logger.warning("archive dedup 同步失败 note=%s: %s", note_id, e)
+    return ok
 
 
 def unarchive_note(note_id: str) -> bool:
@@ -407,6 +442,13 @@ def promote_note(note_id: str) -> bool:
                 get_note_index().update_note_meta(t)
             except Exception as e:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
+    # dedup 同步：candidate→permanent，表内 note_type 改 permanent（仍占位防重复合成）
+    try:
+        from .gem_synth.dedup import _resolve_kb_name, update_dedup_type
+
+        update_dedup_type(_resolve_kb_name(None), note_id, "permanent")
+    except Exception as e:
+        logger.warning("promote dedup 同步失败 note=%s: %s", note_id, e)
     return True
 
 
@@ -424,7 +466,20 @@ def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
     n.status = "rejected"
     if reason:
         n.reject_reason = reason
-    return update_note(n)
+    # 先持久化，成功后再做 dedup 清理（防 update_note 失败 → 保护已删 → 下轮重复合成）
+    ok = update_note(n)
+    if ok:
+        # dedup 同步：reject 的 candidate 从表删除，让该事实可被未来重新合成；
+        # 同时释放被该 candidate 阻断的锚点（曾因 dedup 命中它而被标记 duplicate）
+        try:
+            from .gem_synth.dedup import _resolve_kb_name, delete_dedup, release_blocked_anchors
+
+            kb = _resolve_kb_name(None)
+            delete_dedup(kb, note_id)
+            release_blocked_anchors(note_id)
+        except Exception as e:
+            logger.warning("reject dedup 同步失败 note=%s: %s", note_id, e)
+    return ok
 
 
 def update_note(note_obj: Note, add_to_index: bool = True) -> bool:

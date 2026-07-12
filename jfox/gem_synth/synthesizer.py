@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
 from ..note import save_note
+from .dedup import _resolve_kb_name, dedup_check, upsert_dedup
 from .grounding import fetch_grounding
 from .llm import synthesize_with_llm
 from .transcript import extract_turn_around
@@ -149,10 +150,30 @@ def synthesize_anchor(
         log.mark_failed(anchor["fragment_id"], "llm synthesis failed")
         return None
 
+    # 存盘前去重：命中则不存盘、记 duplicate，锚点算处理完（不重试）
+    # target_kb=None 表示用 default；解析成具体 KB 名（dedup_embeddings.kb 是
+    # NOT NULL，且 None 会让 dedup_check 的 WHERE kb=? 匹配 0 行→永远检不到重复）
+    kb_name = _resolve_kb_name(cfg.target_kb)
+    if getattr(cfg, "dedup_enabled", True):
+        dup_of = dedup_check(
+            kb_name,
+            llm_result.get("content") or "",
+            threshold=getattr(cfg, "dedup_threshold", 0.88),
+        )
+        if dup_of:
+            logger.info("锚点 #%s 命中重复（dup_of=%s），跳过存盘", anchor["fragment_id"], dup_of)
+            log.mark_duplicate(anchor["fragment_id"], dup_of)
+            return None
+
     note_id = _save_candidate_note(llm_result, anchor)
     if note_id is None:
         log.mark_failed(anchor["fragment_id"], "save candidate note failed")
         return None
+
+    # 存盘成功 → 入 dedup 库（供后续锚点查重）；dedup 关闭时跳过
+    # （spec §11：dedup_enabled=False 完全关闭回到原行为，不为每条 candidate 算 embedding 灌库）
+    if getattr(cfg, "dedup_enabled", True):
+        upsert_dedup(kb_name, note_id, "candidate", llm_result.get("content") or "")
 
     log.mark_processed(anchor_fragment_id=anchor["fragment_id"], candidate_note_id=note_id)
     return {

@@ -6,6 +6,7 @@
 
 import json
 import logging
+import math
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -246,6 +247,8 @@ class GemSynthesisConfig:
     target_kb: Optional[str] = None  # candidate 写入哪个 KB；None 用 default
     claude_timeout_seconds: int = 180
     claude_binary: Optional[str] = None  # None → 从 PATH 解析
+    dedup_enabled: bool = True  # 存盘前用正文 embedding 余弦查重
+    dedup_threshold: float = 0.88  # 同事实重复阈值（高）；link-suggest 0.6 是"相关"，dedup 要"同一"
 
     def __post_init__(self) -> None:
         if self.interval_minutes < 1:
@@ -254,6 +257,19 @@ class GemSynthesisConfig:
             self.grounding_top_k = 5
         if self.claude_timeout_seconds < 30:
             self.claude_timeout_seconds = 180
+        # dedup_threshold 是余弦相似度，合法区间 [0, 1]；越界值（>1 永不命中 / <0 无意义）钳到边界。
+        # NaN/inf/非数值需先 sanitize：max/min 与 NaN 比较返回 NaN → cosine >= NaN 永假 → dedup 永不触发。
+        val = self.dedup_threshold
+        if (
+            val is None
+            or isinstance(val, bool)
+            or not isinstance(val, (int, float))
+            or math.isnan(val)
+            or math.isinf(val)
+        ):
+            self.dedup_threshold = 0.88
+        else:
+            self.dedup_threshold = max(0.0, min(1.0, float(val)))
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -272,6 +288,12 @@ class GemSynthesisConfig:
             except (TypeError, ValueError):
                 return default
 
+        def _safe_float(v, default):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return default
+
         return cls(
             enabled=bool(data.get("enabled", False)),
             interval_minutes=_safe_int(data.get("interval_minutes"), 30),
@@ -284,6 +306,13 @@ class GemSynthesisConfig:
             target_kb=data.get("target_kb"),
             claude_timeout_seconds=_safe_int(data.get("claude_timeout_seconds"), 180),
             claude_binary=data.get("claude_binary"),
+            dedup_enabled=bool(data.get("dedup_enabled", True)),
+            dedup_threshold=(
+                # bool 先于 _safe_float 拦截（float(True)=1.0 会静默成合法阈值，绕过 __post_init__ 的 bool 守卫）
+                0.88
+                if isinstance(data.get("dedup_threshold"), bool)
+                else _safe_float(data.get("dedup_threshold"), 0.88)
+            ),
         )
 
 

@@ -31,6 +31,8 @@ class SynthesisLog:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        # 跨进程写冲突（daemon + CLI 并发）时等待 10s 而非立刻 "database is locked"
+        self._conn.execute("PRAGMA busy_timeout=10000")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
         self._maybe_migrate()
@@ -56,6 +58,12 @@ class SynthesisLog:
         if "fail_reason" not in cols:
             try:
                 self._conn.execute("ALTER TABLE synthesis_log ADD COLUMN fail_reason TEXT")
+            except Exception as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+        if "dup_of" not in cols:
+            try:
+                self._conn.execute("ALTER TABLE synthesis_log ADD COLUMN dup_of TEXT")
             except Exception as e:
                 if "duplicate column" not in str(e).lower():
                     raise
@@ -104,8 +112,33 @@ class SynthesisLog:
             )
             self._conn.commit()
 
+    def mark_duplicate(self, anchor_fragment_id: int, dup_of: str) -> None:
+        """重复命中记账：status='duplicate' + dup_of=被重复的 note_id。
+        记账后 is_processed=True → 锚点不重试。与 failed 区分，供 status 单独统计。"""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO synthesis_log "
+                "(anchor_fragment_id, candidate_note_id, status, dup_of) "
+                "VALUES (?, '', 'duplicate', ?)",
+                (anchor_fragment_id, dup_of),
+            )
+            self._conn.commit()
+
+    def clear_duplicates_of(self, note_id: str) -> None:
+        """清除所有 dup_of=note_id 的 duplicate 记账，释放被阻断的锚点。
+
+        candidate 被 reject 后调用：该 candidate 曾触发 dedup 命中，对应锚点标记为
+        duplicate（is_processed=True 不重试）。candidate 已丢弃 → 锚点应恢复为未处理，
+        允许未来合成周期重新尝试。"""
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM synthesis_log WHERE status='duplicate' AND dup_of=?",
+                (note_id,),
+            )
+            self._conn.commit()
+
     def status_counts(self) -> dict:
-        """返回 {status: count}，如 {'success': 3, 'failed': 1}。"""
+        """返回 {status: count}，如 {'success': 3, 'failed': 1, 'duplicate': 2}。"""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT status, COUNT(*) AS n FROM synthesis_log GROUP BY status"
