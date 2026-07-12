@@ -1173,7 +1173,7 @@ def list_notes(
         raise typer.Exit(1)
 
 
-def _show_impl(note_ref: str):
+def _show_impl(note_ref: str, output_format: str = "markdown"):
     """查看笔记完整内容的内部实现"""
     # 通过 ID 或标题定位笔记
     note_id = find_note_id_by_title_or_id(note_ref)
@@ -1185,30 +1185,54 @@ def _show_impl(note_ref: str):
     if not n:
         raise ValueError(f"笔记不存在: {note_id}")
 
-    # 输出原始 Markdown 内容
-    content = n.filepath.read_text(encoding="utf-8")
-    print(content)
+    # 读取原始 Markdown 内容
+    raw = n.filepath.read_text(encoding="utf-8")
+
+    if output_format == "json":
+        # 输出结构化 JSON，便于脚本和 LLM 消费
+        print(output_json(n.to_show_dict(raw_markdown=raw)))
+    else:
+        # 默认输出原始 Markdown 内容（含 YAML frontmatter）
+        print(raw)
 
 
 @app.command()
 def show(
     note_ref: str = typer.Argument(..., help="笔记 ID 或标题"),
+    output_format: str = typer.Option(
+        "markdown", "--format", "-f", help="输出格式: markdown, json"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
 ):
     """
     查看笔记完整内容
 
-    输出原始 Markdown（含 YAML frontmatter），只读不修改。
+    默认输出原始 Markdown（含 YAML frontmatter），只读不修改。
+    使用 --json 或 --format json 可输出结构化 JSON，便于脚本和 LLM 消费。
     支持通过笔记 ID 或标题定位。
     """
     try:
+        # 向后兼容：如果指定了 --json，使用 json 格式
+        if json_output:
+            output_format = "json"
+
         from .config import use_kb
 
         with use_kb(kb):
-            _show_impl(note_ref)
+            _show_impl(note_ref, output_format)
 
     except Exception as e:
-        console.print(f"[red]✗[/red] Error: {e}")
+        result = {
+            "success": False,
+            "error": str(e),
+        }
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
 
 
