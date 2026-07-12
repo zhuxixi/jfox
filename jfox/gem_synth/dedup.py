@@ -42,6 +42,8 @@ class DedupStore:
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        # 跨进程写冲突（daemon + CLI 并发）时等待 10s 而非立刻 "database is locked"
+        self._conn.execute("PRAGMA busy_timeout=10000")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
 
@@ -82,9 +84,13 @@ class DedupStore:
             )
             self._conn.commit()
 
-    def delete(self, note_id: str) -> None:
+    def delete(self, kb: str, note_id: str) -> None:
+        """删除指定 KB 下的 dedup 行。PK 是 (kb, note_id)，必须带 kb 作用域，
+        否则跨 KB 的 note_id 碰撞会误删。"""
         with self._lock:
-            self._conn.execute("DELETE FROM dedup_embeddings WHERE note_id=?", (note_id,))
+            self._conn.execute(
+                "DELETE FROM dedup_embeddings WHERE kb=? AND note_id=?", (kb, note_id)
+            )
             self._conn.commit()
 
     def count(self, kb: Optional[str] = None) -> int:
@@ -175,8 +181,11 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]
         if not rows:
             return None
         mat = np.vstack([r[1] for r in rows])  # (N, D)
-        norms = np.linalg.norm(mat, axis=1) * (np.linalg.norm(emb) + 1e-12)
+        # 两侧范数都加 epsilon 防零行/零向量除零 → NaN 毒化 argmax
+        norms = (np.linalg.norm(mat, axis=1) + 1e-12) * (np.linalg.norm(emb) + 1e-12)
         sims = (mat @ emb) / norms
+        # 腐败零行产 NaN 时替换为 -1，防 argmax 选到 NaN 导致误判重复
+        np.nan_to_num(sims, nan=-1.0, copy=False)
         best = int(np.argmax(sims))
         if sims[best] >= threshold:
             return rows[best][0]
@@ -186,22 +195,27 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]
     return None
 
 
-def upsert_dedup(kb: str, note_id: str, note_type: str, content: str) -> None:
-    """算 embedding 入表。content_hash 命中（内容没变）则跳过省 daemon 调用。失败仅 warning。"""
+def upsert_dedup(kb: str, note_id: str, note_type: str, content: str) -> bool:
+    """算 embedding 入表。content_hash 命中（内容没变）则跳过省 daemon 调用。失败仅 warning。
+
+    返回 True 表示实际写入了 dedup_embeddings；False 表示跳过（内容空/hash 命中/embed 失败/异常）。
+    调用方（如 backfill）据此精确计数，避免把跳过的行也算作"已灌入"。"""
     try:
         cleaned = _clean_candidate_content(content)
         if not cleaned:
-            return
+            return False
         store = _get_store()
         ch = _content_hash(cleaned)
         if store.get_hash(kb, note_id) == ch:
-            return
+            return False
         emb = _embed(cleaned)
         if emb is None:
-            return
+            return False
         store.upsert(kb, note_id, note_type, ch, emb.tobytes())
+        return True
     except Exception as e:
         logger.warning("upsert_dedup 失败 note=%s: %s", note_id, e)
+        return False
 
 
 def update_dedup_type(kb: str, note_id: str, new_type: str) -> None:
@@ -211,11 +225,30 @@ def update_dedup_type(kb: str, note_id: str, new_type: str) -> None:
         logger.warning("update_dedup_type 失败 note=%s: %s", note_id, e)
 
 
-def delete_dedup(note_id: str) -> None:
+def delete_dedup(kb: str, note_id: str) -> None:
+    """删除 dedup 行（KB 作用域隔离，防跨 KB note_id 碰撞误删）。失败仅 warning。"""
     try:
-        _get_store().delete(note_id)
+        _get_store().delete(kb, note_id)
     except Exception as e:
         logger.warning("delete_dedup 失败 note=%s: %s", note_id, e)
+
+
+def release_blocked_anchors(note_id: str) -> None:
+    """释放因"重复于 note_id"而被阻断的锚点（清除 synthesis_log 中的 duplicate 记账）。
+
+    candidate 被 reject 后调用：该 candidate 曾触发 dedup 命中，对应锚点被标记
+    duplicate（不重试）。candidate 已丢弃 → 锚点应恢复为未处理，允许未来重新合成。
+    失败仅 warning，不阻塞 reject 流程。"""
+    try:
+        from .store import SynthesisLog
+
+        log = SynthesisLog()
+        try:
+            log.clear_duplicates_of(note_id)
+        finally:
+            log.close()
+    except Exception as e:
+        logger.warning("release_blocked_anchors 失败 note=%s: %s", note_id, e)
 
 
 __all__ = [
@@ -224,6 +257,7 @@ __all__ = [
     "upsert_dedup",
     "update_dedup_type",
     "delete_dedup",
+    "release_blocked_anchors",
     "set_store",
     "_clean_candidate_content",
     "_resolve_kb_name",

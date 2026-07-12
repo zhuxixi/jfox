@@ -54,7 +54,7 @@ def test_archive_deletes_from_dedup(temp_kb, mock_embedding_backend):
     with patch("jfox.gem_synth.dedup._get_store") as ms:
         store = ms.return_value
         archive_note(n.id)
-        store.delete.assert_called_once_with(n.id)
+        store.delete.assert_called_once_with(temp_kb.name, n.id)
 
 
 def test_reject_deletes_from_dedup(temp_kb, mock_embedding_backend):
@@ -69,10 +69,13 @@ def test_reject_deletes_from_dedup(temp_kb, mock_embedding_backend):
         updated=_now(),
     )
     save_note(n)
-    with patch("jfox.gem_synth.dedup._get_store") as ms:
+    with (
+        patch("jfox.gem_synth.dedup._get_store") as ms,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors"),
+    ):
         store = ms.return_value
         reject_note(n.id, reason="x")
-        store.delete.assert_called_once_with(n.id)
+        store.delete.assert_called_once_with(temp_kb.name, n.id)
 
 
 def test_promote_updates_dedup_type(temp_kb, mock_embedding_backend):
@@ -93,4 +96,7 @@ def test_promote_updates_dedup_type(temp_kb, mock_embedding_backend):
         # promote 把 candidate→permanent：dedup 表里 note_type 改 permanent
         store.update_type.assert_called_once()
         args = store.update_type.call_args[0]
+        # (kb, note_id, new_type) — kb 来自 _resolve_kb_name(None) = config.base_dir.name
+        assert args[0] == temp_kb.name
+        assert args[1] == n.id
         assert args[2] == "permanent"

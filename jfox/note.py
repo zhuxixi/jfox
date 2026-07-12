@@ -15,14 +15,6 @@ from .models import Note, NoteType
 logger = logging.getLogger(__name__)
 
 
-def _kb_name_from_path(filepath) -> str:
-    """从笔记路径推 kb 名：<kb_root>/<kb_name>/notes/<type>/<file> → kb_name。"""
-    try:
-        return filepath.parent.parent.parent.name
-    except Exception:
-        return ""
-
-
 def generate_id() -> str:
     """
     生成唯一 ID
@@ -284,6 +276,14 @@ def delete_note(note_id: str) -> bool:
         except Exception as e:
             logger.warning(f"Failed to remove note from BM25 index: {e}")
 
+        # 从 dedup 表删除（硬删后残留行 → dedup_check 匹配已删笔记 → 未来 candidate 永久跳过）
+        try:
+            from .gem_synth.dedup import _resolve_kb_name, delete_dedup
+
+            delete_dedup(_resolve_kb_name(None), note_id)
+        except Exception as e:
+            logger.warning("delete_note dedup 清理失败 note=%s: %s", note_id, e)
+
         return True
 
     except Exception as e:
@@ -313,11 +313,11 @@ def archive_note(note_id: str) -> bool:
 
     n.archived = True
     try:
-        from .gem_synth.dedup import delete_dedup
+        from .gem_synth.dedup import _resolve_kb_name, delete_dedup
 
-        delete_dedup(note_id)
-    except Exception:
-        pass  # 归档是通用路径，dedup 失败不影响归档语义
+        delete_dedup(_resolve_kb_name(None), note_id)
+    except Exception as e:
+        logger.warning("archive dedup 同步失败 note=%s: %s", note_id, e)
     return update_note(n)
 
 
@@ -423,9 +423,9 @@ def promote_note(note_id: str) -> bool:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
     # dedup 同步：candidate→permanent，表内 note_type 改 permanent（仍占位防重复合成）
     try:
-        from .gem_synth.dedup import update_dedup_type
+        from .gem_synth.dedup import _resolve_kb_name, update_dedup_type
 
-        update_dedup_type(_kb_name_from_path(n.filepath), note_id, "permanent")
+        update_dedup_type(_resolve_kb_name(None), note_id, "permanent")
     except Exception as e:
         logger.warning("promote dedup 同步失败 note=%s: %s", note_id, e)
     return True
@@ -445,11 +445,14 @@ def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
     n.status = "rejected"
     if reason:
         n.reject_reason = reason
-    # dedup 同步：reject 的 candidate 从表删除，让该事实可被未来重新合成
+    # dedup 同步：reject 的 candidate 从表删除，让该事实可被未来重新合成；
+    # 同时释放被该 candidate 阻断的锚点（曾因 dedup 命中它而被标记 duplicate）
     try:
-        from .gem_synth.dedup import delete_dedup
+        from .gem_synth.dedup import _resolve_kb_name, delete_dedup, release_blocked_anchors
 
-        delete_dedup(note_id)
+        kb = _resolve_kb_name(None)
+        delete_dedup(kb, note_id)
+        release_blocked_anchors(note_id)
     except Exception as e:
         logger.warning("reject dedup 同步失败 note=%s: %s", note_id, e)
     return update_note(n)

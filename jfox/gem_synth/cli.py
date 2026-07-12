@@ -335,6 +335,7 @@ def _dedup_backfill_impl(kb: Optional[str]) -> tuple[int, int]:
     """扫 kb 的 candidate(非 archived)+permanent，灌 dedup 表。返回 (n_cand, n_perm)。
 
     幂等可重跑：upsert_dedup 内部按 content_hash 命中跳过省 daemon 调用。
+    计数仅含实际写入的行（upsert_dedup 返回 True），跳过/失败的不计入。
     NoteMeta 不含正文，需 load_note_by_id 取 .content。"""
     from ..config import use_kb
     from ..models import NoteType
@@ -351,18 +352,19 @@ def _dedup_backfill_impl(kb: Optional[str]) -> tuple[int, int]:
                 continue
             if meta.type == NoteType.CANDIDATE:
                 note = load_note_by_id(meta.id)
-                upsert_dedup(resolved, meta.id, "candidate", note.content if note else "")
-                n_cand += 1
+                if upsert_dedup(resolved, meta.id, "candidate", note.content if note else ""):
+                    n_cand += 1
             elif meta.type == NoteType.PERMANENT:
                 note = load_note_by_id(meta.id)
-                upsert_dedup(resolved, meta.id, "permanent", note.content if note else "")
-                n_perm += 1
+                if upsert_dedup(resolved, meta.id, "permanent", note.content if note else ""):
+                    n_perm += 1
     return n_cand, n_perm
 
 
 @gem_synth_app.command("dedup-backfill")
 def dedup_backfill_cmd(
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("text", "--format", "-f", help="输出格式: text, json"),
 ) -> None:
     """一次性把 candidate(非 archived)+permanent 的正文 embedding 灌入 dedup 库。
 
@@ -371,5 +373,27 @@ def dedup_backfill_cmd(
     from ..global_config import get_global_config_manager
 
     target_kb = kb or get_global_config_manager().get_gem_synthesis_config().target_kb
-    n_cand, n_perm = _dedup_backfill_impl(target_kb)
-    typer.echo(f"已灌入 {n_cand + n_perm} 条（candidate {n_cand} / permanent {n_perm}）到 dedup 库")
+    try:
+        n_cand, n_perm = _dedup_backfill_impl(target_kb)
+    except Exception as e:
+        if output_format == "json":
+            typer.echo(
+                _json.dumps(
+                    {"ok": False, "error": str(e)},
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            console.print(f"[red]dedup-backfill 失败：{e}[/red]")
+        raise typer.Exit(code=1)
+
+    total = n_cand + n_perm
+    if output_format == "json":
+        typer.echo(
+            _json.dumps(
+                {"candidate": n_cand, "permanent": n_perm, "total": total},
+                ensure_ascii=False,
+            )
+        )
+    else:
+        typer.echo(f"已灌入 {total} 条（candidate {n_cand} / permanent {n_perm}）到 dedup 库")

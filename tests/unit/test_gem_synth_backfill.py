@@ -160,6 +160,6 @@ def test_backfill_idempotent_via_content_hash(temp_kb, mock_embedding_backend):
         from jfox.gem_synth.cli import _dedup_backfill_impl
 
         n_cand, n_perm = _dedup_backfill_impl(kb=None)
-    # 仍然计入了 n_cand（遍历到了），但 store.upsert 没被调用（hash 命中跳过）
-    assert n_cand == 1
+    # hash 命中 → upsert_dedup 返回 False → n_cand 不计入；store.upsert 也没被调用
+    assert n_cand == 0
     assert store.upsert.call_count == 0

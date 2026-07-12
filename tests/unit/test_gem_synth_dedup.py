@@ -64,8 +64,37 @@ def test_upsert_idempotent_on_same_content(setup):
 def test_delete_removes(setup):
     dedup.upsert_dedup("default", "c1", "candidate", "内容")
     assert setup.count("default") == 1
-    dedup.delete_dedup("c1")
+    dedup.delete_dedup("default", "c1")
     assert setup.count("default") == 0
+
+
+def test_delete_kb_scoped(setup):
+    """delete 必须带 kb：同一 note_id 在不同 KB 各有一行，删一个不影响另一个。"""
+    dedup.upsert_dedup("kbA", "shared-id", "candidate", "内容A")
+    dedup.upsert_dedup("kbB", "shared-id", "candidate", "内容B")
+    assert setup.count() == 2
+    dedup.delete_dedup("kbA", "shared-id")
+    assert setup.count("kbA") == 0
+    assert setup.count("kbB") == 1  # kbB 的行不受影响
+
+
+def test_dedup_check_zero_vector_no_nan(setup):
+    """存储一个零向量行（腐败数据），dedup_check 不应因 NaN 崩溃或误判。"""
+    store = dedup._get_store()
+    zero_emb = np.zeros(64, dtype=np.float32)
+    store.upsert("default", "zero-note", "candidate", "h", zero_emb.tobytes())
+    # 零向量不应触发 NaN 毒化 argmax → 返回 None（无有效相似度 >= threshold）
+    result = dedup.dedup_check("default", "任意内容", threshold=0.5)
+    assert result is None
+
+
+def test_upsert_dedup_returns_bool(setup):
+    """upsert_dedup 返回 True 表示实际写入，False 表示跳过。"""
+    assert dedup.upsert_dedup("default", "c1", "candidate", "内容") is True
+    # 同内容再灌 → hash 命中 → 跳过 → False
+    assert dedup.upsert_dedup("default", "c1", "candidate", "内容") is False
+    # 空内容 → False
+    assert dedup.upsert_dedup("default", "c2", "candidate", "") is False
 
 
 def test_dedup_check_degrades_when_backend_unavailable(setup, monkeypatch):

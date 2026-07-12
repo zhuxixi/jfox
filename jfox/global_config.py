@@ -256,6 +256,8 @@ class GemSynthesisConfig:
             self.grounding_top_k = 5
         if self.claude_timeout_seconds < 30:
             self.claude_timeout_seconds = 180
+        # dedup_threshold 是余弦相似度，合法区间 [0, 1]；越界值（>1 永不命中 / <0 无意义）钳到边界
+        self.dedup_threshold = max(0.0, min(1.0, self.dedup_threshold))
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

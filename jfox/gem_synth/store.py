@@ -122,6 +122,19 @@ class SynthesisLog:
             )
             self._conn.commit()
 
+    def clear_duplicates_of(self, note_id: str) -> None:
+        """清除所有 dup_of=note_id 的 duplicate 记账，释放被阻断的锚点。
+
+        candidate 被 reject 后调用：该 candidate 曾触发 dedup 命中，对应锚点标记为
+        duplicate（is_processed=True 不重试）。candidate 已丢弃 → 锚点应恢复为未处理，
+        允许未来合成周期重新尝试。"""
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM synthesis_log WHERE status='duplicate' AND dup_of=?",
+                (note_id,),
+            )
+            self._conn.commit()
+
     def status_counts(self) -> dict:
         """返回 {status: count}，如 {'success': 3, 'failed': 1}。"""
         with self._lock:

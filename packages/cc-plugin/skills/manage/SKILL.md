@@ -198,6 +198,8 @@ jfox list --json --limit 500 [--kb <name>]
 jfox inbox --json --limit 100 [--kb <name>]
 ```
 
+> **并行采集**：以上 6 条命令互相独立、只读，可用 AgentSwarm 并行执行加速；任一失败不阻塞其余，最后汇总结果即可。
+
 ### 5.2 健康指标表
 
 从采集数据中计算以下指标：
