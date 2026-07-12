@@ -340,21 +340,22 @@ def _dedup_backfill_impl(kb: Optional[str]) -> tuple[int, int]:
     from ..models import NoteType
     from ..note import load_note_by_id
     from ..note_index import get_note_index
-    from .dedup import upsert_dedup
+    from .dedup import _resolve_kb_name, upsert_dedup
 
     n_cand = n_perm = 0
     with use_kb(kb):
+        resolved = _resolve_kb_name(kb)  # kb=None → config.base_dir.name（具体 KB 名）
         idx = get_note_index()
         for meta in idx.get_all_meta():
             if meta.archived:
                 continue
             if meta.type == NoteType.CANDIDATE:
                 note = load_note_by_id(meta.id)
-                upsert_dedup(kb, meta.id, "candidate", note.content if note else "")
+                upsert_dedup(resolved, meta.id, "candidate", note.content if note else "")
                 n_cand += 1
             elif meta.type == NoteType.PERMANENT:
                 note = load_note_by_id(meta.id)
-                upsert_dedup(kb, meta.id, "permanent", note.content if note else "")
+                upsert_dedup(resolved, meta.id, "permanent", note.content if note else "")
                 n_perm += 1
     return n_cand, n_perm
 

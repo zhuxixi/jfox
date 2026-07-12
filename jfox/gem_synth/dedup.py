@@ -122,6 +122,20 @@ def set_store(store: Optional[DedupStore]) -> None:
         _store = store
 
 
+def _resolve_kb_name(kb: Optional[str]) -> str:
+    """target_kb=None 表示用 default；在 use_kb 上下文内取 config.base_dir.name 作具体名。
+
+    dedup_embeddings.kb 是 TEXT NOT NULL，且 dedup_check 的 SQL WHERE kb=? 绑 None
+    会匹配 0 行（永远检不到重复）。target_kb=None 时（默认 KB），use_kb 不会换
+    base_dir，但 config.base_dir 在模块加载时已指向默认 KB 路径，其 .name 即 KB 名。
+    """
+    if kb:
+        return kb
+    from ..config import config as _zk_config
+
+    return _zk_config.base_dir.name
+
+
 def _clean_candidate_content(content: str) -> str:
     """剥掉 _save_candidate_note 追加的元段落（## 来源/参考的永久笔记/置信度），
     截断到 _MAX_CONTENT_CHARS。保证新 candidate（无元段落）与 backfill 旧 candidate
@@ -212,4 +226,5 @@ __all__ = [
     "delete_dedup",
     "set_store",
     "_clean_candidate_content",
+    "_resolve_kb_name",
 ]

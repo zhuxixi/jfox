@@ -101,3 +101,61 @@ def test_no_duplicate_proceeds_to_save(tmp_path):
     assert result is not None and result["candidate_note_id"] == "new-id"
     # 存盘成功后入 dedup 库
     mupsert.assert_called_once()
+
+
+def test_target_kb_none_resolves_to_active_kb_name():
+    """cfg.target_kb=None（生产默认配置）时，dedup_check/upsert_dedup 收到的应是
+    解析后的具体 KB 名（config.base_dir.name），不是 None。
+
+    回归 Finding 1：dedup_embeddings.kb 是 TEXT NOT NULL，且 dedup_check 的
+    WHERE kb=? 绑 None 会匹配 0 行 → 永远检不到重复，整个 dedup 特征静默失效。"""
+    import pathlib
+
+    pathlib.Path("/tmp/_synth_test.jsonl").write_text('{"content":"x"}\n', encoding="utf-8")
+    _anchor()["transcript_path"] = "/tmp/_synth_test.jsonl"
+
+    class FakeLog:
+        def mark_duplicate(self, fid, dup_of):
+            pass
+
+        def mark_processed(self, **kw):
+            pass
+
+    fake_log = FakeLog()
+
+    # 把 config.base_dir 钉到已知路径，其 .name 作期望的解析 KB 名
+    from jfox.config import config
+
+    fake_kb_name = "testkb_regression"
+    original_base_dir = config.base_dir
+    config.base_dir = pathlib.Path(f"/tmp/{fake_kb_name}")
+    try:
+        with (
+            patch("jfox.gem_synth.synthesizer.extract_turn_around", return_value="ctx"),
+            patch("jfox.gem_synth.synthesizer.fetch_grounding", return_value=[]),
+            patch(
+                "jfox.gem_synth.synthesizer.synthesize_with_llm",
+                return_value={"title": "T", "content": "C", "confidence": 0.9},
+            ),
+            patch("jfox.gem_synth.synthesizer.dedup_check", return_value=None) as mcheck,
+            patch("jfox.gem_synth.synthesizer._save_candidate_note", return_value="new-id"),
+            patch("jfox.gem_synth.synthesizer.upsert_dedup") as mupsert,
+        ):
+            from jfox.global_config import GemSynthesisConfig
+
+            cfg = GemSynthesisConfig()
+            cfg.dedup_enabled = True  # type: ignore[attr-defined]
+            cfg.target_kb = None  # type: ignore[attr-defined]  # 关键：模拟生产默认配置
+            result = synthesizer.synthesize_anchor(_anchor(), log=fake_log, cfg=cfg)
+    finally:
+        config.base_dir = original_base_dir
+
+    assert result is not None and result["candidate_note_id"] == "new-id"
+    # dedup_check 第一参数必须是 str 且等于解析后的 KB 名，绝不能是 None
+    check_kb = mcheck.call_args[0][0]
+    assert isinstance(check_kb, str)
+    assert check_kb == fake_kb_name
+    # upsert_dedup 同理
+    upsert_kb = mupsert.call_args[0][0]
+    assert isinstance(upsert_kb, str)
+    assert upsert_kb == fake_kb_name
