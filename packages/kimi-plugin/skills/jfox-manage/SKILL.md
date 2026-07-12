@@ -92,6 +92,8 @@ jfox kb rename <old> <new>          # 重命名
 ```
 
 > `jfox kb create` 与 `jfox init --name` 的区别：`init` 会创建并切换到新知识库；`kb create` 仅注册目录，不切换当前默认知识库。
+>
+> `jfox kb switch <name>` 与 `jfox kb use <name>` 是等价别名，功能完全相同；下文统一使用 `switch`。
 
 ### 3.5 删除知识库
 

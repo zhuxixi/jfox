@@ -4,7 +4,7 @@ JFox 知识管理 CLI 的 [Kimi Code CLI](https://www.kimi.com/code) 插件。
 
 ## 功能
 
-提供与 Claude Code 插件 `packages/cc-plugin/` 对齐的 8 个核心 skill：
+提供与 Claude Code 插件 `packages/cc-plugin/` 对齐的 9 个核心 skill：
 
 | Skill | 用途 | 触发示例 |
 |-------|------|----------|
@@ -16,6 +16,7 @@ JFox 知识管理 CLI 的 [Kimi Code CLI](https://www.kimi.com/code) 插件。
 | `jfox-session-summary` | 把当前会话总结写入知识库 | “保存这次会话”、“总结到知识库” |
 | `jfox-template` | 管理笔记模板 | “创建会议模板”、“模板列表” |
 | `jfox-auto-summary` | 管理 Claude Code 会话自动总结 | “启用自动总结”、“清理 ledger” |
+| `jfox-admin` | 系统维护：性能监控、模型下载、自升级 | “升级 jfox”、“下载模型”、“性能报告” |
 
 此外，`using-jfox` skill 会在每次新会话/恢复会话时自动加载，提供环境检查和命令速查。
 
@@ -77,7 +78,7 @@ zip -r /tmp/jfox-kimi-plugin.zip .
 | 插件 manifest | `.claude-plugin/plugin.json` | `kimi.plugin.json` |
 | Skill 引用语法 | `/jfox:manage` | `/skill:jfox-manage` |
 | 自动加载 | 无（marketplace 机制不同） | `sessionStart.skill` 自动加载 `using-jfox` |
-| 核心技能 | manage / search / ingest / organize / promote / session-summary / template / auto-summary | jfox-manage / jfox-search / jfox-ingest / jfox-organize / jfox-promote / jfox-session-summary / jfox-template / jfox-auto-summary |
+| 核心技能 | manage / search / ingest / organize / promote / session-summary / template / auto-summary / admin | jfox-manage / jfox-search / jfox-ingest / jfox-organize / jfox-promote / jfox-session-summary / jfox-template / jfox-auto-summary / jfox-admin |
 
 ## 文件结构
 
@@ -102,7 +103,9 @@ packages/kimi-plugin/
     │   └── SKILL.md
     ├── jfox-template/
     │   └── SKILL.md
-    └── jfox-auto-summary/
+    ├── jfox-auto-summary/
+    │   └── SKILL.md
+    └── jfox-admin/
         └── SKILL.md
 ```
 
