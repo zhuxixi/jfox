@@ -6,6 +6,7 @@
 """
 
 import json
+import re
 import subprocess
 from unittest.mock import patch
 
@@ -23,6 +24,13 @@ from jfox.cli import (
 )
 
 runner = CliRunner()
+
+# Rich Console 会向版本号注入 ANSI 颜色码（如 1.0\x1b[0m.\x1b[1;36m0），断言前需剥离
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 class TestDetectInstallMethod:
@@ -515,7 +523,7 @@ class TestUpdateCommand:
                         result = runner.invoke(app, ["update"])
                         assert result.exit_code == 0
                         assert "uv" in result.output
-                        assert "1.0.0 → 1.1.0" in result.output
+                        assert "1.0.0 → 1.1.0" in _strip_ansi(result.output)
 
     def test_table_output_shows_stderr_separately(self):
         """成功时 stderr 在 table 输出中单独显示"""
@@ -543,7 +551,7 @@ class TestUpdateCommand:
                         result = runner.invoke(app, ["update"])
                         assert result.exit_code == 0
                         assert "当前已是最新版本" in result.output
-                        assert "1.1.0" in result.output
+                        assert "1.1.0" in _strip_ansi(result.output)
                         assert "→" not in result.output
 
     def test_table_output_failure(self):

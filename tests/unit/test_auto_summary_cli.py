@@ -5,6 +5,7 @@
 依赖要求: mock global_config_manager
 """
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +16,13 @@ pytestmark = [pytest.mark.unit, pytest.mark.fast]
 from jfox.auto_summary.cli import auto_summary_app
 
 runner = CliRunner()
+
+# Rich Console 会向输出注入 ANSI 颜色码，断言前需剥离（与 test_auto_summary_status.py 一致）
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
 
 
 class TestEnableScheduleOptions:
@@ -97,6 +105,6 @@ class TestStatusScheduleOutput:
             assert result.exit_code == 0
             import json
 
-            data = json.loads(result.output)
+            data = json.loads(_strip_ansi(result.output))
             assert data["config"]["schedule_enabled"] is True
             assert "in_schedule_window" in data["progress"]
