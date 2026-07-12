@@ -2,6 +2,19 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.4.0] - 2026-07-12
+
+### Features
+- **session-summary**: 去掉两步确认，生成后直接写入 session 类型 (#312)
+- **gem-synth**: 合成去重 dedup（存盘前正文余弦查重） (#308)
+- **kimi-plugin**: 补齐 skill 覆盖缺口——模板、自动总结、归档、check、config、gem-synth/fragments (#306)
+- **kimi-plugin**: 添加 jfox-promote skill 支持 candidate 过审晋升 (#305)
+
+### Changes
+- **show**: 设计 spec for show --json (#278)
+
+[1.4.0]: https://github.com/zhuxixi/jfox/compare/v1.3.1...v1.4.0
+
 ## [1.3.1] - 2026-07-12
 
 ### Features
