@@ -15,6 +15,14 @@ from .models import Note, NoteType
 logger = logging.getLogger(__name__)
 
 
+def _kb_name_from_path(filepath) -> str:
+    """从笔记路径推 kb 名：<kb_root>/<kb_name>/notes/<type>/<file> → kb_name。"""
+    try:
+        return filepath.parent.parent.parent.name
+    except Exception:
+        return ""
+
+
 def generate_id() -> str:
     """
     生成唯一 ID
@@ -304,6 +312,12 @@ def archive_note(note_id: str) -> bool:
         return update_note(n)
 
     n.archived = True
+    try:
+        from .gem_synth.dedup import delete_dedup
+
+        delete_dedup(note_id)
+    except Exception:
+        pass  # 归档是通用路径，dedup 失败不影响归档语义
     return update_note(n)
 
 
@@ -407,6 +421,13 @@ def promote_note(note_id: str) -> bool:
                 get_note_index().update_note_meta(t)
             except Exception as e:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
+    # dedup 同步：candidate→permanent，表内 note_type 改 permanent（仍占位防重复合成）
+    try:
+        from .gem_synth.dedup import update_dedup_type
+
+        update_dedup_type(_kb_name_from_path(n.filepath), note_id, "permanent")
+    except Exception as e:
+        logger.warning("promote dedup 同步失败 note=%s: %s", note_id, e)
     return True
 
 
@@ -424,6 +445,13 @@ def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
     n.status = "rejected"
     if reason:
         n.reject_reason = reason
+    # dedup 同步：reject 的 candidate 从表删除，让该事实可被未来重新合成
+    try:
+        from .gem_synth.dedup import delete_dedup
+
+        delete_dedup(note_id)
+    except Exception as e:
+        logger.warning("reject dedup 同步失败 note=%s: %s", note_id, e)
     return update_note(n)
 
 
