@@ -59,6 +59,12 @@ class SynthesisLog:
             except Exception as e:
                 if "duplicate column" not in str(e).lower():
                     raise
+        if "dup_of" not in cols:
+            try:
+                self._conn.execute("ALTER TABLE synthesis_log ADD COLUMN dup_of TEXT")
+            except Exception as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
         self._conn.commit()
 
     def is_processed(self, anchor_fragment_id: int) -> bool:
@@ -101,6 +107,18 @@ class SynthesisLog:
                 "(anchor_fragment_id, candidate_note_id, status, fail_reason) "
                 "VALUES (?, '', 'failed', ?)",
                 (anchor_fragment_id, fail_reason),
+            )
+            self._conn.commit()
+
+    def mark_duplicate(self, anchor_fragment_id: int, dup_of: str) -> None:
+        """重复命中记账：status='duplicate' + dup_of=被重复的 note_id。
+        记账后 is_processed=True → 锚点不重试。与 failed 区分，供 status 单独统计。"""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO synthesis_log "
+                "(anchor_fragment_id, candidate_note_id, status, dup_of) "
+                "VALUES (?, '', 'duplicate', ?)",
+                (anchor_fragment_id, dup_of),
             )
             self._conn.commit()
 
