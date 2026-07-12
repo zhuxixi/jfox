@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
 from ..note import save_note
+from .dedup import dedup_check, upsert_dedup
 from .grounding import fetch_grounding
 from .llm import synthesize_with_llm
 from .transcript import extract_turn_around
@@ -149,10 +150,25 @@ def synthesize_anchor(
         log.mark_failed(anchor["fragment_id"], "llm synthesis failed")
         return None
 
+    # 存盘前去重：命中则不存盘、记 duplicate，锚点算处理完（不重试）
+    if getattr(cfg, "dedup_enabled", True):
+        dup_of = dedup_check(
+            cfg.target_kb,
+            llm_result.get("content") or "",
+            threshold=getattr(cfg, "dedup_threshold", 0.88),
+        )
+        if dup_of:
+            logger.info("锚点 #%s 命中重复（dup_of=%s），跳过存盘", anchor["fragment_id"], dup_of)
+            log.mark_duplicate(anchor["fragment_id"], dup_of)
+            return None
+
     note_id = _save_candidate_note(llm_result, anchor)
     if note_id is None:
         log.mark_failed(anchor["fragment_id"], "save candidate note failed")
         return None
+
+    # 存盘成功 → 入 dedup 库（供后续锚点查重）
+    upsert_dedup(cfg.target_kb, note_id, "candidate", llm_result.get("content") or "")
 
     log.mark_processed(anchor_fragment_id=anchor["fragment_id"], candidate_note_id=note_id)
     return {
