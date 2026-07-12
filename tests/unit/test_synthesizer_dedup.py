@@ -16,15 +16,7 @@ def _anchor():
 
 
 def test_duplicate_hit_skips_save_and_marks_duplicate(tmp_path):
-    # 造一个空 transcript 让 extract_turn_around 返回非空
-    import json
-    import pathlib
-
-    pathlib.Path("/tmp/_synth_test.jsonl").write_text(
-        json.dumps({"type": "user", "content": "hello"}) + "\n", encoding="utf-8"
-    )
-    _anchor()["transcript_path"] = "/tmp/_synth_test.jsonl"
-
+    # extract_turn_around 被 mock，transcript 文件不会被读，无需造（且避免 /tmp 在 Windows 不存在）
     class FakeLog:
         def __init__(self):
             self.calls = []
@@ -64,11 +56,6 @@ def test_duplicate_hit_skips_save_and_marks_duplicate(tmp_path):
 
 
 def test_no_duplicate_proceeds_to_save(tmp_path):
-    import pathlib
-
-    pathlib.Path("/tmp/_synth_test.jsonl").write_text('{"content":"x"}\n', encoding="utf-8")
-    _anchor()["transcript_path"] = "/tmp/_synth_test.jsonl"
-
     class FakeLog:
         def __init__(self):
             self.calls = []
@@ -110,9 +97,6 @@ def test_target_kb_none_resolves_to_active_kb_name():
     回归 Finding 1：dedup_embeddings.kb 是 TEXT NOT NULL，且 dedup_check 的
     WHERE kb=? 绑 None 会匹配 0 行 → 永远检不到重复，整个 dedup 特征静默失效。"""
     import pathlib
-
-    pathlib.Path("/tmp/_synth_test.jsonl").write_text('{"content":"x"}\n', encoding="utf-8")
-    _anchor()["transcript_path"] = "/tmp/_synth_test.jsonl"
 
     class FakeLog:
         def mark_duplicate(self, fid, dup_of):
