@@ -274,7 +274,7 @@ jfox query "Luhmann's methodology" --depth 2
 | `jfox suggest-links "content"` | Suggest notes to link from content |
 | `jfox bulk-import notes.json` | Bulk import from JSON (optimized) |
 | `jfox ingest-log` | Import git commit history as notes |
-| `jfox show NOTE_ID` | View full note content in terminal |
+| `jfox show NOTE_ID` | View full note content (`--json` for structured fields) |
 
 ### Search & Analysis
 

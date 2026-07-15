@@ -1215,6 +1215,8 @@ def show(
     支持通过笔记 ID 或标题定位。
     """
     try:
+        # 归一化大小写：--format JSON 等价于 --format json
+        output_format = output_format.lower()
         # 向后兼容：如果指定了 --json，使用 json 格式
         if json_output:
             output_format = "json"

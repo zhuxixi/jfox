@@ -109,7 +109,7 @@ jfox status --json                  # 当前知识库状态
 ### 4.1 共享约定
 
 - 所有命令均支持 `--kb <name>` 指定目标知识库，省略时使用当前默认知识库
-- 大部分命令支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。**例外**：`jfox show` 仅输出原始 Markdown，无 JSON 模式
+- 大部分命令支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。`jfox show` 默认输出原始 Markdown，加 `--json` 输出结构化字段（content/content_body/tags/links/backlinks 等）
 - 长内容或含特殊字符时，使用 `--content-file <path>` 从文件读取；`--content-file -` 表示从 stdin 读取，可避免 shell 转义问题
 
 ### 4.2 添加笔记

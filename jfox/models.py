@@ -274,7 +274,7 @@ class Note:
             "links": self.links,
             "backlinks": self.backlinks,
             "topic": self.topic,
-            "path": str(self.filepath),
+            "filepath": str(self.filepath),
             "content": content,
             "content_body": content_body,
         }
@@ -283,17 +283,20 @@ class Note:
             d["source"] = self.source
         if self.archived:
             d["archived"] = self.archived
-        # candidate 专属字段
+        # candidate 生命周期字段（仅 type=CANDIDATE 时输出，字段集与 to_dict 一致）
         if self.type == NoteType.CANDIDATE:
             d["gem_level"] = self.gem_level or GemLevel.FLAWED.value
             if self.confidence is not None:
                 d["confidence"] = self.confidence
-            if self.source_fragments:
-                d["source_fragments"] = self.source_fragments
-            if self.grounded_by:
-                d["grounded_by"] = self.grounded_by
             if self.knowledge_type:
                 d["knowledge_type"] = self.knowledge_type
             if self.status:
                 d["status"] = self.status
+            if self.reject_reason:
+                d["reject_reason"] = self.reject_reason
+        # 溯源字段（跨类型输出，与 to_dict/to_markdown 保持一致）
+        if self.source_fragments:
+            d["source_fragments"] = self.source_fragments
+        if self.grounded_by:
+            d["grounded_by"] = self.grounded_by
         return d

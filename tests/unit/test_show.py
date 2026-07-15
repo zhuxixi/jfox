@@ -92,6 +92,8 @@ class TestShowCommand:
             type=NoteType.PERMANENT,
             created=datetime(2026, 4, 14, 12, 0, 0),
             updated=datetime(2026, 4, 14, 12, 0, 0),
+            source_fragments=[1, 2],  # 跨类型溯源
+            grounded_by=["202604141200009999"],  # 跨类型溯源
         )
         n.set_filepath(Path("/tmp/202604141200001234.md"))  # 固定路径，避免 config 依赖
         d = n.to_show_dict(raw_markdown=raw)
@@ -100,7 +102,10 @@ class TestShowCommand:
         assert d["type"] == "permanent"
         assert d["content"] == raw
         assert d["content_body"] == "# 测试\n\n正文内容"
-        assert d["path"] == "/tmp/202604141200001234.md"
+        assert d["filepath"] == "/tmp/202604141200001234.md"
+        # 溯源字段跨类型输出（permanent 也输出，与 to_dict 一致）
+        assert d["source_fragments"] == [1, 2]
+        assert d["grounded_by"] == ["202604141200009999"]
         # source 为 None / archived 为 False 时不输出
         assert "source" not in d
         assert "archived" not in d
@@ -122,6 +127,7 @@ class TestShowCommand:
             confidence=0.8,
             knowledge_type="factual",
             status="pending",
+            reject_reason="证据不足",
         )
         n.set_filepath(Path("/tmp/candidate.md"))  # 固定路径，避免 config 依赖
         d = n.to_show_dict()
@@ -129,6 +135,7 @@ class TestShowCommand:
         assert d["confidence"] == 0.8
         assert d["knowledge_type"] == "factual"
         assert d["status"] == "pending"
+        assert d["reject_reason"] == "证据不足"
 
     @patch("jfox.cli.note.load_note_by_id")
     @patch("jfox.cli.find_note_id_by_title_or_id")

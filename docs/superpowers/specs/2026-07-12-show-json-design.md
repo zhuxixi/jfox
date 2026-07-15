@@ -32,11 +32,12 @@ git stash commit `d2df418`（2026-06-23, "WIP: jfox show --json (issue #278)"）
 
 与 `to_markdown` 同级的新方法。返回结构化字典：
 
-- **基础字段**（所有类型）：`id`、`title`、`type`(`.value`)、`created`(`.isoformat()`)、`updated`(`.isoformat()`)、`tags`、`links`、`backlinks`、`topic`、`path`(`str(filepath)`)、`content`、`content_body`
+- **基础字段**（所有类型）：`id`、`title`、`type`(`.value`)、`created`(`.isoformat()`)、`updated`(`.isoformat()`)、`tags`、`links`、`backlinks`、`topic`、`filepath`(`str(filepath)`)、`content`、`content_body`
 - **`content`**：原始 Markdown（含 frontmatter）。优先用传入的 `raw_markdown`，未提供则 `to_markdown()` 重新生成。
 - **`content_body`**：去 frontmatter 的正文，用 `re.match(r"^---\n.*?\n---\n+(.*)", content, re.DOTALL)` 提取；无 frontmatter 时等于 `content`。
 - **可选字段**：`source`（非 None 时输出）、`archived`（True 时输出）。
-- **candidate 专属**（`type == NoteType.CANDIDATE`）：`gem_level`（默认 `GemLevel.FLAWED.value`）、`confidence`（非 None）、`source_fragments`（非空）、`grounded_by`（非空）、`knowledge_type`（非 None）、`status`（非 None）。
+- **candidate 专属**（`type == NoteType.CANDIDATE`，字段集与 `to_dict` 一致）：`gem_level`（默认 `GemLevel.FLAWED.value`）、`confidence`（非 None）、`knowledge_type`（非 None）、`status`（非 None）、`reject_reason`（非 None）。
+- **溯源字段**（跨类型输出，与 `to_dict`/`to_markdown` 一致）：`source_fragments`（非空）、`grounded_by`（非空）。
 
 **2. `jfox/cli.py` — `_show_impl(note_ref, output_format="markdown")`**
 
