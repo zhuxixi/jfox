@@ -38,7 +38,7 @@ uv tool install jfox-cli
 - 所有 `jfox` 命令都支持 `--kb <name>` 指定目标知识库；省略时使用当前默认知识库
 - 大部分命令支持 `--format json` 或 `--json` 输出 JSON，方便解析
 - 长内容或含特殊字符时，使用 `--content-file <path>` 从文件读取；`--content-file -` 表示从 stdin 读取
-- `jfox show <id_or_title>` 默认输出原始 Markdown，`--json` 输出结构化字段（content/content_body/tags/links 等）
+- `jfox show <id_or_title>` 默认输出原始 Markdown，`--json` 输出结构化字段（content/content_body/tags/links/backlinks 等）
 
 ## 常用命令速查
 
