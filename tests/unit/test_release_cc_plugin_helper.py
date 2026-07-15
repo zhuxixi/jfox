@@ -1,4 +1,5 @@
 """release_cc_plugin_helper.py 单元测试"""
+
 import importlib.util
 import json
 import os
