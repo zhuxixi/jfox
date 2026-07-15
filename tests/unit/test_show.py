@@ -102,7 +102,7 @@ class TestShowCommand:
         assert d["type"] == "permanent"
         assert d["content"] == raw
         assert d["content_body"] == "# 测试\n\n正文内容"
-        assert d["filepath"] == "/tmp/202604141200001234.md"
+        assert d["filepath"] == str(Path("/tmp/202604141200001234.md"))
         # 溯源字段跨类型输出（permanent 也输出，与 to_dict 一致）
         assert d["source_fragments"] == [1, 2]
         assert d["grounded_by"] == ["202604141200009999"]
