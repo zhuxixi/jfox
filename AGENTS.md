@@ -476,7 +476,7 @@ class OutputFormatter:
 
 - `pytest.ini` 的 `addopts` 已包含 `-v`，手动再加 `-v` 是冗余的
 - 测试目录重组已基本完成，根级 `test_config_unit.py` 和 `test_config_set_unit.py` 与 `tests/unit/` 中对应文件测试内容不同，不是重复
-- `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，只读输出完整 Markdown
+- `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，默认输出完整 Markdown（`--json` / `--format json` 输出结构化字段）
 
 ---
 

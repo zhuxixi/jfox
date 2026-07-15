@@ -248,3 +248,55 @@ class Note:
         if self.grounded_by:
             d["grounded_by"] = self.grounded_by
         return d
+
+    def to_show_dict(self, raw_markdown: Optional[str] = None) -> Dict[str, Any]:
+        """转换为 show --json 专用的完整字典。
+
+        Args:
+            raw_markdown: 笔记文件的完整原始 Markdown 内容（含 frontmatter）。
+                如果未提供，则使用 to_markdown() 重新生成。
+
+        Returns:
+            包含完整字段的字典，schema 与 Issue #278 一致。
+        """
+        content = raw_markdown if raw_markdown is not None else self.to_markdown()
+        # content_body: 去掉 frontmatter 后的 Markdown 主体
+        body_match = re.match(r"^---\n.*?\n---\n+(.*)", content, re.DOTALL)
+        content_body = body_match.group(1) if body_match else content
+
+        d: Dict[str, Any] = {
+            "id": self.id,
+            "title": self.title,
+            "type": self.type.value,
+            "created": self.created.isoformat(),
+            "updated": self.updated.isoformat(),
+            "tags": self.tags,
+            "links": self.links,
+            "backlinks": self.backlinks,
+            "topic": self.topic,
+            "filepath": str(self.filepath),
+            "content": content,
+            "content_body": content_body,
+        }
+        # 可选附加字段（与 to_markdown 一致）
+        if self.source:
+            d["source"] = self.source
+        if self.archived:
+            d["archived"] = self.archived
+        # candidate 生命周期字段（仅 type=CANDIDATE 时输出，字段集与 to_dict 一致）
+        if self.type == NoteType.CANDIDATE:
+            d["gem_level"] = self.gem_level or GemLevel.FLAWED.value
+            if self.confidence is not None:
+                d["confidence"] = self.confidence
+            if self.knowledge_type:
+                d["knowledge_type"] = self.knowledge_type
+            if self.status:
+                d["status"] = self.status
+            if self.reject_reason:
+                d["reject_reason"] = self.reject_reason
+        # 溯源字段（跨类型输出，与 to_dict/to_markdown 保持一致）
+        if self.source_fragments:
+            d["source_fragments"] = self.source_fragments
+        if self.grounded_by:
+            d["grounded_by"] = self.grounded_by
+        return d

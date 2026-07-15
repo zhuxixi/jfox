@@ -123,7 +123,7 @@ jfox candidates list --status pending --json        # 列出待审 candidate
 jfox candidates show <id> --json                    # 查看 candidate 详情
 jfox candidates promote <id>                        # 晋升为 permanent
 jfox candidates reject <id> --reason "<原因>"        # 拒绝并归档
-jfox show <id_or_title>                             # 查看 permanent 笔记全文（无 --json）
+jfox show <id_or_title>                             # 查看 permanent 笔记全文（--json 输出结构化字段）
 jfox suggest-links "<正文>" --json                  # 推荐 [[wiki links]] 候选
 jfox edit <candidate_id> --content-file updated.md  # 将改写后的正文写回 candidate
 ```

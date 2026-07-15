@@ -106,7 +106,7 @@ jfox status --json                  # 当前知识库状态
 ### 4.1 共享约定
 
 - 所有命令均支持 `--kb <name>` 指定目标知识库，省略时使用当前默认知识库
-- 大部分命令支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。**例外**：`jfox show` 仅输出原始 Markdown，无 JSON 模式
+- 大部分命令支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。`jfox show` 默认输出原始 Markdown，加 `--json` 输出结构化字段（content/content_body/tags/links/backlinks 等）
 - 长内容或含特殊字符时，使用 `--content-file <path>` 从文件读取；`--content-file -` 表示从 stdin 读取，可避免 shell 转义问题
 
 ### 4.2 添加笔记
@@ -162,7 +162,7 @@ jfox delete <note_id> --force       # 跳过确认
 ### 4.5 查看笔记
 
 ```bash
-jfox show <id_or_title>                         # 查看笔记完整内容（输出 Markdown，不支持 --json）
+jfox show <id_or_title>                         # 查看笔记完整内容（默认 Markdown；--json 输出结构化字段）
 jfox list --json --limit 50                     # 列出笔记
 jfox list --type permanent --json               # 按类型筛选
 jfox daily --json                               # 今天的笔记
@@ -340,7 +340,7 @@ jfox add --content-file <path> --title "<title>"                   # 从文件�
 jfox edit <id> --content "<new>" --title "<title>"                 # 编辑笔记
 jfox edit <id> --content-file <path>                               # 从文件编辑
 jfox delete <id> --force                                           # 删除笔记
-jfox show <id_or_title>                                            # 查看笔记完整内容（无 --json）
+jfox show <id_or_title>                                            # 查看笔记完整内容（--json 输出结构化字段）
 jfox list --json --limit <N>                                       # 列出笔记
 jfox daily --json                                                  # 今天的笔记
 jfox daily --date YYYY-MM-DD --json                                # 指定日期
