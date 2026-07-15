@@ -165,7 +165,7 @@ jfox delete <note_id> --force       # 跳过确认
 ### 4.5 查看笔记
 
 ```bash
-jfox show <id_or_title>                         # 查看笔记完整内容（输出 Markdown，不支持 --json）
+jfox show <id_or_title>                         # 查看笔记完整内容（默认 Markdown；--json 输出结构化字段）
 jfox list --json --limit 50                     # 列出笔记
 jfox list --type permanent --json               # 按类型筛选
 jfox daily --json                               # 今天的笔记
@@ -341,7 +341,7 @@ jfox add --content-file <path> --title "<title>"                   # 从文件�
 jfox edit <id> --content "<new>" --title "<title>"                 # 编辑笔记
 jfox edit <id> --content-file <path>                               # 从文件编辑
 jfox delete <id> --force                                           # 删除笔记
-jfox show <id_or_title>                                            # 查看笔记完整内容（无 --json）
+jfox show <id_or_title>                                            # 查看笔记完整内容（--json 输出结构化字段）
 jfox list --json --limit <N>                                       # 列出笔记
 jfox daily --json                                                  # 今天的笔记
 jfox daily --date YYYY-MM-DD --json                                # 指定日期
