@@ -164,3 +164,35 @@ def test_strip_leading_h1_only_first_leading():
     from jfox.gem_synth.synthesizer import _strip_leading_h1
 
     assert _strip_leading_h1("# A\n\n# B\n正文") == "# B\n正文"
+
+
+def test_save_candidate_note_strips_leading_h1_from_content():
+    """_save_candidate_note 把 LLM content 开头冗余 H1 剥掉，避免 to_markdown 双 H1。
+
+    mock _persist_note 捕获 Note 对象，断言其 content 不以 H1 开头
+    （title 已在 frontmatter，to_markdown 会前置 # title）。
+    """
+    from jfox.gem_synth.synthesizer import _save_candidate_note
+
+    llm_result = {
+        "title": "Vocable 客户端优先架构",
+        "content": "# Vocable 架构取向：本地打包词库\n\n正文：规避服务器查询成本",
+        "confidence": 0.7,
+        "knowledge_type": "factual",
+        "grounded_by": [],
+    }
+    anchor = {"fragment_id": 7, "session_id": "s1", "timestamp": "2026-07-17 00:00:00"}
+    captured = {}
+
+    def fake_persist(note):
+        captured["note"] = note
+
+    with patch("jfox.gem_synth.synthesizer._persist_note", side_effect=fake_persist):
+        note_id = _save_candidate_note(llm_result, anchor)
+
+    assert note_id is not None
+    # content 开头不再是 H1（被 strip），正文保留
+    assert not captured["note"].content.lstrip().startswith("# ")
+    assert "规避服务器查询成本" in captured["note"].content
+    # title 仍来自 frontmatter 字段，未被破坏
+    assert captured["note"].title == "Vocable 客户端优先架构"

@@ -75,7 +75,10 @@ def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> 
         # 时间戳 + 微秒，避免同秒碰撞（candidate 不进 note_index，14 位约定不适用）
         note_id = now.strftime("%Y%m%d%H%M%S") + "-" + now.strftime("%f")
         title = llm_result.get("title") or "未命名候选宝石"
-        content = llm_result.get("content") or ""
+        # 剥掉 LLM content 开头冗余 H1（title 已在 frontmatter、to_markdown 会前置），
+        # 消除 candidate 双 H1（#320）。dedup 仍用 synthesize_anchor 里的原始 content，
+        # 不受影响。
+        content = _strip_leading_h1(llm_result.get("content") or "")
 
         # 追加来源 / 基准 / 置信度元信息（便于 L5 审阅与溯源）
         # anchor['fragment_id']/['timestamp']/['session_id'] 在 try 内访问：
