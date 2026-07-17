@@ -48,15 +48,18 @@ _LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
 
 def _strip_leading_h1(content: str) -> str:
-    """剥掉 content 开头首个冗余 H1 行，消除 candidate 双 H1（#320）。
+    r"""剥掉 content 开头首个冗余 H1 行，消除 candidate 双 H1（#320）。
 
     title 已单独存 frontmatter、to_markdown 会前置 `# title`，故 LLM content 若以
     `# 标题` 开头即为冗余（双 H1 根因）。仅剥**首个** leading H1；正文内的 H1 分节
     （3+H1 场景，LLM 误用 H1 当分节）超出 #320 范围、留给 #319。
 
-    content 仅含单个 H1 时返回空串——_save_candidate_note 会追加来源/参考/置信度
-    章节，不会产出完全空的笔记（kimi R1：移除原回退，彻底消除该边界双 H1）。
-    `\n*` 覆盖无尾换行的 H1（如 content 恰为 `# 标题`）。
+    正则 `\A\s*# .+\n*` 比 Note.from_markdown（models.py:179 `^# .+\n+`）**故意放宽**
+    （cc R3-issue5）：`\s*` 吃掉 H1 前导空白行、`\n*` 覆盖无尾随换行的退化输出（如
+    content 恰为 `# 标题`）。合成侧需兜底 LLM 退化输出，故比解析侧（from_markdown
+    只处理规范落盘文件）更宽松，两者非严格对称。content 仅含单个 H1 时返回空串
+    （_save_candidate_note 会追加来源/置信度章节不会产出空笔记；kimi R1 移除原回退
+    以彻底消除该边界双 H1）。
     """
     return _LEADING_H1_RE.sub("", content, count=1)
 
