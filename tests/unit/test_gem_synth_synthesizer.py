@@ -167,17 +167,17 @@ def test_strip_leading_h1_only_first_leading():
     assert _strip_leading_h1("# A\n\n# B\n正文") == "# B\n正文"
 
 
-def test_save_candidate_note_strips_leading_h1_from_content():
-    """_save_candidate_note 把 LLM content 开头冗余 H1 剥掉，避免 to_markdown 双 H1。
+def test_save_candidate_note_uses_stripped_content():
+    """_save_candidate_note 透传 synthesize_anchor 入口已 strip 的 content 并拼章节。
 
-    mock _persist_note 捕获 Note 对象，断言其 content 不以 H1 开头
-    （title 已在 frontmatter，to_markdown 会前置 # title）。
+    strip 已上提到 synthesize_anchor 入口（cc R1：dedup/save/upsert 三处共用），此处
+    只验证 Note 构造与来源/置信度章节拼接。
     """
     from jfox.gem_synth.synthesizer import _save_candidate_note
 
     llm_result = {
         "title": "Vocable 客户端优先架构",
-        "content": "# Vocable 架构取向：本地打包词库\n\n正文：规避服务器查询成本",
+        "content": "正文：规避服务器查询成本",  # 已 strip（无 H1）
         "confidence": 0.7,
         "knowledge_type": "factual",
         "grounded_by": [],
@@ -192,8 +192,42 @@ def test_save_candidate_note_strips_leading_h1_from_content():
         note_id = _save_candidate_note(llm_result, anchor)
 
     assert note_id is not None
-    # content 开头不再是 H1（被 strip），正文保留
+    # content 透传（无 H1），正文保留
     assert not captured["note"].content.lstrip().startswith("# ")
     assert "规避服务器查询成本" in captured["note"].content
-    # title 仍来自 frontmatter 字段，未被破坏
+    # 拼了来源/置信度章节
+    assert "## 来源" in captured["note"].content
     assert captured["note"].title == "Vocable 客户端优先架构"
+
+
+def test_synthesize_anchor_normalizes_content_for_dedup_and_save(tmp_path):
+    """synthesize_anchor 入口 strip H1，dedup_check 与 _save_candidate_note 收到同一份
+    归一化 content（cc R1：口径一致，避免短正文近重复漏检）"""
+    log = SynthesisLog(db_path=tmp_path / "syn.db")
+    fake_llm = {"title": "T", "content": "# T\n\n短", "confidence": 0.5}
+    dedup_seen = []
+    save_seen = []
+
+    def cap_dedup(kb, content, threshold=None):
+        dedup_seen.append(content)
+        return None
+
+    def cap_save(llm_result, anchor):
+        save_seen.append(llm_result.get("content"))
+        return "nid"
+
+    with (
+        patch("jfox.gem_synth.synthesizer.extract_turn_around", return_value="ctx"),
+        patch("jfox.gem_synth.synthesizer.fetch_grounding", return_value=[]),
+        patch("jfox.gem_synth.synthesizer.synthesize_with_llm", return_value=fake_llm),
+        patch("jfox.gem_synth.synthesizer.dedup_check", side_effect=cap_dedup),
+        patch("jfox.gem_synth.synthesizer._save_candidate_note", side_effect=cap_save),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
+    ):
+        synthesize_anchor(
+            _anchor(50, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5, dedup_enabled=True)
+        )
+
+    # dedup 与 save 都收到 strip 后的 "短"（口径一致）
+    assert dedup_seen == ["短"]
+    assert save_seen == ["短"]
