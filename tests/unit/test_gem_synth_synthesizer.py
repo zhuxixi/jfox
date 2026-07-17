@@ -151,12 +151,13 @@ def test_strip_leading_h1_noop_without_h1():
     assert _strip_leading_h1("") == ""
 
 
-def test_strip_leading_h1_protects_all_h1_only():
-    """content 仅一个 H1、剥后会空 → 回退原值，避免产出空正文"""
+def test_strip_leading_h1_only_h1_yields_empty():
+    """content 仅一个 H1、无正文 → 返回空串（_save_candidate_note 会追加来源/置信度
+    章节不会产出空笔记；移除回退以彻底消除该边界双 H1，kimi R1）"""
     from jfox.gem_synth.synthesizer import _strip_leading_h1
 
-    assert _strip_leading_h1("# 只有一个标题\n") == "# 只有一个标题\n"
-    assert _strip_leading_h1("# 只有一个标题") == "# 只有一个标题"  # 无尾换行：正则本就不匹配
+    assert _strip_leading_h1("# 只有一个标题\n") == ""
+    assert _strip_leading_h1("# 只有一个标题") == ""  # 无尾换行：\n* 覆盖
 
 
 def test_strip_leading_h1_only_first_leading():

@@ -44,7 +44,7 @@ def _coerce_grounded_by(value) -> list:
 # content 开头冗余 H1 的正则：串首 \A + 可能有前导空白行 + `# 文本` + 紧随换行（含空行）。
 # 复用 Note.from_markdown（models.py:179 `re.sub(r"^# .+\n+", ..., count=1)`）剥首个
 # H1 的语义，保持合成写入与解析读写的对称。
-_LEADING_H1_RE = re.compile(r"\A\s*# .+\n+")
+_LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
 
 def _strip_leading_h1(content: str) -> str:
@@ -54,10 +54,11 @@ def _strip_leading_h1(content: str) -> str:
     `# 标题` 开头即为冗余（双 H1 根因）。仅剥**首个** leading H1；正文内的 H1 分节
     （3+H1 场景，LLM 误用 H1 当分节）超出 #320 范围、留给 #319。
 
-    保护：剥后若 content 为空（整段只是一个 H1），回退原值，避免产出空正文笔记。
+    content 仅含单个 H1 时返回空串——_save_candidate_note 会追加来源/参考/置信度
+    章节，不会产出完全空的笔记（kimi R1：移除原回退，彻底消除该边界双 H1）。
+    `\n*` 覆盖无尾换行的 H1（如 content 恰为 `# 标题`）。
     """
-    stripped = _LEADING_H1_RE.sub("", content, count=1)
-    return stripped if stripped.strip() else content
+    return _LEADING_H1_RE.sub("", content, count=1)
 
 
 def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> Optional[str]:
