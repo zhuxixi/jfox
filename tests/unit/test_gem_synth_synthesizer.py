@@ -131,3 +131,126 @@ def test_synthesize_handles_non_numeric_confidence(tmp_path):
     assert _safe_float(0.85) == 0.85
     assert _safe_float(None) == 0.0
     assert _safe_float("0.9") == 0.9
+
+
+def test_strip_leading_h1_strips_title_duplicate():
+    """content 以冗余 H1 开头（title 已在 frontmatter）→ 剥掉，剩正文"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("# 标题\n\n正文") == "正文"
+    assert _strip_leading_h1("# 标题\n正文") == "正文"  # H1 后无空行
+    assert _strip_leading_h1("\n\n# 标题\n\n正文") == "正文"  # 前导空白行
+
+
+def test_strip_leading_h1_noop_without_h1():
+    """content 不以 H1 开头 → 原样返回"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("正文无 H1") == "正文无 H1"
+    assert _strip_leading_h1("## 二级标题\n正文") == "## 二级标题\n正文"  # H2 不动
+    assert _strip_leading_h1("") == ""
+
+
+def test_strip_leading_h1_only_h1_yields_empty():
+    """content 仅一个 H1、无正文 → 返回空串（_save_candidate_note 会追加来源/置信度
+    章节不会产出空笔记；移除回退以彻底消除该边界双 H1，kimi R1）"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("# 只有一个标题\n") == ""
+    assert _strip_leading_h1("# 只有一个标题") == ""  # 无尾换行：\n* 覆盖
+
+
+def test_strip_leading_h1_only_first_leading():
+    """只剥开头首个 H1；正文内后续 H1（3+H1 场景）保留——后者归 #319"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("# A\n\n# B\n正文") == "# B\n正文"
+
+
+def test_save_candidate_note_strips_leading_h1_when_called_directly():
+    """_save_candidate_note 自守：即便独立调用（不经 synthesize_anchor 入口归一化），
+    也 strip 开头冗余 H1（cc R2-issue2 防御）。幂等——入口已 strip 时此处无 H1 不变。"""
+    from jfox.gem_synth.synthesizer import _save_candidate_note
+
+    llm_result = {
+        "title": "Vocable 客户端优先架构",
+        "content": "# Vocable 架构取向：本地打包词库\n\n正文：规避服务器查询成本",
+        "confidence": 0.7,
+        "knowledge_type": "factual",
+        "grounded_by": [],
+    }
+    anchor = {"fragment_id": 7, "session_id": "s1", "timestamp": "2026-07-17 00:00:00"}
+    captured = {}
+
+    def fake_persist(note):
+        captured["note"] = note
+
+    with patch("jfox.gem_synth.synthesizer._persist_note", side_effect=fake_persist):
+        note_id = _save_candidate_note(llm_result, anchor)
+
+    assert note_id is not None
+    # content 透传（无 H1），正文保留
+    assert not captured["note"].content.lstrip().startswith("# ")
+    assert "规避服务器查询成本" in captured["note"].content
+    # 拼了来源/置信度章节
+    assert "## 来源" in captured["note"].content
+    assert captured["note"].title == "Vocable 客户端优先架构"
+
+
+def test_synthesize_anchor_strips_content_for_dedup(tmp_path):
+    """synthesize_anchor 入口 strip H1，dedup_check 收到归一化 content（cc R1 口径一致）。
+    不改 llm_result 原对象（cc R2-issue3：避免 LLM 层缓存/复用副作用），用局部 content。"""
+    log = SynthesisLog(db_path=tmp_path / "syn.db")
+    fake_llm = {"title": "T", "content": "# T\n\n短", "confidence": 0.5}
+    dedup_seen = []
+
+    def cap_dedup(kb, content, threshold=None):
+        dedup_seen.append(content)
+        return None
+
+    with (
+        patch("jfox.gem_synth.synthesizer.extract_turn_around", return_value="ctx"),
+        patch("jfox.gem_synth.synthesizer.fetch_grounding", return_value=[]),
+        patch("jfox.gem_synth.synthesizer.synthesize_with_llm", return_value=fake_llm),
+        patch("jfox.gem_synth.synthesizer.dedup_check", side_effect=cap_dedup),
+        patch("jfox.gem_synth.synthesizer._save_candidate_note", return_value="nid"),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
+    ):
+        synthesize_anchor(
+            _anchor(50, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5, dedup_enabled=True)
+        )
+
+    # dedup 收到 strip 后的 "短"
+    assert dedup_seen == ["短"]
+
+
+def test_synthesize_anchor_marks_failed_when_content_only_h1(tmp_path):
+    """content 仅 H1（LLM 退化输出）strip 后空 → mark_failed，不落盘（kimi R2：避免
+    无知识 candidate 进 L5 审阅队列，与 'llm synthesis failed' 路径对称）"""
+    log = SynthesisLog(db_path=tmp_path / "syn.db")
+    fake_llm = {"title": "T", "content": "# 仅标题", "confidence": 0.3}
+    save_calls = []
+
+    def cap_save(llm_result, anchor):
+        save_calls.append(1)
+        return "nid"
+
+    with (
+        patch("jfox.gem_synth.synthesizer.extract_turn_around", return_value="ctx"),
+        patch("jfox.gem_synth.synthesizer.fetch_grounding", return_value=[]),
+        patch("jfox.gem_synth.synthesizer.synthesize_with_llm", return_value=fake_llm),
+        patch("jfox.gem_synth.synthesizer.dedup_check", return_value=None),
+        patch("jfox.gem_synth.synthesizer._save_candidate_note", side_effect=cap_save),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
+    ):
+        result = synthesize_anchor(
+            _anchor(51, tmp_path), log=log, cfg=MagicMock(grounding_top_k=5, dedup_enabled=True)
+        )
+
+    assert result is None  # mark_failed
+    assert save_calls == []  # 没落盘
+    assert log.is_processed(51) is True
+    failed = log.list_failed()
+    assert any(
+        f["anchor_fragment_id"] == 51 and "empty" in f["fail_reason"].lower() for f in failed
+    )

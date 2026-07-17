@@ -6,6 +6,7 @@ synthesize_anchor；本模块只负责"一个锚点 -> 一条 candidate"的单�
 """
 
 import logging
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -40,6 +41,29 @@ def _coerce_grounded_by(value) -> list:
     return []
 
 
+# content 开头冗余 H1 的正则：串首 \A + 前导空白 \s* + `# 文本` + 尾随换行 \n*。
+# 比 Note.from_markdown（models.py:179 `^# .+\n+`）故意放宽（合成侧兜底 LLM 退化输出：
+# 前导空白行、无尾换行 H1），非严格对称——详见 _strip_leading_h1 docstring（cc R3-issue5）。
+_LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
+
+
+def _strip_leading_h1(content: str) -> str:
+    r"""剥掉 content 开头首个冗余 H1 行，消除 candidate 双 H1（#320）。
+
+    title 已单独存 frontmatter、to_markdown 会前置 `# title`，故 LLM content 若以
+    `# 标题` 开头即为冗余（双 H1 根因）。仅剥**首个** leading H1；正文内的 H1 分节
+    （3+H1 场景，LLM 误用 H1 当分节）超出 #320 范围、留给 #319。
+
+    正则 `\A\s*# .+\n*` 比 Note.from_markdown（models.py:179 `^# .+\n+`）**故意放宽**
+    （cc R3-issue5）：`\s*` 吃掉 H1 前导空白行、`\n*` 覆盖无尾随换行的退化输出（如
+    content 恰为 `# 标题`）。合成侧需兜底 LLM 退化输出，故比解析侧（from_markdown
+    只处理规范落盘文件）更宽松，两者非严格对称。content 仅含单个 H1 时返回空串
+    （_save_candidate_note 会追加来源/置信度章节不会产出空笔记；kimi R1 移除原回退
+    以彻底消除该边界双 H1）。
+    """
+    return _LEADING_H1_RE.sub("", content, count=1)
+
+
 def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> Optional[str]:
     """把 LLM 结果存成 candidate 笔记，返回 note id。失败返回 None。
 
@@ -55,7 +79,9 @@ def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> 
         # 时间戳 + 微秒，避免同秒碰撞（candidate 不进 note_index，14 位约定不适用）
         note_id = now.strftime("%Y%m%d%H%M%S") + "-" + now.strftime("%f")
         title = llm_result.get("title") or "未命名候选宝石"
-        content = llm_result.get("content") or ""
+        # 自守 strip：即便被独立调用（不经 synthesize_anchor 入口归一化）也消除开头冗余 H1
+        # （cc R2-issue2 防御）。幂等——synthesize_anchor 入口已 strip 时此处无 H1 不变
+        content = _strip_leading_h1(llm_result.get("content") or "")
 
         # 追加来源 / 基准 / 置信度元信息（便于 L5 审阅与溯源）
         # anchor['fragment_id']/['timestamp']/['session_id'] 在 try 内访问：
@@ -150,6 +176,18 @@ def synthesize_anchor(
         log.mark_failed(anchor["fragment_id"], "llm synthesis failed")
         return None
 
+    # 入口统一 strip 开头冗余 H1（cc R1：口径一致，避免短正文近重复漏检）。用局部 content，
+    # 不改 llm_result 原对象（cc R2-issue3：避免 LLM 层缓存/复用结果对象时的副作用）。
+    content = _strip_leading_h1(llm_result.get("content") or "")
+    # LLM 退化输出（content 仅 H1、无正文）strip 后为空 → mark_failed，不落盘无知识
+    # candidate（kimi R2：与 'llm synthesis failed' 路径对称，避免退化进 L5 审阅队列）
+    if not content.strip():
+        logger.info(
+            "锚点 #%s content strip 后为空（LLM 退化输出），mark_failed", anchor["fragment_id"]
+        )
+        log.mark_failed(anchor["fragment_id"], "empty content after h1 strip")
+        return None
+
     # 存盘前去重：命中则不存盘、记 duplicate，锚点算处理完（不重试）
     # target_kb=None 表示用 default；解析成具体 KB 名（dedup_embeddings.kb 是
     # NOT NULL，且 None 会让 dedup_check 的 WHERE kb=? 匹配 0 行→永远检不到重复）
@@ -157,7 +195,7 @@ def synthesize_anchor(
     if getattr(cfg, "dedup_enabled", True):
         dup_of = dedup_check(
             kb_name,
-            llm_result.get("content") or "",
+            content,
             threshold=getattr(cfg, "dedup_threshold", 0.88),
         )
         if dup_of:
@@ -173,7 +211,7 @@ def synthesize_anchor(
     # 存盘成功 → 入 dedup 库（供后续锚点查重）；dedup 关闭时跳过
     # （spec §11：dedup_enabled=False 完全关闭回到原行为，不为每条 candidate 算 embedding 灌库）
     if getattr(cfg, "dedup_enabled", True):
-        upsert_dedup(kb_name, note_id, "candidate", llm_result.get("content") or "")
+        upsert_dedup(kb_name, note_id, "candidate", content)
 
     log.mark_processed(anchor_fragment_id=anchor["fragment_id"], candidate_note_id=note_id)
     return {
