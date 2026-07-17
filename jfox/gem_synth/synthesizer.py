@@ -76,8 +76,9 @@ def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> 
         # 时间戳 + 微秒，避免同秒碰撞（candidate 不进 note_index，14 位约定不适用）
         note_id = now.strftime("%Y%m%d%H%M%S") + "-" + now.strftime("%f")
         title = llm_result.get("title") or "未命名候选宝石"
-        # content 已在 synthesize_anchor 入口统一 strip 开头冗余 H1（dedup/save/upsert 共用）
-        content = llm_result.get("content") or ""
+        # 自守 strip：即便被独立调用（不经 synthesize_anchor 入口归一化）也消除开头冗余 H1
+        # （cc R2-issue2 防御）。幂等——synthesize_anchor 入口已 strip 时此处无 H1 不变
+        content = _strip_leading_h1(llm_result.get("content") or "")
 
         # 追加来源 / 基准 / 置信度元信息（便于 L5 审阅与溯源）
         # anchor['fragment_id']/['timestamp']/['session_id'] 在 try 内访问：
@@ -172,10 +173,17 @@ def synthesize_anchor(
         log.mark_failed(anchor["fragment_id"], "llm synthesis failed")
         return None
 
-    # 入口统一 strip 开头冗余 H1：dedup_check / _save_candidate_note / upsert_dedup 三处
-    # 共用同一份归一化 content，避免 dedup 按原始 content（含 H1）算 embedding、与落盘
-    # strip 后 content 口径不一致，致短正文近重复漏检（#320 cc R1）
-    llm_result["content"] = _strip_leading_h1(llm_result.get("content") or "")
+    # 入口统一 strip 开头冗余 H1（cc R1：口径一致，避免短正文近重复漏检）。用局部 content，
+    # 不改 llm_result 原对象（cc R2-issue3：避免 LLM 层缓存/复用结果对象时的副作用）。
+    content = _strip_leading_h1(llm_result.get("content") or "")
+    # LLM 退化输出（content 仅 H1、无正文）strip 后为空 → mark_failed，不落盘无知识
+    # candidate（kimi R2：与 'llm synthesis failed' 路径对称，避免退化进 L5 审阅队列）
+    if not content.strip():
+        logger.info(
+            "锚点 #%s content strip 后为空（LLM 退化输出），mark_failed", anchor["fragment_id"]
+        )
+        log.mark_failed(anchor["fragment_id"], "empty content after h1 strip")
+        return None
 
     # 存盘前去重：命中则不存盘、记 duplicate，锚点算处理完（不重试）
     # target_kb=None 表示用 default；解析成具体 KB 名（dedup_embeddings.kb 是
@@ -184,7 +192,7 @@ def synthesize_anchor(
     if getattr(cfg, "dedup_enabled", True):
         dup_of = dedup_check(
             kb_name,
-            llm_result.get("content") or "",
+            content,
             threshold=getattr(cfg, "dedup_threshold", 0.88),
         )
         if dup_of:
@@ -200,7 +208,7 @@ def synthesize_anchor(
     # 存盘成功 → 入 dedup 库（供后续锚点查重）；dedup 关闭时跳过
     # （spec §11：dedup_enabled=False 完全关闭回到原行为，不为每条 candidate 算 embedding 灌库）
     if getattr(cfg, "dedup_enabled", True):
-        upsert_dedup(kb_name, note_id, "candidate", llm_result.get("content") or "")
+        upsert_dedup(kb_name, note_id, "candidate", content)
 
     log.mark_processed(anchor_fragment_id=anchor["fragment_id"], candidate_note_id=note_id)
     return {
