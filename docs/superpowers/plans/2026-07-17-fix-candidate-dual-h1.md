@@ -251,3 +251,16 @@ Expected: 无报错
 2. **占位符扫描**：所有 step 含完整代码/命令/expected，无 TBD。✅
 3. **类型一致**：Task 1 定义 `_strip_leading_h1(content: str) -> str`，Task 2 接入调用同名同签名；`_LEADING_H1_RE` 仅 Task 1 定义一次。✅
 4. **回归面**：dedup 用原始 content 的隔离由 Task 3 Step 2 显式验证；既有编排测试 mock 了 `_save_candidate_note` 故不受 Task 2 内部改动影响（Task 3 Step 1 再确认）。✅
+
+---
+
+## 实现演进记录（Zima 双 Bot CR 反馈驱动，覆盖上方初始设计）
+
+初始计划（上方 Task 1-3）在 CR 迭代中如下调整。**以代码 + 本记录为准**，Task 描述保留作历史快照：
+
+- **正则 `\n+` → `\n*`**（kimi R1 + cc R3-issue5）：覆盖无尾随换行的退化 H1。模块级注释 + docstring 已明确「比 `from_markdown` 故意放宽、非严格对称」（合成侧兜底 LLM 退化输出 vs 解析侧只处理规范文件）。
+- **dedup 策略：原始 content → strip 后 content**（cc R1）：`synthesize_anchor` 入口统一 strip，`dedup_check` / `_save_candidate_note` / `upsert_dedup` 三处共用。**推翻 Task 3 Step 2「dedup 用原始 content」的隔离假设**——原假设致 dedup/save 口径不一致、短正文近重复漏检。**跨版本 tradeoff**（存量 dedup embedding 基于原始 content）归 #319 `dedup-backfill` 重灌，不在本 PR（cc R3-issue4 acknowledged）。
+- **`_strip_leading_h1` 移除回退**（kimi R1）：content 仅 H1 时返回空串（不会产出空笔记，`_save_candidate_note` 追加章节）。
+- **空 content → mark_failed**（kimi R2）：入口 strip 后 content 为空（LLM 退化）则 `mark_failed('empty content after h1 strip')`，不落盘无知识 candidate。
+- **`_save_candidate_note` 自守 strip**（cc R2-issue2）：恢复内部 `_strip_leading_h1`（幂等，独立调用也安全）。
+- **不改 `llm_result` dict**（cc R2-issue3）：`synthesize_anchor` 用局部 `content` 变量，避免 LLM 层缓存/复用结果对象的副作用。

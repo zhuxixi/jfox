@@ -41,9 +41,9 @@ def _coerce_grounded_by(value) -> list:
     return []
 
 
-# content 开头冗余 H1 的正则：串首 \A + 可能有前导空白行 + `# 文本` + 紧随换行（含空行）。
-# 复用 Note.from_markdown（models.py:179 `re.sub(r"^# .+\n+", ..., count=1)`）剥首个
-# H1 的语义，保持合成写入与解析读写的对称。
+# content 开头冗余 H1 的正则：串首 \A + 前导空白 \s* + `# 文本` + 尾随换行 \n*。
+# 比 Note.from_markdown（models.py:179 `^# .+\n+`）故意放宽（合成侧兜底 LLM 退化输出：
+# 前导空白行、无尾换行 H1），非严格对称——详见 _strip_leading_h1 docstring（cc R3-issue5）。
 _LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
 
