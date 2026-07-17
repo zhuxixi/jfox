@@ -12,6 +12,7 @@ cc-plugin release 辅助脚本
     python release_cc_plugin_helper.py 0.6.0          # 指定版本
     python release_cc_plugin_helper.py ... --dry-run  # 只计算不修改文件
 """
+
 import argparse
 import json
 import re
@@ -35,6 +36,10 @@ def output_error(msg: str) -> None:
     sys.exit(1)
 
 
+def _version_tuple(v: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in v.split("."))
+
+
 def read_current_version(root: Path) -> str:
     """从 plugin.json 读当前版本号（单一真相源）。"""
     data = json.loads((root / PLUGIN_JSON_REL).read_text(encoding="utf-8"))
@@ -42,23 +47,28 @@ def read_current_version(root: Path) -> str:
 
 
 def compute_new_version(current: str, spec: str) -> str:
-    """patch/minor/major 递增，或 explicit x.y.z 直传。非法 raise ValueError。"""
+    """patch/minor/major 递增或 explicit x.y.z；结果必须 > current，否则 raise ValueError。"""
     if not VERSION_RE.match(current):
         raise ValueError(f"非法当前版本号: {current!r}")
     if spec in ("patch", "minor", "major"):
-        major, minor, patch = (int(x) for x in current.split("."))
+        major, minor, patch = _version_tuple(current)
         if spec == "patch":
-            return f"{major}.{minor}.{patch + 1}"
-        if spec == "minor":
-            return f"{major}.{minor + 1}.0"
-        return f"{major + 1}.0.0"
-    if not VERSION_RE.match(spec):
+            new = f"{major}.{minor}.{patch + 1}"
+        elif spec == "minor":
+            new = f"{major}.{minor + 1}.0"
+        else:
+            new = f"{major + 1}.0.0"
+    elif VERSION_RE.match(spec):
+        new = spec
+    else:
         raise ValueError(f"非法版本号规格: {spec!r}（需 patch/minor/major 或 x.y.z）")
-    return spec
+    if _version_tuple(new) <= _version_tuple(current):
+        raise ValueError(f"新版本 {new} 须大于当前 {current}（不允许降级/同号）")
+    return new
 
 
 def find_last_bump_commit(root: Path, current_version: str) -> str | None:
-    """定位上次发版提交：引入 current_version 字符串的提交；降级为最近改 marketplace.json 的提交。"""
+    """定位上次发版提交：引入 current_version 的提交；降级为最近改 marketplace.json 的提交。"""
     rel = MARKETPLACE_JSON_REL
     for args in (
         ["git", "log", "-S", f'"version": "{current_version}"', "--format=%H", "--", rel],
@@ -66,7 +76,13 @@ def find_last_bump_commit(root: Path, current_version: str) -> str | None:
     ):
         try:
             out = subprocess.run(
-                args, cwd=root, capture_output=True, text=True, check=True
+                args,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=True,
             )
         except subprocess.CalledProcessError:
             continue
@@ -77,15 +93,21 @@ def find_last_bump_commit(root: Path, current_version: str) -> str | None:
 
 
 def get_changelog(root: Path, current_version: str) -> list[str]:
-    """自上次发版以来 packages/cc-plugin/ 的 oneline 提交摘要。"""
+    """自上次发版以来 packages/cc-plugin/ 的 oneline 提交摘要；无基线时取最近 30 条。"""
     last = find_last_bump_commit(root, current_version)
-    rng = f"{last}..HEAD" if last else "HEAD~30..HEAD"
+    if last:
+        args = ["git", "log", "--oneline", f"{last}..HEAD", "--", "packages/cc-plugin/"]
+    else:
+        # 无基线：用 --max-count 避免 HEAD~30 在浅克隆/小仓报 bad revision
+        args = ["git", "log", "--oneline", "--max-count=30", "--", "packages/cc-plugin/"]
     try:
         out = subprocess.run(
-            ["git", "log", "--oneline", rng, "--", "packages/cc-plugin/"],
+            args,
             cwd=root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
     except subprocess.CalledProcessError:
@@ -106,29 +128,52 @@ def assert_versions(root: Path, expected: str) -> None:
         raise AssertionError(f"写后版本号校验失败: 期望 {expected}，实际 {actuals}")
 
 
+def _read_raw(path: Path) -> str:
+    """读原始文本（不做换行转换），保留文件原换行。"""
+    return path.read_bytes().decode("utf-8")
+
+
+def _write_raw(path: Path, text: str) -> None:
+    """写文本，newline='' 避免 Windows 把 LF 转 CRLF 污染 diff。"""
+    path.write_text(text, encoding="utf-8", newline="")
+
+
 def bump_version_files(root: Path, old: str, new: str) -> list[str]:
-    """原子 bump 三处版本号。返回改动文件相对路径列表。任一命中数不符则不写并 raise ValueError。"""
+    """原子 bump 三处版本号：计数预校验 + 落盘失败回滚已写文件 + 写后断言。"""
     targets = [
         (root / PLUGIN_JSON_REL, 1),
         (root / MARKETPLACE_JSON_REL, 2),
     ]
     needle = f'"version": "{old}"'
     replacement = f'"version": "{new}"'
-    pending = []  # (path, new_text, rel)
+    # 预校验：读原文 + 计数，全过才准备落盘
+    pending = []  # (path, original_text, new_text, rel)
     for path, expected_count in targets:
-        text = path.read_text(encoding="utf-8")
-        count = text.count(needle)
+        original = _read_raw(path)
+        count = original.count(needle)
         if count != expected_count:
             raise ValueError(
                 f"{path.relative_to(root)} 命中 {count} 次（期望 {expected_count}），"
                 f"版本号 {old}。中止，未写任何文件。"
             )
-        pending.append((path, text.replace(needle, replacement), path.relative_to(root)))
-    # 全部计数校验通过才落盘
-    for path, new_text, _ in pending:
-        path.write_text(new_text, encoding="utf-8")
+        pending.append(
+            (path, original, original.replace(needle, replacement), path.relative_to(root))
+        )
+    # 落盘：任一写失败则回滚已写文件（尽力，堵 CLAUDE.md 版本不一致坑）
+    written: list[tuple[Path, str]] = []
+    try:
+        for path, original, new_text, _ in pending:
+            _write_raw(path, new_text)
+            written.append((path, original))
+    except Exception:
+        for path, original in written:
+            try:
+                _write_raw(path, original)
+            except OSError:
+                pass  # 回滚失败只能尽力而为
+        raise
     assert_versions(root, new)  # 写后兜底断言
-    return [str(rel) for _, _, rel in pending]
+    return [str(rel) for _, _, _, rel in pending]
 
 
 def main() -> None:
@@ -139,7 +184,7 @@ def main() -> None:
 
     try:
         current = read_current_version(PROJECT_ROOT)
-    except Exception as e:
+    except (json.JSONDecodeError, KeyError, FileNotFoundError, PermissionError, OSError) as e:
         output_error(f"读取当前版本失败: {e}")  # output_error 会 sys.exit(1)
 
     try:
@@ -162,7 +207,14 @@ def main() -> None:
 
     try:
         changed = bump_version_files(PROJECT_ROOT, current, new)
-    except (ValueError, AssertionError) as e:
+    except (
+        ValueError,
+        AssertionError,
+        KeyError,
+        IndexError,
+        OSError,
+        json.JSONDecodeError,
+    ) as e:
         output_error(str(e))
 
     output_json(

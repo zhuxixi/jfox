@@ -52,6 +52,8 @@ def _load_helper_module():
 
 
 class TestDryRun:
+    """dry-run：版本号计算与输出契约。"""
+
     def test_current_version_is_semver(self):
         stdout, _, rc = _run_helper("patch", "--dry-run")
         assert rc == 0, f"stderr: {_}"
@@ -96,6 +98,8 @@ class TestDryRun:
 
 
 class TestValidation:
+    """非法输入与版本护栏校验。"""
+
     def test_invalid_bump_type(self):
         stdout, _, rc = _run_helper("foobar", "--dry-run")
         assert rc != 0
@@ -106,11 +110,29 @@ class TestValidation:
         assert rc != 0
         assert "error" in _parse_json(stdout)
 
+    def test_explicit_downgrade_rejected(self):
+        """explicit 版本低于当前应被拒（不允许降级）"""
+        cur = _parse_json(_run_helper("patch", "--dry-run")[0])["current_version"]
+        parts = [int(x) for x in cur.split(".")]
+        lower = f"{parts[0]}.{parts[1]}.{max(0, parts[2] - 1)}"
+        stdout, _, rc = _run_helper(lower, "--dry-run")
+        assert rc != 0
+        assert "error" in _parse_json(stdout)
+
+    def test_same_version_rejected(self):
+        """explicit 版本等于当前应被拒（不允许同号）"""
+        cur = _parse_json(_run_helper("patch", "--dry-run")[0])["current_version"]
+        stdout, _, rc = _run_helper(cur, "--dry-run")
+        assert rc != 0
+        assert "error" in _parse_json(stdout)
+
 
 # ── changelog：解析 git log（mock subprocess）──
 
 
 class TestChangelog:
+    """changelog 解析（mock git log）。"""
+
     def test_get_changelog_parses_git_log(self, tmp_path):
         mod = _load_helper_module()
         fake = MagicMock(stdout="abc1234 feat: x\ndef5678 fix: y\n", returncode=0)
@@ -146,6 +168,8 @@ def _setup_repo(tmp_path: Path, plugin_ver="0.5.1", market_versions=("0.5.1", "0
 
 
 class TestBumpFiles:
+    """bump 三字段 + 原子性/回滚（tmp 隔离）。"""
+
     def test_bump_all_three(self, tmp_path):
         mod = _load_helper_module()
         plugin, market = _setup_repo(tmp_path)
@@ -169,4 +193,23 @@ class TestBumpFiles:
         with pytest.raises(ValueError):
             mod.bump_version_files(tmp_path, "0.5.1", "0.6.0")
         # plugin.json 未被改动
+        assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "0.5.1"
+
+    def test_rollback_on_write_failure(self, tmp_path):
+        """第二个文件写失败时，已写的第一个文件应回滚到原值（事务性）"""
+        mod = _load_helper_module()
+        plugin, market = _setup_repo(tmp_path)
+        real_write = Path.write_text
+        state = {"n": 0}
+
+        def fake_write(self, data, **kw):
+            state["n"] += 1
+            if state["n"] == 2:  # 第二次写 = marketplace
+                raise OSError("disk full (mock)")
+            return real_write(self, data, **kw)
+
+        with patch.object(Path, "write_text", fake_write):
+            with pytest.raises(OSError):
+                mod.bump_version_files(tmp_path, "0.5.1", "0.6.0")
+        # plugin.json（先写的）应已回滚到 0.5.1
         assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "0.5.1"

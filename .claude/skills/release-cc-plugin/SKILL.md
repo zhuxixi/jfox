@@ -83,7 +83,7 @@ git push -u origin chore/bump-cc-plugin-{new_version}
 ### Step 6: 开 PR
 
 ```bash
-gh pr create --title "chore(cc-plugin): bump version {current} → {new}" --body "<changelog>"
+gh pr create --title "chore(cc-plugin): bump version {current_version} → {new_version}" --body "<changelog>"
 ```
 
 PR body 用 `changelog_summary` 作 release notes，并注明「合 main 后 `/plugin update` 自动拉新，无需 tag/PyPI」。
