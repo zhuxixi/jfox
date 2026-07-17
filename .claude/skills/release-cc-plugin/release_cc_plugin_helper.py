@@ -159,12 +159,13 @@ def bump_version_files(root: Path, old: str, new: str) -> list[str]:
         pending.append(
             (path, original, original.replace(needle, replacement), path.relative_to(root))
         )
-    # 落盘：任一写失败则回滚已写文件（尽力，堵 CLAUDE.md 版本不一致坑）
+    # 落盘：先记账再写，任一写/断言失败则回滚已写文件（尽力，堵 CLAUDE.md 版本不一致坑）
     written: list[tuple[Path, str]] = []
     try:
         for path, original, new_text, _ in pending:
+            written.append((path, original))  # 先记账：写中途失败也回滚此文件
             _write_raw(path, new_text)
-            written.append((path, original))
+        assert_versions(root, new)  # 写后兜底断言；失败也走回滚
     except Exception:
         for path, original in written:
             try:
@@ -172,7 +173,6 @@ def bump_version_files(root: Path, old: str, new: str) -> list[str]:
             except OSError:
                 pass  # 回滚失败只能尽力而为
         raise
-    assert_versions(root, new)  # 写后兜底断言
     return [str(rel) for _, _, _, rel in pending]
 
 
@@ -184,7 +184,14 @@ def main() -> None:
 
     try:
         current = read_current_version(PROJECT_ROOT)
-    except (json.JSONDecodeError, KeyError, FileNotFoundError, PermissionError, OSError) as e:
+    except (
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+        KeyError,
+        FileNotFoundError,
+        PermissionError,
+        OSError,
+    ) as e:
         output_error(f"读取当前版本失败: {e}")  # output_error 会 sys.exit(1)
 
     try:
