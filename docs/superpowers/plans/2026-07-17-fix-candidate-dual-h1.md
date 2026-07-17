@@ -4,7 +4,7 @@
 
 **Goal:** gem-synth candidate 笔记落盘前剥掉 content 开头冗余 H1，消除「to_markdown 前置 `# title` + LLM content 自带 `# 标题`」导致的双 H1（#320）。
 
-**Architecture:** 在 `jfox/gem_synth/synthesizer.py` 新增模块级纯函数 `_strip_leading_h1(content)`，复用 `Note.from_markdown`（`models.py:179`）剥首个 H1 的正则语义以保持读写对称；在 `_save_candidate_note`（`synthesizer.py:58`）取到 LLM content 后调用一次。**不动 `to_markdown`**（所有笔记类型共用）、**不影响 dedup**（`synthesize_anchor` 第 160/176 行用原始 `llm_result.get("content")`，strip 仅作用于 `_save_candidate_note` 内局部变量，天然隔离）。
+**Architecture:** 在 `jfox/gem_synth/synthesizer.py` 新增模块级纯函数 `_strip_leading_h1(content)`，剥掉 content 开头首个冗余 H1（正则 `\A\s*# .+\n*`，比 `Note.from_markdown` 故意放宽以兜底 LLM 退化输出，非严格对称）。`synthesize_anchor` 入口调用一次，`dedup_check` / `_save_candidate_note` / `upsert_dedup` 三处共用同一份 strip 后 content；`_save_candidate_note` 另保留幂等自守 strip。**不动 `to_markdown`**（所有笔记类型共用）。CR 驱动的演进（dedup 口径、正则放宽、空 content mark_failed 等）见文末「实现演进记录」，**以其 + 代码为准**（Task 1-3 描述保留作初始设计历史快照）。
 
 **Tech Stack:** Python ≥ 3.10，pytest，Typer。无新依赖。
 
