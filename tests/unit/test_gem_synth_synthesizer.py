@@ -131,3 +131,36 @@ def test_synthesize_handles_non_numeric_confidence(tmp_path):
     assert _safe_float(0.85) == 0.85
     assert _safe_float(None) == 0.0
     assert _safe_float("0.9") == 0.9
+
+
+def test_strip_leading_h1_strips_title_duplicate():
+    """content 以冗余 H1 开头（title 已在 frontmatter）→ 剥掉，剩正文"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("# 标题\n\n正文") == "正文"
+    assert _strip_leading_h1("# 标题\n正文") == "正文"  # H1 后无空行
+    assert _strip_leading_h1("\n\n# 标题\n\n正文") == "正文"  # 前导空白行
+
+
+def test_strip_leading_h1_noop_without_h1():
+    """content 不以 H1 开头 → 原样返回"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("正文无 H1") == "正文无 H1"
+    assert _strip_leading_h1("## 二级标题\n正文") == "## 二级标题\n正文"  # H2 不动
+    assert _strip_leading_h1("") == ""
+
+
+def test_strip_leading_h1_protects_all_h1_only():
+    """content 仅一个 H1、剥后会空 → 回退原值，避免产出空正文"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("# 只有一个标题\n") == "# 只有一个标题\n"
+    assert _strip_leading_h1("# 只有一个标题") == "# 只有一个标题"  # 无尾换行：正则本就不匹配
+
+
+def test_strip_leading_h1_only_first_leading():
+    """只剥开头首个 H1；正文内后续 H1（3+H1 场景）保留——后者归 #319"""
+    from jfox.gem_synth.synthesizer import _strip_leading_h1
+
+    assert _strip_leading_h1("# A\n\n# B\n正文") == "# B\n正文"

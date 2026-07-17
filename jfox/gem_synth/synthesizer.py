@@ -6,6 +6,7 @@ synthesize_anchor；本模块只负责"一个锚点 -> 一条 candidate"的单�
 """
 
 import logging
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,25 @@ def _coerce_grounded_by(value) -> list:
     if value:
         return [value]
     return []
+
+
+# content 开头冗余 H1 的正则：串首 \A + 可能有前导空白行 + `# 文本` + 紧随换行（含空行）。
+# 复用 Note.from_markdown（models.py:179 `re.sub(r"^# .+\n+", ..., count=1)`）剥首个
+# H1 的语义，保持合成写入与解析读写的对称。
+_LEADING_H1_RE = re.compile(r"\A\s*# .+\n+")
+
+
+def _strip_leading_h1(content: str) -> str:
+    """剥掉 content 开头首个冗余 H1 行，消除 candidate 双 H1（#320）。
+
+    title 已单独存 frontmatter、to_markdown 会前置 `# title`，故 LLM content 若以
+    `# 标题` 开头即为冗余（双 H1 根因）。仅剥**首个** leading H1；正文内的 H1 分节
+    （3+H1 场景，LLM 误用 H1 当分节）超出 #320 范围、留给 #319。
+
+    保护：剥后若 content 为空（整段只是一个 H1），回退原值，避免产出空正文笔记。
+    """
+    stripped = _LEADING_H1_RE.sub("", content, count=1)
+    return stripped if stripped.strip() else content
 
 
 def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> Optional[str]:
