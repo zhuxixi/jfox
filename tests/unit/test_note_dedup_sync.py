@@ -24,6 +24,15 @@ def _mock_backend(monkeypatch, mock_embedding_backend, temp_kb):
 
     monkeypatch.setattr(embedding_backend, "get_backend", lambda: mock_embedding_backend)
 
+    # 注册 gem_synth 生命周期订阅：生产由 jfox/__init__ 模块级自动 register（任何
+    # import jfox.* 触发）；但 tests/unit/conftest.py autouse 每测 clear
+    # _LIFECYCLE_HOOKS 做隔离，故这里显式 register 确保本测运行时订阅就位，
+    # 使 note.delete_note/archive_note/promote_note/reject_note 的 _dispatch
+    # 路由到 dedup 同步回调。
+    from jfox.gem_synth.lifecycle import register as _register_gem_synth_lifecycle
+
+    _register_gem_synth_lifecycle()
+
     original = (config.base_dir, config.notes_dir, config.zk_dir, config.chroma_dir)
     config.base_dir = temp_kb
     config.notes_dir = temp_kb / "notes"
@@ -33,6 +42,11 @@ def _mock_backend(monkeypatch, mock_embedding_backend, temp_kb):
         yield
     finally:
         config.base_dir, config.notes_dir, config.zk_dir, config.chroma_dir = original
+        # 清空 register() 注册的全局生命周期钩子，防泄漏到其他测试（register 写入
+        # 模块级 _LIFECYCLE_HOOKS，不随 fixture 结束自动回收）。
+        from jfox.note import _LIFECYCLE_HOOKS
+
+        _LIFECYCLE_HOOKS.clear()
 
 
 def _now():
