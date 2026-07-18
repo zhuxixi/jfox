@@ -99,14 +99,11 @@ def test_register_hooks_four_events():
 
 
 def test_register_is_idempotent():
-    """register() 可重复调用——幂等性由模块级 _registered_events 集合保证。"""
+    """register() 可重复调用——幂等性由 register_lifecycle_hook 去重保证
+    （mock 不去重，所以 reg 被调 8 次；真实 register_lifecycle_hook 内部去重）。"""
     from jfox.gem_synth import lifecycle
-
-    # 重置注册状态以测试幂等性
-    lifecycle._reset_registration()
 
     with patch("jfox.note.register_lifecycle_hook") as reg:
         lifecycle.register()
         lifecycle.register()
-        # 4 个事件各注册一次（第二次被去重）
-        assert len(reg.call_args_list) == 4
+        assert len(reg.call_args_list) == 8

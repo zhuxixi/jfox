@@ -69,24 +69,14 @@ _HOOKS = {
     "post_reject": _on_rejected,
 }
 
-_registered_events: set[str] = set()
-
 
 def register() -> None:
     """把 dedup 生命周期回调注册到 note.py。
 
-    幂等——重复调用安全（模块级 _registered_events 集合防重复注册）。
+    幂等——register_lifecycle_hook 对同一 callback 去重，重复调用安全。
     由 jfox.cli 模块级调用一次，保证所有 CLI 命令路径订阅就位。
     """
     from ..note import register_lifecycle_hook  # lazy：避免顶层 import 循环
 
     for event, cb in _HOOKS.items():
-        if event not in _registered_events:
-            register_lifecycle_hook(event, cb)
-            _registered_events.add(event)
-
-
-def _reset_registration() -> None:
-    """清空注册状态（仅供测试使用）。"""
-    global _registered_events
-    _registered_events = set()
+        register_lifecycle_hook(event, cb)
