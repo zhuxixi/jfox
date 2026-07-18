@@ -7,6 +7,11 @@ post_delete/archive/promote/reject 事件，本模块订阅并复刻原 dedup �
 类型守卫（仅 candidate/permanent 有 dedup 行）下移到本模块：note.py 无条件广播，
 本模块按 note_type 早返回，避免给 fleeting/literature/session 实例化 DedupStore
 （防未启用 gem-synth 用户产生 synthesis_log.db 污染）。
+
+dedup 函数延迟到回调体内 import：cli.py 模块级 import 本模块只挂回调引用，
+不触发 dedup→numpy eager 加载——否则每次 jfox 命令（含 --version/search/kb list
+等不碰 dedup 的命令）都付 ~70-100ms numpy 启动开销（PR 前是 note.py 函数内 lazy
+import，只在 delete/archive/promote/reject 时加载）。
 """
 
 from __future__ import annotations
@@ -14,28 +19,30 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import NoteType
-from .dedup import (
-    _resolve_kb_name,
-    delete_dedup,
-    release_blocked_anchors,
-    update_dedup_type,
-)
 
 # 仅 candidate/permanent 有 dedup 行；其它类型早返回避免实例化 store
 _DEDUP_TYPES = (NoteType.CANDIDATE, NoteType.PERMANENT)
 
 
-def _on_deleted(note_id: str, note_type: NoteType, **_: Any) -> None:
-    """硬删 candidate/permanent：删 dedup 行 + 释放被该笔记阻断的锚点。
+def _remove_dedup_and_release(note_id: str) -> None:
+    """删 dedup 行 + 释放被阻断锚点（deleted/archived/rejected 共用）。
 
-    残留 dedup 行会让未来 candidate 永久命中已删笔记；被阻断锚点不释放则知识
-    永久丢失。失败由 note._dispatch 兜底 warning，不阻塞主流程。
+    dedup 延迟 import 到此函数体内：避免 cli.py 启动经 lifecycle→dedup eager 加载 numpy。
+    残留 dedup 行会让未来 candidate 永久命中已删笔记；被阻断锚点不释放则知识永久丢失。
+    失败由 note._dispatch 兜底 warning，不阻塞主流程。
     """
-    if note_type not in _DEDUP_TYPES:
-        return
+    from .dedup import _resolve_kb_name, delete_dedup, release_blocked_anchors
+
     kb = _resolve_kb_name(None)
     delete_dedup(kb, note_id)
     release_blocked_anchors(note_id)
+
+
+def _on_deleted(note_id: str, note_type: NoteType, **_: Any) -> None:
+    """硬删 candidate/permanent：删 dedup 行 + 释放被阻断锚点。"""
+    if note_type not in _DEDUP_TYPES:
+        return
+    _remove_dedup_and_release(note_id)
 
 
 def _on_archived(note_id: str, note_type: NoteType, **_: Any) -> None:
@@ -47,6 +54,8 @@ def _on_promoted(note_id: str, note_type: NoteType, **_: Any) -> None:
     """candidate → permanent：dedup 表 note_type 改 permanent（仍占位防重复合成）。"""
     if note_type not in _DEDUP_TYPES:
         return
+    from .dedup import _resolve_kb_name, update_dedup_type
+
     update_dedup_type(_resolve_kb_name(None), note_id, "permanent")
 
 
@@ -54,9 +63,7 @@ def _on_rejected(note_id: str, note_type: NoteType, **_: Any) -> None:
     """reject candidate：删 dedup 行 + 释放锚点（让该事实可被未来重新合成）。"""
     if note_type not in _DEDUP_TYPES:
         return
-    kb = _resolve_kb_name(None)
-    delete_dedup(kb, note_id)
-    release_blocked_anchors(note_id)
+    _remove_dedup_and_release(note_id)
 
 
 _HOOKS = {

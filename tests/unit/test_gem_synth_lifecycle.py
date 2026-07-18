@@ -13,9 +13,9 @@ def test_on_deleted_candidate_deletes_and_releases():
     from jfox.gem_synth.lifecycle import _on_deleted
 
     with (
-        patch("jfox.gem_synth.lifecycle.delete_dedup") as dd,
-        patch("jfox.gem_synth.lifecycle.release_blocked_anchors") as rba,
-        patch("jfox.gem_synth.lifecycle._resolve_kb_name", return_value="kb1"),
+        patch("jfox.gem_synth.dedup.delete_dedup") as dd,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+        patch("jfox.gem_synth.dedup._resolve_kb_name", return_value="kb1"),
     ):
         _on_deleted(note_id="n1", note_type=NoteType.CANDIDATE)
         dd.assert_called_once_with("kb1", "n1")
@@ -27,9 +27,9 @@ def test_on_deleted_permanent_also_syncs():
     from jfox.gem_synth.lifecycle import _on_deleted
 
     with (
-        patch("jfox.gem_synth.lifecycle.delete_dedup") as dd,
-        patch("jfox.gem_synth.lifecycle.release_blocked_anchors") as rba,
-        patch("jfox.gem_synth.lifecycle._resolve_kb_name", return_value="kb1"),
+        patch("jfox.gem_synth.dedup.delete_dedup") as dd,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+        patch("jfox.gem_synth.dedup._resolve_kb_name", return_value="kb1"),
     ):
         _on_deleted(note_id="n1", note_type=NoteType.PERMANENT)
         dd.assert_called_once_with("kb1", "n1")
@@ -41,9 +41,9 @@ def test_on_deleted_fleeting_skips_early():
     from jfox.gem_synth.lifecycle import _on_deleted
 
     with (
-        patch("jfox.gem_synth.lifecycle.delete_dedup") as dd,
-        patch("jfox.gem_synth.lifecycle.release_blocked_anchors") as rba,
-        patch("jfox.gem_synth.lifecycle._resolve_kb_name") as rkn,
+        patch("jfox.gem_synth.dedup.delete_dedup") as dd,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+        patch("jfox.gem_synth.dedup._resolve_kb_name") as rkn,
     ):
         _on_deleted(note_id="n1", note_type=NoteType.FLEETING)
         dd.assert_not_called()
@@ -55,9 +55,9 @@ def test_on_archived_reuses_deleted_logic():
     from jfox.gem_synth import lifecycle
 
     with (
-        patch("jfox.gem_synth.lifecycle.delete_dedup") as dd,
-        patch("jfox.gem_synth.lifecycle.release_blocked_anchors") as rba,
-        patch("jfox.gem_synth.lifecycle._resolve_kb_name", return_value="kb1"),
+        patch("jfox.gem_synth.dedup.delete_dedup") as dd,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+        patch("jfox.gem_synth.dedup._resolve_kb_name", return_value="kb1"),
     ):
         lifecycle._on_archived(note_id="n1", note_type=NoteType.CANDIDATE)
         dd.assert_called_once_with("kb1", "n1")
@@ -68,8 +68,8 @@ def test_on_promoted_updates_type_to_permanent():
     from jfox.gem_synth.lifecycle import _on_promoted
 
     with (
-        patch("jfox.gem_synth.lifecycle.update_dedup_type") as udt,
-        patch("jfox.gem_synth.lifecycle._resolve_kb_name", return_value="kb1"),
+        patch("jfox.gem_synth.dedup.update_dedup_type") as udt,
+        patch("jfox.gem_synth.dedup._resolve_kb_name", return_value="kb1"),
     ):
         _on_promoted(note_id="n1", note_type=NoteType.PERMANENT)
         udt.assert_called_once_with("kb1", "n1", "permanent")
@@ -79,9 +79,9 @@ def test_on_rejected_deletes_and_releases():
     from jfox.gem_synth.lifecycle import _on_rejected
 
     with (
-        patch("jfox.gem_synth.lifecycle.delete_dedup") as dd,
-        patch("jfox.gem_synth.lifecycle.release_blocked_anchors") as rba,
-        patch("jfox.gem_synth.lifecycle._resolve_kb_name", return_value="kb1"),
+        patch("jfox.gem_synth.dedup.delete_dedup") as dd,
+        patch("jfox.gem_synth.dedup.release_blocked_anchors") as rba,
+        patch("jfox.gem_synth.dedup._resolve_kb_name", return_value="kb1"),
     ):
         _on_rejected(note_id="n1", note_type=NoteType.CANDIDATE)
         dd.assert_called_once_with("kb1", "n1")
