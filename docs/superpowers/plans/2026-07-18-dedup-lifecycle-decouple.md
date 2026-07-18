@@ -6,6 +6,8 @@
 
 **Architecture:** `note.py` 新增轻量生命周期注册表，在 delete/archive/promote/reject 末尾广播 `post_*` 事件（携带 `note_id` + `note_type`）；新文件 `jfox/gem_synth/lifecycle.py` 订阅这些事件，复刻原 dedup 同步逻辑（类型守卫下移到订阅器）；`cli.py` 模块级调用 `register()` 确保所有 CLI 路径订阅就位。
 
+> **演进声明（2026-07-19）**：本 plan 为 2026-07-18 实施前的**设计快照**。实施期间经 zima CR 多轮 fix，代码已演进：numpy 改回调内 lazy import 避免 eager 启动开销（`d821088`）、test fixture 加 teardown `_LIFECYCLE_HOOKS.clear()` 防泄漏 + 测试 patch 目标 `lifecycle.*`→`dedup.*`（`c7403de`/`cc5591d`）。**plan 内各 Task 的代码块为初始设计版本，与最终合入代码存在上述 CR 驱动的差异，属预期演进而非文档缺陷**。最终实现以 PR #322 的 `jfox/gem_synth/lifecycle.py` 等实际代码为准；请勿把 plan 代码块作为代码一致性的审查基准。
+
 **Tech Stack:** Python ≥ 3.10，pytest，无新依赖。
 
 **Spec:** `docs/superpowers/specs/2026-07-18-dedup-lifecycle-decouple-design.md`
