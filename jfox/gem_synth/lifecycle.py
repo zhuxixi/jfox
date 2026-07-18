@@ -8,7 +8,7 @@ post_delete/archive/promote/reject 事件，本模块订阅并复刻原 dedup �
 本模块按 note_type 早返回，避免给 fleeting/literature/session 实例化 DedupStore
 （防未启用 gem-synth 用户产生 synthesis_log.db 污染）。
 
-dedup 函数延迟到回调体内 import：cli.py 模块级 import 本模块只挂回调引用，
+dedup 函数延迟到回调体内 import：jfox 包 __init__ import 本模块只挂回调引用，
 不触发 dedup→numpy eager 加载——否则每次 jfox 命令（含 --version/search/kb list
 等不碰 dedup 的命令）都付 ~70-100ms numpy 启动开销（PR 前是 note.py 函数内 lazy
 import，只在 delete/archive/promote/reject 时加载）。
@@ -27,7 +27,7 @@ _DEDUP_TYPES = (NoteType.CANDIDATE, NoteType.PERMANENT)
 def _remove_dedup_and_release(note_id: str) -> None:
     """删 dedup 行 + 释放被阻断锚点（deleted/archived/rejected 共用）。
 
-    dedup 延迟 import 到此函数体内：避免 cli.py 启动经 lifecycle→dedup eager 加载 numpy。
+    dedup 延迟 import 到此函数体内：避免包 import 经 lifecycle→dedup eager 加载 numpy。
     残留 dedup 行会让未来 candidate 永久命中已删笔记；被阻断锚点不释放则知识永久丢失。
     失败由 note._dispatch 兜底 warning，不阻塞主流程。
     """
@@ -78,7 +78,7 @@ def register() -> None:
     """把 dedup 生命周期回调注册到 note.py。
 
     幂等——register_lifecycle_hook 对同一 callback 去重，重复调用安全。
-    由 jfox.cli 模块级调用一次，保证所有 CLI 命令路径订阅就位。
+    由 jfox 包 __init__ 调用一次（任何 import jfox.* 都触发），CLI 与库式调用方订阅都就位。
     """
     from ..note import register_lifecycle_hook  # lazy：避免顶层 import 循环
 
