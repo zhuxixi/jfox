@@ -24,9 +24,11 @@ def _mock_backend(monkeypatch, mock_embedding_backend, temp_kb):
 
     monkeypatch.setattr(embedding_backend, "get_backend", lambda: mock_embedding_backend)
 
-    # 注册 gem_synth 生命周期订阅（生产代码由 jfox/__init__ 模块级触发；测试不走包 import，
-    # 这里显式 register，使 note.delete_note/archive_note/promote_note/reject_note
-    # 的 _dispatch 能路由到 dedup 同步回调）。
+    # 注册 gem_synth 生命周期订阅：生产由 jfox/__init__ 模块级自动 register（任何
+    # import jfox.* 触发）；但 tests/unit/conftest.py autouse 每测 clear
+    # _LIFECYCLE_HOOKS 做隔离，故这里显式 register 确保本测运行时订阅就位，
+    # 使 note.delete_note/archive_note/promote_note/reject_note 的 _dispatch
+    # 路由到 dedup 同步回调。
     from jfox.gem_synth.lifecycle import register as _register_gem_synth_lifecycle
 
     _register_gem_synth_lifecycle()

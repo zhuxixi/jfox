@@ -73,7 +73,7 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 - `__init__` 是包顶层，任何 `import jfox.*`（CLI、库式 `from jfox.note import ...`、daemon/脚本）都触发包加载 → 订阅就位，无隐式调用顺序耦合。
 - `__init__ → gem_synth` 是包顶层依赖，合规（验收只禁 `note.py`/`global_config.py` 反向依赖）。
 - daemon 进程（gem-synth loop）入口本就 import `gem_synth`，由其 import 链覆盖（writing-plans 阶段 grep 确认 daemon 入口触发 register，必要时在 daemon 启动显式调）。
-- 测试不走 cli.py，在 `test_note_dedup_sync` 的 `_mock_backend` fixture 内显式调 `register()`（teardown 清空 `_LIFECYCLE_HOOKS` 防泄漏）；`test_note_lifecycle_hooks` / `test_gem_synth_lifecycle` 各自隔离测注册表与订阅器。
+- 测试经 `jfox/__init__` 自动 register（`import jfox.*` 即触发），但 `tests/unit/conftest.py` autouse 每测清空 `_LIFECYCLE_HOOKS` 做隔离；`test_note_dedup_sync` 的 `_mock_backend` fixture 显式调 `register()` 确保测试运行时订阅就位。`test_note_lifecycle_hooks` / `test_gem_synth_lifecycle` 各自隔离测注册表与订阅器。
 
 ## 4. 文件变动
 
