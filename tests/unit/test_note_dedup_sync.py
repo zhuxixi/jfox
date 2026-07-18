@@ -40,6 +40,11 @@ def _mock_backend(monkeypatch, mock_embedding_backend, temp_kb):
         yield
     finally:
         config.base_dir, config.notes_dir, config.zk_dir, config.chroma_dir = original
+        # 清空 register() 注册的全局生命周期钩子，防泄漏到其他测试（register 写入
+        # 模块级 _LIFECYCLE_HOOKS，不随 fixture 结束自动回收）。
+        from jfox.note import _LIFECYCLE_HOOKS
+
+        _LIFECYCLE_HOOKS.clear()
 
 
 def _now():

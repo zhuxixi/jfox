@@ -316,15 +316,14 @@ def test_register_hooks_four_events():
         assert events == {"post_delete", "post_archive", "post_promote", "post_reject"}
 
 
-def test_register_is_idempotent():
-    """register() 可重复调用——幂等性由 register_lifecycle_hook 去重保证。"""
+def test_register_calls_four_hooks_each_invocation():
+    """register() 每次调用注册 4 个事件回调（mock 不去重 → 2 次调用 = 8 次 register_lifecycle_hook）；真正幂等性由 register_lifecycle_hook 去重保证，见 test_note_lifecycle_hooks.py。"""
     from jfox.gem_synth import lifecycle
 
     with patch("jfox.note.register_lifecycle_hook") as reg:
         lifecycle.register()
         lifecycle.register()
-        # 4 个事件各注册一次（第二次被去重）
-        assert len(reg.call_args_list) == 4
+        assert len(reg.call_args_list) == 8
 ```
 
 - [ ] **Step 2: 跑测试确认失败**

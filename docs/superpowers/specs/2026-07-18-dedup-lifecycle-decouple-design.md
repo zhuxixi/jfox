@@ -41,11 +41,12 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 
 ### 3.1 note.py 注册表（新，零 gem_synth 依赖）
 
-`note.py` 加模块级注册表 + 两个 API：
+`note.py` 加模块级注册表 + 三个 API：
 - `register_lifecycle_hook(event: str, callback: Callable) -> None`（幂等：重复注册同一 callback 不叠加）
+- `unregister_lifecycle_hook(event: str, callback: Callable) -> None`（取消注册，主要用于测试清理）
 - `_dispatch(event: str, **payload) -> None`：遍历该 event 的回调，每个独立 `try/except logger.warning`（保持现有「dedup 同步失败仅 warning 不阻塞」语义）
 
-事件：`post_delete` / `post_archive` / `post_promote` / `post_reject`。payload：`note_id: str` + `note_type: str`。
+事件：`post_delete` / `post_archive` / `post_promote` / `post_reject`。payload：`note_id: str` + `note_type: NoteType`（枚举，由 `note.type` 传入）。
 
 `note.py` 4 处 lazy import 块替换为 `_dispatch("post_xxx", note_id=..., note_type=...)`。**无条件触发**（类型守卫下移到订阅器，§3.3）。
 
@@ -72,7 +73,7 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 - `cli.py` 是顶层入口，所有 `jfox xxx` 命令（含核心 `jfox delete/archive`）都 import `cli.py` → 执行前订阅已就位。
 - `cli.py → gem_synth` 是顶层依赖，合规（验收只禁 `note.py`/`global_config.py` 反向依赖）。
 - daemon 进程（gem-synth loop）入口本就 import `gem_synth`，由其 import 链覆盖（writing-plans 阶段 grep 确认 daemon 入口触发 register，必要时在 daemon 启动显式调）。
-- 测试经 conftest autouse 或 `import gem_synth.lifecycle` 触发注册。
+- 测试不走 cli.py，在 `test_note_dedup_sync` 的 `_mock_backend` fixture 内显式调 `register()`（teardown 清空 `_LIFECYCLE_HOOKS` 防泄漏）；`test_note_lifecycle_hooks` / `test_gem_synth_lifecycle` 各自隔离测注册表与订阅器。
 
 ## 4. 文件变动
 
