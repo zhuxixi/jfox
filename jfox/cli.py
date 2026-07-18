@@ -36,7 +36,6 @@ from rich.tree import Tree
 
 from . import __version__, note
 from .config import config
-
 from .kb_manager import get_kb_manager
 from .models import NoteType
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
