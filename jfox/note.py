@@ -14,6 +14,44 @@ from .models import Note, NoteType
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# 笔记生命周期事件注册表
+#
+# 核心存储层只"广播"生命周期事件（delete/archive/promote/reject），不主动调用
+# 任何特性层。特性层（如 gem_synth 的 dedup 维护）通过 register_lifecycle_hook
+# 订阅，依赖方向保持 特性 → 存储 单向（分层约束见 CLAUDE.md『Core Data Flow』）。
+# ---------------------------------------------------------------------------
+_LIFECYCLE_HOOKS: Dict[str, List[Any]] = {}
+
+
+def register_lifecycle_hook(event: str, callback: Any) -> None:
+    """注册笔记生命周期回调（幂等：同一 callback 重复注册不叠加）。
+
+    Args:
+        event: 事件名，约定 post_delete / post_archive / post_promote / post_reject
+        callback: 回调，签名 callback(note_id=<str>, note_type=<NoteType>, **payload)
+    """
+    cbs = _LIFECYCLE_HOOKS.setdefault(event, [])
+    if callback not in cbs:
+        cbs.append(callback)
+
+
+def unregister_lifecycle_hook(event: str, callback: Any) -> None:
+    """取消注册（主要用于测试清理）。"""
+    cbs = _LIFECYCLE_HOOKS.get(event, [])
+    if callback in cbs:
+        cbs.remove(callback)
+
+
+def _dispatch(event: str, **payload: Any) -> None:
+    """触发某事件的全部回调。单个回调抛异常仅 warning，不影响其他回调，
+    也不向调用方抛（与原 'dedup 同步失败不阻塞主流程' 语义一致）。"""
+    for cb in list(_LIFECYCLE_HOOKS.get(event, [])):
+        try:
+            cb(**payload)
+        except Exception as e:  # noqa: BLE001 — 订阅器故障不得阻塞存储主流程
+            logger.warning("lifecycle hook %s 失败 %r: %s", event, cb, e)
+
 
 def generate_id() -> str:
     """
