@@ -36,10 +36,18 @@ from rich.tree import Tree
 
 from . import __version__, note
 from .config import config
+
+# 注册 gem_synth dedup 生命周期订阅：note.py 广播 post_delete/archive/promote/reject
+# 事件，gem_synth 订阅同步 dedup 表。放 cli.py 顶层——所有 jfox 命令都 import 本
+# 模块，保证命令执行前订阅就位（核心 delete/archive 也覆盖）。分层约束：note.py
+# 不依赖 gem_synth，反向通知由本顶层入口接线。
+from .gem_synth.lifecycle import register as _register_gem_synth_lifecycle
 from .kb_manager import get_kb_manager
 from .models import NoteType
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
 from .template_cli import template_app
+
+_register_gem_synth_lifecycle()
 
 # 配置日志
 logging.basicConfig(
