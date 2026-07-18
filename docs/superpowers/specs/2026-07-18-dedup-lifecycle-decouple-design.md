@@ -69,9 +69,9 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 
 ### 3.4 注册时机（关键设计点）
 
-`gem_synth.lifecycle.register()` 由 **`jfox/cli.py` 模块级**调用一次。理由：
-- `cli.py` 是顶层入口，所有 `jfox xxx` 命令（含核心 `jfox delete/archive`）都 import `cli.py` → 执行前订阅已就位。
-- `cli.py → gem_synth` 是顶层依赖，合规（验收只禁 `note.py`/`global_config.py` 反向依赖）。
+`gem_synth.lifecycle.register()` 由 **`jfox/__init__.py` 模块级**调用一次（实施期 cc 审查驱动从 cli.py 上移，覆盖库式调用方）。理由：
+- `__init__` 是包顶层，任何 `import jfox.*`（CLI、库式 `from jfox.note import ...`、daemon/脚本）都触发包加载 → 订阅就位，无隐式调用顺序耦合。
+- `__init__ → gem_synth` 是包顶层依赖，合规（验收只禁 `note.py`/`global_config.py` 反向依赖）。
 - daemon 进程（gem-synth loop）入口本就 import `gem_synth`，由其 import 链覆盖（writing-plans 阶段 grep 确认 daemon 入口触发 register，必要时在 daemon 启动显式调）。
 - 测试不走 cli.py，在 `test_note_dedup_sync` 的 `_mock_backend` fixture 内显式调 `register()`（teardown 清空 `_LIFECYCLE_HOOKS` 防泄漏）；`test_note_lifecycle_hooks` / `test_gem_synth_lifecycle` 各自隔离测注册表与订阅器。
 
@@ -81,7 +81,7 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 |---|---|
 | `jfox/note.py` | 新增注册表 + `register_lifecycle_hook`/`_dispatch` API；4 处 lazy import → `_dispatch`；删 `gem_synth` import |
 | `jfox/gem_synth/lifecycle.py`（新）| 4 回调 + `register()`，复刻 dedup 同步逻辑 |
-| `jfox/cli.py` | 模块级调 `gem_synth.lifecycle.register()`（顶层 import，合规）|
+| `jfox/__init__.py` | 模块级调 `gem_synth.lifecycle.register()`（包顶层接线，CLI + 库式调用方都覆盖；实施期从 cli.py 上移）|
 | `jfox/gem_synth/dedup.py` | 无变动（API 不变，仍被 `lifecycle.py` 调）|
 | `jfox/global_config.py` | 无变动（本就干净，KB-rename 不修）|
 
@@ -96,7 +96,7 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 
 1. `note.py`：注册表 + `register`/`_dispatch` API（先不接旧调用点）
 2. `gem_synth/lifecycle.py`：4 回调 + `register()`
-3. `cli.py`：模块级调 `register()`
+3. `jfox/__init__.py`：模块级调 `register()`
 4. `note.py`：4 处 lazy import 块替换为 `_dispatch`（一次性切，删 `gem_synth` import）
 5. 重构 `test_note_dedup_sync` + 新增 2 个单测文件
 6. grep 确认 `note.py`/`global_config.py` 零 `gem_synth` import
@@ -114,6 +114,6 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 
 ## 8. 风险 / 回退
 
-- **注册时机遗漏**：某入口调 note 生命周期函数但未触发 `register()` → dedup 不同步。缓解：`cli.py` 模块级 register 覆盖所有 CLI；daemon 由其 import 链覆盖（writing-plans grep 核实）；测试显式 register。grep 守卫 + 集成验证。
+- **注册时机遗漏**：某入口调 note 生命周期函数但未触发 `register()` → dedup 不同步。缓解：`jfox/__init__.py` 模块级 register 覆盖任何 `import jfox.*`（CLI + 库式调用方）；daemon 由其 import 链覆盖；测试显式 register。grep 守卫 + 集成验证。
 - **行为回归**：复刻逻辑时漏掉守卫/顺序（如 archive 须 `update_note` 成功后才同步）。缓解：`test_note_dedup_sync` 行为断言逐条保留；type guard 下移后 fleeting-skip 语义单测。
 - **回退**：纯重构，revert PR 即恢复 lazy import。`dedup_embeddings` 数据不动。
