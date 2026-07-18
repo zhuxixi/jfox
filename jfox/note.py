@@ -44,13 +44,21 @@ def unregister_lifecycle_hook(event: str, callback: Any) -> None:
 
 
 def _dispatch(event: str, **payload: Any) -> None:
-    """触发某事件的全部回调。单个回调抛异常仅 warning，不影响其他回调，
-    也不向调用方抛（与原 'dedup 同步失败不阻塞主流程' 语义一致）。"""
+    """触发某事件的全部回调。单个回调抛异常仅 warning（含 note_id + 回调名，
+    便于定位具体笔记），不影响其他回调，也不向调用方抛（与原 'dedup 同步
+    失败不阻塞主流程' 语义一致）。"""
+    note_id = payload.get("note_id")
     for cb in list(_LIFECYCLE_HOOKS.get(event, [])):
         try:
             cb(**payload)
         except Exception as e:  # noqa: BLE001 — 订阅器故障不得阻塞存储主流程
-            logger.warning("lifecycle hook %s 失败 %r: %s", event, cb, e)
+            logger.warning(
+                "lifecycle hook %s 失败 cb=%s note=%s: %s",
+                event,
+                getattr(cb, "__name__", cb),
+                note_id,
+                e,
+            )
 
 
 def generate_id() -> str:
