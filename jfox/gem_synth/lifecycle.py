@@ -11,7 +11,6 @@ post_delete/archive/promote/reject 事件，本模块订阅并复刻原 dedup �
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from ..models import NoteType
@@ -21,8 +20,6 @@ from .dedup import (
     release_blocked_anchors,
     update_dedup_type,
 )
-
-logger = logging.getLogger(__name__)
 
 # 仅 candidate/permanent 有 dedup 行；其它类型早返回避免实例化 store
 _DEDUP_TYPES = (NoteType.CANDIDATE, NoteType.PERMANENT)
