@@ -10,7 +10,7 @@
 
 ## Global Constraints（来自 spec + CLAUDE.md）
 - **main 受保护**：所有改动在 worktree（从 origin/main 建），新分支 + PR，禁直接动 main
-- **基线 origin/main HEAD = `e97e749`**（工作 clone `/home/elling/workspace/proj/github-personal/jfox` 已同步 origin/main、工作树干净，可直接建 worktree）
+- **基线 origin/main HEAD = `e97e749`**（工作 clone `<jfox-repo>` 已同步 origin/main、工作树干净，可直接建 worktree）
 - **路径为作者本地示例**：文中绝对路径（`/home/elling/...`、`~/.claude/...`）按实际仓库/工作树位置调整
 - **不动 Python 代码**：本 PR 只改 markdown + 加 docs
 - **plugin 版本三处同改**（若 bump）：`packages/cc-plugin/.claude-plugin/plugin.json(version)` + `.claude-plugin/marketplace.json(metadata.version + plugins[0].version)`
@@ -34,11 +34,11 @@
 - [ ] **Step 1: 从 origin/main 建 worktree**
 
 ```bash
-cd /home/elling/workspace/proj/github-personal/jfox
+cd <jfox-repo>
 git fetch origin main
 git worktree add -b feat/issue-319-promote-skill-three-modes \
-  /home/elling/workspace/proj/github-personal/jfox-wt-319 origin/main
-cd /home/elling/workspace/proj/github-personal/jfox-wt-319
+  <jfox-worktree> origin/main
+cd <jfox-worktree>
 ```
 
 - [ ] **Step 2: 确认基线 = origin/main e97e749**
@@ -102,7 +102,7 @@ description: <保留现有 description，补触发词 "批量过审"、"簇级�
 ## 0. 何时用哪种模式（决策树）
 - 大积压（pending > 50）→ 模式1 砍精确/高重复 → 模式2 处理剩余簇 → 模式3 高价值/模糊单条
 - 小积压（≤50）→ 直接模式2 / 模式3
-- 查积压量：`jfox candidates list --status pending --format json | jq '.candidates | length'`（分页50内，纯 pending）；文件总数 `ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l`（含 rejected 软删除）
+- 查积压量：`jfox candidates list --status pending --format json | jq '.total'`（真实 pending 总数，不受分页 50 限制）；文件总数 `ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l`（含 rejected 软删除）
 
 ## 1. 模式1：客观去重扫描（大积压第一步）
 <内嵌临时脚本 python 代码块，见 Step 2 实际内容>
@@ -237,7 +237,7 @@ git commit -m "feat(kimi-plugin): jfox-promote skill 重写为三模式过审 (#
 
 Run（在 worktree 跑临时 python，不入库）:
 ```bash
-cd /home/elling/workspace/proj/github-personal/jfox-wt-319
+cd <jfox-worktree>
 uv run python -c "
 import re
 META_RE = re.compile(r'\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n')
@@ -256,7 +256,7 @@ Expected: `6 样本（3 标准 marker + 3 变体）全覆盖 OK` + `正文标题
 
 Run:
 ```bash
-cd /home/elling/workspace/proj/github-personal/jfox-wt-319
+cd <jfox-worktree>
 # 把 SKILL.md §1 脚本存成临时文件跑 dry-run
 jfox daemon status  # 确认 daemon（影响 L2/L3）
 uv run python /tmp/dedup_scan.py --threshold 0.95  # L2 dry-run
@@ -288,7 +288,7 @@ gh issue comment 319 --repo zhuxixi/jfox --body '## Follow-up 登记（本 PR �
 3. 208 存量双 H1 candidate backfill（#320 甩来）
 4. 跨版本 dedup 口径（#320 issue-4）
 5. promote 回填 backlinks 不同步 chroma（现存 bug）
-6. unarchive 不复位 status=pending（现存 bug）'
+6. ~~unarchive 不复位 status~~（已核实非 bug，note.py 已复位，见 spec）'
 ```
 
 - [ ] **Step 2: （可选）逐个开 follow-up issue**
@@ -317,7 +317,7 @@ gh issue comment 319 --repo zhuxixi/jfox --body '## Follow-up 登记（本 PR �
 
 - [ ] **Step 3: kimi-plugin 版本（独立确认）**
 
-检查 `packages/kimi-plugin/kimi.plugin.json`（kimi-plugin 用 `kimi.plugin.json` 非 `plugin.json`，当前 0.1）是否同步 bump。
+检查 `packages/kimi-plugin/kimi.plugin.json`（kimi-plugin 用 `kimi.plugin.json` 非 `plugin.json`，当前 0.13.0，与 cc-plugin 0.5.1 独立管理）是否同步 bump。
 
 - [ ] **Step 4: 验证三处一致**
 

@@ -58,7 +58,7 @@ pending 积压量决定入口：
 晋升前对 candidate 正文做标准 clean（skill 内可复制片段）：
 1. **剥 frontmatter 字段**：promote 自动清 `status`/`gem_level`/`confidence`/`knowledge_type`/`reject_reason`（保留 `source_fragments`/`grounded_by` 溯源）
 2. **删元段落**：regex `r"\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n"` 截断（覆盖 `## 置信度说明`/`## 可信度说明` 变体，补 dedup cleaning 现存缺陷）
-3. **去双/多 H1**：剥首个 leading H1（title 重复，复用 `_strip_leading_h1` 思路）；3+H1（LLM 用 H1 当分节）→ 降级 H2 或人审
+3. **去双/多 H1**：剥首个 leading H1（title 重复，复用 `_strip_leading_h1` 思路）；2+H1（剥首个后仍有行首 H1，LLM 用 H1 当分节）→ 降级 H2 或人审
 4. **修 exact-link**：wiki link 精确标题匹配（关联 #275）；`suggest-links` 阈值放宽 0.4–0.5 + 手动按概念补链
 
 ### 已知坑（写进 skill，条条实踩）
@@ -85,7 +85,7 @@ pending 积压量决定入口：
 
 ## 测试 / 验证策略
 - skill 是 markdown，无单测
-- 验证：重写后两版结构一致；命令引用与 origin/main 实际一致；模式1 临时脚本可跑（dry-run）；cleaning regex 覆盖 3 个标准 marker + 2 个变体
+- 验证：重写后两版结构一致；命令引用与 origin/main 实际一致；模式1 临时脚本可跑（dry-run）；cleaning regex 覆盖 4 类 marker（来源 / 参考的永久笔记 / 置信度.* / 可信度.*，含 `## 置信度说明` / `## 可信度说明` 变体）
 - 可选人工验证：取一批真实 candidate 走三模式，确认流程顺畅
 
 ## 风险
