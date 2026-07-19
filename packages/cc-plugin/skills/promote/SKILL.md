@@ -66,7 +66,7 @@ def clean(content: str) -> str:
     """剥 candidate 元段落（覆盖 ## 置信度说明 / ## 可信度说明 变体）+ 首个 leading H1。"""
     m = META_RE.search("\n" + content)
     if m:
-        content = content[: m.start() - 1]
+        content = content[: max(0, m.start() - 1)]
     content = LEADING_H1_RE.sub("", content, count=1)
     return content.strip()
 
@@ -110,20 +110,23 @@ try:
     from jfox.embedding_backend import get_backend
     backend = get_backend()
     reps = [v[0] for v in groups.values()]  # 每组代表 (id, title, body)
-    embs = np.array([backend.encode_single(r[2]) for r in reps], dtype="float32")
-    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
-    sims = (embs / norms) @ (embs / norms).T
-    l2 = l3 = 0
-    for i in range(len(reps)):
-        for j in range(i + 1, len(reps)):
-            s = float(sims[i, j])
-            if s >= THRESHOLD:
-                if s >= 0.95:
-                    l2 += 1
-                    print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
-                else:
-                    l3 += 1
-    print(f"L2 (cosine≥0.95): {l2} 对；L3 (0.88–0.95): {l3} 对")
+    if len(reps) < 2:
+        print("去重后代表 < 2 条，无 cosine 可算")
+    else:
+        embs = np.array([backend.encode_single(r[2]) for r in reps], dtype="float32")
+        norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
+        sims = (embs / norms) @ (embs / norms).T
+        l2 = l3 = 0
+        for i in range(len(reps)):
+            for j in range(i + 1, len(reps)):
+                s = float(sims[i, j])
+                if s >= THRESHOLD:
+                    if s >= 0.95:
+                        l2 += 1
+                        print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
+                    else:
+                        l3 += 1
+        print(f"L2 (cosine≥0.95): {l2} 对；L3 (0.88–0.95): {l3} 对")
 except Exception as e:
     print(f"embedding daemon 不可用({e})，已降级只做 L1 content_hash")
 ```
@@ -170,10 +173,10 @@ def clean_for_promote(content: str) -> str:
     # 1. 删元段落（截断到首个 marker，覆盖变体 ## 置信度说明 / ## 可信度说明）
     m = META_RE.search("\n" + content)
     if m:
-        content = content[: m.start() - 1]
+        content = content[: max(0, m.start() - 1)]
     # 2. 剥首个 leading H1（title 重复，#320 残留）
     content = LEADING_H1_RE.sub("", content, count=1)
-    # 3. 3+H1（LLM 用 H1 当分节）→ 降级 H2（人审确认）
+    # 3. 2+H1（剥首个后仍剩正文 H1，LLM 用 H1 当分节）→ 降级 H2（人审确认）
     if content.count("\n# ") >= 1:
         content = re.sub(r"(?m)^# ", "## ", content)
     return content.strip()

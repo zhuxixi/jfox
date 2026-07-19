@@ -31,7 +31,7 @@ pending 积压量决定入口：
 - **L3 cosine 0.88–0.95**：很可能，读一眼确认；<0.88 不标记
 
 **落地（纯文档 PR）**：skill 内嵌可跑临时脚本——
-- 列 pending：`jfox candidates list --status pending --json`
+- 直读 pending candidate：glob `notes/candidate/*.md` + 解析 frontmatter 取 `status=pending`（绕过 `candidates list` 的分页 50 + 无 content 字段两个坑）
 - 读正文 + cleaning（剥元段落 marker，regex 收紧覆盖变体）
 - L1：sha1 content_hash 精确分组
 - L2/L3：调 jfox embedding daemon 算 embedding（`from jfox.embedding_backend import get_backend`），numpy cosine

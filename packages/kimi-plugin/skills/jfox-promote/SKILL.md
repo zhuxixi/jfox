@@ -28,22 +28,23 @@ jfox kb current --json
 ### 查看合成状态
 
 ```bash
-jfox gem-synth status --json
+jfox gem-synth status --format json
 ```
 
-关注字段：
+关注字段（实际 JSON 输出）：
 
-- `pending_candidates` / `total_candidates`：待过审数量
-- `failed_anchors`：合成失败或无法 grounding 的 fragment 锚点，需要人工介入
-- `last_run` / `is_running`：判断当前是否正在批量合成
+- `pending`：待过审 candidate 数
+- `success` / `failed` / `duplicate`：合成成功 / 失败 / 去重跳过数
+- `total`：总数
+- 失败锚点列表：`jfox gem-synth status --failed`（需要人工介入的 fragment 锚点）
 
 ### 查看碎片
 
 Hook 采集的 session 碎片会进入 `fragments.db`，过审前可通过 fragments 命令了解候选宝石的上游上下文。
 
 ```bash
-jfox fragments list --json
-jfox fragments show <fragment_id> --json
+jfox fragments list --format json
+jfox fragments show <fragment_id>
 ```
 
 `fragments list` 可用于定位 candidate 可能来源的 session 主题；`fragments show` 可查看碎片原文、所属 session、采集时间等元信息。
@@ -112,7 +113,7 @@ def clean(content: str) -> str:
     """剥 candidate 元段落（覆盖 ## 置信度说明 / ## 可信度说明 变体）+ 首个 leading H1。"""
     m = META_RE.search("\n" + content)
     if m:
-        content = content[: m.start() - 1]
+        content = content[: max(0, m.start() - 1)]
     content = LEADING_H1_RE.sub("", content, count=1)
     return content.strip()
 
@@ -156,20 +157,23 @@ try:
     from jfox.embedding_backend import get_backend
     backend = get_backend()
     reps = [v[0] for v in groups.values()]  # 每组代表 (id, title, body)
-    embs = np.array([backend.encode_single(r[2]) for r in reps], dtype="float32")
-    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
-    sims = (embs / norms) @ (embs / norms).T
-    l2 = l3 = 0
-    for i in range(len(reps)):
-        for j in range(i + 1, len(reps)):
-            s = float(sims[i, j])
-            if s >= THRESHOLD:
-                if s >= 0.95:
-                    l2 += 1
-                    print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
-                else:
-                    l3 += 1
-    print(f"L2 (cosine≥0.95): {l2} 对；L3 (0.88–0.95): {l3} 对")
+    if len(reps) < 2:
+        print("去重后代表 < 2 条，无 cosine 可算")
+    else:
+        embs = np.array([backend.encode_single(r[2]) for r in reps], dtype="float32")
+        norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
+        sims = (embs / norms) @ (embs / norms).T
+        l2 = l3 = 0
+        for i in range(len(reps)):
+            for j in range(i + 1, len(reps)):
+                s = float(sims[i, j])
+                if s >= THRESHOLD:
+                    if s >= 0.95:
+                        l2 += 1
+                        print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
+                    else:
+                        l3 += 1
+        print(f"L2 (cosine≥0.95): {l2} 对；L3 (0.88–0.95): {l3} 对")
 except Exception as e:
     print(f"embedding daemon 不可用({e})，已降级只做 L1 content_hash")
 ```
@@ -216,10 +220,10 @@ def clean_for_promote(content: str) -> str:
     # 1. 删元段落（截断到首个 marker，覆盖变体 ## 置信度说明 / ## 可信度说明）
     m = META_RE.search("\n" + content)
     if m:
-        content = content[: m.start() - 1]
+        content = content[: max(0, m.start() - 1)]
     # 2. 剥首个 leading H1（title 重复，#320 残留）
     content = LEADING_H1_RE.sub("", content, count=1)
-    # 3. 3+H1（LLM 用 H1 当分节）→ 降级 H2（人审确认）
+    # 3. 2+H1（剥首个后仍剩正文 H1，LLM 用 H1 当分节）→ 降级 H2（人审确认）
     if content.count("\n# ") >= 1:
         content = re.sub(r"(?m)^# ", "## ", content)
     return content.strip()
@@ -280,7 +284,7 @@ jfox search "<关键词>" --type permanent                # 查现有 permanent�
 ```bash
 jfox gem-synth status --format json          # 查看 L3 合成进度与失败锚点
 jfox fragments list --format json            # 列出 Hook 采集的 session 碎片
-jfox fragments show <fragment_id> --format json  # 查看碎片详情
+jfox fragments show <fragment_id>             # 查看碎片详情（默认 JSON，无 flag）
 ```
 
 ## 错误处理
