@@ -59,7 +59,7 @@ jfox fragments show <fragment_id> --json
 先看 pending 积压量（注意 `jfox candidates list` 默认分页 50 是上限非真实数；真实数量直接扫目录）：
 
 ```bash
-jfox candidates list --status pending --format json | jq 'length'   # 分页内（≤50）
+jfox candidates list --status pending --format json | jq '.candidates | length'   # 分页内（≤50）
 ls ~/.zettelkasten/$(jfox kb current --format json | jq -r .name)/notes/candidate/ | wc -l  # 真实总数
 ```
 
@@ -79,13 +79,34 @@ ls ~/.zettelkasten/$(jfox kb current --format json | jq -r .name)/notes/candidat
 **临时脚本**（dry-run 默认，`--apply` 批量 reject keep-best）：
 
 ```python
-# promote-skill 模式1：存量 candidate dedup 扫描（临时脚本）
+# promote-skill 模式1：存量 candidate dedup 扫描（临时脚本，直读文件版）
 # 待 jfox candidates dedup-scan 命令（follow-up）落地后替换
-import hashlib, re, sys, json, subprocess
+# 用法: python dedup_scan.py [--threshold 0.88] [--apply]（用 jfox 所在 python 或 uv run python）
+# 实测：直读 notes/candidate/ 绕过 candidates list 的分页 50 + list 无 content 字段两个坑
+import hashlib, re, sys, json, glob, os, subprocess
 import numpy as np
 
 META_RE = re.compile(r"\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n")
 LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
+
+def parse_md(path):
+    """读 candidate md → (id, title, status, body)。"""
+    txt = open(path, encoding="utf-8").read()
+    if not txt.startswith("---"):
+        return None, None, None, txt
+    end = txt.find("\n---", 3)
+    if end < 0:
+        return None, None, None, txt
+    fm, body = txt[3:end], txt[end + 4:]
+    cid = title = status = None
+    for line in fm.splitlines():
+        if line.startswith("id:"):
+            cid = line.split(":", 1)[1].strip().strip("'\"")
+        elif line.startswith("title:"):
+            title = line.split(":", 1)[1].strip().strip("'\"")
+        elif line.startswith("status:"):
+            status = line.split(":", 1)[1].strip().strip("'\"")
+    return cid, title, status, body
 
 def clean(content: str) -> str:
     """剥 candidate 元段落（覆盖 ## 置信度说明 / ## 可信度说明 变体）+ 首个 leading H1。"""
@@ -104,16 +125,22 @@ for i, a in enumerate(sys.argv):
     if a == "--threshold" and i + 1 < len(sys.argv):
         THRESHOLD = float(sys.argv[i + 1])
 
-# 1. 列 pending（分页 50，大积压需多次或直查 notes/candidate/ 目录）
-cands = json.loads(subprocess.check_output(
-    ["jfox", "candidates", "list", "--status", "pending", "--format", "json"], text=True))
+# 1. 直读 pending candidate（绕过 candidates list 分页 50 + 无 content 字段）
+kb = json.loads(subprocess.check_output(
+    ["jfox", "kb", "current", "--format", "json"], text=True))["name"]
+cdir = os.path.expanduser(f"~/.zettelkasten/{kb}/notes/candidate")
+cands = []
+for path in sorted(glob.glob(os.path.join(cdir, "*.md"))):
+    cid, title, status, body = parse_md(path)
+    if status != "pending":
+        continue
+    cands.append((cid, title, clean(body)))
+print(f"[{kb}] pending candidate: {len(cands)} 条")
 
-# 2. cleaning + L1 content_hash 分组
+# 2. L1 content_hash 精确分组
 groups = {}
-for c in cands:
-    body = clean(c.get("content", ""))
-    groups.setdefault(content_hash(body), []).append((c["id"], c.get("title", ""), body))
-
+for cid, title, body in cands:
+    groups.setdefault(content_hash(body), []).append((cid, title, body))
 l1 = {h: v for h, v in groups.items() if len(v) > 1}
 print(f"L1 精确重复: {sum(len(v) for v in l1.values())} 条 / {len(l1)} 簇")
 for h, v in l1.items():
@@ -132,11 +159,17 @@ try:
     embs = np.array([backend.encode_single(r[2]) for r in reps], dtype="float32")
     norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
     sims = (embs / norms) @ (embs / norms).T
+    l2 = l3 = 0
     for i in range(len(reps)):
         for j in range(i + 1, len(reps)):
-            if sims[i, j] >= THRESHOLD:
-                tag = "L2" if sims[i, j] >= 0.95 else "L3"
-                print(f"  [{tag} {sims[i,j]:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
+            s = float(sims[i, j])
+            if s >= THRESHOLD:
+                if s >= 0.95:
+                    l2 += 1
+                    print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
+                else:
+                    l3 += 1
+    print(f"L2 (cosine≥0.95): {l2} 对；L3 (0.88–0.95): {l3} 对")
 except Exception as e:
     print(f"embedding daemon 不可用({e})，已降级只做 L1 content_hash")
 ```
