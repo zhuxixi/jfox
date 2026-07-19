@@ -4,7 +4,7 @@
 ## 背景
 - promote skill 现状（cc + kimi 两版）：逐条 A/B/C triage，按 confidence 降序取下一条
 - 一轮真实过审（pending 700+→432）验证痛点：confidence≠质量/冗余、逐条在 700+ 积压前 scale 不了、主要矛盾是「冗余」(被现有 permanent 覆盖)、机械清理每批重写占大半时间且每批补脚本 bug
-- 调研（origin/main `e97e749`）：promote 不动正文/不剥 scaffolding（docstring「保留溯源」）、reject=软归档且增量毫秒级、dedup 基础设施完备但缺存量扫描入口、cleaning marker 只 3 个固定串不含变体（现存缺陷）
+- 调研（origin/main `e97e749`）：promote 不动正文/不剥 scaffolding（docstring「保留溯源」）、reject=软归档且增量毫秒级、dedup 基础设施完备（`gem-synth dedup-backfill` 只灌表不报告重复对）但缺存量查重扫描入口、cleaning marker 只 3 个固定串不含变体（现存缺陷）
 
 ## 目标
 把 promote skill（cc + kimi 两版）从「逐条 A/B/C」重写为「三模式过审 + 冗余维度 + 固化机械清理」，让大积压可高效处理。
@@ -14,7 +14,7 @@
 - 不新增 `candidates dedup-scan` 命令
 - 不做 208 双 H1 backfill
 - 不接跨版本 dedup 口径
-- 不修 2 个现存 bug（promote 回填 backlinks 不同步 chroma / unarchive 不复位 status）
+- 不修现存 bug：promote 回填 backlinks 不同步 chroma（注：unarchive 复位 status 已核实非 bug，`note.py unarchive_note` 对 candidate 已复位 `status=pending` + 清 `reject_reason`）
 - 以上各自开 follow-up issue，本 PR 评论登记
 
 ## 设计
@@ -81,7 +81,7 @@ pending 积压量决定入口：
 - 归 #320: 208 存量双 H1 backfill
 - 新 issue: 跨版本 dedup 口径（#320 issue-4）
 - 新 issue: promote 回填 backlinks 不同步 chroma（现存 bug）
-- 新 issue: unarchive 不复位 status=pending（现存 bug）
+- ~~unarchive 不复位 status~~（已核实非 bug，`unarchive_note` 已复位 status=pending，不单开 issue）
 
 ## 测试 / 验证策略
 - skill 是 markdown，无单测

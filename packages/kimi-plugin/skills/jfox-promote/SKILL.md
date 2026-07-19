@@ -61,7 +61,7 @@ jfox fragments show <fragment_id>
 
 ```bash
 jfox candidates list --status pending --format json | jq '.candidates | length'   # 分页内（≤50）
-ls ~/.zettelkasten/$(jfox kb current --format json | jq -r .name)/notes/candidate/ | wc -l  # 真实总数
+ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l  # 文件总数（含 rejected 软删除；纯 pending 看上行 jq）
 ```
 
 - **大积压（pending > 50）** → **模式1**（客观去重扫描，砍精确/高重复）→ **模式2**（剩余簇级 triage）→ **模式3**（高价值/模糊单条）
@@ -92,7 +92,7 @@ LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
 def parse_md(path):
     """读 candidate md → (id, title, status, body)。"""
-    txt = open(path, encoding="utf-8").read()
+    txt = open(path, encoding="utf-8", errors="replace").read()
     if not txt.startswith("---"):
         return None, None, None, txt
     end = txt.find("\n---", 3)
@@ -121,18 +121,24 @@ def content_hash(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
 APPLY = "--apply" in sys.argv
-THRESHOLD = 0.88
-for i, a in enumerate(sys.argv):
-    if a == "--threshold" and i + 1 < len(sys.argv):
-        THRESHOLD = float(sys.argv[i + 1])
+try:
+    THRESHOLD = float(sys.argv[sys.argv.index("--threshold") + 1]) if "--threshold" in sys.argv else 0.88
+except (ValueError, IndexError):
+    THRESHOLD = 0.88
 
-# 1. 直读 pending candidate（绕过 candidates list 分页 50 + 无 content 字段）
-kb = json.loads(subprocess.check_output(
-    ["jfox", "kb", "current", "--format", "json"], text=True))["name"]
-cdir = os.path.expanduser(f"~/.zettelkasten/{kb}/notes/candidate")
+# 1. 直读 pending candidate（用 kb current 的 path 字段，支持自定义 --path KB；绕过 candidates list 分页 + 无 content）
+try:
+    kb_info = json.loads(subprocess.check_output(
+        ["jfox", "kb", "current", "--format", "json"], text=True))
+    kb, cdir = kb_info["name"], os.path.join(kb_info["path"], "notes", "candidate")
+except Exception as e:
+    print(f"jfox kb current 失败({e})，无法定位 candidate 目录"); sys.exit(1)
 cands = []
 for path in sorted(glob.glob(os.path.join(cdir, "*.md"))):
-    cid, title, status, body = parse_md(path)
+    try:
+        cid, title, status, body = parse_md(path)
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"  跳过 {os.path.basename(path)}: {e}"); continue
     if status != "pending":
         continue
     cands.append((cid, title, clean(body)))

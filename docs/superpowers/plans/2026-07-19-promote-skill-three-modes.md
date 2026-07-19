@@ -11,6 +11,7 @@
 ## Global Constraints（来自 spec + CLAUDE.md）
 - **main 受保护**：所有改动在 worktree（从 origin/main 建），新分支 + PR，禁直接动 main
 - **基线 origin/main HEAD = `e97e749`**（工作 clone `/home/elling/workspace/proj/github-personal/jfox` 已同步 origin/main、工作树干净，可直接建 worktree）
+- **路径为作者本地示例**：文中绝对路径（`/home/elling/...`、`~/.claude/...`）按实际仓库/工作树位置调整
 - **不动 Python 代码**：本 PR 只改 markdown + 加 docs
 - **plugin 版本三处同改**（若 bump）：`packages/cc-plugin/.claude-plugin/plugin.json(version)` + `.claude-plugin/marketplace.json(metadata.version + plugins[0].version)`
 - **skill 文档中文**（与现有一致），行宽不约束 markdown
@@ -101,7 +102,7 @@ description: <保留现有 description，补触发词 "批量过审"、"簇级�
 ## 0. 何时用哪种模式（决策树）
 - 大积压（pending > 50）→ 模式1 砍精确/高重复 → 模式2 处理剩余簇 → 模式3 高价值/模糊单条
 - 小积压（≤50）→ 直接模式2 / 模式3
-- 查积压量：`jfox candidates list --status pending --format json | jq '.candidates | length'`（分页50内）；真实总数 `ls ~/.zettelkasten/<kb>/notes/candidate/ | wc -l`
+- 查积压量：`jfox candidates list --status pending --format json | jq '.candidates | length'`（分页50内，纯 pending）；文件总数 `ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l`（含 rejected 软删除）
 
 ## 1. 模式1：客观去重扫描（大积压第一步）
 <内嵌临时脚本 python 代码块，见 Step 2 实际内容>
@@ -127,7 +128,7 @@ C 不可信: 给依据→reject
 <可复制 python 片段，见 Step 3 实际内容>
 1. 剥 frontmatter 字段：promote 自动清 status/gem_level/confidence/knowledge_type/reject_reason（保留 source_fragments/grounded_by 溯源）
 2. 删元段落：regex 截断（覆盖 ## 来源/参考的永久笔记/置信度.*/可信度.* 变体）
-3. 去双/多H1：剥首个 leading H1；3+H1（LLM 用 H1 分节）→ 降级 H2 或人审
+3. 去双/多H1：剥首个 leading H1；2+H1（剥首个后仍有正文 H1）（LLM 用 H1 分节）→ 降级 H2 或人审
 4. 修 exact-link：精确标题匹配(关联 #275)；suggest-links 阈值 0.4–0.5 + 手动按概念补链
 
 ## 6. 已知坑
@@ -150,64 +151,11 @@ verdict + 证据 + wiki-link 报告 + 处置(promote/reject/merge/fold) + 确认
 
 用 Write 工具整体替换 `packages/cc-plugin/skills/promote/SKILL.md`，按上面结构填实际中文内容（每节展开 2–5 句，命令用代码块）。
 
-- [ ] **Step 2: 模式1 临时脚本（嵌入 SKILL.md §1，实际 python 代码块）**
+- [ ] **Step 2: 模式1 临时脚本（嵌入 SKILL.md §1）**
 
-```python
-# promote-skill: 模式1 存量 dedup 扫描（临时脚本，待 candidates dedup-scan 命令替换）
-# 用法: python dedup_scan.py [--threshold 0.88] [--apply]
-import sqlite3, hashlib, re, sys, json, subprocess
-from pathlib import Path
+脚本以 SKILL.md §1 为准（**直读文件版**：`parse_md` 解析 frontmatter 取 status + `clean` 剥元段落/首 H1 + `content_hash` 做 L1 精确 + embedding daemon 算 L2/L3 cosine；用 `jfox kb current` 的 `path` 字段定位 candidate 目录，支持自定义 `--path` KB）。此处不重复嵌入——见 `packages/cc-plugin/skills/promote/SKILL.md` §1 的 python 代码块，cc/kimi 两版同一份。
 
-MARKER_RE = re.compile(r"\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n")
-def clean(content: str) -> str:
-    """剥 candidate 元段落（覆盖变体），截断到首个 marker。"""
-    m = MARKER_RE.search("\n" + content)
-    if m:
-        content = content[:m.start()-1]  # 保留 marker 前
-    # 剥首个 leading H1（title 重复）
-    content = re.sub(r"\A\s*# .+\n*", "", content)
-    return content.strip()
-
-def content_hash(s: str) -> str:
-    return hashlib.sha1(s.encode("utf-8")).hexdigest()
-
-# 1. 列 pending candidates
-out = subprocess.check_output(["jfox", "candidates", "list", "--status", "pending", "--format", "json"], text=True)
-cands = json.loads(out)
-
-# 2. cleaning + L1 content_hash 分组
-groups = {}
-for c in cands:
-    body = clean(c.get("content", ""))
-    h = content_hash(body)
-    groups.setdefault(h, []).append((c["id"], c.get("title",""), body))
-
-# L1 精确重复（同 hash 多条）
-l1 = {h: v for h, v in groups.items() if len(v) > 1}
-print(f"L1 精确重复: {sum(len(v) for v in l1.values())} 条 / {len(l1)} 簇")
-
-# 3. L2/L3 cosine（需 embedding daemon）
-try:
-    from jfox.embedding_backend import get_backend
-    backend = get_backend()
-    # 对每个 candidate 算 embedding，numpy cosine ≥ threshold 报簇
-    # （实现：把所有 cleaned body encode，pairwise/批 cosine，聚类）
-    # ... 见 follow-up dedup-scan 命令的完整实现；此处给骨架
-    import numpy as np
-    bodies = [v[0][2] for v in groups.values()]  # 每组代表
-    embs = np.array([backend.encode_single(b) for b in bodies])
-    embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9)
-    sims = embs @ embs.T
-    # 报告 sims ≥ 0.88 的簇（排除对角）
-    threshold = float(sys.argv[sys.argv.index("--threshold")+1]) if "--threshold" in sys.argv else 0.88
-    reported = set()
-    for i in range(len(sims)):
-        for j in range(i+1, len(sims)):
-            if sims[i,j] >= threshold:
-                print(f"  [{sims[i,j]:.3f}] {bodies[i][:40]} ↔ {bodies[j][:40]}")
-except Exception as e:
-    print(f"embedding daemon 不可用({e})，降级只做 L1 content_hash")
-```
+> 注：不要用 `jfox candidates list` 取正文（list 返回 `{candidates,total}` 包裹且无 content 字段，且分页 50）——直读 `notes/candidate/*.md`。
 
 - [ ] **Step 3: 机械清理片段（嵌入 SKILL.md §5，实际 python 代码块）**
 
@@ -224,7 +172,7 @@ def clean_for_promote(content: str, title: str) -> str:
         content = content[: m.start() - 1]
     # 2. 剥首个 leading H1（title 重复，#320 残留）
     content = LEADING_H1_RE.sub("", content, count=1)
-    # 3. 3+H1（LLM 用 H1 分节）→ 降级 H2（人审确认）
+    # 3. 2+H1（剥首个后仍有正文 H1）（LLM 用 H1 分节）→ 降级 H2（人审确认）
     if content.count("\n# ") >= 1:  # 还有正文 H1
         content = re.sub(r"(?m)^# ", "## ", content)
     return content.strip()
@@ -296,15 +244,15 @@ META_RE = re.compile(r'\n## (来源|参考的永久笔记|置信度.*|可信度.
 samples = ['\n## 来源\n', '\n## 参考的永久笔记\n', '\n## 置信度\n', '\n## 置信度说明\n', '\n## 可信度说明\n', '\n## 置信度评估\n']
 for s in samples:
     assert META_RE.search(s), f'漏匹配: {s!r}'
-print('5 marker + 变体全覆盖 OK')
+print('6 样本（3 标准 marker + 3 变体）全覆盖 OK')
 # 负例：正文标题不误删
 assert not META_RE.search('\n## 核心原则\n'), '误匹配正文标题'
 print('正文标题不误删 OK')
 "
 ```
-Expected: `5 marker + 变体全覆盖 OK` + `正文标题不误删 OK`。若失败，修 SKILL.md 里 META_RE（Task 3/4）。
+Expected: `6 样本（3 标准 marker + 3 变体）全覆盖 OK` + `正文标题不误删 OK`。若失败，修 SKILL.md 里 META_RE（Task 3/4）。
 
-- [ ] **Step 2: 模式1 脚本 dry-run（真实 KB，不 apply）**
+- [ ] **Step 2: 模式1 脚本 dry-run（真实 KB，不 apply）**（提取 SKILL.md §1 的 python 代码块存临时文件跑；或直接用 `$CLAUDE_JOB_DIR/tmp/dedup_scan.py` 已验证副本——内容与 SKILL §1 直读版一致）
 
 Run:
 ```bash
@@ -369,7 +317,7 @@ gh issue comment 319 --repo zhuxixi/jfox --body '## Follow-up 登记（本 PR �
 
 - [ ] **Step 3: kimi-plugin 版本（独立确认）**
 
-检查 `packages/kimi-plugin/` 是否有独立 plugin.json + 版本号，若有则同步 bump。
+检查 `packages/kimi-plugin/kimi.plugin.json`（kimi-plugin 用 `kimi.plugin.json` 非 `plugin.json`，当前 0.1）是否同步 bump。
 
 - [ ] **Step 4: 验证三处一致**
 
