@@ -16,7 +16,7 @@ description: Use when user wants to review/promote gem-synth candidate notes int
 
 ```bash
 jfox --version
-jfox kb current --json
+jfox kb current --format json
 ```
 
 若尚未初始化，先调用 `/skill:jfox-manage` 创建知识库。
@@ -33,7 +33,7 @@ jfox gem-synth status --format json
 
 关注字段（实际 JSON 输出）：
 
-- `pending`：待过审 candidate 数
+- `pending`：待 L3 合成的 anchor 数（≠ candidate 过审队列；合成完归零，过审积压看 candidates list）
 - `success` / `failed` / `duplicate`：合成成功 / 失败 / 去重跳过数
 - `total`：总数
 - 失败锚点列表：`jfox gem-synth status --failed`（需要人工介入的 fragment 锚点）
@@ -51,7 +51,7 @@ jfox fragments show <fragment_id>
 
 ### 何时使用
 
-- 批量合成后先执行 `gem-synth status`，按 pending 数量安排过审计划。
+- 批量合成后先执行 `gem-synth status`，看 `pending`（待合成 anchor）/ `failed` 判断合成进度；过审积压量看 `jfox candidates list --status pending --format json`。
 - 某条 candidate 内容存疑时，用 `fragments show` 追溯其来源 fragment，辅助判档。
 - 发现 `failed_anchors` 时，可转由 `/skill:jfox-session-summary` 检查对应 session 是否已产生高质量 summary，再决定是否重新触发合成。
 
@@ -170,9 +170,11 @@ try:
                 if s >= THRESHOLD:
                     if s >= 0.95:
                         l2 += 1
-                        print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
+                        print(f"  [L2 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}\n      {reps[i][2][:60]} …")
                     else:
                         l3 += 1
+                        if l3 <= 30:
+                            print(f"  [L3 {s:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
         print(f"L2 (cosine≥0.95): {l2} 对；L3 (0.88–0.95): {l3} 对")
 except Exception as e:
     print(f"embedding daemon 不可用({e})，已降级只做 L1 content_hash")
@@ -187,7 +189,7 @@ except Exception as e:
 1. **每簇先查「是否已被现有 permanent 覆盖」**（冗余维度）：
    ```bash
    jfox search "<簇主题关键词>" --type permanent
-   jfox suggest-links "<簇代表正文>" --json   # 阈值可放宽 0.4–0.5
+   jfox suggest-links "<簇代表正文>" --format json   # 阈值可放宽 0.4–0.5
    ```
 2. **已被覆盖** → keep-best（簇中 grounding 最实 / 信息最完整者）+ reject 其余
 3. **未被覆盖** → promote-merge：簇内 candidate 改写合并成单条 permanent
@@ -223,8 +225,8 @@ def clean_for_promote(content: str) -> str:
         content = content[: max(0, m.start() - 1)]
     # 2. 剥首个 leading H1（title 重复，#320 残留）
     content = LEADING_H1_RE.sub("", content, count=1)
-    # 3. 2+H1（剥首个后仍剩正文 H1，LLM 用 H1 当分节）→ 降级 H2（人审确认）
-    if content.count("\n# ") >= 1:
+    # 3. 2+H1（剥首个后仍有行首 H1，LLM 用 H1 当分节）→ 降级 H2（人审确认）
+    if re.search(r"(?m)^# ", content):
         content = re.sub(r"(?m)^# ", "## ", content)
     return content.strip()
 # 写回：jfox edit <candidate_id> --content-file cleaned.md
@@ -233,7 +235,7 @@ def clean_for_promote(content: str) -> str:
 清理四步：
 1. **剥 frontmatter 字段**：promote 自动清 `status` / `gem_level` / `confidence` / `knowledge_type` / `reject_reason`（**保留** `source_fragments` / `grounded_by` 溯源）
 2. **删元段落**：上面的 META_RE（覆盖 `## 置信度说明` / `## 可信度说明` 变体，补 dedup cleaning 现存缺陷）
-3. **去双/多 H1**：剥首个 leading H1；3+H1（LLM 用 H1 当分节）降级 H2 或人审
+3. **去双/多 H1**：剥首个 leading H1；若仍剩正文 H1（2+H1，LLM 用 H1 当分节）降级 H2 或人审
 4. **修 exact-link**：wiki link 精确标题匹配（关联 #275）；`suggest-links` 补漏链
 
 ## 6. 已知坑（条条实踩）

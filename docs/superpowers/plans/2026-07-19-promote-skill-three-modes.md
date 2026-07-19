@@ -101,7 +101,7 @@ description: <保留现有 description，补触发词 "批量过审"、"簇级�
 ## 0. 何时用哪种模式（决策树）
 - 大积压（pending > 50）→ 模式1 砍精确/高重复 → 模式2 处理剩余簇 → 模式3 高价值/模糊单条
 - 小积压（≤50）→ 直接模式2 / 模式3
-- 查积压量：`jfox candidates list --status pending --json | jq 'length'`（注意默认分页50，超50要扫 notes/candidate/ 目录）
+- 查积压量：`jfox candidates list --status pending --format json | jq '.candidates | length'`（分页50内）；真实总数 `ls ~/.zettelkasten/<kb>/notes/candidate/ | wc -l`
 
 ## 1. 模式1：客观去重扫描（大积压第一步）
 <内嵌临时脚本 python 代码块，见 Step 2 实际内容>
