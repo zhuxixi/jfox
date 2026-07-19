@@ -19,7 +19,7 @@
 - 模式1 临时脚本依赖 embedding daemon（`jfox daemon` 不可用→降级只做 L1 content_hash）
 
 ## File Structure
-- **Create:** `docs/superpowers/specs/2026-07-19-promote-skill-three-modes-design.md`（spec 落地，内容来自 `~/.claude/github-issue-driven/zhuxixi/jfox/issue-319/spec-draft.md`）
+- **Create:** `docs/superpowers/specs/2026-07-19-promote-skill-three-modes-design.md`（spec 落地，内容来自 `<issue-research-dir>/issue-319/spec-draft.md`）
 - **Create:** `docs/superpowers/plans/2026-07-19-promote-skill-three-modes.md`（本 plan 落地）
 - **Modify:** `packages/cc-plugin/skills/promote/SKILL.md`（精简版 → 三模式完整版）
 - **Modify:** `packages/kimi-plugin/skills/jfox-promote/SKILL.md`（详细版 → 三模式 + 保留监控/命令参考/错误处理）
@@ -66,7 +66,7 @@ Run: `cat packages/cc-plugin/skills/promote/SKILL.md` + `cat packages/kimi-plugi
 - [ ] **Step 1: 复制 spec 草稿到项目**
 
 ```bash
-cp ~/.claude/github-issue-driven/zhuxixi/jfox/issue-319/spec-draft.md \
+cp <issue-research-dir>/issue-319/spec-draft.md \
    docs/superpowers/specs/2026-07-19-promote-skill-three-modes-design.md
 ```
 （若 specs 目录不存在先 `mkdir -p docs/superpowers/specs`）
@@ -102,7 +102,7 @@ description: <保留现有 description，补触发词 "批量过审"、"簇级�
 ## 0. 何时用哪种模式（决策树）
 - 大积压（pending > 50）→ 模式1 砍精确/高重复 → 模式2 处理剩余簇 → 模式3 高价值/模糊单条
 - 小积压（≤50）→ 直接模式2 / 模式3
-- 查积压量：`jfox candidates list --status pending --format json | jq '.total'`（真实 pending 总数，不受分页 50 限制）；文件总数 `ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l`（含 rejected 软删除）
+- 查积压量：`jfox candidates list --status pending --format json | jq '.candidates | length'`（分页内 ≤50，返回 50 即大积压；注意 `.total` = `len(rows)` 也是分页内，不是真实总数）；真实文件总数 `ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l`（含 rejected 软删除）
 
 ## 1. 模式1：客观去重扫描（大积压第一步）
 <内嵌临时脚本 python 代码块，见 Step 2 实际内容>
@@ -157,27 +157,9 @@ verdict + 证据 + wiki-link 报告 + 处置(promote/reject/merge/fold) + 确认
 
 > 注：不要用 `jfox candidates list` 取正文（list 返回 `{candidates,total}` 包裹且无 content 字段，且分页 50）——直读 `notes/candidate/*.md`。
 
-- [ ] **Step 3: 机械清理片段（嵌入 SKILL.md §5，实际 python 代码块）**
+- [ ] **Step 3: 机械清理片段（嵌入 SKILL.md §5）**
 
-```python
-# promote-skill: 晋升前机械清理（固化，复用 _strip_leading_h1 / _clean_candidate_content 思路）
-import re
-META_RE = re.compile(r"\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n")
-LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
-
-def clean_for_promote(content: str, title: str) -> str:
-    # 1. 删元段落（截断到首个 marker，覆盖 ## 置信度说明 / ## 可信度说明 变体）
-    m = META_RE.search("\n" + content)
-    if m:
-        content = content[: m.start() - 1]
-    # 2. 剥首个 leading H1（title 重复，#320 残留）
-    content = LEADING_H1_RE.sub("", content, count=1)
-    # 3. 2+H1（剥首个后仍有正文 H1）（LLM 用 H1 分节）→ 降级 H2（人审确认）
-    if content.count("\n# ") >= 1:  # 还有正文 H1
-        content = re.sub(r"(?m)^# ", "## ", content)
-    return content.strip()
-# frontmatter 字段由 promote 自动清；正文元段落 + H1 用本函数；写回: jfox edit <id> --content-file
-```
+片段以 SKILL.md §5 为准（`clean_for_promote(content)`：META_RE 删元段落含变体 + LEADING_H1_RE 剥首 H1 + `re.search(r"(?m)^# ")` 检测剩余行首 H1 降级 H2 + `content[: max(0, m.start()-1)]` 防 off-by-one；无 `title` 参数）。此处不重复嵌入——见 `packages/cc-plugin/skills/promote/SKILL.md` §5，cc/kimi 两版同一份。
 
 - [ ] **Step 4: 验证 markdown 结构 + 命令引用**
 
@@ -341,7 +323,7 @@ git commit -m "chore(cc-plugin): bump version 0.5.1 → 0.5.2 for promote skill 
 - [ ] **Step 1: 落地 plan doc**
 
 ```bash
-cp ~/.claude/github-issue-driven/zhuxixi/jfox/issue-319/plan-draft.md \
+cp <issue-research-dir>/issue-319/plan-draft.md \
    docs/superpowers/plans/2026-07-19-promote-skill-three-modes.md
 ```
 （删首行调研 banner）

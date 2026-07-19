@@ -13,7 +13,7 @@ description: Use when user wants to review/promote gem-synth candidate notes int
 先看 pending 积压量（注意 `jfox candidates list` 默认分页 50 是上限非真实数；真实数量直接扫目录）：
 
 ```bash
-jfox candidates list --status pending --format json | jq '.total'   # 真实 pending 总数（不受分页 50）
+jfox candidates list --status pending --format json | jq '.candidates | length'   # 分页内（≤50；返回 50 = 大积压）
 ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l  # 文件总数（含 rejected 软删除；纯 pending 看上行 jq）
 ```
 
