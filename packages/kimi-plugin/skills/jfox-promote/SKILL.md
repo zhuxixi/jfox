@@ -1,15 +1,14 @@
 ---
 name: jfox-promote
-description: Use when user wants to review/promote gem-synth candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，按 A/B/C 三档 triage（准确/半准/不准）分流，最终晋升 permanent 或拒绝归档；也用于在过审前监控 L3 合成进度与上游 fragments。Triggers on "candidate 过审", "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "promote candidate", "review candidate", "L5 晋升", "broken candidate", "candidate 审核", "破损 candidate", "合成进度", "碎片", "gem-synth status", "fragments".
+description: Use when user wants to review/promote gem-synth candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，支持大积压的三模式过审（客观去重扫描 / 簇级 triage / 单条 A/B/C）+ 冗余维度 + 固化机械清理；也用于过审前监控 L3 合成进度与上游 fragments。Triggers on "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "candidate 过审", "L5 晋升", "promote candidate", "review candidate", "broken candidate", "candidate 审核", "破损 candidate", "批量过审", "簇级去重", "dedup 扫描", "candidate 冗余", "合成进度", "碎片", "gem-synth status", "fragments".
 ---
 
-# 过审 candidate（破损→完整）
+# 过审 candidate（破损→完整，支持大积压）
 
-把 L3 合成产出的 candidate（pending/flawed）逐条过审，晋升为 permanent 或拒绝归档。
+把 L3 合成产出的 candidate（pending/flawed）过审，晋升为 permanent 或拒绝归档。
+对应 #249 五层 Loop Engineering 的 L5 晋升层。#319 重写：逐条 A/B/C → **三模式过审**，应对 700+ 积压。
 
-对应 #249 五层 Loop Engineering 的 L5 晋升层。
-
-> 本技能复用 `/skill:jfox-manage` §4.1 的共享约定（`--kb` / `--json` / `--content-file` / `--format json`），下文示例统一使用 `--json` 简写。
+> 本技能复用 `/skill:jfox-manage` §4.1 的共享约定（`--kb` / `--content-file` / `--format json`）。
 
 ## 前置条件
 
@@ -55,77 +54,190 @@ jfox fragments show <fragment_id> --json
 - 某条 candidate 内容存疑时，用 `fragments show` 追溯其来源 fragment，辅助判档。
 - 发现 `failed_anchors` 时，可转由 `/skill:jfox-session-summary` 检查对应 session 是否已产生高质量 summary，再决定是否重新触发合成。
 
-## 过审流程（三档分流 triage）
+## 0. 何时用哪种模式（决策树）
 
-### Step 1: 获取 pending candidate 列表
-
-```bash
-jfox candidates list --status pending --json
-```
-
-按 `confidence` 降序挑选下一条待审 candidate。若无 pending candidate，告知用户当前没有需要过审的候选宝石。
-
-### Step 2: 读取 candidate 及其 grounding
+先看 pending 积压量（注意 `jfox candidates list` 默认分页 50 是上限非真实数；真实数量直接扫目录）：
 
 ```bash
-jfox candidates show <candidate_id> --json
-jfox show <grounded_by_id>              # 读取 grounded_by 指向的 permanent 笔记
+jfox candidates list --status pending --format json | jq 'length'   # 分页内（≤50）
+ls ~/.zettelkasten/$(jfox kb current --format json | jq -r .name)/notes/candidate/ | wc -l  # 真实总数
 ```
 
-`grounded_by` 可能有多个，按需逐一读取。若 candidate 未提供 grounded_by，则仅基于 candidate 自身内容判断。
+- **大积压（pending > 50）** → **模式1**（客观去重扫描，砍精确/高重复）→ **模式2**（剩余簇级 triage）→ **模式3**（高价值/模糊单条）
+- **小积压（≤ 50）** → 直接 **模式2 / 模式3**
 
-### Step 3: 按准确度分流
+> 经验：大积压的主要矛盾是**冗余**（被现有 permanent 覆盖），不是准确性。先用模式1 砍重复，再用模式2 砍冗余，最后模式3 精修真正值得晋升的。
 
-#### 档 A：准确（无实质错误）
+## 1. 模式1：客观去重扫描（大积压第一步）
 
-1. **微调正文**：清除 candidate 专属段落（如「待人工审阅」「置信度说明」「grounded_by」等元信息），整理成 permanent 笔记风格。
-2. **补全 wiki link**：
-   - 验证现有 `[[参考笔记]]` 是否指向真实笔记
-   - 用 `jfox suggest-links "<改写后的正文>" --json` 查找 score ≥ 0.6 的候选链接并补漏
-3. **展示结果**：向用户展示改写后的正文 + wiki link 报告，等待确认。
-4. **写回并晋升**：
-   - 将改写后的正文写回 candidate 文件（promote 只改 type/移文件/回填 backlinks，不改正文）
-   - 调用 `jfox candidates promote <candidate_id>`
+对存量 pending 做一次性 dedup 扫描，三档：
 
-#### 档 B：大部分对、局部有问题（需澄清）
+- **L1 content_hash 精确**（cleaning 后正文逐字节一致）：直接清，每组留 1，不用读
+- **L2 cosine ≥ 0.95**：报簇（标题 + 分数 + 内容片段）给用户确认后清
+- **L3 cosine 0.88–0.95**：很可能，读一眼确认；< 0.88 不标记
 
-1. **列出问题点**：一次性列出所有待澄清问题（哪条事实待定、哪处二选一、缺什么信息）。
-2. **等待用户批量回答**。
-3. **据回答改写**：执行 §A 中的微调 + 补链流程。
-4. **可能多轮澄清**；完成后展示改写结果 → 确认 → `jfox candidates promote <candidate_id>`。
+**临时脚本**（dry-run 默认，`--apply` 批量 reject keep-best）：
 
-#### 档 C：整体不可信
+```python
+# promote-skill 模式1：存量 candidate dedup 扫描（临时脚本）
+# 待 jfox candidates dedup-scan 命令（follow-up）落地后替换
+import hashlib, re, sys, json, subprocess
+import numpy as np
 
-1. **给出依据**：说明与哪条 permanent 冲突、 grounding 如何崩了、或存在哪些事实性错误。
-2. **等待用户确认拒绝**。
-3. **拒绝归档**：
+META_RE = re.compile(r"\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n")
+LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
+
+def clean(content: str) -> str:
+    """剥 candidate 元段落（覆盖 ## 置信度说明 / ## 可信度说明 变体）+ 首个 leading H1。"""
+    m = META_RE.search("\n" + content)
+    if m:
+        content = content[: m.start() - 1]
+    content = LEADING_H1_RE.sub("", content, count=1)
+    return content.strip()
+
+def content_hash(s: str) -> str:
+    return hashlib.sha1(s.encode("utf-8")).hexdigest()
+
+APPLY = "--apply" in sys.argv
+THRESHOLD = 0.88
+for i, a in enumerate(sys.argv):
+    if a == "--threshold" and i + 1 < len(sys.argv):
+        THRESHOLD = float(sys.argv[i + 1])
+
+# 1. 列 pending（分页 50，大积压需多次或直查 notes/candidate/ 目录）
+cands = json.loads(subprocess.check_output(
+    ["jfox", "candidates", "list", "--status", "pending", "--format", "json"], text=True))
+
+# 2. cleaning + L1 content_hash 分组
+groups = {}
+for c in cands:
+    body = clean(c.get("content", ""))
+    groups.setdefault(content_hash(body), []).append((c["id"], c.get("title", ""), body))
+
+l1 = {h: v for h, v in groups.items() if len(v) > 1}
+print(f"L1 精确重复: {sum(len(v) for v in l1.values())} 条 / {len(l1)} 簇")
+for h, v in l1.items():
+    keep, *rest = v
+    print(f"  keep {keep[1]} ({keep[0]}); reject {[r[0] for r in rest]}")
+    if APPLY:
+        for r in rest:
+            subprocess.run(["jfox", "candidates", "reject", r[0],
+                            "--reason", f"L1 精确重复 of {keep[0]}"])
+
+# 3. L2/L3 cosine（需 embedding daemon；不可用则降级只做 L1）
+try:
+    from jfox.embedding_backend import get_backend
+    backend = get_backend()
+    reps = [v[0] for v in groups.values()]  # 每组代表 (id, title, body)
+    embs = np.array([backend.encode_single(r[2]) for r in reps], dtype="float32")
+    norms = np.linalg.norm(embs, axis=1, keepdims=True) + 1e-9
+    sims = (embs / norms) @ (embs / norms).T
+    for i in range(len(reps)):
+        for j in range(i + 1, len(reps)):
+            if sims[i, j] >= THRESHOLD:
+                tag = "L2" if sims[i, j] >= 0.95 else "L3"
+                print(f"  [{tag} {sims[i,j]:.3f}] {reps[i][1]} ↔ {reps[j][1]}")
+except Exception as e:
+    print(f"embedding daemon 不可用({e})，已降级只做 L1 content_hash")
+```
+
+> 批量 reject（> 40 条）建议后台跑（每条触发一次 chroma embedding，累积耗时）；`while read` 注意文件尾换行，否则漏最后一条。
+
+## 2. 模式2：簇级 triage（非精确重复的簇）
+
+对模式1 剩下的、或小积压的候选簇：
+
+1. **每簇先查「是否已被现有 permanent 覆盖」**（冗余维度）：
    ```bash
-   jfox candidates reject <candidate_id> --reason "<拒绝原因>"
+   jfox search "<簇主题关键词>" --type permanent
+   jfox suggest-links "<簇代表正文>" --json   # 阈值可放宽 0.4–0.5
    ```
+2. **已被覆盖** → keep-best（簇中 grounding 最实 / 信息最完整者）+ reject 其余
+3. **未被覆盖** → promote-merge：簇内 candidate 改写合并成单条 permanent
 
-## 边界原则
+## 3. 模式3：单条深度 triage（A/B/C，降为次要）
 
-- **能确信改对的**（格式、candidate 元段落、明显缺链）→ 微调后直接改，不问用户。
-- **需要用户判断的**（事实对错、语义二选一、关键信息缺失）→ 澄清后再处理。
-- **整体不可信的**（与 permanent 冲突 / grounding 崩）→ 给出依据后 reject。
+仅用于高价值单条或模式1 L3 模糊条：
+
+- **档 A 准确（无实质错误）**：读 candidate + `grounded_by` permanent → 微调（清元段落 + 补链 + title）→ 展示改写后正文 + wiki-link 报告 → 用户确认 → 写回正文 → `jfox candidates promote <id>`
+- **档 B 大部分对、局部有问题**：一次性列出待澄清问题 → 用户批量回答 → 据答改写（含 A 的微调 + 补链）→ 确认 → promote
+- **档 C 整体不可信**：给依据（与哪条 permanent 冲突 / grounding 崩）→ 用户确认 → `jfox candidates reject <id> --reason "<原因>"`
+
+## 4. 「冗余」verdict（跨模式维度，与 A/B/C 并列）
+
+模式2 / 模式3 过审时，凡判定**「已被现有 permanent 覆盖」** → `verdict = 冗余`，处置 fold（折进现有 permanent）/ merge / reject。
+
+**纪律**：promote 前强制查「是否已被现有 permanent 覆盖」，避免晋升冗余笔记污染知识库。
+
+## 5. 机械清理标准流程（固化，别每批重写）
+
+晋升前对 candidate 正文做标准 clean（frontmatter 字段 promote 自动清；正文用下面片段）：
+
+```python
+# promote-skill 晋升前机械清理（复用 _strip_leading_h1 / _clean_candidate_content 思路）
+import re
+META_RE = re.compile(r"\n## (来源|参考的永久笔记|置信度.*|可信度.*)\n")
+LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
+
+def clean_for_promote(content: str) -> str:
+    # 1. 删元段落（截断到首个 marker，覆盖变体 ## 置信度说明 / ## 可信度说明）
+    m = META_RE.search("\n" + content)
+    if m:
+        content = content[: m.start() - 1]
+    # 2. 剥首个 leading H1（title 重复，#320 残留）
+    content = LEADING_H1_RE.sub("", content, count=1)
+    # 3. 3+H1（LLM 用 H1 当分节）→ 降级 H2（人审确认）
+    if content.count("\n# ") >= 1:
+        content = re.sub(r"(?m)^# ", "## ", content)
+    return content.strip()
+# 写回：jfox edit <candidate_id> --content-file cleaned.md
+```
+
+清理四步：
+1. **剥 frontmatter 字段**：promote 自动清 `status` / `gem_level` / `confidence` / `knowledge_type` / `reject_reason`（**保留** `source_fragments` / `grounded_by` 溯源）
+2. **删元段落**：上面的 META_RE（覆盖 `## 置信度说明` / `## 可信度说明` 变体，补 dedup cleaning 现存缺陷）
+3. **去双/多 H1**：剥首个 leading H1；3+H1（LLM 用 H1 当分节）降级 H2 或人审
+4. **修 exact-link**：wiki link 精确标题匹配（关联 #275）；`suggest-links` 补漏链
+
+## 6. 已知坑（条条实踩）
+
+- **wiki link 要精确标题**：`[[Boktionary]]`、`[[没爆就别修]]` 等短链会悬空；promote 时未解析链 warning + 跳过（不报上层）
+- **`suggest-links` 常关键词误命中 / 漏语义邻居**（如版权 ↔ Boktionary 返回 < 0.6）→ 需手动按概念补链，不能只信它
+- **confidence 是合成器自评、≠ 质量/冗余**：别按它排序或决定能否直接升（0.85 的簇里既有冗余又有 grounding 标错的）
+- **reject = archive**：文件保留在 candidate/，`jfox unarchive` 可恢复——放心清
+- **批量 reject（> ~40 条）须后台跑**：每条触发一次 chroma embedding（增量、非全量重建，但累积耗时）；`while read` 注意尾换行
+
+## 7. 标准输出格式
+
+每条过审结论按此格式给用户：
+
+```
+verdict: A(准确) | B(澄清) | C(不可信) | 冗余
+证据: <与哪条 permanent 对照 / grounding 报告>
+wiki-link 报告: <已有链验证 + suggest-links 推荐>
+处置: promote <id> | reject <id> | merge <ids> | fold → <permanent id>
+确认: <等用户 yes/no>
+```
 
 ## 关键约束
 
-- 晋升前必须把改写后的正文写回 candidate 文件；`jfox candidates promote` 不会替你改写正文。
-- wiki link 补链阈值 ≥ 0.6（与 `/skill:jfox-organize` 一致）。
-- 用户始终有最终决定权：agent 判档 + 给依据，用户可 override（例如 agent 判为 B，用户坚持直接 promote）。
-- 涉及多个 candidate 时，建议一次只处理一条，避免批量晋升导致错误扩散。
+- **promote 不改正文**：晋升前先 `jfox edit <candidate_id> --content-file cleaned.md` 写回清理 + 改写后正文，再 `jfox candidates promote <id>`（promote 只改 type / 移文件 / 回填 backlinks）
+- **补链阈值 ≥ 0.6**（与 organize skill 一致）；模式1 / 改写场景 candidate 正文短，可放宽 0.4–0.5
+- **用户始终有最终决定权**：agent 判档 + 给依据，用户可 override
+- **溯源不丢**：promote 保留 `source_fragments` / `grounded_by`（剥的是正文 `## 来源` 段落，溯源信息已在 frontmatter）
 
 ## 命令参考
 
 ```bash
-jfox candidates list --status pending --json        # 列出待审 candidate
-jfox candidates show <id> --json                    # 查看 candidate 详情
-jfox candidates promote <id>                        # 晋升为 permanent
-jfox candidates reject <id> --reason "<原因>"        # 拒绝并归档
-jfox show <id_or_title>                             # 查看 permanent 笔记全文（--json 输出结构化字段）
-jfox suggest-links "<正文>" --json                  # 推荐 [[wiki links]] 候选
-jfox edit <candidate_id> --content-file updated.md  # 将改写后的正文写回 candidate
+jfox candidates list --status pending --format json   # 列出待审 candidate（分页 50）
+jfox candidates show <id> --format json               # 查看 candidate 详情
+jfox candidates promote <id>                          # 晋升为 permanent
+jfox candidates reject <id> --reason "<原因>"          # 拒绝并归档（软删除，可 unarchive）
+jfox unarchive <id>                                   # 恢复被 reject/archive 的笔记
+jfox show <id_or_title>                               # 查看 permanent 笔记全文（--format json 输出结构化字段）
+jfox suggest-links "<正文>" --format json             # 推荐 [[wiki links]] 候选
+jfox edit <candidate_id> --content-file updated.md    # 将改写后的正文写回 candidate
+jfox search "<关键词>" --type permanent                # 查现有 permanent（模式2 冗余判定）
 ```
 
 > 通用命令（`add` / `edit` / `delete` / `list` / `show`）以及 `--kb` / `--content-file` 用法详见 `/skill:jfox-manage` §4。
@@ -133,9 +245,9 @@ jfox edit <candidate_id> --content-file updated.md  # 将改写后的正文写�
 ### 合成与碎片监控命令
 
 ```bash
-jfox gem-synth status --json              # 查看 L3 合成进度与失败锚点
-jfox fragments list --json                # 列出 Hook 采集的 session 碎片
-jfox fragments show <fragment_id> --json  # 查看碎片详情
+jfox gem-synth status --format json          # 查看 L3 合成进度与失败锚点
+jfox fragments list --format json            # 列出 Hook 采集的 session 碎片
+jfox fragments show <fragment_id> --format json  # 查看碎片详情
 ```
 
 ## 错误处理
@@ -143,12 +255,16 @@ jfox fragments show <fragment_id> --json  # 查看碎片详情
 | 场景 | 处理方式 |
 |------|---------|
 | 无 pending candidate | 告知用户当前没有需要过审的候选宝石 |
-| `jfox suggest-links` 返回低匹配度（score < 0.6） | 跳过补链，不强制添加 |
+| 大积压（pending > 50） | 先走模式1 客观去重扫描，再模式2/3 |
+| 模式1 embedding daemon 不可用 | 降级只做 L1 content_hash 精确去重 |
+| `jfox suggest-links` 返回低匹配度（score < 0.6） | 跳过自动补链，改手动按概念补；改写场景可放宽阈值到 0.4–0.5 |
 | candidate 对应的 grounded_by 笔记不存在 | 报告缺失，并基于 candidate 自身内容继续判断 |
+| promote 时 wiki link 目标不存在 | warning + 跳过该链（不阻塞，关联 #275）；改写时手动修精确标题 |
 | 用户拒绝 agent 的判档 | 按用户意图重新分流或终止 |
 
 ## 使用建议
 
 - **定期过审**：建议每批 L3 合成完成后立即过审，避免 pending candidate 堆积。
-- **优先高 confidence**：按 confidence 降序处理，先处理 agent 自身最有把握的候选。
-- **大胆 reject**：整体不可信的 candidate 不应强行晋升，拒绝并归档是对知识库质量的保护。
+- **大积压先模式1**：pending > 50 时先用模式1 客观去重砍掉精确/高重复，再簇级 triage——别逐条过。
+- **大胆 reject**：整体不可信或已被现有 permanent 覆盖（冗余）的 candidate 不应强行晋升，拒绝并归档是对知识库质量的保护。
+- **别按 confidence 排序**：confidence 是合成器自评、≠ 质量/冗余，按它挑条目是误导信号。
