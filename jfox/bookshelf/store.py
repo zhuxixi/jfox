@@ -5,10 +5,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from .meta import BookMeta
+from .meta import BookMeta, build_meta_from_bundle, normalize_user_meta
 
 BUNDLE_DIRNAME = "bundle"
 MANIFEST_FILENAME = "manifest.json"
@@ -25,6 +29,10 @@ class BookNotFoundError(Exception):
 
 class InvalidBundleError(Exception):
     """输入文件夹不是合法 scan2book bundle。"""
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
 class BookShelf:
@@ -69,3 +77,86 @@ class BookShelf:
         if not path.exists():
             raise BookNotFoundError(f"{slug} page {page}")
         return path.read_text(encoding="utf-8")
+
+    def add(
+        self,
+        src_folder: Path,
+        *,
+        slug: Optional[str] = None,
+        move: bool = False,
+        force: bool = False,
+        added_at: Optional[str] = None,
+    ) -> BookMeta:
+        src_folder = Path(src_folder)
+        manifest_path = src_folder / BUNDLE_DIRNAME / MANIFEST_FILENAME
+        if not manifest_path.exists():
+            raise InvalidBundleError(
+                f"找不到 {manifest_path}（需要 scan2book 产物 bundle/manifest.json）"
+            )
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if slug is None:
+            slug = manifest.get("slug") or src_folder.name
+        self._validate_slug(slug)
+        if self.exists(slug):
+            if not force:
+                raise BookAlreadyExistsError(slug)
+            shutil.rmtree(self.book_dir(slug))
+        original_file, original_sha256 = self._find_original(src_folder)
+        if added_at is None:
+            added_at = _now_iso()
+        user_meta_path = src_folder / META_FILENAME
+        if user_meta_path.exists():
+            meta = normalize_user_meta(
+                json.loads(user_meta_path.read_text(encoding="utf-8")),
+                slug=slug,
+                added_at=added_at,
+            )
+        else:
+            meta = build_meta_from_bundle(
+                slug=slug,
+                bundle_manifest=manifest,
+                original_file=original_file,
+                original_sha256=original_sha256,
+                added_at=added_at,
+            )
+        dest = self.book_dir(slug)
+        dest.mkdir(parents=True, exist_ok=True)
+        bundle_src = src_folder / BUNDLE_DIRNAME
+        bundle_dst = dest / BUNDLE_DIRNAME
+        if move:
+            shutil.move(str(bundle_src), str(bundle_dst))
+        else:
+            shutil.copytree(str(bundle_src), str(bundle_dst))
+        if original_file:
+            orig_src = src_folder / original_file
+            if orig_src.exists():
+                if move:
+                    shutil.move(str(orig_src), str(dest / original_file))
+                else:
+                    shutil.copy2(str(orig_src), str(dest / original_file))
+        meta.save(self.meta_path(slug))
+        return meta
+
+    def remove(self, slug: str) -> None:
+        d = self.book_dir(slug)
+        if not d.exists():
+            raise BookNotFoundError(slug)
+        shutil.rmtree(d)
+
+    @staticmethod
+    def _validate_slug(slug: str) -> None:
+        if not slug or "/" in slug or "\\" in slug or slug in (".", ".."):
+            raise InvalidBundleError(f"非法 slug: {slug!r}")
+
+    @staticmethod
+    def _find_original(src_folder: Path):
+        """挑 src_folder 顶层最大的文件作原件，返回 (filename, sha256) 或 (None, None)。"""
+        candidates = [f for f in src_folder.iterdir() if f.is_file() and f.name != META_FILENAME]
+        if not candidates:
+            return None, None
+        biggest = max(candidates, key=lambda f: f.stat().st_size)
+        h = hashlib.sha256()
+        with biggest.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
+        return biggest.name, h.hexdigest()
