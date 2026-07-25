@@ -92,8 +92,8 @@ def _try_merge_delta(
         if existing is None or existing.type != NoteType.CANDIDATE or existing.archived:
             logger.info("合并目标 %s 不可用（已删/晋升/归档），降级跳过", hit.note_id)
             return False
-        # 记下版本（updated）与正文口径，LLM 调用后复比对（防 TOCTOU）
-        updated_before = existing.updated
+        # 记下全正文快照（不截断），LLM 调用后复比对（防 TOCTOU）
+        content_before = existing.content
         delta = extract_delta_with_llm(
             new_content=new_content,
             existing_content=_clean_candidate_content(existing.content),
@@ -105,17 +105,18 @@ def _try_merge_delta(
             logger.info("锚点 #%s 无实质增量，跳过", anchor.get("fragment_id"))
             return False
         # TOCTOU 复核：extract_delta_with_llm 可长达 claude_timeout_seconds（默认 180s），
-        # 期间 candidate 可能被 CLI promote/archive（改 type/路径）或被其他合并/编辑改正文。
-        # 重 load + 复校验 type/archived + updated 版本；任一变更则 delta 基于旧快照、失配，
-        # 降级跳过（用 updated 而非正文口径比对：catch 超出 _MAX_CONTENT_CHARS 截断的改动）。
+        # 期间 candidate 可能被 CLI promote/archive（改 type/路径）或被其他合并/直接编辑改正文。
+        # 重 load + 复校验 type/archived + 全正文比对；任一变更则 delta 基于旧快照、失配，降级跳过。
+        # 用全正文（非 _clean 截断版、非 updated）比对：catch 超出 _MAX_CONTENT_CHARS(2000) 的改动
+        # 及不 bump updated 的直接编辑路径。
         existing = load_note_by_id(hit.note_id)
         if (
             existing is None
             or existing.type != NoteType.CANDIDATE
             or existing.archived
-            or existing.updated != updated_before
+            or existing.content != content_before
         ):
-            logger.info("合并目标 %s 在增量提取期间状态/版本变更，降级跳过", hit.note_id)
+            logger.info("合并目标 %s 在增量提取期间状态/正文变更，降级跳过", hit.note_id)
             return False
         return _merge_delta_into_candidate(existing, delta, anchor, kb)
     except Exception as e:

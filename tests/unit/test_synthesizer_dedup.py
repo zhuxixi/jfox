@@ -358,13 +358,13 @@ def test_try_merge_rejects_empty_delta_text():
 
 
 def test_try_merge_aborts_if_target_modified_during_llm_call():
-    """TOCTOU：LLM 期间 candidate 被改（其他合并/CLI 编辑 → updated 变）→ delta 基于
-    旧快照，追加到新正文会不一致 → 降级跳过（kimi r2 issue-5 / r3 issue-7：用 updated
-    比对，catch 超出 _MAX_CONTENT_CHARS 截断的改动）。"""
+    """TOCTOU：LLM 期间 candidate 正文被改（其他合并/CLI 编辑/直接编辑）→ delta 基于
+    旧快照，追加到新正文会不一致 → 降级跳过。用全正文比对（非 updated、非截断版），
+    catch 超出 _MAX_CONTENT_CHARS(2000) 的改动及不 bump updated 的直接编辑路径
+    （kimi r2 issue-5 / r3 issue-7 / cc r4 issue-11）。"""
     before = _existing_candidate()
     after = _existing_candidate()
-    after.content = "已有正文\n\n## 补充（他人合并）\n新内容"
-    after.updated = datetime(2026, 7, 26)  # 版本变了（update_note 会 bump updated）
+    after.content = "已有正文\n\n## 补充（他人合并）\n新内容"  # 正文变了
     cfg = GemSynthesisConfig()
     with (
         patch("jfox.gem_synth.synthesizer.load_note_by_id", side_effect=[before, after]),
