@@ -193,14 +193,19 @@ def synthesize_anchor(
     # NOT NULL，且 None 会让 dedup_check 的 WHERE kb=? 匹配 0 行→永远检不到重复）
     kb_name = _resolve_kb_name(cfg.target_kb)
     if getattr(cfg, "dedup_enabled", True):
-        dup_of = dedup_check(
+        hit = dedup_check(
             kb_name,
             content,
             threshold=getattr(cfg, "dedup_threshold", 0.88),
         )
-        if dup_of:
-            logger.info("锚点 #%s 命中重复（dup_of=%s），跳过存盘", anchor["fragment_id"], dup_of)
-            log.mark_duplicate(anchor["fragment_id"], dup_of)
+        if hit:
+            logger.info(
+                "锚点 #%s 命中重复（dup_of=%s, score=%.3f），跳过存盘",
+                anchor["fragment_id"],
+                hit.note_id,
+                hit.score,
+            )
+            log.mark_duplicate(anchor["fragment_id"], hit.note_id)
             return None
 
     note_id = _save_candidate_note(llm_result, anchor)

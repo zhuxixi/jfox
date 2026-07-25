@@ -8,6 +8,7 @@ import hashlib
 import logging
 import sqlite3
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -16,6 +17,19 @@ import numpy as np
 from .paths import default_synthesis_db_path
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DedupHit:
+    """dedup 命中结果：note_id + note_type（candidate/permanent）+ 余弦分数。
+
+    note_type 供合成侧分流（permanent 跳过、candidate 进合并带）；score 供分带
+    （≥0.96 近逐字省 LLM，0.88–0.96 才提取增量）。"""
+
+    note_id: str
+    note_type: str
+    score: float
+
 
 _MAX_CONTENT_CHARS = 2000
 _CANDIDATE_META_MARKERS = ["\n## 来源\n", "\n## 参考的永久笔记\n", "\n## 置信度\n"]
@@ -64,17 +78,22 @@ class DedupStore:
             ).fetchone()
         return r["content_hash"] if r else None
 
-    def all_embeddings(self, kb: str, note_types: Tuple[str, ...]) -> List[Tuple[str, np.ndarray]]:
+    def all_embeddings(
+        self, kb: str, note_types: Tuple[str, ...]
+    ) -> List[Tuple[str, str, np.ndarray]]:
+        """返回 [(note_id, note_type, emb)]。note_type 供合成侧分流的富返回。"""
         if not note_types:
             return []
         placeholders = ",".join("?" * len(note_types))
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT note_id, emb FROM dedup_embeddings "
+                f"SELECT note_id, note_type, emb FROM dedup_embeddings "
                 f"WHERE kb=? AND note_type IN ({placeholders})",
                 (kb, *note_types),
             ).fetchall()
-        return [(r["note_id"], np.frombuffer(r["emb"], dtype=np.float32)) for r in rows]
+        return [
+            (r["note_id"], r["note_type"], np.frombuffer(r["emb"], dtype=np.float32)) for r in rows
+        ]
 
     def update_type(self, kb: str, note_id: str, new_type: str) -> None:
         with self._lock:
@@ -165,10 +184,11 @@ def _embed(text: str) -> Optional[np.ndarray]:
     return np.asarray(vec, dtype=np.float32)
 
 
-def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]:
-    """返回与已有 candidate/permanent 重复的 note_id；无重复或降级时返回 None。
+def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[DedupHit]:
+    """返回与已有 candidate/permanent 最相似的 DedupHit；无重复或降级时返回 None。
 
     daemon 不可用 / 空内容 / 表空 → 返回 None（降级放行，不阻塞合成）。
+    返回富对象（note_id + note_type + score）供 #309 增量合并分带决策。
     """
     try:
         cleaned = _clean_candidate_content(content)
@@ -180,7 +200,7 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]
         rows = _get_store().all_embeddings(kb, ("candidate", "permanent"))
         if not rows:
             return None
-        mat = np.vstack([r[1] for r in rows])  # (N, D)
+        mat = np.vstack([r[2] for r in rows])  # (N, D)；rows 现为 (id, type, emb)
         # 两侧范数都加 epsilon 防零行/零向量除零 → NaN 毒化 argmax
         norms = (np.linalg.norm(mat, axis=1) + 1e-12) * (np.linalg.norm(emb) + 1e-12)
         sims = (mat @ emb) / norms
@@ -188,7 +208,7 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]
         np.nan_to_num(sims, nan=-1.0, copy=False)
         best = int(np.argmax(sims))
         if sims[best] >= threshold:
-            return rows[best][0]
+            return DedupHit(rows[best][0], rows[best][1], float(sims[best]))
     except Exception as e:
         logger.warning("dedup_check 失败，降级跳过: %s", e)
         return None
@@ -256,6 +276,7 @@ def release_blocked_anchors(note_id: str) -> None:
 
 
 __all__ = [
+    "DedupHit",
     "DedupStore",
     "dedup_check",
     "upsert_dedup",

@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from jfox.gem_synth import synthesizer
+from jfox.gem_synth.dedup import DedupHit
 
 
 def _anchor():
@@ -39,7 +40,10 @@ def test_duplicate_hit_skips_save_and_marks_duplicate(tmp_path):
             "jfox.gem_synth.synthesizer.synthesize_with_llm",
             return_value={"title": "T", "content": "C", "confidence": 0.9},
         ),
-        patch("jfox.gem_synth.synthesizer.dedup_check", return_value="existing-id") as mcheck,
+        patch(
+            "jfox.gem_synth.synthesizer.dedup_check",
+            return_value=DedupHit("existing-id", "candidate", 0.99),
+        ) as mcheck,
         patch("jfox.gem_synth.synthesizer._save_candidate_note") as msave,
     ):
         from jfox.global_config import GemSynthesisConfig
