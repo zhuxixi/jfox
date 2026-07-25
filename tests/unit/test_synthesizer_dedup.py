@@ -357,6 +357,28 @@ def test_try_merge_rejects_empty_delta_text():
     mmerge.assert_not_called()
 
 
+def test_try_merge_aborts_if_target_content_changed_during_llm_call():
+    """TOCTOU 正文变更：LLM 期间 candidate 正文被改（其他合并/CLI 编辑）→ delta 基于旧
+    正文，追加到新正文会不一致 → 降级跳过（kimi r2 issue-5）。"""
+    before = _existing_candidate()
+    after = _existing_candidate()
+    after.content = "已有正文\n\n## 补充（他人合并）\n新内容"  # 正文变了
+    cfg = GemSynthesisConfig()
+    with (
+        patch("jfox.gem_synth.synthesizer.load_note_by_id", side_effect=[before, after]),
+        patch(
+            "jfox.gem_synth.synthesizer.extract_delta_with_llm",
+            return_value={"has_delta": True, "delta": "d", "conflict": None},
+        ),
+        patch("jfox.gem_synth.synthesizer._merge_delta_into_candidate") as mmerge,
+    ):
+        ok = synthesizer._try_merge_delta(
+            DedupHit("cand-target", "candidate", 0.91), "new", _anchor(), cfg, "default", None
+        )
+    assert ok is False
+    mmerge.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # #309 增量合并：synthesize_anchor dedup 分支决策树
 # ---------------------------------------------------------------------------
