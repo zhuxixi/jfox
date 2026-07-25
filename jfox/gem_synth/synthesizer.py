@@ -92,11 +92,11 @@ def _try_merge_delta(
         if existing is None or existing.type != NoteType.CANDIDATE or existing.archived:
             logger.info("合并目标 %s 不可用（已删/晋升/归档），降级跳过", hit.note_id)
             return False
-        # 记下提取增量时的已有正文口径，LLM 调用后复比对（防 TOCTOU：期间正文被改 → delta 失配）
-        existing_clean = _clean_candidate_content(existing.content)
+        # 记下版本（updated）与正文口径，LLM 调用后复比对（防 TOCTOU）
+        updated_before = existing.updated
         delta = extract_delta_with_llm(
             new_content=new_content,
-            existing_content=existing_clean,
+            existing_content=_clean_candidate_content(existing.content),
             cfg=cfg,
             stop_event=stop_event,
         )
@@ -106,16 +106,16 @@ def _try_merge_delta(
             return False
         # TOCTOU 复核：extract_delta_with_llm 可长达 claude_timeout_seconds（默认 180s），
         # 期间 candidate 可能被 CLI promote/archive（改 type/路径）或被其他合并/编辑改正文。
-        # 重 load + 复校验 type/archived + 正文口径；任一变更则 delta 基于旧正文、失配，
-        # 降级跳过，避免增量重复 / 矛盾标注错位 / 写进已晋升 permanent。
+        # 重 load + 复校验 type/archived + updated 版本；任一变更则 delta 基于旧快照、失配，
+        # 降级跳过（用 updated 而非正文口径比对：catch 超出 _MAX_CONTENT_CHARS 截断的改动）。
         existing = load_note_by_id(hit.note_id)
         if (
             existing is None
             or existing.type != NoteType.CANDIDATE
             or existing.archived
-            or _clean_candidate_content(existing.content) != existing_clean
+            or existing.updated != updated_before
         ):
-            logger.info("合并目标 %s 在增量提取期间状态/正文变更，降级跳过", hit.note_id)
+            logger.info("合并目标 %s 在增量提取期间状态/版本变更，降级跳过", hit.note_id)
             return False
         return _merge_delta_into_candidate(existing, delta, anchor, kb)
     except Exception as e:

@@ -337,6 +337,13 @@ def extract_delta_with_llm(
         if not isinstance(parsed, dict) or "has_delta" not in parsed:
             logger.warning("delta LLM 输出缺 has_delta: %r", parsed)
             return None
+        # 规范化 has_delta 为 bool：LLM 退化可能输出字符串 "false"/"False"（Python 真值为 True
+        # → 把无实质增量误判为有增量并合并）。"true"/"1"/"yes" → True，其余 → False。
+        hd = parsed["has_delta"]
+        if isinstance(hd, str):
+            parsed["has_delta"] = hd.strip().lower() in ("true", "1", "yes")
+        else:
+            parsed["has_delta"] = bool(hd)
         return parsed
     except Exception as e:
         logger.exception("delta LLM 提取失败: %s", e)

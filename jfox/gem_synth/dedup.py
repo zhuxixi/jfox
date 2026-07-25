@@ -278,11 +278,12 @@ def delete_dedup(kb: str, note_id: str) -> None:
 
 
 def release_blocked_anchors(note_id: str) -> None:
-    """释放因"重复于 note_id"而被阻断的锚点（清除 synthesis_log 中的 duplicate 记账）。
+    """释放因"重复于/合并进 note_id"而被阻断的锚点（清除 synthesis_log 中指向它的
+    duplicate + merged 记账）。
 
-    candidate 被 reject 后调用：该 candidate 曾触发 dedup 命中，对应锚点被标记
-    duplicate（不重试）。candidate 已丢弃 → 锚点应恢复为未处理，允许未来重新合成。
-    失败仅 warning，不阻塞 reject 流程。"""
+    candidate 被 reject/delete 后调用：该 candidate 曾触发 dedup 命中（duplicate）或
+    被增量合并进（merged，#309），对应锚点被标记已处理（不重试）。candidate 已丢弃 →
+    锚点应恢复为未处理，允许未来重新合成。失败仅 warning，不阻塞 reject 流程。"""
     try:
         from .store import SynthesisLog
 
