@@ -1,0 +1,83 @@
+"""bookshelf CLI 子命令组：jfox bookshelf add/list/show/remove。"""
+
+from __future__ import annotations
+
+import json as _json
+from pathlib import Path
+from typing import Any, Optional
+
+import typer
+from rich.console import Console
+
+from ..config import config, use_kb
+from .store import (
+    BookAlreadyExistsError,
+    BookShelf,
+    InvalidBundleError,
+)
+
+console = Console(legacy_windows=False)
+_json_console = Console(legacy_windows=False, highlight=False, markup=False, no_color=True)
+
+bookshelf_app = typer.Typer(
+    name="bookshelf",
+    help="管理好书书架：PDF + 抽取 bundle + 元数据",
+    no_args_is_help=True,
+)
+
+
+def _shelf() -> BookShelf:
+    return BookShelf(config.base_dir)
+
+
+def _emit_json(data: Any) -> None:
+    _json_console.print(_json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def _fail(message: str, output_format: str) -> None:
+    if output_format == "json":
+        _json_console.print(_json.dumps({"success": False, "error": message}, ensure_ascii=False))
+    else:
+        console.print(f"[red]{message}[/red]")
+    raise typer.Exit(code=1)
+
+
+@bookshelf_app.command("add")
+def add_cmd(
+    folder: str = typer.Argument(..., help="书文件夹（含 bundle/ + 可选 meta.json + 原件）"),
+    force: bool = typer.Option(False, "--force", help="同名 slug 覆盖重加"),
+    move: bool = typer.Option(False, "--move", help="移动原件而非复制"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（等同 --format json）"),
+) -> None:
+    """把一本书加进书架。"""
+    if json_output:
+        output_format = "json"
+    try:
+        with use_kb(kb):
+            shelf = _shelf()
+            meta = shelf.add(Path(folder), move=move, force=force)
+            data = {
+                "success": True,
+                "slug": meta.slug,
+                "title": meta.title,
+                "page_count": meta.book.get("page_count", 0),
+                "path": str(shelf.book_dir(meta.slug)),
+            }
+    except BookAlreadyExistsError as e:
+        _fail(f"书 '{e}' 已存在；用 --force 覆盖重加", output_format)
+        return
+    except InvalidBundleError as e:
+        _fail(str(e), output_format)
+        return
+    if output_format == "json":
+        _emit_json(data)
+    else:
+        console.print(f"[green]已加入书架[/green] {meta.title}")
+        console.print(f"  slug:  {meta.slug}")
+        console.print(f"  页数:  {meta.book.get('page_count', 0)}")
+        console.print(f"  路径:  {shelf.book_dir(meta.slug)}")
+
+
+__all__ = ["bookshelf_app"]
