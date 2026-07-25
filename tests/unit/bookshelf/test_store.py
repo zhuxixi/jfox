@@ -138,6 +138,8 @@ def test_add_user_meta_normalized(tmp_path, make_book_folder):
     assert meta.title == "My Title"
     assert meta.schema_version == SCHEMA_VERSION
     assert meta.tags == ["t1"]
+    assert meta.source["original_file"] == "original.pdf"  # 以实际复制的文件为准，非用户值 x.pdf
+    assert meta.source["original_sha256"]  # 非空（用户 meta 没给也要补上）
 
 
 def test_add_slug_from_manifest_when_none(tmp_path, make_book_folder):
@@ -153,6 +155,17 @@ def test_add_invalid_slug_rejected(tmp_path, make_book_folder):
     folder = make_book_folder(slug="ok", pages=1)
     with pytest.raises(InvalidBundleError):
         shelf.add(folder, slug="bad/slug", added_at="t")
+
+
+def test_add_invalid_slug_windows_chars_rejected(tmp_path, make_book_folder):
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="ok", pages=1)
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, slug="bad:slug", added_at="t")
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, slug="bad?name", added_at="t")
 
 
 def test_remove(tmp_path, make_book_folder):

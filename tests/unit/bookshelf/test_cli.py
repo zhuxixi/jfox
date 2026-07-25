@@ -54,6 +54,9 @@ def test_show_meta_json(cli_fast, make_book_folder):
     assert data["slug"] == "sapiens"
     assert data["title"] == "Sapiens"
     assert data["book"]["page_count"] == 3
+    assert isinstance(data["pages"], list)
+    assert len(data["pages"]) == 3
+    assert data["pages"][0]["page"] == 1
 
 
 def test_show_page_json(cli_fast, make_book_folder):

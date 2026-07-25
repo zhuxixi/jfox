@@ -10,7 +10,7 @@ import json
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .meta import BookMeta, build_meta_from_bundle, normalize_user_meta
 
@@ -78,6 +78,13 @@ class BookShelf:
             raise BookNotFoundError(f"{slug} page {page}")
         return path.read_text(encoding="utf-8")
 
+    def read_bundle_manifest(self, slug: str) -> Dict[str, Any]:
+        """读 bundle/manifest.json（scan2book 产物），用于 show 的页清单。"""
+        path = self.book_dir(slug) / BUNDLE_DIRNAME / MANIFEST_FILENAME
+        if not path.exists():
+            raise BookNotFoundError(f"{slug} bundle manifest")
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def add(
         self,
         src_folder: Path,
@@ -106,11 +113,13 @@ class BookShelf:
             added_at = _now_iso()
         user_meta_path = src_folder / META_FILENAME
         if user_meta_path.exists():
-            meta = normalize_user_meta(
-                json.loads(user_meta_path.read_text(encoding="utf-8")),
-                slug=slug,
-                added_at=added_at,
-            )
+            raw = json.loads(user_meta_path.read_text(encoding="utf-8"))
+            raw.setdefault("source", {})
+            # original_file/sha256 是"实际复制了哪个文件"的客观事实，以计算值为准
+            # （覆盖用户值），否则 meta 指向的文件名可能和 dest/ 里真实文件对不上。
+            raw["source"]["original_file"] = original_file or ""
+            raw["source"]["original_sha256"] = original_sha256 or ""
+            meta = normalize_user_meta(raw, slug=slug, added_at=added_at)
         else:
             meta = build_meta_from_bundle(
                 slug=slug,
@@ -145,8 +154,12 @@ class BookShelf:
 
     @staticmethod
     def _validate_slug(slug: str) -> None:
-        if not slug or "/" in slug or "\\" in slug or slug in (".", ".."):
+        # 拒绝空、路径分隔符、Windows 非法字符、控制字符，以及 . / ..
+        if not slug or slug in (".", ".."):
             raise InvalidBundleError(f"非法 slug: {slug!r}")
+        forbidden = set('/:*?"<>|\\')
+        if any(c in forbidden for c in slug) or any(ord(c) < 32 for c in slug):
+            raise InvalidBundleError(f"非法 slug（含路径/非法字符）: {slug!r}")
 
     @staticmethod
     def _find_original(src_folder: Path):

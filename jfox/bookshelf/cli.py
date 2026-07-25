@@ -73,6 +73,8 @@ def add_cmd(
     except InvalidBundleError as e:
         _fail(str(e), output_format)
         return
+    if not meta.source.get("original_file"):
+        typer.echo("⚠️ 未找到原件文件（仅 bundle 入库，source.original_* 留空）", err=True)
     if output_format == "json":
         _emit_json(data)
     else:
@@ -138,8 +140,18 @@ def show_cmd(
                     print(text)
                 return
             meta = shelf.get(slug)
+            bundle_manifest = shelf.read_bundle_manifest(slug)
+            pages_summary = [
+                {
+                    "page": p.get("page"),
+                    "chars": p.get("chars", 0),
+                    "has_image": p.get("has_image", False),
+                }
+                for p in bundle_manifest.get("pages", [])
+            ]
             data: Dict[str, Any] = meta.to_dict()
             data["path"] = str(shelf.book_dir(slug))
+            data["pages"] = pages_summary
     except BookNotFoundError as e:
         _fail(f"找不到书/页：{e}", output_format)
         return
