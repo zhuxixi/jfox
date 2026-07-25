@@ -8,14 +8,28 @@ import hashlib
 import logging
 import sqlite3
 import threading
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 
 from .paths import default_synthesis_db_path
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DedupHit:
+    """dedup 命中结果：note_id + note_type（candidate/permanent）+ 余弦分数。
+
+    note_type 供合成侧分流（permanent 跳过、candidate 进合并带）；score 供分带
+    （≥0.96 近逐字省 LLM，0.88–0.96 才提取增量）。"""
+
+    note_id: str
+    note_type: Literal["candidate", "permanent"]
+    score: float
+
 
 _MAX_CONTENT_CHARS = 2000
 _CANDIDATE_META_MARKERS = ["\n## 来源\n", "\n## 参考的永久笔记\n", "\n## 置信度\n"]
@@ -64,17 +78,22 @@ class DedupStore:
             ).fetchone()
         return r["content_hash"] if r else None
 
-    def all_embeddings(self, kb: str, note_types: Tuple[str, ...]) -> List[Tuple[str, np.ndarray]]:
+    def all_embeddings(
+        self, kb: str, note_types: Tuple[str, ...]
+    ) -> List[Tuple[str, str, np.ndarray]]:
+        """返回 [(note_id, note_type, emb)]。note_type 供合成侧分流的富返回。"""
         if not note_types:
             return []
         placeholders = ",".join("?" * len(note_types))
         with self._lock:
             rows = self._conn.execute(
-                f"SELECT note_id, emb FROM dedup_embeddings "
+                f"SELECT note_id, note_type, emb FROM dedup_embeddings "
                 f"WHERE kb=? AND note_type IN ({placeholders})",
                 (kb, *note_types),
             ).fetchall()
-        return [(r["note_id"], np.frombuffer(r["emb"], dtype=np.float32)) for r in rows]
+        return [
+            (r["note_id"], r["note_type"], np.frombuffer(r["emb"], dtype=np.float32)) for r in rows
+        ]
 
     def update_type(self, kb: str, note_id: str, new_type: str) -> None:
         with self._lock:
@@ -153,6 +172,26 @@ def _clean_candidate_content(content: str) -> str:
     return content.strip()[:_MAX_CONTENT_CHARS]
 
 
+def _append_knowledge_section(content: str, section: str) -> str:
+    """把知识性 section（如 #309 的 ## 补充 增量段）插入正文 body 末尾、元数据段落
+    （## 来源/参考/置信度）**之前**。
+
+    与 _clean_candidate_content（从 ## 来源 截断）配套：插在 meta 之前 → 清洗时该
+    section 留在 body 内 → 进 embedding 口径（content_hash 变 → 重算）+ 喂给后续
+    delta LLM 的 existing_content 也能看到已合并的增量（防同一增量被相似锚点反复
+    提取/追加）。无 meta 段落时追加到末尾。
+
+    已知限制（cc round-1 issue-3/6 acknowledged）：(a) body 累积超 _MAX_CONTENT_CHARS(2000)
+    时，较新 delta 不进 embedding/LLM 口径——需同一 candidate 累积 ~7-20 条独立 delta 才
+    触发，dedup 已防大部分重复合并 + backfill 自愈，v1 接受；(b) 若 delta 文本本身含
+    `## 来源` / `## 置信度` 等 marker 行，下次清洗会误截——LLM delta 极少含精确 marker，v1 接受。"""
+    cut = min(
+        (p for p in (content.find(m) for m in _CANDIDATE_META_MARKERS) if p >= 0),
+        default=len(content),
+    )
+    return content[:cut] + section + content[cut:]
+
+
 def _content_hash(content: str) -> str:
     return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
@@ -165,10 +204,11 @@ def _embed(text: str) -> Optional[np.ndarray]:
     return np.asarray(vec, dtype=np.float32)
 
 
-def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]:
-    """返回与已有 candidate/permanent 重复的 note_id；无重复或降级时返回 None。
+def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[DedupHit]:
+    """返回与已有 candidate/permanent 最相似的 DedupHit；无重复或降级时返回 None。
 
     daemon 不可用 / 空内容 / 表空 → 返回 None（降级放行，不阻塞合成）。
+    返回富对象（note_id + note_type + score）供 #309 增量合并分带决策。
     """
     try:
         cleaned = _clean_candidate_content(content)
@@ -180,7 +220,7 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]
         rows = _get_store().all_embeddings(kb, ("candidate", "permanent"))
         if not rows:
             return None
-        mat = np.vstack([r[1] for r in rows])  # (N, D)
+        mat = np.vstack([r[2] for r in rows])  # (N, D)；rows 现为 (id, type, emb)
         # 两侧范数都加 epsilon 防零行/零向量除零 → NaN 毒化 argmax
         norms = (np.linalg.norm(mat, axis=1) + 1e-12) * (np.linalg.norm(emb) + 1e-12)
         sims = (mat @ emb) / norms
@@ -188,7 +228,7 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]
         np.nan_to_num(sims, nan=-1.0, copy=False)
         best = int(np.argmax(sims))
         if sims[best] >= threshold:
-            return rows[best][0]
+            return DedupHit(rows[best][0], rows[best][1], float(sims[best]))
     except Exception as e:
         logger.warning("dedup_check 失败，降级跳过: %s", e)
         return None
@@ -238,11 +278,12 @@ def delete_dedup(kb: str, note_id: str) -> None:
 
 
 def release_blocked_anchors(note_id: str) -> None:
-    """释放因"重复于 note_id"而被阻断的锚点（清除 synthesis_log 中的 duplicate 记账）。
+    """释放因"重复于/合并进 note_id"而被阻断的锚点（清除 synthesis_log 中指向它的
+    duplicate + merged 记账）。
 
-    candidate 被 reject 后调用：该 candidate 曾触发 dedup 命中，对应锚点被标记
-    duplicate（不重试）。candidate 已丢弃 → 锚点应恢复为未处理，允许未来重新合成。
-    失败仅 warning，不阻塞 reject 流程。"""
+    candidate 被 reject/delete 后调用：该 candidate 曾触发 dedup 命中（duplicate）或
+    被增量合并进（merged，#309），对应锚点被标记已处理（不重试）。candidate 已丢弃 →
+    锚点应恢复为未处理，允许未来重新合成。失败仅 warning，不阻塞 reject 流程。"""
     try:
         from .store import SynthesisLog
 
@@ -256,6 +297,7 @@ def release_blocked_anchors(note_id: str) -> None:
 
 
 __all__ = [
+    "DedupHit",
     "DedupStore",
     "dedup_check",
     "upsert_dedup",
@@ -264,5 +306,6 @@ __all__ = [
     "release_blocked_anchors",
     "set_store",
     "_clean_candidate_content",
+    "_append_knowledge_section",
     "_resolve_kb_name",
 ]

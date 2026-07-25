@@ -249,6 +249,9 @@ class GemSynthesisConfig:
     claude_binary: Optional[str] = None  # None → 从 PATH 解析
     dedup_enabled: bool = True  # 存盘前用正文 embedding 余弦查重
     dedup_threshold: float = 0.88  # 同事实重复阈值（高）；link-suggest 0.6 是"相关"，dedup 要"同一"
+    dedup_merge_enabled: bool = (
+        True  # 命中 candidate 时提取增量补入（#309）；False 回 #308 二值跳过
+    )
 
     def __post_init__(self) -> None:
         if self.interval_minutes < 1:
@@ -313,6 +316,7 @@ class GemSynthesisConfig:
                 if isinstance(data.get("dedup_threshold"), bool)
                 else _safe_float(data.get("dedup_threshold"), 0.88)
             ),
+            dedup_merge_enabled=bool(data.get("dedup_merge_enabled", True)),
         )
 
 

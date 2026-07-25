@@ -192,6 +192,35 @@ def test_gem_synth_status_shows_counts(tmp_path, monkeypatch):
     assert data["failed"] == 1
 
 
+def test_gem_synth_status_shows_merged(tmp_path, monkeypatch):
+    """status 显示 merged 计数，并从 pending 扣除 merged（#309）。"""
+    from jfox.fragment.store import FragmentStore
+    from jfox.gem_synth.cli import gem_synth_app
+    from jfox.gem_synth.store import SynthesisLog
+
+    fdb = tmp_path / "f.db"
+    sdb = tmp_path / "syn.db"
+    monkeypatch.setenv("JFOX_FRAGMENTS_DB", str(fdb))
+    monkeypatch.setenv("JFOX_SYNTHESIS_DB", str(sdb))
+
+    store = FragmentStore(db_path=fdb)
+    for i in range(5):
+        store.insert("s", "correction", "UserPromptSubmit", f"c{i}", {})
+    store.close()
+
+    log = SynthesisLog(db_path=sdb)
+    log.mark_processed(1, "c1")
+    log.mark_merged(2, "c-target")  # Task 2 加的方法
+    log.close()
+
+    result = CliRunner().invoke(gem_synth_app, ["status", "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["merged"] == 1
+    # total=5, success=1, failed=0, duplicate=0, merged=1 → pending=3
+    assert data["pending"] == 3
+
+
 def test_gem_synth_status_table_runs(tmp_path, monkeypatch):
     """status 默认 table 输出应 exit 0 不崩（空库场景）。"""
     from jfox.gem_synth.cli import gem_synth_app

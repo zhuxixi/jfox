@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from jfox.gem_synth.llm import _build_prompt, synthesize_with_llm
+from jfox.gem_synth.llm import _build_prompt, extract_delta_with_llm, synthesize_with_llm
 
 
 @pytest.fixture(autouse=True)
@@ -439,3 +439,88 @@ def test_invoke_claude_finally_kills_on_unexpected_exception():
             )
     # OSError 路径也触发 kill（finally 兜底，非仅 RuntimeError/TimeoutError）
     assert mock_killpg.called
+
+
+def test_extract_delta_parses_has_delta_true():
+    """有增量：LLM 返回 has_delta=true + delta 正文，解析为 dict。"""
+    inner = json.dumps({"has_delta": True, "delta": "新增：标签被移除≠审完", "conflict": None})
+    fake_output = json.dumps({"result": inner})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=fake_output):
+        result = extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert result is not None
+    assert result["has_delta"] is True
+    assert "标签被移除" in result["delta"]
+
+
+def test_extract_delta_parses_has_delta_false():
+    """无实质增量：has_delta=false，delta 空。"""
+    inner = json.dumps({"has_delta": False, "delta": "", "conflict": None})
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner})):
+        result = extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert result is not None
+    assert result["has_delta"] is False
+
+
+def test_extract_delta_parses_conflict():
+    """矛盾被标出：conflict 非空。"""
+    inner = json.dumps(
+        {"has_delta": True, "delta": "B 主张 30min", "conflict": "与 X 的 60min 矛盾"}
+    )
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner})):
+        result = extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert result["conflict"] == "与 X 的 60min 矛盾"
+
+
+def test_extract_delta_strips_fence():
+    """LLM 把 JSON 包围栏时也能解析（复用 _parse_json_lenient）。"""
+    inner = json.dumps({"has_delta": True, "delta": "d", "conflict": None})
+    fenced = f"```json\n{inner}\n```"
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": fenced})):
+        result = extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert result is not None and result["has_delta"] is True
+
+
+def test_extract_delta_none_on_missing_has_delta():
+    """缺 has_delta 键 → None（调用方降级 mark_duplicate）。"""
+    inner = json.dumps({"delta": "d"})  # 无 has_delta
+    with patch("jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner})):
+        assert extract_delta_with_llm("new", "existing", cfg=MagicMock()) is None
+
+
+def test_extract_delta_none_on_exception():
+    with patch("jfox.gem_synth.llm._invoke_claude", side_effect=RuntimeError("boom")):
+        assert extract_delta_with_llm("new", "existing", cfg=MagicMock()) is None
+
+
+def test_extract_delta_uses_delta_system_prompt():
+    """extract_delta_with_llm 必须传 system_prompt=DELTA_SYSTEM_PROMPT（与合成 prompt 区分）。
+
+    回归守卫：若误删 system_prompt= 参数 → 走 SYSTEM_PROMPT（输出 title/content/confidence
+    而非 has_delta/delta/conflict）→ 缺 has_delta 键 → 返回 None → 调用方静默降级 #308
+    二值跳过，#309 失效但不报错。"""
+    from jfox.gem_synth.llm import DELTA_SYSTEM_PROMPT
+
+    inner = json.dumps({"has_delta": True, "delta": "d", "conflict": None})
+    with patch(
+        "jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner})
+    ) as m_invoke:
+        extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert m_invoke.call_args.kwargs["system_prompt"] == DELTA_SYSTEM_PROMPT
+
+
+def test_extract_delta_normalizes_has_delta_string():
+    """LLM 退化输出 has_delta='false' 字符串 → 规范化为 False（Python 真值 'false' 为 True，
+    不规范化会把无实质增量误判为有并合并）。'true' → True。"""
+    inner_false = json.dumps({"has_delta": "false", "delta": "x", "conflict": None})
+    with patch(
+        "jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner_false})
+    ):
+        result = extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert result is not None and result["has_delta"] is False
+
+    inner_true = json.dumps({"has_delta": "true", "delta": "x", "conflict": None})
+    with patch(
+        "jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner_true})
+    ):
+        result = extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert result is not None and result["has_delta"] is True

@@ -32,6 +32,16 @@ SYSTEM_PROMPT = """你是知识合成器。给定一段对话上下文和若干�
 直接输出 JSON 对象本身，不要用 markdown 代码围栏包裹（不要 ```json ... ```）。"""
 
 
+DELTA_SYSTEM_PROMPT = """你是知识增量提取器。给定一条已有笔记 X 和一条新候选 Y（两者讲同一件事），
+提取 Y 相对 X 的**有效增量**——新角度、补充事实、或差异。严格输出 JSON：
+{
+  "has_delta": true/false（Y 是否相对 X 有实质新增；近乎雷同给 false）,
+  "delta": "Markdown 增量正文；无增量则空串",
+  "conflict": "Y 与 X 矛盾处的简述；无矛盾则 null"
+}
+只比较知识本身，忽略格式差异。不要重复 X 已有的内容。直接输出 JSON 对象本身，不要用 markdown 代码围栏包裹。"""
+
+
 def _resolve_claude_binary(cfg: GemSynthesisConfig) -> str:
     """解析 claude 二进制路径：优先 cfg.claude_binary，否则从 PATH 找。
 
@@ -115,6 +125,7 @@ def _invoke_claude(
     prompt: str,
     cfg: GemSynthesisConfig,
     stop_event: Optional[threading.Event] = None,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> str:
     """调用 claude -p，返回 stdout。后台排空 stdout+stderr 防管道死锁；finally 兜底 kill 防孤儿。
 
@@ -136,7 +147,7 @@ def _invoke_claude(
         "--output-format",
         "json",
         "--append-system-prompt",
-        SYSTEM_PROMPT,
+        system_prompt,
         "--permission-mode",
         "bypassPermissions",
         # 合成只需文本生成，禁用所有工具（防注入执行；synthesis 输入含不可信 transcript/笔记）
@@ -294,4 +305,49 @@ def synthesize_with_llm(
         return None
 
 
-__all__ = ["synthesize_with_llm", "_build_prompt"]
+def _build_delta_prompt(new_content: str, existing_content: str) -> str:
+    """组装增量提取 prompt：已有笔记 + 新候选。"""
+    return f"""## 已有笔记 X
+{existing_content}
+
+## 新候选 Y
+{new_content}
+
+提取 Y 相对 X 的有效增量。只输出 JSON。"""
+
+
+def extract_delta_with_llm(
+    new_content: str,
+    existing_content: str,
+    cfg: GemSynthesisConfig,
+    stop_event: Optional[threading.Event] = None,
+) -> Optional[Dict[str, Any]]:
+    """提取新 candidate 相对已有 candidate 的有效增量。失败返回 None（调用方降级跳过）。
+
+    复用 synthesize_with_llm 的两层 JSON 解析（claude --output-format json 的 result
+    包装）+ _parse_json_lenient（容忍围栏/前导文本）。缺 has_delta 键视为无效 → None。
+    stop_event 透传给 _invoke_claude，daemon shutdown 可中断。
+    """
+    try:
+        prompt = _build_delta_prompt(new_content, existing_content)
+        raw = _invoke_claude(prompt, cfg, stop_event, system_prompt=DELTA_SYSTEM_PROMPT)
+        wrapper = json.loads(raw)
+        inner = wrapper.get("result", raw) if isinstance(wrapper, dict) else raw
+        parsed = _parse_json_lenient(inner)
+        if not isinstance(parsed, dict) or "has_delta" not in parsed:
+            logger.warning("delta LLM 输出缺 has_delta: %r", parsed)
+            return None
+        # 规范化 has_delta 为 bool：LLM 退化可能输出字符串 "false"/"False"（Python 真值为 True
+        # → 把无实质增量误判为有增量并合并）。"true"/"1"/"yes" → True，其余 → False。
+        hd = parsed["has_delta"]
+        if isinstance(hd, str):
+            parsed["has_delta"] = hd.strip().lower() in ("true", "1", "yes")
+        else:
+            parsed["has_delta"] = bool(hd)
+        return parsed
+    except Exception as e:
+        logger.exception("delta LLM 提取失败: %s", e)
+        return None
+
+
+__all__ = ["synthesize_with_llm", "extract_delta_with_llm", "_build_prompt"]

@@ -34,7 +34,7 @@ jfox gem-synth status --format json
 关注字段（实际 JSON 输出）：
 
 - `pending`：待 L3 合成的 anchor 数（≠ candidate 过审队列；合成完归零，过审积压看 candidates list）
-- `success` / `failed` / `duplicate`：合成成功 / 失败 / 去重跳过数
+- `success` / `failed` / `duplicate` / `merged`：合成成功 / 失败 / 去重跳过 / 命中后增量合并补入数（#309）
 - `total`：总数
 - 失败锚点列表：`jfox gem-synth status --failed`（需要人工介入的 fragment 锚点）
 

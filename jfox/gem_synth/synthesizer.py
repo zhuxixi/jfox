@@ -14,10 +14,17 @@ from typing import Any, Dict, Optional
 
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
-from ..note import save_note
-from .dedup import _resolve_kb_name, dedup_check, upsert_dedup
+from ..note import load_note_by_id, save_note, update_note
+from .dedup import (
+    DedupHit,
+    _append_knowledge_section,
+    _clean_candidate_content,
+    _resolve_kb_name,
+    dedup_check,
+    upsert_dedup,
+)
 from .grounding import fetch_grounding
-from .llm import synthesize_with_llm
+from .llm import extract_delta_with_llm, synthesize_with_llm
 from .transcript import extract_turn_around
 
 logger = logging.getLogger(__name__)
@@ -46,6 +53,12 @@ def _coerce_grounded_by(value) -> list:
 # 前导空白行、无尾换行 H1），非严格对称——详见 _strip_leading_h1 docstring（cc R3-issue5）。
 _LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
+# 近逐字阈值：cosine ≥ 此值视为近乎逐字重复，跳过 delta LLM 省成本（backlog 大量逐字 dup）。
+# 0.88–0.96 才进入「提取增量」合并带（左闭右开：≥ dedup_threshold 且 < 0.96）。v1 不暴露配置。
+# 注：若用户把 dedup_threshold 调到 ≥0.96（只把近逐字当重复），合并带为空、所有命中走
+# 近逐字跳过——预期语义（近逐字无实质增量），非 bug（cc round-1 issue-4 acknowledged）。
+_NEAR_VERBATIM_THRESHOLD = 0.96
+
 
 def _strip_leading_h1(content: str) -> str:
     r"""剥掉 content 开头首个冗余 H1 行，消除 candidate 双 H1（#320）。
@@ -62,6 +75,101 @@ def _strip_leading_h1(content: str) -> str:
     以彻底消除该边界双 H1）。
     """
     return _LEADING_H1_RE.sub("", content, count=1)
+
+
+def _try_merge_delta(
+    hit: DedupHit,
+    new_content: str,
+    anchor: Dict[str, Any],
+    cfg: GemSynthesisConfig,
+    kb: str,
+    stop_event: Optional[threading.Event],
+) -> bool:
+    """命中 candidate 合并带时：load 已有 → 提取增量 → 合并。任一步失败/无增量返回 False
+    （调用方据此 mark_duplicate 降级，不阻塞合成）。"""
+    try:
+        existing = load_note_by_id(hit.note_id)
+        if existing is None or existing.type != NoteType.CANDIDATE or existing.archived:
+            logger.info("合并目标 %s 不可用（已删/晋升/归档），降级跳过", hit.note_id)
+            return False
+        # 记下全正文快照（不截断），LLM 调用后复比对（防 TOCTOU）
+        content_before = existing.content
+        delta = extract_delta_with_llm(
+            new_content=new_content,
+            existing_content=_clean_candidate_content(existing.content),
+            cfg=cfg,
+            stop_event=stop_event,
+        )
+        # has_delta=True 但 delta 正文空/空白 → 视为无实质增量（防空 ## 补充 段污染草稿）
+        if delta is None or not delta.get("has_delta") or not str(delta.get("delta") or "").strip():
+            logger.info("锚点 #%s 无实质增量，跳过", anchor.get("fragment_id"))
+            return False
+        # TOCTOU 复核：extract_delta_with_llm 可长达 claude_timeout_seconds（默认 180s），
+        # 期间 candidate 可能被 CLI promote/archive（改 type/路径）或被其他合并/直接编辑改正文。
+        # 重 load + 复校验 type/archived + 全正文比对；任一变更则 delta 基于旧快照、失配，降级跳过。
+        # 用全正文（非 _clean 截断版、非 updated）比对：catch 超出 _MAX_CONTENT_CHARS(2000) 的改动
+        # 及不 bump updated 的直接编辑路径。
+        existing = load_note_by_id(hit.note_id)
+        if (
+            existing is None
+            or existing.type != NoteType.CANDIDATE
+            or existing.archived
+            or existing.content != content_before
+        ):
+            logger.info("合并目标 %s 在增量提取期间状态/正文变更，降级跳过", hit.note_id)
+            return False
+        return _merge_delta_into_candidate(existing, delta, anchor, kb)
+    except Exception as e:
+        logger.exception("增量合并流程异常，降级跳过: %s", e)
+        return False
+
+
+def _merge_delta_into_candidate(
+    existing_note: Note, delta: Dict[str, Any], anchor: Dict[str, Any], kb: str
+) -> bool:
+    """把增量补进已有 candidate 草稿（in-place 追加）。失败返回 False（调用方降级跳过）。
+
+    调用方已 load + 校验过 existing_note（非 None / 非 archived / type=CANDIDATE）。
+    把 `## 补充` 段插进 body 末尾、元数据段落（## 来源/置信度）**之前** →
+    _clean_candidate_content（从 ## 来源 截断）保留该段 → 增量进 embedding 口径 +
+    喂给后续 delta LLM 的 existing_content 也能看到（防同一增量被相似锚点反复提取）。
+    update_note 落盘后 upsert_dedup 重算 embedding（body 含 delta → content_hash 变）。
+
+    delta: {has_delta: True, delta: str, conflict: Optional[str]}（extract_delta_with_llm 返回）。
+    """
+    try:
+        # 强制 str：LLM 偶发返回非字符串 delta（list/int），避免拼进 Markdown 产生异常内容
+        delta_text = str(delta.get("delta") or "")
+        # delta 来自 LLM 处理不可信 transcript 的输出，原样进 candidate 正文：candidate 是
+        # L5 待审草稿，--allowed-tools "" 已禁工具无 RCE；wiki-link [[ ]] 注入仅产反链、审阅
+        # 可见。v1 接受（follow-up 可在插入前 strip [[ ]]）。
+        section = (
+            f"\n\n## 补充（来自锚点 #{anchor.get('fragment_id', '?')} "
+            f"@ {anchor.get('timestamp', '')}）\n{delta_text}\n"
+        )
+        conflict = str(delta.get("conflict") or "").strip()
+        if conflict:
+            section += f"\n> ⚠️ 矛盾：{conflict}\n"
+        existing_note.content = _append_knowledge_section(existing_note.content, section)
+        # update_note 返回 False（find_note_file 落空 / 原子写异常，不抛）→ 候选被并发删改，
+        # 不重算 embedding、返回 False 降级
+        if not update_note(existing_note, add_to_index=False):
+            logger.warning(
+                "update_note 返回 False（候选被并发删改？），跳过重算 embedding note=%s",
+                existing_note.id,
+            )
+            return False
+        # 重算 embedding 失败（daemon 不可用等）仅 warning：合并已在磁盘生效（返回 True），
+        # dedup 口径暂时 stale，下轮 dedup-backfill 自愈
+        if not upsert_dedup(kb, existing_note.id, "candidate", existing_note.content):
+            logger.warning(
+                "合并后重算 embedding 失败（daemon 不可用？），dedup 口径暂 stale，backfill 自愈 note=%s",
+                existing_note.id,
+            )
+        return True
+    except Exception as e:
+        logger.exception("合并增量进 candidate 失败 note=%s: %s", existing_note.id, e)
+        return False
 
 
 def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> Optional[str]:
@@ -193,14 +301,38 @@ def synthesize_anchor(
     # NOT NULL，且 None 会让 dedup_check 的 WHERE kb=? 匹配 0 行→永远检不到重复）
     kb_name = _resolve_kb_name(cfg.target_kb)
     if getattr(cfg, "dedup_enabled", True):
-        dup_of = dedup_check(
+        hit = dedup_check(
             kb_name,
             content,
             threshold=getattr(cfg, "dedup_threshold", 0.88),
         )
-        if dup_of:
-            logger.info("锚点 #%s 命中重复（dup_of=%s），跳过存盘", anchor["fragment_id"], dup_of)
-            log.mark_duplicate(anchor["fragment_id"], dup_of)
+        if hit:
+            # 增量合并决策（#309）：仅 candidate + 合并带(0.88–0.96) + merge 开 才提取增量；
+            # permanent / 近逐字 / merge 关 / 任何失败 → 一律 mark_duplicate 跳过（不阻塞合成）
+            merge_eligible = (
+                getattr(cfg, "dedup_merge_enabled", True)
+                and hit.note_type == NoteType.CANDIDATE.value
+                and hit.score < _NEAR_VERBATIM_THRESHOLD
+            )
+            merged = False
+            if merge_eligible:
+                merged = _try_merge_delta(hit, content, anchor, cfg, kb_name, stop_event)
+            if merged:
+                log.mark_merged(anchor["fragment_id"], hit.note_id)
+                logger.info(
+                    "锚点 #%s 命中重复并增量合并进 %s（score=%.3f）",
+                    anchor["fragment_id"],
+                    hit.note_id,
+                    hit.score,
+                )
+            else:
+                log.mark_duplicate(anchor["fragment_id"], hit.note_id)
+                logger.info(
+                    "锚点 #%s 命中重复（dup_of=%s, score=%.3f），跳过存盘",
+                    anchor["fragment_id"],
+                    hit.note_id,
+                    hit.score,
+                )
             return None
 
     note_id = _save_candidate_note(llm_result, anchor)
