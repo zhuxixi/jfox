@@ -99,13 +99,13 @@ delta_section = (
     f"{delta.get('delta', '')}\n"
     + (f"\n> ⚠️ 矛盾：{delta.get('conflict')}\n" if delta.get('conflict') else "")
 )
-existing_note.content = existing_note.content + delta_section
+existing_note.content = _append_knowledge_section(existing_note.content, delta_section)  # 插 body 末尾、meta 之前（dedup.py）
 update_note(existing_note, add_to_index=False)            # 落盘 + bump updated
 upsert_dedup(kb, existing_note.id, "candidate", existing_note.content)   # 重算 embedding
 return True
 ```
 - `update_note` 复用现有原子写 + 按 title re-slug；`add_to_index=False`（与 `_persist_note` 一致，daemon 进程不触发向量/BM25 索引）。
-- **重算 embedding 必须**：合并后内容变了，content_hash 变 → `upsert_dedup` 自动重算（它先比对 hash，hash 不同才重 embed）。漏掉则后续查重对已合并内容失明。
+- **重算 embedding 必须**：delta 段用 `_append_knowledge_section`（dedup.py）插在 body 末尾、元数据段落（## 来源/置信度）**之前**——`_clean_candidate_content` 从 ## 来源 截断，插在 meta 之前才能让 delta 留在 body 内 → content_hash 变 → `upsert_dedup` 重 embed。否则 delta 被剥、hash 不变、embedding 不重算（CR 发现：曾因此对后续查重失明 + 同一增量被相似锚点反复提取/追加）。喂给 delta LLM 的 existing_content 同口径，能看到已合并增量防重复提取。
 - 整个函数包 try/except，异常 → return False（调用方 `mark_duplicate` 降级）。
 
 #### `mark_merged`（store.py，新）
@@ -139,7 +139,8 @@ dedup_merge_enabled: bool = True  # dedup 命中 candidate 时提取增量补入
 | LLM 判无实质增量 | `mark_duplicate` 跳过 |
 | 目标 candidate 已被删/归档/reject | load 失败/类型不符 → `mark_duplicate` 跳过 |
 | 合并存盘失败 | `mark_duplicate` 跳过 |
-| 有实质增量且目标正常 | 追加 `## 补充` 段 + 重算 embedding + `mark_merged` |
+| 有实质增量且目标正常 | `## 补充` 段插 body（meta 前）+ 重算 embedding + `mark_merged` |
+| 合并目标后续被 reject/delete | `clear_duplicates_of` 连带释放 merged 锚点（与 duplicate 同），允许重合成——否则增量随目标永久丢失（silent data loss） |
 
 ## 6. 测试
 

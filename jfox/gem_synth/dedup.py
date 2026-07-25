@@ -172,6 +172,21 @@ def _clean_candidate_content(content: str) -> str:
     return content.strip()[:_MAX_CONTENT_CHARS]
 
 
+def _append_knowledge_section(content: str, section: str) -> str:
+    """把知识性 section（如 #309 的 ## 补充 增量段）插入正文 body 末尾、元数据段落
+    （## 来源/参考/置信度）**之前**。
+
+    与 _clean_candidate_content（从 ## 来源 截断）配套：插在 meta 之前 → 清洗时该
+    section 留在 body 内 → 进 embedding 口径（content_hash 变 → 重算）+ 喂给后续
+    delta LLM 的 existing_content 也能看到已合并的增量（防同一增量被相似锚点反复
+    提取/追加）。无 meta 段落时追加到末尾。"""
+    cut = min(
+        (p for p in (content.find(m) for m in _CANDIDATE_META_MARKERS) if p >= 0),
+        default=len(content),
+    )
+    return content[:cut] + section + content[cut:]
+
+
 def _content_hash(content: str) -> str:
     return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
@@ -285,5 +300,6 @@ __all__ = [
     "release_blocked_anchors",
     "set_store",
     "_clean_candidate_content",
+    "_append_knowledge_section",
     "_resolve_kb_name",
 ]

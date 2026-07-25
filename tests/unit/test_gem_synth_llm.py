@@ -490,3 +490,19 @@ def test_extract_delta_none_on_missing_has_delta():
 def test_extract_delta_none_on_exception():
     with patch("jfox.gem_synth.llm._invoke_claude", side_effect=RuntimeError("boom")):
         assert extract_delta_with_llm("new", "existing", cfg=MagicMock()) is None
+
+
+def test_extract_delta_uses_delta_system_prompt():
+    """extract_delta_with_llm 必须传 system_prompt=DELTA_SYSTEM_PROMPT（与合成 prompt 区分）。
+
+    回归守卫：若误删 system_prompt= 参数 → 走 SYSTEM_PROMPT（输出 title/content/confidence
+    而非 has_delta/delta/conflict）→ 缺 has_delta 键 → 返回 None → 调用方静默降级 #308
+    二值跳过，#309 失效但不报错。"""
+    from jfox.gem_synth.llm import DELTA_SYSTEM_PROMPT
+
+    inner = json.dumps({"has_delta": True, "delta": "d", "conflict": None})
+    with patch(
+        "jfox.gem_synth.llm._invoke_claude", return_value=json.dumps({"result": inner})
+    ) as m_invoke:
+        extract_delta_with_llm("new", "existing", cfg=MagicMock())
+    assert m_invoke.call_args.kwargs["system_prompt"] == DELTA_SYSTEM_PROMPT

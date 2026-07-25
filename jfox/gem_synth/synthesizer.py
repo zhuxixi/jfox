@@ -15,7 +15,14 @@ from typing import Any, Dict, Optional
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
 from ..note import load_note_by_id, save_note, update_note
-from .dedup import DedupHit, _clean_candidate_content, _resolve_kb_name, dedup_check, upsert_dedup
+from .dedup import (
+    DedupHit,
+    _append_knowledge_section,
+    _clean_candidate_content,
+    _resolve_kb_name,
+    dedup_check,
+    upsert_dedup,
+)
 from .grounding import fetch_grounding
 from .llm import extract_delta_with_llm, synthesize_with_llm
 from .transcript import extract_turn_around
@@ -103,22 +110,24 @@ def _merge_delta_into_candidate(
 ) -> bool:
     """把增量补进已有 candidate 草稿（in-place 追加）。失败返回 False（调用方降级跳过）。
 
-    调用方已 load + 校验过 existing_note（非 None / 非 archived / type=CANDIDATE），
-    本函数只负责：追加 `## 补充（来自锚点 #X）` 段 → update_note 落盘 → 重算 dedup
-    embedding（内容已变，content_hash 变 → upsert_dedup 重 embed，防后续查重失明）。
+    调用方已 load + 校验过 existing_note（非 None / 非 archived / type=CANDIDATE）。
+    把 `## 补充` 段插进 body 末尾、元数据段落（## 来源/置信度）**之前** →
+    _clean_candidate_content（从 ## 来源 截断）保留该段 → 增量进 embedding 口径 +
+    喂给后续 delta LLM 的 existing_content 也能看到（防同一增量被相似锚点反复提取）。
+    update_note 落盘后 upsert_dedup 重算 embedding（body 含 delta → content_hash 变）。
 
     delta: {has_delta: True, delta: str, conflict: Optional[str]}（extract_delta_with_llm 返回）。
     """
     try:
         delta_text = delta.get("delta") or ""
         section = (
-            f"\n\n## 补充（来自锚点 #{anchor.get('fragment_id')} @ {anchor.get('timestamp')})\n"
-            f"{delta_text}\n"
+            f"\n\n## 补充（来自锚点 #{anchor.get('fragment_id', '?')} "
+            f"@ {anchor.get('timestamp', '')}）\n{delta_text}\n"
         )
         conflict = delta.get("conflict")
         if conflict:
             section += f"\n> ⚠️ 矛盾：{conflict}\n"
-        existing_note.content = existing_note.content + section
+        existing_note.content = _append_knowledge_section(existing_note.content, section)
         update_note(existing_note, add_to_index=False)
         upsert_dedup(kb, existing_note.id, "candidate", existing_note.content)
         return True
@@ -266,7 +275,7 @@ def synthesize_anchor(
             # permanent / 近逐字 / merge 关 / 任何失败 → 一律 mark_duplicate 跳过（不阻塞合成）
             merge_eligible = (
                 getattr(cfg, "dedup_merge_enabled", True)
-                and hit.note_type == "candidate"
+                and hit.note_type == NoteType.CANDIDATE.value
                 and hit.score < _NEAR_VERBATIM_THRESHOLD
             )
             merged = False

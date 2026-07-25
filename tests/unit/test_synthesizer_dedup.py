@@ -4,7 +4,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 from jfox.gem_synth import synthesizer
-from jfox.gem_synth.dedup import DedupHit
+from jfox.gem_synth.dedup import DedupHit, _clean_candidate_content
 from jfox.global_config import GemSynthesisConfig
 from jfox.models import GemLevel, Note, NoteType
 
@@ -197,15 +197,15 @@ def test_dedup_disabled_skips_both_check_and_upsert():
 
 
 def test_merge_appends_delta_section_and_recomputes_embedding():
-    """有增量时：追加 ## 补充 段、update_note 落盘、upsert_dedup 用合并后内容重算。"""
-    from datetime import datetime
+    """有增量时：把 ## 补充 段插进 body（meta 之前），清洗后仍含 delta → embedding 真重算。
 
-    from jfox.models import GemLevel, Note, NoteType
-
+    fixture 带 _save_candidate_note 追加的元段（## 来源/置信度），贴近生产口径；
+    断言 _clean_candidate_content 后 delta 仍在（否则 upsert_dedup 的 content_hash 不变、
+    embedding 不重算——曾因此给 #309 增量对后续查重失明提供虚假信心）。"""
     existing = Note(
         id="20260725000000",
         title="Zima 双 Bot CR",
-        content="## 双 Bot 工作流\ncc + kimi 轮询",
+        content="## 双 Bot 工作流\ncc + kimi 轮询\n\n## 来源\n- 碎片 #1\n\n## 置信度\n0.9\n",
         type=NoteType.CANDIDATE,
         created=datetime(2026, 7, 25),
         updated=datetime(2026, 7, 25),
@@ -222,11 +222,12 @@ def test_merge_appends_delta_section_and_recomputes_embedding():
         ok = synthesizer._merge_delta_into_candidate(existing, delta, anchor, "default")
 
     assert ok is True
-    # 正文被追加了 ## 补充 段 + delta 内容
     assert "## 补充（来自锚点 #42" in existing.content
-    assert "标签被移除≠审完" in existing.content
+    # delta 必须落在 _clean_candidate_content 保留的 body 内（插在 meta 之前），
+    # 否则 content_hash 不变 → upsert_dedup 早退 → embedding 不重算（查重失明）
+    cleaned = _clean_candidate_content(existing.content)
+    assert "标签被移除≠审完" in cleaned
     mupdate.assert_called_once_with(existing, add_to_index=False)
-    # 重算 embedding 用的是合并后的正文（关键：内容已变）
     mupsert.assert_called_once()
     assert mupsert.call_args[0][0] == "default"
     assert mupsert.call_args[0][1] == "20260725000000"

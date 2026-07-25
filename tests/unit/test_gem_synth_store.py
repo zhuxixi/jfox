@@ -127,3 +127,19 @@ def test_mark_merged_then_duplicate_distinct_counts(tmp_path):
     counts = log.status_counts()
     assert counts == {"merged": 1, "duplicate": 1}
     log.close()
+
+
+def test_clear_duplicates_of_also_releases_merged(tmp_path):
+    """reject/delete 目标 candidate 时，merged-into 它的锚点也要释放（#309），
+    否则增量随 candidate 丢失且锚点永不重合成（silent data loss）。"""
+    from jfox.gem_synth.store import SynthesisLog
+
+    log = SynthesisLog(db_path=tmp_path / "s.db")
+    log.mark_duplicate(1, "cand-X")  # dup-of cand-X
+    log.mark_merged(2, "cand-X")  # merged-into cand-X
+    log.mark_merged(3, "cand-Y")  # 指向别的，不应被清
+    log.clear_duplicates_of("cand-X")
+    assert log.is_processed(1) is False  # dup-of cand-X 释放
+    assert log.is_processed(2) is False  # merged-into cand-X 释放（#309 关键）
+    assert log.is_processed(3) is True  # cand-Y 的不动
+    log.close()
