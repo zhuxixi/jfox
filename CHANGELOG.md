@@ -2,6 +2,22 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.5.0] - 2026-07-25
+
+### Features
+- **promote-skill**: #319 三模式过审重写（cc+kimi） (#324)
+- **release-cc-plugin**: 新增 cc-plugin 发版 skill (#316)
+- **cli**: jfox show 支持 --json 输出 (#278) (#315)
+
+### Fixes
+- **gem-synth**: candidate 双 H1 标题，strip content 开头冗余 H1 (#320)
+
+### Changes
+- **gem-synth**: dedup 生命周期解耦——消除核心层反向依赖 (#310) (#322)
+- **claude.md**: 补 auto_summary 模块、gem_synth dedup，修正 cc-plugin 版本 (#323)
+
+[1.5.0]: https://github.com/zhuxixi/jfox/compare/v1.4.0...v1.5.0
+
 ## [1.4.0] - 2026-07-12
 
 ### Features
