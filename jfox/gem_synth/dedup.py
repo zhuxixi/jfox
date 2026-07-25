@@ -10,7 +10,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 
@@ -27,7 +27,7 @@ class DedupHit:
     （≥0.96 近逐字省 LLM，0.88–0.96 才提取增量）。"""
 
     note_id: str
-    note_type: str
+    note_type: Literal["candidate", "permanent"]
     score: float
 
 
@@ -179,7 +179,12 @@ def _append_knowledge_section(content: str, section: str) -> str:
     与 _clean_candidate_content（从 ## 来源 截断）配套：插在 meta 之前 → 清洗时该
     section 留在 body 内 → 进 embedding 口径（content_hash 变 → 重算）+ 喂给后续
     delta LLM 的 existing_content 也能看到已合并的增量（防同一增量被相似锚点反复
-    提取/追加）。无 meta 段落时追加到末尾。"""
+    提取/追加）。无 meta 段落时追加到末尾。
+
+    已知限制（cc round-1 issue-3/6 acknowledged）：(a) body 累积超 _MAX_CONTENT_CHARS(2000)
+    时，较新 delta 不进 embedding/LLM 口径——需同一 candidate 累积 ~7-20 条独立 delta 才
+    触发，dedup 已防大部分重复合并 + backfill 自愈，v1 接受；(b) 若 delta 文本本身含
+    `## 来源` / `## 置信度` 等 marker 行，下次清洗会误截——LLM delta 极少含精确 marker，v1 接受。"""
     cut = min(
         (p for p in (content.find(m) for m in _CANDIDATE_META_MARKERS) if p >= 0),
         default=len(content),

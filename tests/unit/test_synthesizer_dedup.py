@@ -286,6 +286,77 @@ def test_merge_returns_false_on_update_failure():
     assert ok is False
 
 
+def test_merge_returns_false_when_update_note_returns_false():
+    """update_note 返回 False（find_note_file 落空/原子写异常，不抛）→ 不 upsert、返回 False。"""
+    existing = _existing_candidate()
+    with (
+        patch("jfox.gem_synth.synthesizer.update_note", return_value=False),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup") as mupsert,
+    ):
+        ok = synthesizer._merge_delta_into_candidate(
+            existing, {"has_delta": True, "delta": "d", "conflict": None}, {}, "default"
+        )
+    assert ok is False
+    mupsert.assert_not_called()  # update_note 失败就不重算 embedding
+
+
+def test_merge_coerces_nonstring_delta_and_conflict():
+    """LLM 返回非字符串 delta/conflict（list/int）→ 强制 str，不崩。"""
+    existing = _existing_candidate()
+    with (
+        patch("jfox.gem_synth.synthesizer.update_note"),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
+    ):
+        ok = synthesizer._merge_delta_into_candidate(
+            existing, {"has_delta": True, "delta": ["a", "b"], "conflict": 42}, {}, "default"
+        )
+    assert ok is True
+    assert "a" in existing.content  # str(["a","b"]) 含 a
+    assert "42" in existing.content  # conflict int 强制 str
+
+
+def test_try_merge_aborts_if_target_changed_during_llm_call():
+    """TOCTOU：delta LLM 调用（可 180s）期间 candidate 被 promote → 二次 load 发现 type
+    变 → 降级跳过，不调 _merge（cc round-1 issue-1）。"""
+    promoted = _existing_candidate()
+    promoted.type = NoteType.PERMANENT
+    cfg = GemSynthesisConfig()
+    with (
+        patch(
+            "jfox.gem_synth.synthesizer.load_note_by_id",
+            side_effect=[_existing_candidate(), promoted],
+        ),
+        patch(
+            "jfox.gem_synth.synthesizer.extract_delta_with_llm",
+            return_value={"has_delta": True, "delta": "d", "conflict": None},
+        ),
+        patch("jfox.gem_synth.synthesizer._merge_delta_into_candidate") as mmerge,
+    ):
+        ok = synthesizer._try_merge_delta(
+            DedupHit("cand-target", "candidate", 0.91), "new", _anchor(), cfg, "default", None
+        )
+    assert ok is False
+    mmerge.assert_not_called()
+
+
+def test_try_merge_rejects_empty_delta_text():
+    """has_delta=True 但 delta 空/空白 → 视为无实质增量，不合并（cc-5/kimi-1）。"""
+    cfg = GemSynthesisConfig()
+    with (
+        patch("jfox.gem_synth.synthesizer.load_note_by_id", return_value=_existing_candidate()),
+        patch(
+            "jfox.gem_synth.synthesizer.extract_delta_with_llm",
+            return_value={"has_delta": True, "delta": "   ", "conflict": None},
+        ),
+        patch("jfox.gem_synth.synthesizer._merge_delta_into_candidate") as mmerge,
+    ):
+        ok = synthesizer._try_merge_delta(
+            DedupHit("cand-target", "candidate", 0.91), "new", _anchor(), cfg, "default", None
+        )
+    assert ok is False
+    mmerge.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # #309 增量合并：synthesize_anchor dedup 分支决策树
 # ---------------------------------------------------------------------------

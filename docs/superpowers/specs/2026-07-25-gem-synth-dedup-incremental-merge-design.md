@@ -33,7 +33,7 @@ PR #308 给 gem-synth 加了存盘前去重：新 candidate 若与已有 candida
 |------|------|------|
 | 范围 | 仅 candidate | 积压里 dedup 命中绝大多数是 candidate↔candidate（754 candidate vs ~65 permanent）；先吃大头价值，permanent 提案留 follow-up |
 | 配置默认 | `dedup_merge_enabled = True` | #309 的目的就是增量合并，opt-in 会让多数用户继续损失增量；daemon 低频（30min/轮），多一次 LLM 成本可接受 |
-| Delta 调用 | 相似度分带 | cosine ≥0.96 近逐字 → 跳过 delta 调用省成本；0.88–0.96 才调 LLM 提取增量 |
+| Delta 调用 | 相似度分带 | cosine ≥0.96 近逐字 → 跳过 delta 调用省成本；**[0.88, 0.96)**（左闭右开：≥ `dedup_threshold` 且 < 0.96）才调 LLM 提取增量 |
 
 ## 4. 设计
 
@@ -46,7 +46,7 @@ dedup_check(kb, content, threshold) → Optional[DedupHit]   # 现返回 note_id
     hit.note_type != "candidate"  → mark_duplicate, return None（permanent，scope 外，现行）
     hit.score >= 0.96             → mark_duplicate, return None（近逐字，省 LLM）
     cfg.dedup_merge_enabled=False → mark_duplicate, return None（现行）
-    否则（candidate + 合并带 0.88–0.96）:
+    否则（candidate + 合并带 [0.88, 0.96)）:
       existing = load_note_by_id(hit.note_id)
         existing is None / archived / type != CANDIDATE → mark_duplicate, return None（race：已被删/晋升）
       delta = extract_delta_with_llm(new=content, existing=_clean_candidate_content(existing.content), cfg, stop_event)
@@ -164,6 +164,13 @@ dedup 行为变更（二值跳过→分带合并）+ 新 status 计数 + 新 con
 ## 8. 风险
 
 - **多一次 LLM 调用**：仅合并带（0.88–0.96）命中才付，近逐字与无 delta 都不付；daemon 低频。可 `dedup_merge_enabled=False` 关闭。
+
+## 9. 已知限制（CR round-1 acknowledged，v1 接受）
+
+- **body 累积超 `_MAX_CONTENT_CHARS`(2000)**：`_clean_candidate_content` 截断到 2000 字符，较新 delta 不进 embedding/LLM 口径。需同一 candidate 累积 ~7-20 条独立 delta 才触发；dedup 已防大部分重复合并 + backfill 自愈。follow-up 可做 capped accumulation。
+- **`dedup_threshold` ≥0.96**：合并带为空、所有命中走近逐字跳过——预期语义（近逐字无实质增量），非 bug。
+- **delta 文本含 meta marker**：若 delta 含 `## 来源` 等 marker 行，下次清洗误截。LLM delta 极少含精确 marker，marker-based cleaning 固有边界。
+- **delta prompt-injection**：delta 原样进 candidate 正文；candidate 是 L5 待审草稿，`--allowed-tools ""` 已禁工具无 RCE，wiki-link `[[ ]]` 注入仅产反链、审阅可见。follow-up 可在插入前 strip `[[ ]]`。
 - **合并破坏目标 candidate 正文**：低风险（candidate 是草稿、pending 待审）；追加而非改写原文；冲突内联标注由人判。
 - **embedding 重算漏掉**：spec 显式要求合并后 `upsert_dedup`，测试覆盖 content_hash 变化触发重 embed。
 - **并发**：daemon 单进程串行处理锚点；`update_note` 原子写；dedup store 已有锁 + WAL + busy_timeout。

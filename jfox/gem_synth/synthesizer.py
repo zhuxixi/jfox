@@ -54,7 +54,9 @@ def _coerce_grounded_by(value) -> list:
 _LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
 # 近逐字阈值：cosine ≥ 此值视为近乎逐字重复，跳过 delta LLM 省成本（backlog 大量逐字 dup）。
-# 0.88–0.96 才进入「提取增量」合并带。v1 不暴露配置（YAGNI）。
+# 0.88–0.96 才进入「提取增量」合并带（左闭右开：≥ dedup_threshold 且 < 0.96）。v1 不暴露配置。
+# 注：若用户把 dedup_threshold 调到 ≥0.96（只把近逐字当重复），合并带为空、所有命中走
+# 近逐字跳过——预期语义（近逐字无实质增量），非 bug（cc round-1 issue-4 acknowledged）。
 _NEAR_VERBATIM_THRESHOLD = 0.96
 
 
@@ -96,8 +98,16 @@ def _try_merge_delta(
             cfg=cfg,
             stop_event=stop_event,
         )
-        if delta is None or not delta.get("has_delta"):
+        # has_delta=True 但 delta 正文空/空白 → 视为无实质增量（防空 ## 补充 段污染草稿）
+        if delta is None or not delta.get("has_delta") or not str(delta.get("delta") or "").strip():
             logger.info("锚点 #%s 无实质增量，跳过", anchor.get("fragment_id"))
+            return False
+        # TOCTOU 复核：extract_delta_with_llm 可长达 claude_timeout_seconds（默认 180s），
+        # 期间 candidate 可能被 CLI promote/archive（改盘上 type/路径并广播事件）。重 load
+        # + 复校验，状态变更则降级跳过，避免把 delta 写进已晋升 permanent / 已归档笔记。
+        existing = load_note_by_id(hit.note_id)
+        if existing is None or existing.type != NoteType.CANDIDATE or existing.archived:
+            logger.info("合并目标 %s 在增量提取期间状态变更，降级跳过", hit.note_id)
             return False
         return _merge_delta_into_candidate(existing, delta, anchor, kb)
     except Exception as e:
@@ -119,7 +129,11 @@ def _merge_delta_into_candidate(
     delta: {has_delta: True, delta: str, conflict: Optional[str]}（extract_delta_with_llm 返回）。
     """
     try:
-        delta_text = delta.get("delta") or ""
+        # 强制 str：LLM 偶发返回非字符串 delta（list/int），避免拼进 Markdown 产生异常内容
+        delta_text = str(delta.get("delta") or "")
+        # delta 来自 LLM 处理不可信 transcript 的输出，原样进 candidate 正文：candidate 是
+        # L5 待审草稿，--allowed-tools "" 已禁工具无 RCE；wiki-link [[ ]] 注入仅产反链、审阅
+        # 可见。v1 接受（follow-up 可在插入前 strip [[ ]]）。
         section = (
             f"\n\n## 补充（来自锚点 #{anchor.get('fragment_id', '?')} "
             f"@ {anchor.get('timestamp', '')}）\n{delta_text}\n"
@@ -128,8 +142,21 @@ def _merge_delta_into_candidate(
         if conflict:
             section += f"\n> ⚠️ 矛盾：{conflict}\n"
         existing_note.content = _append_knowledge_section(existing_note.content, section)
-        update_note(existing_note, add_to_index=False)
-        upsert_dedup(kb, existing_note.id, "candidate", existing_note.content)
+        # update_note 返回 False（find_note_file 落空 / 原子写异常，不抛）→ 候选被并发删改，
+        # 不重算 embedding、返回 False 降级
+        if not update_note(existing_note, add_to_index=False):
+            logger.warning(
+                "update_note 返回 False（候选被并发删改？），跳过重算 embedding note=%s",
+                existing_note.id,
+            )
+            return False
+        # 重算 embedding 失败（daemon 不可用等）仅 warning：合并已在磁盘生效（返回 True），
+        # dedup 口径暂时 stale，下轮 dedup-backfill 自愈
+        if not upsert_dedup(kb, existing_note.id, "candidate", existing_note.content):
+            logger.warning(
+                "合并后重算 embedding 失败（daemon 不可用？），dedup 口径暂 stale，backfill 自愈 note=%s",
+                existing_note.id,
+            )
         return True
     except Exception as e:
         logger.exception("合并增量进 candidate 失败 note=%s: %s", existing_note.id, e)
