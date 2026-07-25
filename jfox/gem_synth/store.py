@@ -124,6 +124,18 @@ class SynthesisLog:
             )
             self._conn.commit()
 
+    def mark_merged(self, anchor_fragment_id: int, target_note_id: str) -> None:
+        """合并记账：status='merged' + candidate_note_id=被补入的目标 candidate。
+        记账后 is_processed=True → 锚点不重试。与 duplicate 区分，供 status 单独
+        统计「命中后增量合并」vs「直接跳过」。复用现有列，无需 schema 变更。"""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO synthesis_log "
+                "(anchor_fragment_id, candidate_note_id, status) VALUES (?, ?, 'merged')",
+                (anchor_fragment_id, target_note_id),
+            )
+            self._conn.commit()
+
     def clear_duplicates_of(self, note_id: str) -> None:
         """清除所有 dup_of=note_id 的 duplicate 记账，释放被阻断的锚点。
 

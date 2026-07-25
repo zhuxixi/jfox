@@ -103,3 +103,27 @@ def test_migration_idempotent_when_columns_exist(tmp_path):
     log2.status_counts()  # 不抛即通过
     log.close()
     log2.close()
+
+
+def test_mark_merged_writes_status_and_target(tmp_path):
+    """mark_merged 记 status=merged + 目标 candidate_note_id，is_processed 仍 True。"""
+    from jfox.gem_synth.store import SynthesisLog
+
+    log = SynthesisLog(db_path=tmp_path / "s.db")
+    log.mark_merged(7, "cand-target-1")
+    assert log.is_processed(7) is True  # merged 也算已处理，锚点不重试
+    counts = log.status_counts()
+    assert counts.get("merged") == 1
+    log.close()
+
+
+def test_mark_merged_then_duplicate_distinct_counts(tmp_path):
+    """merged 与 duplicate 分别计数（status CLI 可观测合并 vs 跳过）。"""
+    from jfox.gem_synth.store import SynthesisLog
+
+    log = SynthesisLog(db_path=tmp_path / "s.db")
+    log.mark_merged(1, "t1")
+    log.mark_duplicate(2, "t2")
+    counts = log.status_counts()
+    assert counts == {"merged": 1, "duplicate": 1}
+    log.close()
