@@ -872,14 +872,6 @@ def test_add_collision_rejected(cli_fast, make_book_folder):
     assert not result.success
     err = (result.json() or {}).get("error", "")
     assert "已存在" in err
-
-
-def test_add_force(cli_fast, make_book_folder):
-    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", title="Old", pages=1)))
-    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", title="New", pages=2)), "--force")
-    listing = cli_fast.run("bookshelf", "list").json()
-    book = [b for b in listing["books"] if b["slug"] == "dup"][0]
-    assert book["title"] == "New"
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -994,9 +986,7 @@ app.add_typer(bookshelf_app, name="bookshelf", help="管理好书书架：PDF + 
 - [ ] **Step 5: 跑测试确认通过**
 
 Run: `uv run pytest tests/unit/bookshelf/test_cli.py -v`
-Expected: PASS（3 用例；`test_add_force` 依赖 Task 5 的 list，先注释掉或一起跑到 Task 5 再全绿——若 Task 4 跑挂在 `list`，把 `test_add_force` 暂时跳过，Task 5 补齐后取消）
-
-> 注：`test_add_force` 用到 `bookshelf list`，Task 5 才实现。Task 4 可先只跑 `test_add_json`/`test_add_collision_rejected`，Task 5 完成后整文件全绿。
+Expected: PASS（2 用例：`test_add_json` / `test_add_collision_rejected`）
 
 - [ ] **Step 6: 提交**
 
@@ -1021,6 +1011,14 @@ git commit -m "feat(bookshelf): cli sub-app + add command (#325)"
 - [ ] **Step 1: 追加失败测试**
 
 ```python
+def test_add_force(cli_fast, make_book_folder):
+    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", title="Old", pages=1)))
+    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", title="New", pages=2)), "--force")
+    listing = cli_fast.run("bookshelf", "list").json()
+    book = [b for b in listing["books"] if b["slug"] == "dup"][0]
+    assert book["title"] == "New"
+
+
 def test_list_empty(cli_fast):
     data = cli_fast.run("bookshelf", "list").json()
     assert data["total"] == 0
@@ -1134,7 +1132,7 @@ def show_cmd(
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/unit/bookshelf/test_cli.py -v`
-Expected: PASS（含 Task 4 的 `test_add_force`）
+Expected: PASS（add 2 + force 1 + list 2 + show 3）
 
 - [ ] **Step 5: 提交**
 
