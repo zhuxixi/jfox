@@ -14,10 +14,10 @@ from typing import Any, Dict, Optional
 
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
-from ..note import save_note, update_note
-from .dedup import _resolve_kb_name, dedup_check, upsert_dedup
+from ..note import load_note_by_id, save_note, update_note
+from .dedup import DedupHit, _clean_candidate_content, _resolve_kb_name, dedup_check, upsert_dedup
 from .grounding import fetch_grounding
-from .llm import synthesize_with_llm
+from .llm import extract_delta_with_llm, synthesize_with_llm
 from .transcript import extract_turn_around
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,10 @@ def _coerce_grounded_by(value) -> list:
 # 前导空白行、无尾换行 H1），非严格对称——详见 _strip_leading_h1 docstring（cc R3-issue5）。
 _LEADING_H1_RE = re.compile(r"\A\s*# .+\n*")
 
+# 近逐字阈值：cosine ≥ 此值视为近乎逐字重复，跳过 delta LLM 省成本（backlog 大量逐字 dup）。
+# 0.88–0.96 才进入「提取增量」合并带。v1 不暴露配置（YAGNI）。
+_NEAR_VERBATIM_THRESHOLD = 0.96
+
 
 def _strip_leading_h1(content: str) -> str:
     r"""剥掉 content 开头首个冗余 H1 行，消除 candidate 双 H1（#320）。
@@ -62,6 +66,36 @@ def _strip_leading_h1(content: str) -> str:
     以彻底消除该边界双 H1）。
     """
     return _LEADING_H1_RE.sub("", content, count=1)
+
+
+def _try_merge_delta(
+    hit: DedupHit,
+    new_content: str,
+    anchor: Dict[str, Any],
+    cfg: GemSynthesisConfig,
+    kb: str,
+    stop_event: Optional[threading.Event],
+) -> bool:
+    """命中 candidate 合并带时：load 已有 → 提取增量 → 合并。任一步失败/无增量返回 False
+    （调用方据此 mark_duplicate 降级，不阻塞合成）。"""
+    try:
+        existing = load_note_by_id(hit.note_id)
+        if existing is None or existing.type != NoteType.CANDIDATE or existing.archived:
+            logger.info("合并目标 %s 不可用（已删/晋升/归档），降级跳过", hit.note_id)
+            return False
+        delta = extract_delta_with_llm(
+            new_content=new_content,
+            existing_content=_clean_candidate_content(existing.content),
+            cfg=cfg,
+            stop_event=stop_event,
+        )
+        if delta is None or not delta.get("has_delta"):
+            logger.info("锚点 #%s 无实质增量，跳过", anchor.get("fragment_id"))
+            return False
+        return _merge_delta_into_candidate(existing, delta, anchor, kb)
+    except Exception as e:
+        logger.exception("增量合并流程异常，降级跳过: %s", e)
+        return False
 
 
 def _merge_delta_into_candidate(
@@ -228,13 +262,32 @@ def synthesize_anchor(
             threshold=getattr(cfg, "dedup_threshold", 0.88),
         )
         if hit:
-            logger.info(
-                "锚点 #%s 命中重复（dup_of=%s, score=%.3f），跳过存盘",
-                anchor["fragment_id"],
-                hit.note_id,
-                hit.score,
+            # 增量合并决策（#309）：仅 candidate + 合并带(0.88–0.96) + merge 开 才提取增量；
+            # permanent / 近逐字 / merge 关 / 任何失败 → 一律 mark_duplicate 跳过（不阻塞合成）
+            merge_eligible = (
+                getattr(cfg, "dedup_merge_enabled", True)
+                and hit.note_type == "candidate"
+                and hit.score < _NEAR_VERBATIM_THRESHOLD
             )
-            log.mark_duplicate(anchor["fragment_id"], hit.note_id)
+            merged = False
+            if merge_eligible:
+                merged = _try_merge_delta(hit, content, anchor, cfg, kb_name, stop_event)
+            if merged:
+                log.mark_merged(anchor["fragment_id"], hit.note_id)
+                logger.info(
+                    "锚点 #%s 命中重复并增量合并进 %s（score=%.3f）",
+                    anchor["fragment_id"],
+                    hit.note_id,
+                    hit.score,
+                )
+            else:
+                log.mark_duplicate(anchor["fragment_id"], hit.note_id)
+                logger.info(
+                    "锚点 #%s 命中重复（dup_of=%s, score=%.3f），跳过存盘",
+                    anchor["fragment_id"],
+                    hit.note_id,
+                    hit.score,
+                )
             return None
 
     note_id = _save_candidate_note(llm_result, anchor)
