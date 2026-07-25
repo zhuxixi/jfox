@@ -43,3 +43,17 @@ def test_dedup_threshold_bool_sanitized_to_default():
     __post_init__ 的 bool 守卫）→ 等于悄悄把 dedup 关到极端阈值。from_dict 应拦 bool→默认 0.88。"""
     assert GemSynthesisConfig.from_dict({"dedup_threshold": True}).dedup_threshold == 0.88
     assert GemSynthesisConfig.from_dict({"dedup_threshold": False}).dedup_threshold == 0.88
+
+
+def test_dedup_merge_enabled_defaults_true():
+    assert GemSynthesisConfig().dedup_merge_enabled is True
+
+
+def test_dedup_merge_enabled_from_dict():
+    cfg = GemSynthesisConfig.from_dict({"dedup_merge_enabled": False})
+    assert cfg.dedup_merge_enabled is False
+
+
+def test_dedup_merge_enabled_missing_uses_default():
+    cfg = GemSynthesisConfig.from_dict({})
+    assert cfg.dedup_merge_enabled is True
