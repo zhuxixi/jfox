@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 from ..global_config import GemSynthesisConfig
 from ..models import GemLevel, Note, NoteType
-from ..note import save_note
+from ..note import save_note, update_note
 from .dedup import _resolve_kb_name, dedup_check, upsert_dedup
 from .grounding import fetch_grounding
 from .llm import synthesize_with_llm
@@ -62,6 +62,35 @@ def _strip_leading_h1(content: str) -> str:
     以彻底消除该边界双 H1）。
     """
     return _LEADING_H1_RE.sub("", content, count=1)
+
+
+def _merge_delta_into_candidate(
+    existing_note: Note, delta: Dict[str, Any], anchor: Dict[str, Any], kb: str
+) -> bool:
+    """把增量补进已有 candidate 草稿（in-place 追加）。失败返回 False（调用方降级跳过）。
+
+    调用方已 load + 校验过 existing_note（非 None / 非 archived / type=CANDIDATE），
+    本函数只负责：追加 `## 补充（来自锚点 #X）` 段 → update_note 落盘 → 重算 dedup
+    embedding（内容已变，content_hash 变 → upsert_dedup 重 embed，防后续查重失明）。
+
+    delta: {has_delta: True, delta: str, conflict: Optional[str]}（extract_delta_with_llm 返回）。
+    """
+    try:
+        delta_text = delta.get("delta") or ""
+        section = (
+            f"\n\n## 补充（来自锚点 #{anchor.get('fragment_id')} @ {anchor.get('timestamp')})\n"
+            f"{delta_text}\n"
+        )
+        conflict = delta.get("conflict")
+        if conflict:
+            section += f"\n> ⚠️ 矛盾：{conflict}\n"
+        existing_note.content = existing_note.content + section
+        update_note(existing_note, add_to_index=False)
+        upsert_dedup(kb, existing_note.id, "candidate", existing_note.content)
+        return True
+    except Exception as e:
+        logger.exception("合并增量进 candidate 失败 note=%s: %s", existing_note.id, e)
+        return False
 
 
 def _save_candidate_note(llm_result: Dict[str, Any], anchor: Dict[str, Any]) -> Optional[str]:

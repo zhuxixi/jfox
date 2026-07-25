@@ -177,3 +177,92 @@ def test_dedup_disabled_skips_both_check_and_upsert():
     assert result is not None and result["candidate_note_id"] == "new-id"
     mcheck.assert_not_called()  # 不查重
     mupsert.assert_not_called()  # 不入 dedup 库（关键：曾在此漏守卫）
+
+
+def test_merge_appends_delta_section_and_recomputes_embedding():
+    """有增量时：追加 ## 补充 段、update_note 落盘、upsert_dedup 用合并后内容重算。"""
+    from datetime import datetime
+
+    from jfox.models import GemLevel, Note, NoteType
+
+    existing = Note(
+        id="20260725000000",
+        title="Zima 双 Bot CR",
+        content="## 双 Bot 工作流\ncc + kimi 轮询",
+        type=NoteType.CANDIDATE,
+        created=datetime(2026, 7, 25),
+        updated=datetime(2026, 7, 25),
+        gem_level=GemLevel.FLAWED.value,
+        status="pending",
+    )
+    delta = {"has_delta": True, "delta": "标签被移除≠审完", "conflict": None}
+    anchor = {"fragment_id": 42, "timestamp": "2026-07-25T20:00:00"}
+
+    with (
+        patch("jfox.gem_synth.synthesizer.update_note") as mupdate,
+        patch("jfox.gem_synth.synthesizer.upsert_dedup") as mupsert,
+    ):
+        ok = synthesizer._merge_delta_into_candidate(existing, delta, anchor, "default")
+
+    assert ok is True
+    # 正文被追加了 ## 补充 段 + delta 内容
+    assert "## 补充（来自锚点 #42" in existing.content
+    assert "标签被移除≠审完" in existing.content
+    mupdate.assert_called_once_with(existing, add_to_index=False)
+    # 重算 embedding 用的是合并后的正文（关键：内容已变）
+    mupsert.assert_called_once()
+    assert mupsert.call_args[0][0] == "default"
+    assert mupsert.call_args[0][1] == "20260725000000"
+    assert "标签被移除≠审完" in mupsert.call_args[0][3]
+
+
+def test_merge_includes_conflict_marker():
+    """LLM 标了矛盾时，追加段含 ⚠️ 矛盾 行。"""
+    from datetime import datetime
+
+    from jfox.models import GemLevel, Note, NoteType
+
+    existing = Note(
+        id="20260725000001",
+        title="T",
+        content="原结论",
+        type=NoteType.CANDIDATE,
+        created=datetime(2026, 7, 25),
+        updated=datetime(2026, 7, 25),
+        gem_level=GemLevel.FLAWED.value,
+        status="pending",
+    )
+    delta = {"has_delta": True, "delta": "B 主张 30min", "conflict": "与 X 的 60min 矛盾"}
+
+    with (
+        patch("jfox.gem_synth.synthesizer.update_note"),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
+    ):
+        synthesizer._merge_delta_into_candidate(existing, delta, {}, "default")
+
+    assert "⚠️ 矛盾" in existing.content
+    assert "60min" in existing.content
+
+
+def test_merge_returns_false_on_update_failure():
+    """update_note 抛异常 → 返回 False（调用方降级 mark_duplicate）。"""
+    from datetime import datetime
+
+    from jfox.models import Note, NoteType
+
+    existing = Note(
+        id="x",
+        title="T",
+        content="c",
+        type=NoteType.CANDIDATE,
+        created=datetime(2026, 7, 25),
+        updated=datetime(2026, 7, 25),
+    )
+    with (
+        patch("jfox.gem_synth.synthesizer.update_note", side_effect=RuntimeError("io")),
+        patch("jfox.gem_synth.synthesizer.upsert_dedup"),
+    ):
+        ok = synthesizer._merge_delta_into_candidate(
+            existing, {"has_delta": True, "delta": "d", "conflict": None}, {}, "default"
+        )
+    assert ok is False
