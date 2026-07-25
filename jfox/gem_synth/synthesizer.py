@@ -138,7 +138,7 @@ def _merge_delta_into_candidate(
             f"\n\n## 补充（来自锚点 #{anchor.get('fragment_id', '?')} "
             f"@ {anchor.get('timestamp', '')}）\n{delta_text}\n"
         )
-        conflict = delta.get("conflict")
+        conflict = str(delta.get("conflict") or "").strip()
         if conflict:
             section += f"\n> ⚠️ 矛盾：{conflict}\n"
         existing_note.content = _append_knowledge_section(existing_note.content, section)
