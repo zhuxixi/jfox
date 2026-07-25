@@ -273,9 +273,10 @@ def gem_synth_status(
         success = counts.get("success", 0)
         failed = counts.get("failed", 0)
         duplicate = counts.get("duplicate", 0)
+        merged = counts.get("merged", 0)
         total = count_anchors(default_db_path(), anchor_types=cfg.anchor_types)
-        # duplicate 也算"已处理"（锚点不重试），从 pending 里扣除
-        pending = max(0, total - success - failed - duplicate)
+        # duplicate / merged 都算"已处理"（锚点不重试），从 pending 里扣除
+        pending = max(0, total - success - failed - duplicate - merged)
 
         if failed_only:
             failed_list = log.list_failed()
@@ -304,6 +305,7 @@ def gem_synth_status(
                         "success": success,
                         "failed": failed,
                         "duplicate": duplicate,
+                        "merged": merged,
                         "total": total,
                     },
                     ensure_ascii=False,
@@ -316,6 +318,7 @@ def gem_synth_status(
             console.print(f"  成功（success）:    {success}")
             console.print(f"  失败（failed）:     {failed}")
             console.print(f"  重复跳过（duplicate）：[bold]{duplicate}[/bold]")
+            console.print(f"  合并补入（merged）：  {merged}")
             if failed:
                 console.print("[dim]用 `jfox gem-synth status --failed` 查看失败锚点[/dim]")
     except Exception as e:
