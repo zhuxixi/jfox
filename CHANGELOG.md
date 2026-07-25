@@ -15,6 +15,7 @@ All notable changes to jfox-cli will be documented in this file.
 ### Changes
 - **gem-synth**: dedup 生命周期解耦——消除核心层反向依赖 (#310) (#322)
 - **claude.md**: 补 auto_summary 模块、gem_synth dedup，修正 cc-plugin 版本 (#323)
+- **claude.md**: 补 note 生命周期事件 + numpy lazy-import gotcha (#322) (#326)
 
 [1.5.0]: https://github.com/zhuxixi/jfox/compare/v1.4.0...v1.5.0
 
