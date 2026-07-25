@@ -151,4 +151,43 @@ def show_cmd(
         console.print(f"路径: {shelf.book_dir(slug)}")
 
 
+@bookshelf_app.command("remove")
+def remove_cmd(
+    slug: str = typer.Argument(..., help="书 slug"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认直接删除"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
+    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
+    json_output: bool = typer.Option(False, "--json", help="JSON 输出（等同 --format json）"),
+) -> None:
+    """从书架删除一本书（不可逆）。"""
+    if json_output:
+        output_format = "json"
+    try:
+        with use_kb(kb):
+            shelf = _shelf()
+            if not shelf.exists(slug):
+                raise BookNotFoundError(slug)
+            if not yes:
+                meta = shelf.get(slug)
+                confirmed = typer.confirm(
+                    f"确认删除《{meta.title}》（{meta.book.get('page_count', 0)} 页）？不可逆。",
+                    default=False,
+                )
+                if not confirmed:
+                    if output_format == "json":
+                        _emit_json({"slug": slug, "removed": False})
+                    else:
+                        console.print("[yellow]已取消[/yellow]")
+                    return
+            shelf.remove(slug)
+            data = {"slug": slug, "removed": True}
+    except BookNotFoundError as e:
+        _fail(f"找不到书：{e}", output_format)
+        return
+    if output_format == "json":
+        _emit_json(data)
+    else:
+        console.print(f"[green]已删除[/green] {slug}")
+
+
 __all__ = ["bookshelf_app"]

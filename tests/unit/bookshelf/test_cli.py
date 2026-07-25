@@ -63,3 +63,17 @@ def test_show_page_json(cli_fast, make_book_folder):
 def test_show_missing(cli_fast):
     result = cli_fast.run("bookshelf", "show", "nope")
     assert not result.success
+
+
+def test_remove_yes(cli_fast, make_book_folder):
+    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="rm", pages=2)))
+    result = cli_fast.run("bookshelf", "remove", "rm", "--yes")
+    assert result.success
+    assert result.json()["removed"] is True
+    data = cli_fast.run("bookshelf", "list").json()
+    assert all(b["slug"] != "rm" for b in data["books"])
+
+
+def test_remove_missing(cli_fast):
+    result = cli_fast.run("bookshelf", "remove", "nope", "--yes")
+    assert not result.success
