@@ -1,5 +1,8 @@
 """bookshelf CLI 集成测试（subprocess via cli_fast）。"""
 
+import subprocess
+import sys
+
 
 def test_add_json(cli_fast, make_book_folder):
     folder = make_book_folder(slug="sapiens", title="Sapiens", pages=3)
@@ -77,3 +80,21 @@ def test_remove_yes(cli_fast, make_book_folder):
 def test_remove_missing(cli_fast):
     result = cli_fast.run("bookshelf", "remove", "nope", "--yes")
     assert not result.success
+
+
+def test_bookshelf_help_registered(cli_fast):
+    """bookshelf 子命令已注册且 --help 列出 add/list/show/remove。
+
+    --help 是 eager，会短路 ZKCLI 自动追加的 --json，直接打印 help 文本。
+    使用 raw subprocess 避免 cli_fast 自动添加 --kb 导致解析错误。
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "jfox", "bookshelf", "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0
+    stdout = result.stdout
+    for cmd in ("add", "list", "show", "remove"):
+        assert cmd in stdout
