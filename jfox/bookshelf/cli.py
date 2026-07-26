@@ -20,7 +20,12 @@ from .store import (
 )
 
 console = Console(legacy_windows=False)
-_json_console = Console(legacy_windows=False, highlight=False, markup=False, no_color=True)
+_json_console = Console(
+    legacy_windows=False,
+    highlight=False,
+    markup=False,
+    no_color=True,
+)
 
 bookshelf_app = typer.Typer(
     name="bookshelf",
@@ -42,7 +47,8 @@ def _emit_json(data: Any) -> None:
 def _fail(message: str, output_format: str) -> None:
     if output_format == "json":
         _json_console.print(
-            _json.dumps({"success": False, "error": message}, ensure_ascii=False), soft_wrap=True
+            _json.dumps({"success": False, "error": message}, ensure_ascii=False),
+            soft_wrap=True,
         )
     else:
         console.print(f"[red]{escape(message)}[/red]")
@@ -51,12 +57,24 @@ def _fail(message: str, output_format: str) -> None:
 
 @bookshelf_app.command("add")
 def add_cmd(
-    folder: str = typer.Argument(..., help="书文件夹（含 bundle/ + 可选 meta.json + 原件）"),
+    folder: str = typer.Argument(
+        ...,
+        help="书文件夹（含 bundle/ + 可选 meta.json + 原件）",
+    ),
     force: bool = typer.Option(False, "--force", help="同名 slug 覆盖重加"),
     move: bool = typer.Option(False, "--move", help="移动原件而非复制"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
-    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
-    json_output: bool = typer.Option(False, "--json", help="JSON 输出（等同 --format json）"),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="输出格式: json, table",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="JSON 输出（等同 --format json）",
+    ),
 ) -> None:
     """把一本书加进书架。"""
     if json_output:
@@ -64,7 +82,11 @@ def add_cmd(
     try:
         with use_kb(kb):
             shelf = _shelf()
-            meta = shelf.add(Path(folder), move=move, force=force)
+            meta = shelf.add(
+                Path(folder).expanduser().resolve(),
+                move=move,
+                force=force,
+            )
             data = {
                 "success": True,
                 "slug": meta.slug,
@@ -75,11 +97,14 @@ def add_cmd(
     except BookAlreadyExistsError as e:
         _fail(f"书 '{e}' 已存在；用 --force 覆盖重加", output_format)
         return
-    except InvalidBundleError as e:
+    except (InvalidBundleError, KeyError, TypeError, ValueError) as e:
         _fail(str(e), output_format)
         return
     if not meta.source.get("original_file"):
-        typer.echo("⚠️ 未找到原件文件（仅 bundle 入库，source.original_* 留空）", err=True)
+        typer.echo(
+            "⚠️ 未找到原件文件（仅 bundle 入库，source.original_* 留空）",
+            err=True,
+        )
     if output_format == "json":
         _emit_json(data)
     else:
@@ -92,24 +117,44 @@ def add_cmd(
 @bookshelf_app.command("list")
 def list_cmd(
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
-    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
-    json_output: bool = typer.Option(False, "--json", help="JSON 输出（等同 --format json）"),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="输出格式: json, table",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="JSON 输出（等同 --format json）",
+    ),
 ) -> None:
     """列出书架上的书。"""
     if json_output:
         output_format = "json"
-    with use_kb(kb):
-        shelf = _shelf()
-        rows = [
-            {
-                "slug": m.slug,
-                "title": m.title,
-                "page_count": m.book.get("page_count", 0),
-                "added_at": m.added_at,
-                "distill_status": (m.distill or {}).get("status", "none"),
-            }
-            for m in shelf.list_books()
-        ]
+    try:
+        with use_kb(kb):
+            shelf = _shelf()
+            rows = [
+                {
+                    "slug": m.slug,
+                    "title": m.title,
+                    "page_count": m.book.get("page_count", 0),
+                    "added_at": m.added_at,
+                    "distill_status": (m.distill or {}).get("status", "none"),
+                }
+                for m in shelf.list_books()
+            ]
+    except (
+        BookNotFoundError,
+        InvalidBundleError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OSError,
+    ) as e:
+        _fail(str(e), output_format)
+        return
     if output_format == "json":
         _emit_json({"books": rows, "total": len(rows)})
         return
@@ -130,10 +175,24 @@ def list_cmd(
 @bookshelf_app.command("show")
 def show_cmd(
     slug: str = typer.Argument(..., help="书 slug"),
-    page: Optional[int] = typer.Option(None, "--page", "-p", help="打印指定页的 md（页号，如 1）"),
+    page: Optional[int] = typer.Option(
+        None,
+        "--page",
+        "-p",
+        help="打印指定页的 md（页号，如 1）",
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
-    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
-    json_output: bool = typer.Option(False, "--json", help="JSON 输出（等同 --format json）"),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="输出格式: json, table",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="JSON 输出（等同 --format json）",
+    ),
 ) -> None:
     """查看一本书的元数据或指定页内容。"""
     if json_output:
@@ -161,14 +220,22 @@ def show_cmd(
             data: Dict[str, Any] = meta.to_dict()
             data["path"] = str(shelf.book_dir(slug))
             data["pages"] = pages_summary
-    except (BookNotFoundError, InvalidBundleError) as e:
+    except (
+        BookNotFoundError,
+        InvalidBundleError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as e:
         _fail(f"找不到书/页：{e}", output_format)
         return
     if output_format == "json":
         _emit_json(data)
     else:
         console.print(f"[bold]{escape(meta.title)}[/bold]  ({escape(meta.slug)})")
-        console.print(f"页数: {meta.book.get('page_count', 0)}  添加于: {meta.added_at}")
+        console.print(
+            f"页数: {meta.book.get('page_count', 0)}  添加于: {meta.added_at}",
+        )
         console.print(f"路径: {escape(str(shelf.book_dir(slug)))}")
 
 
@@ -177,8 +244,17 @@ def remove_cmd(
     slug: str = typer.Argument(..., help="书 slug"),
     yes: bool = typer.Option(False, "--yes", "-y", help="跳过确认直接删除"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
-    output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
-    json_output: bool = typer.Option(False, "--json", help="JSON 输出（等同 --format json）"),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="输出格式: json, table",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="JSON 输出（等同 --format json）",
+    ),
 ) -> None:
     """从书架删除一本书（不可逆）。"""
     if json_output:
@@ -202,7 +278,13 @@ def remove_cmd(
                     return
             shelf.remove(slug)
             data = {"slug": slug, "removed": True}
-    except (BookNotFoundError, InvalidBundleError) as e:
+    except (
+        BookNotFoundError,
+        InvalidBundleError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as e:
         _fail(f"找不到书：{e}", output_format)
         return
     if output_format == "json":

@@ -58,8 +58,8 @@ class BookMeta:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "BookMeta":
         return cls(
-            slug=d["slug"],
-            title=d.get("title", d["slug"]),
+            slug=d.get("slug", ""),
+            title=d.get("title", d.get("slug", "")),
             added_at=d.get("added_at", ""),
             source=d.get("source", {}),
             book=d.get("book", {}),

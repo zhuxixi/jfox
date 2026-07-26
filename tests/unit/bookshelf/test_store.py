@@ -256,3 +256,66 @@ def test_add_corrupt_manifest_raises_invalid(tmp_path):
     (bad / "bundle" / "manifest.json").write_text("{ not valid json", encoding="utf-8")
     with pytest.raises(InvalidBundleError):
         shelf.add(bad, added_at="t")
+
+
+def test_list_books_skips_stage_dir(tmp_path):
+    # r2 cc-#16：list_books 跳过 .{slug}.stage.{pid} 目录（add 期间不出现 ghost book）
+    import json as _json
+
+    shelf = BookShelf(tmp_path)
+    real_dir = shelf.root / "real"
+    real_dir.mkdir(parents=True)
+    (real_dir / "meta.json").write_text(
+        _json.dumps({"slug": "real", "title": "Real", "added_at": "t"}),
+        encoding="utf-8",
+    )
+    stage_dir = shelf.root / ".x.stage.123"
+    stage_dir.mkdir(parents=True)
+    (stage_dir / "meta.json").write_text(
+        _json.dumps({"slug": "ghost", "title": "Ghost", "added_at": "t"}),
+        encoding="utf-8",
+    )
+    books = shelf.list_books()
+    assert [b.slug for b in books] == ["real"]
+
+
+def test_read_bundle_manifest_corrupt_raises_invalid(shelf_with_book):
+    # r2 cc-#15：bundle/manifest.json 损坏 → InvalidBundleError（与 add() 一致），
+    # 非 BookNotFoundError
+    from jfox.bookshelf.store import InvalidBundleError
+
+    manifest_path = shelf_with_book.book_dir("sapiens") / "bundle" / "manifest.json"
+    manifest_path.write_text("{ not valid json", encoding="utf-8")
+    with pytest.raises(InvalidBundleError):
+        shelf_with_book.read_bundle_manifest("sapiens")
+
+
+def test_list_books_corrupt_tags_skipped(tmp_path):
+    # r2 cc-#14：meta.json 的 tags=null 触发 TypeError → list_books 跳过不崩
+    import json as _json
+
+    shelf = BookShelf(tmp_path)
+    bad_dir = shelf.root / "bad"
+    bad_dir.mkdir(parents=True)
+    # tags=null 会让 BookMeta.from_dict 里 list(None) 抛 TypeError
+    (bad_dir / "meta.json").write_text(
+        _json.dumps({"slug": "bad", "title": "Bad", "added_at": "t", "tags": None}),
+        encoding="utf-8",
+    )
+    good_dir = shelf.root / "good"
+    good_dir.mkdir(parents=True)
+    (good_dir / "meta.json").write_text(
+        _json.dumps({"slug": "good", "title": "Good", "added_at": "t"}),
+        encoding="utf-8",
+    )
+    books = shelf.list_books()
+    assert [b.slug for b in books] == ["good"]
+
+
+def test_validate_slug_length_cap(tmp_path):
+    # r2 cc-#12：slug 长度上限 80（考虑 stage-dir 开销 + Windows MAX_PATH）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    BookShelf._validate_slug("a" * 80)  # 边界值，合法
+    with pytest.raises(InvalidBundleError):
+        BookShelf._validate_slug("a" * 81)

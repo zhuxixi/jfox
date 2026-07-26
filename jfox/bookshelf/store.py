@@ -42,7 +42,7 @@ class BookShelf:
     """一个知识库的书架：<base_dir>/bookshelf/<slug>/。"""
 
     def __init__(self, base_dir: Path) -> None:
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir).expanduser().resolve()
         self.root = self.base_dir / "bookshelf"
 
     def book_dir(self, slug: str) -> Path:
@@ -64,9 +64,17 @@ class BookShelf:
             return []
         out: List[BookMeta] = []
         for meta_file in sorted(self.root.glob("*/meta.json")):
+            if meta_file.parent.name.startswith("."):
+                continue
             try:
                 out.append(BookMeta.load(meta_file))
-            except (json.JSONDecodeError, KeyError, OSError) as e:
+            except (
+                json.JSONDecodeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                OSError,
+            ) as e:
                 logger.warning("跳过无法加载的 meta.json: %s (%s)", meta_file, e)
                 continue
         return out
@@ -95,7 +103,7 @@ class BookShelf:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
-            raise BookNotFoundError(f"{slug} bundle manifest 解析失败: {e}") from e
+            raise InvalidBundleError(f"{slug} bundle manifest 解析失败: {e}") from e
 
     def add(
         self,
@@ -169,9 +177,22 @@ class BookShelf:
                     shutil.copy2(str(orig_src), str(stage / original_file))
             meta.save(stage / META_FILENAME)
             dest = self.book_dir(slug)
+            dest_bak: Optional[Path] = None
             if dest.exists():
-                shutil.rmtree(dest)
-            _os.replace(str(stage), str(dest))
+                dest_bak = self.root / f".{slug}.retire.{_os.getpid()}"
+                _os.replace(str(dest), str(dest_bak))  # 原子挪走旧 dest
+            try:
+                _os.replace(str(stage), str(dest))  # stage 就位为新 dest
+            except OSError:
+                # 替换失败：回滚，把旧 dest 挪回
+                if dest_bak is not None and dest_bak.exists():
+                    _os.replace(str(dest_bak), str(dest))
+                raise
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage, ignore_errors=True)
+                if dest_bak is not None and dest_bak.exists():
+                    shutil.rmtree(dest_bak, ignore_errors=True)
         finally:
             if stage.exists():
                 shutil.rmtree(stage, ignore_errors=True)
@@ -209,8 +230,8 @@ class BookShelf:
             raise InvalidBundleError(f"非法 slug（尾点/尾空格）: {slug!r}")
         if slug.split(".")[0].upper() in BookShelf._WINDOWS_RESERVED:
             raise InvalidBundleError(f"非法 slug（Windows 保留名）: {slug!r}")
-        if len(slug) > 255:
-            raise InvalidBundleError(f"非法 slug（超长）: {slug!r}")
+        if len(slug) > 80:
+            raise InvalidBundleError(f"非法 slug（超长，>80 字符）: {slug!r}")
 
     _KNOWN_ORIGINAL_EXTS = {".pdf", ".epub", ".mobi", ".azw", ".cbz", ".cbr", ".djvu"}
 
@@ -218,7 +239,8 @@ class BookShelf:
     def _find_original(src_folder: Path):
         """挑原件：优先已知原件扩展名，否则退回最大文件。按 (-size, name) 确定性排序，
         避免大小并列时 max() 因遍历顺序不同而跨机器不稳定。"""
-        files = [f for f in src_folder.iterdir() if f.is_file() and f.name != META_FILENAME]
+        all_entries = list(src_folder.iterdir())
+        files = [f for f in all_entries if f.is_file() and f.name != META_FILENAME]
         if not files:
             return None, None
         known = [f for f in files if f.suffix.lower() in BookShelf._KNOWN_ORIGINAL_EXTS]
