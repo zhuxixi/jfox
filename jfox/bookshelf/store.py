@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import logging
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 BUNDLE_DIRNAME = "bundle"
 MANIFEST_FILENAME = "manifest.json"
 META_FILENAME = "meta.json"
+# 历史 stage/retire 残留目录名前缀（新代码已移出 bookshelf/，list_books 兜底过滤；k-14/k-17）
+_STAGE_RETIRE_RE = re.compile(r"^\.bookshelf\..*\.(stage|retire)\.\d+$")
 
 
 class BookAlreadyExistsError(Exception):
@@ -68,8 +71,8 @@ class BookShelf:
             return []
         out: List[BookMeta] = []
         for meta_file in sorted(self.root.glob("*/meta.json")):
-            # k-14：跳过历史 stage/retire 残留目录名（新代码已移出 bookshelf/，此为兜底）
-            if re.match(r"^\..*\.(stage|retire)\.\d+$", meta_file.parent.name):
+            # k-14/k-17：跳过 .bookshelf.<slug>.stage.<pid>/.retire.<pid> 残留目录名（限定前缀，避免误伤）
+            if _STAGE_RETIRE_RE.match(meta_file.parent.name):
                 continue
             try:
                 m = BookMeta.load(meta_file)
@@ -179,13 +182,16 @@ class BookShelf:
         import os as _os
 
         stage = self.base_dir / f".bookshelf.{slug}.stage.{_os.getpid()}"
-        # k-12：清理同 slug 历史 stage/retire 残留（上次崩溃遗留），避免 os.replace 目标已存在
-        for stale in self.base_dir.glob(f".bookshelf.{slug}.stage.*"):
-            shutil.rmtree(stale, ignore_errors=True)
-        for stale in self.base_dir.glob(f".bookshelf.{slug}.retire.*"):
+        # k-12/cc-26：清理同 slug 历史 stage 残留（一次性中间产物，可安全删）；slug 用 glob.escape
+        # 防止 [ ] 等通配符被当字符类。retire 目录不清——它是旧书的幸存副本（双失败/崩溃下唯一可
+        # 恢复点），自动清会删掉幸存副本（cc-24）也破坏并发 add（k-18）。
+        for stale in self.base_dir.glob(f".bookshelf.{glob.escape(slug)}.stage.*"):
             shutil.rmtree(stale, ignore_errors=True)
         if stage.exists():
             shutil.rmtree(stage)
+        # 外置初始化 dest_bak：否则 stage.mkdir 早期失败时 finally 会引用未绑定变量（k-15）
+        dest_bak: Optional[Path] = None
+        write_ok = False
         try:
             # 显式建书架根：stage 不再位于 bookshelf/ 下，不再有 mkdir(parents=True)
             # 顺带把 bookshelf/ 建出来的副作用；os.replace 需要目标父目录存在
@@ -199,7 +205,6 @@ class BookShelf:
                     shutil.copy2(str(orig_src), str(stage / original_file))
             meta.save(stage / META_FILENAME)
             dest = self.book_dir(slug)
-            dest_bak: Optional[Path] = None
             if dest.exists():
                 dest_bak = self.base_dir / f".bookshelf.{slug}.retire.{_os.getpid()}"
                 _os.replace(str(dest), str(dest_bak))  # 原子挪走旧 dest
@@ -210,6 +215,7 @@ class BookShelf:
                 if dest_bak is not None and dest_bak.exists():
                     _os.replace(str(dest_bak), str(dest))
                 raise
+            write_ok = True  # 新书已就位
             # 成功后才删旧书备份（cc-21：放 finally 会吞掉双失败的唯一幸存副本）
             if dest_bak is not None and dest_bak.exists():
                 try:
@@ -218,12 +224,12 @@ class BookShelf:
                     # cc-23：不静默吞——记录孤儿 dest_bak 残留，便于排查/清理
                     logger.warning("清理旧书备份失败，残留孤儿目录 %s: %s", dest_bak, e)
         finally:
-            # stage 是一次性中间产物，无论成败都清；dest_bak 由成功分支自己清
+            # stage 是一次性中间产物，无论成败都清
             if stage.exists():
                 shutil.rmtree(stage, ignore_errors=True)
-            if dest_bak is not None and dest_bak.exists():
-                # cc-23：到这里说明成功分支没清掉 dest_bak（写入/回滚失败）——它是旧书唯一幸存
-                # 副本，不能删，记录在案供排查
+            if not write_ok and dest_bak is not None and dest_bak.exists():
+                # 写入确实没完成（区别于「成功但清理失败」——后者 write_ok=True 不进这里），
+                # dest_bak 是旧书唯一幸存副本，保留供排查
                 logger.warning("写入未完成，旧书备份保留在 %s", dest_bak)
 
         # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）
