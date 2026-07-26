@@ -179,3 +179,80 @@ def test_remove(tmp_path, make_book_folder):
 def test_remove_missing_raises(tmp_path):
     with pytest.raises(BookNotFoundError):
         BookShelf(tmp_path).remove("nope")
+
+
+def test_book_dir_rejects_traversal(tmp_path):
+    # issue-3：read/delete 路径也要挡路径遍历
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    with pytest.raises(InvalidBundleError):
+        shelf.book_dir("../evil")
+    with pytest.raises(InvalidBundleError):
+        shelf.book_dir("..")
+
+
+def test_add_rejects_traversal_slug(tmp_path, make_book_folder):
+    # issue-3：add 时 slug="../evil" 必须被拒（_validate_slug 先挡 / ，book_dir 兜底）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="ok", pages=1)
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, slug="../evil", added_at="t")
+
+
+def test_validate_slug_rejects_windows_reserved(tmp_path):
+    # issue-10：Windows 保留名 + 尾点/尾空格 + 超长
+    from jfox.bookshelf.store import InvalidBundleError
+
+    for bad in ("CON", "PRN", "AUX", "NUL", "COM1", "LPT9", "file.", "name ", "CON.txt"):
+        with pytest.raises(InvalidBundleError):
+            BookShelf._validate_slug(bad)
+    # 合法的还在
+    BookShelf._validate_slug("good-slug")
+    BookShelf._validate_slug("book.pdf")
+
+
+def test_validate_slug_rejects_too_long(tmp_path):
+    from jfox.bookshelf.store import InvalidBundleError
+
+    with pytest.raises(InvalidBundleError):
+        BookShelf._validate_slug("x" * 256)
+
+
+def test_find_original_prefers_known_ext(tmp_path):
+    # issue-5：cover.jpg（更大）+ book.pdf（更小）→ 选 book.pdf（已知原件扩展名优先）
+    folder = tmp_path / "src" / "mix"
+    folder.mkdir(parents=True)
+    (folder / "bundle").mkdir()
+    (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
+    (folder / "cover.jpg").write_bytes(b"X" * 1000)  # 更大但不是已知原件扩展名
+    (folder / "book.pdf").write_bytes(b"%PDF-1.4 small")  # 更小但是 .pdf
+    name, sha = BookShelf._find_original(folder)
+    assert name == "book.pdf"
+    assert sha
+
+
+def test_find_original_fallback_largest_when_no_known_ext(tmp_path):
+    # 无已知原件扩展名时退回最大文件，且大小并列时按名字确定性排序
+    folder = tmp_path / "src" / "fallback"
+    folder.mkdir(parents=True)
+    (folder / "bundle").mkdir()
+    (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
+    (folder / "a.bin").write_bytes(b"XXXX")  # 4 字节
+    (folder / "b.bin").write_bytes(b"XX")  # 2 字节
+    name, _ = BookShelf._find_original(folder)
+    assert name == "a.bin"
+
+
+def test_add_corrupt_manifest_raises_invalid(tmp_path):
+    # issue-4：bundle/manifest.json 是坏 JSON → InvalidBundleError（不 traceback）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    bad = tmp_path / "src" / "corrupt"
+    (bad / "bundle").mkdir(parents=True)
+    (bad / "bundle" / "manifest.json").write_text("{ not valid json", encoding="utf-8")
+    with pytest.raises(InvalidBundleError):
+        shelf.add(bad, added_at="t")

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -46,7 +47,9 @@ class BookMeta:
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.to_json(), encoding="utf-8")
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(self.to_json(), encoding="utf-8")
+        os.replace(tmp, path)  # 原子替换，中断不留半截 meta.json
 
     @classmethod
     def load(cls, path: Path) -> "BookMeta":
