@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from jfox.gem_synth import dedup
-from jfox.gem_synth.dedup import DedupStore
+from jfox.gem_synth.dedup import DedupHit, DedupStore
 
 
 class FakeBackend:
@@ -45,7 +45,17 @@ def test_dedup_check_hits_existing_dup(setup):
     # 灌一个 candidate，再用同文本 dedup_check 应命中自己（验证余弦路径）
     dedup.upsert_dedup("default", "cand-1", "candidate", "Zima 双 Bot babysit 标签循环")
     hit = dedup.dedup_check("default", "Zima 双 Bot babysit 标签循环", threshold=0.5)
-    assert hit == "cand-1"
+    assert isinstance(hit, DedupHit)
+    assert hit.note_id == "cand-1"
+    assert hit.note_type == "candidate"
+    assert hit.score >= 0.5
+
+
+def test_dedup_check_returns_permanent_type(setup):
+    dedup.upsert_dedup("default", "perm-1", "permanent", "某永久知识结论")
+    hit = dedup.dedup_check("default", "某永久知识结论", threshold=0.5)
+    assert isinstance(hit, DedupHit)
+    assert hit.note_type == "permanent"
 
 
 def test_dedup_check_kb_isolation(setup):

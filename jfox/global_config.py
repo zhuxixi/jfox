@@ -45,6 +45,62 @@ class KnowledgeBaseEntry:
         )
 
 
+def _is_valid_time(s: str) -> bool:
+    """校验 HH:MM 格式且小时/分钟合法"""
+    if not isinstance(s, str) or s.count(":") != 1:
+        return False
+    h, m = s.split(":")
+    try:
+        hi, mi = int(h), int(m)
+    except ValueError:
+        return False
+    return 0 <= hi <= 23 and 0 <= mi <= 59
+
+
+@dataclass
+class BackupConfig:
+    """KB 滚动备份配置（opt-in，默认关闭）。
+
+    由 jfox daemon 的 backup_loop 按 schedule_time 每日触发；
+    也可 `jfox backup run` 手动触发。详见 jfox/backup/。
+    """
+
+    enabled: bool = False
+    schedule_time: str = "08:00"  # 每日备份时刻 HH:MM（本地时区）
+    retain: int = 7  # 滚动保留份数
+    backup_root: Optional[str] = None  # None → ~/.jfox-backup
+
+    def __post_init__(self) -> None:
+        if self.retain < 1:
+            self.retain = 7
+        if not _is_valid_time(self.schedule_time):
+            self.schedule_time = "08:00"
+        if isinstance(self.backup_root, str) and not self.backup_root.strip():
+            self.backup_root = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "BackupConfig":
+        if not data:
+            return cls()
+        # retain 防御：null/非数字 → 默认 7（避免 int(None) TypeError）
+        try:
+            retain = int(data.get("retain", 7))
+        except (TypeError, ValueError):
+            retain = 7
+        # backup_root 防御：只接受 str，其余（数字/列表/null）→ None
+        raw_root = data.get("backup_root")
+        backup_root = raw_root if isinstance(raw_root, str) and raw_root.strip() else None
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            schedule_time=str(data.get("schedule_time", "08:00")),
+            retain=retain,
+            backup_root=backup_root,
+        )
+
+
 @dataclass
 class AutoSummaryConfig:
     """Claude Code 会话自动总结配置（opt-in，默认关闭）"""
@@ -249,6 +305,9 @@ class GemSynthesisConfig:
     claude_binary: Optional[str] = None  # None → 从 PATH 解析
     dedup_enabled: bool = True  # 存盘前用正文 embedding 余弦查重
     dedup_threshold: float = 0.88  # 同事实重复阈值（高）；link-suggest 0.6 是"相关"，dedup 要"同一"
+    dedup_merge_enabled: bool = (
+        True  # 命中 candidate 时提取增量补入（#309）；False 回 #308 二值跳过
+    )
 
     def __post_init__(self) -> None:
         if self.interval_minutes < 1:
@@ -313,6 +372,7 @@ class GemSynthesisConfig:
                 if isinstance(data.get("dedup_threshold"), bool)
                 else _safe_float(data.get("dedup_threshold"), 0.88)
             ),
+            dedup_merge_enabled=bool(data.get("dedup_merge_enabled", True)),
         )
 
 
@@ -325,6 +385,7 @@ class GlobalConfig:
     auto_summary: AutoSummaryConfig = field(default_factory=AutoSummaryConfig)
     fragment_capture: FragmentCaptureConfig = field(default_factory=FragmentCaptureConfig)
     gem_synthesis: GemSynthesisConfig = field(default_factory=GemSynthesisConfig)
+    backup: BackupConfig = field(default_factory=BackupConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -333,6 +394,7 @@ class GlobalConfig:
             "auto_summary": self.auto_summary.to_dict(),
             "fragment_capture": self.fragment_capture.to_dict(),
             "gem_synthesis": self.gem_synthesis.to_dict(),
+            "backup": self.backup.to_dict(),
         }
 
     @classmethod
@@ -347,6 +409,7 @@ class GlobalConfig:
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
             fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
             gem_synthesis=GemSynthesisConfig.from_dict(data.get("gem_synthesis")),
+            backup=BackupConfig.from_dict(data.get("backup")),
         )
 
 
@@ -660,6 +723,19 @@ class GlobalConfigManager:
         current = asdict(config.gem_synthesis)
         current.update({k: v for k, v in changes.items() if k in current})
         config.gem_synthesis = GemSynthesisConfig.from_dict(current)
+        self._config = config
+        return self._save()
+
+    def get_backup_config(self) -> BackupConfig:
+        """获取 KB 备份配置"""
+        return self._load().backup
+
+    def update_backup_config(self, **changes: Any) -> bool:
+        """更新备份配置中的若干字段，未传入的字段保持原样"""
+        config = self._load()
+        current = asdict(config.backup)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.backup = BackupConfig.from_dict(current)
         self._config = config
         return self._save()
 

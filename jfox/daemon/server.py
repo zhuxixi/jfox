@@ -32,6 +32,10 @@ _auto_summary_stop_event: Optional[threading.Event] = None
 _gem_synth_task: Optional[asyncio.Task] = None
 _gem_synth_stop_event: Optional[threading.Event] = None
 
+# backup 后台 task 与停止信号
+_backup_task: Optional[asyncio.Task] = None
+_backup_stop_event: Optional[threading.Event] = None
+
 
 def _load_model():
     """启动时加载模型（标记为 daemon 进程，防止自引用）"""
@@ -181,15 +185,62 @@ async def _maybe_stop_gem_synth() -> None:
     _gem_synth_stop_event = None
 
 
+def _maybe_start_backup() -> None:
+    """如果用户启用了 backup，启动后台循环 task"""
+    global _backup_task, _backup_stop_event
+    try:
+        from ..backup.loop import backup_loop
+        from ..global_config import get_global_config_manager
+
+        cfg = get_global_config_manager().get_backup_config()
+        if not cfg.enabled:
+            logger.info("Daemon: backup 未启用（config.backup.enabled=false）")
+            return
+        _backup_stop_event = threading.Event()
+        _backup_task = asyncio.create_task(backup_loop(_backup_stop_event))
+        logger.info(
+            "Daemon: backup 后台循环已启动 (schedule=%s, retain=%d)",
+            cfg.schedule_time,
+            cfg.retain,
+        )
+    except Exception as e:
+        logger.exception("Daemon: 启动 backup 后台循环失败: %s", e)
+
+
+async def _maybe_stop_backup() -> None:
+    """关闭 backup 后台循环（lifespan shutdown 阶段调用）"""
+    global _backup_task, _backup_stop_event
+    if _backup_stop_event is not None:
+        _backup_stop_event.set()
+    if _backup_task is not None:
+        try:
+            await asyncio.wait_for(_backup_task, timeout=15)
+        except asyncio.TimeoutError:
+            logger.warning("Daemon: backup task 15s 内未退出，取消之")
+            _backup_task.cancel()
+            await asyncio.gather(_backup_task, return_exceptions=True)
+        except Exception as e:
+            logger.warning("Daemon: 等待 backup 退出时异常: %s", e)
+            _backup_task.cancel()
+            try:
+                await asyncio.gather(_backup_task, return_exceptions=True)
+            except Exception:
+                pass
+    _backup_task = None
+    _backup_stop_event = None
+
+
 @asynccontextmanager
 async def lifespan(app):
     _load_model()
     _maybe_start_auto_summary()
     _maybe_start_gem_synth()
+    _maybe_start_backup()
     _maybe_init_fragment_store()
     try:
         yield
     finally:
+        await _maybe_stop_backup()
         await _maybe_stop_gem_synth()
         await _maybe_stop_auto_summary()
         _maybe_close_fragment_store()
