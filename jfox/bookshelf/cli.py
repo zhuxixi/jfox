@@ -33,12 +33,16 @@ def _shelf() -> BookShelf:
 
 
 def _emit_json(data: Any) -> None:
-    _json_console.print(_json.dumps(data, ensure_ascii=False, indent=2))
+    # soft_wrap=True：禁止 rich 按 80 列折行，否则长 path（如 Windows 绝对路径）会在
+    # JSON 字符串内部插入换行，破坏 json.loads（#336 windows CI 踩过）。
+    _json_console.print(_json.dumps(data, ensure_ascii=False, indent=2), soft_wrap=True)
 
 
 def _fail(message: str, output_format: str) -> None:
     if output_format == "json":
-        _json_console.print(_json.dumps({"success": False, "error": message}, ensure_ascii=False))
+        _json_console.print(
+            _json.dumps({"success": False, "error": message}, ensure_ascii=False), soft_wrap=True
+        )
     else:
         console.print(f"[red]{message}[/red]")
     raise typer.Exit(code=1)

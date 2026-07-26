@@ -101,3 +101,17 @@ def test_bookshelf_help_registered(cli_fast):
     stdout = result.stdout
     for cmd in ("add", "list", "show", "remove"):
         assert cmd in stdout
+
+
+def test_emit_json_long_path_not_wrapped(capsys):
+    """regression #336: rich 默认按 80 列折行，曾在 windows CI 把长 path 折进 JSON
+    字符串内部（插入换行），破坏 json.loads。soft_wrap=True 后须保持可解析。"""
+    import json as _stdjson
+
+    from jfox.bookshelf.cli import _emit_json
+
+    long_path = "/" + "x" * 100 + "/bookshelf/sapiens"
+    _emit_json({"success": True, "slug": "sapiens", "path": long_path})
+    out = capsys.readouterr().out
+    data = _stdjson.loads(out)  # 不应抛 JSONDecodeError
+    assert data["path"] == long_path
