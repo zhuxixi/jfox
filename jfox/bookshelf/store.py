@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import glob
 import hashlib
 import json
 import logging
@@ -182,11 +181,9 @@ class BookShelf:
         import os as _os
 
         stage = self.base_dir / f".bookshelf.{slug}.stage.{_os.getpid()}"
-        # k-12/cc-26：清理同 slug 历史 stage 残留（一次性中间产物，可安全删）；slug 用 glob.escape
-        # 防止 [ ] 等通配符被当字符类。retire 目录不清——它是旧书的幸存副本（双失败/崩溃下唯一可
-        # 恢复点），自动清会删掉幸存副本（cc-24）也破坏并发 add（k-18）。
-        for stale in self.base_dir.glob(f".bookshelf.{glob.escape(slug)}.stage.*"):
-            shutil.rmtree(stale, ignore_errors=True)
+        # 只清本进程同 pid 的 stage（同进程重复 add 同 slug 时的残留）；不清别进程的 stage——
+        # 那会破坏并发 add（k-18）。跨进程崩溃遗留的 stage/retire 分别是一次性中间产物 / 幸存副本，
+        # 不自动回收（per-process 隔离），留给将来的 gc 命令。
         if stage.exists():
             shutil.rmtree(stage)
         # 外置初始化 dest_bak：否则 stage.mkdir 早期失败时 finally 会引用未绑定变量（k-15）
@@ -207,6 +204,9 @@ class BookShelf:
             dest = self.book_dir(slug)
             if dest.exists():
                 dest_bak = self.base_dir / f".bookshelf.{slug}.retire.{_os.getpid()}"
+                # k-19：同 pid 重复 force add 时 dest_bak 可能残留（同进程前次未清），replace 前先清目标
+                if dest_bak.exists():
+                    shutil.rmtree(dest_bak, ignore_errors=True)
                 _os.replace(str(dest), str(dest_bak))  # 原子挪走旧 dest
             try:
                 _os.replace(str(stage), str(dest))  # 成功：新书就位
