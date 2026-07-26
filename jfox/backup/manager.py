@@ -12,8 +12,10 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tarfile
 import tempfile
+import time
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -112,33 +114,49 @@ class SubprocessDaemonController(DaemonController):
         # 尝试 json（若 status 支持 --format json）；否则回退中文状态字
         try:
             data = json.loads(r.stdout)
-            return bool(
-                data.get("running")
-                or data.get("status") in ("running", "运行中")
-                or data.get("状态") == "运行中"
-            )
         except (ValueError, json.JSONDecodeError):
             return "运行中" in r.stdout
+        if not isinstance(data, dict):  # 防非 dict JSON（CR kimi#21）
+            return "运行中" in r.stdout
+        return bool(
+            data.get("running")
+            or data.get("status") in ("running", "运行中")
+            or data.get("状态") == "运行中"
+        )
+
+
+_LOCK_TIMEOUT = 300  # 锁等待上限（秒），防对方进程僵死致永久阻塞（CR cc#14）
 
 
 def _acquire_lock(fd: int) -> None:
-    """跨平台阻塞式独占锁。Unix fcntl.flock，Windows msvcrt.locking"""
+    """跨平台独占锁，带上限等待。Unix fcntl.flock，Windows msvcrt.locking。
+
+    非阻塞尝试 + 轮询，超过 _LOCK_TIMEOUT 抛 TimeoutError。
+    """
+    deadline = time.monotonic() + _LOCK_TIMEOUT
     try:
         import fcntl
 
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        return
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"backup 锁等待超时（>{_LOCK_TIMEOUT}s）")
+                time.sleep(0.5)
     except ImportError:
         pass
     import msvcrt
-    import time
 
     while True:
         try:
-            msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
             return
         except OSError:
-            time.sleep(0.1)
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"backup 锁等待超时（>{_LOCK_TIMEOUT}s）")
+            time.sleep(0.5)
 
 
 def _release_lock(fd: int) -> None:
@@ -272,9 +290,11 @@ class BackupManager:
         return archive.with_name(archive.name[: -len(".tar.gz")] + ".manifest.json")
 
     def _rotate(self) -> None:
-        # 按 mtime 排序（文件名序在 -N 后缀同秒场景下会误排，见 CR #11）
-        archives = sorted(self.daily_dir.glob("jfox-*.tar.gz"), key=lambda p: p.stat().st_mtime)
-        for old in archives[: max(0, len(archives) - self.retain)]:
+        # 按 mtime 排序（文件名序在 -N 后缀同秒场景下会误排，见 CR #11）；
+        # 一次性取 mtime 避免 TOCTOU（CR cc#15）
+        timed = [(p, p.stat().st_mtime) for p in self.daily_dir.glob("jfox-*.tar.gz")]
+        timed.sort(key=lambda x: x[1])
+        for old, _mtime in timed[: max(0, len(timed) - self.retain)]:
             old.unlink(missing_ok=True)
             self._manifest_path(old).unlink(missing_ok=True)
 
@@ -385,7 +405,11 @@ class BackupManager:
                     continue
                 m.name = dest_rel
                 if dest_rel:
-                    tar.extract(m, path=str(dest_root))
+                    # 3.12+ 用 filter='data' 双保险；3.10/3.11 靠 _safe_member 净化（CR cc#16）
+                    if sys.version_info >= (3, 12):
+                        tar.extract(m, path=str(dest_root), filter="data")
+                    else:
+                        tar.extract(m, path=str(dest_root))
 
     @staticmethod
     def _safe_member(m: tarfile.TarInfo, dest_rel: str) -> bool:
