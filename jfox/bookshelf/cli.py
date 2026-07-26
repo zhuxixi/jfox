@@ -159,7 +159,7 @@ def list_cmd(
         _emit_json({"books": rows, "total": len(rows)})
         return
     table = Table(title=f"书架（共 {len(rows)} 本）")
-    for col in ("slug", "title", "page_count", "added_at", "distill"):
+    for col in ("slug", "title", "page_count", "added_at", "distill_status"):
         table.add_column(col)
     for r in rows:
         table.add_row(
