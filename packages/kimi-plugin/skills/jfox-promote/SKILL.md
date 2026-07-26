@@ -5,7 +5,7 @@ description: Use when user wants to review/promote gem-synth candidate notes int
 
 # 过审 candidate（破损→完整，支持大积压）
 
-本 skill 过审 gem-synth 合成的 candidate——一种「破损级」候选知识笔记，把它晋升为永久笔记（permanent），或拒绝归档（reject，软删除可恢复）。candidate 由后台合成器围绕锚点生成，处于 pending 状态；过审是知识闭环（采集→合成→过审）的最后一环。
+本 skill 过审 gem-synth 合成的 candidate——一种「破损级」候选知识笔记，把它晋升为永久笔记（permanent），或拒绝归档（reject，软删除可恢复）。candidate 由后台合成器围绕锚点（anchor，合成时选定的主题切入点）生成，处于 pending 状态；过审是知识闭环（采集→合成→过审）的最后一环。
 
 积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。注意：candidate 的 pending（过审状态）和 gem-synth status（合成进度）是两回事。
 
@@ -67,7 +67,7 @@ jfox candidates list --status pending --format json | jq '.candidates | length' 
 ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l  # 文件总数（含 rejected 软删除；纯 pending 看上行 jq）
 ```
 
-- **大积压（pending > 50）**：依次走模式1（客观去重扫描，砍掉精确和高重复条目）→ 模式2（对剩余的簇做 triage）→ 模式3（精修高价值或模糊的单条）。
+- **大积压（pending > 50）**：依次走模式1（客观去重扫描，砍掉精确和高度相似两档）→ 模式2（对剩余的簇做 triage）→ 模式3（精修高价值或模糊的单条）。
 - **小积压（≤ 50）**：跳过去重，直接走模式2 或模式3。
 
 > 经验：大积压的主要矛盾是**冗余**——candidate 讲的东西已被现有 permanent 覆盖——而不是准确性。所以先用模式1 砍重复、再用模式2 砍冗余，最后才用模式3 精修真正值得晋升的条目。
@@ -76,11 +76,11 @@ ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l  # 
 
 对存量 pending 做一次性的 dedup（去重）扫描，按相似度从高到低分三档处理：
 
-- **精确去重**（原文逐字节一致）：把清理后的正文算 content_hash（一段正文的字节级指纹），完全相同的归为一组，每组只保留一条、其余直接 reject（拒绝即软归档），无需逐条阅读。
+- **精确去重**（清理后正文逐字节一致）：把清理过的正文算 content_hash（一段正文的字节级指纹，基于 clean 函数清理后的正文计算），完全相同的归为一组，每组只保留一条、其余直接 reject（拒绝即软归档），无需逐条阅读。
 - **高度相似**（cosine ≥ 0.95；cosine 是余弦相似度，衡量两段正文的语义接近度，越接近 1 越像）：很可能是重复，把同组的标题、分数、内容片段报给用户，确认后 reject。
 - **中度相似**（cosine 0.88–0.95）：可能是重复，读一眼正文确认；相似度低于 0.88 的不标记。
 
-> 下面是扫描脚本（dry-run 默认，加 `--apply` 才真正批量 reject、每组留最优条目 keep-best）：
+> 下面是扫描脚本（dry-run 默认，只报簇不删；加 `--apply` 才在精确去重档批量 reject、每组保留一条——脚本取文件名最早的那条。高度/中度相似档无论是否加 `--apply` 都只报簇，需你确认后再手动 reject）：
 
 ```python
 # promote-skill 模式1：存量 candidate dedup 扫描（临时脚本，直读文件版）
@@ -193,7 +193,7 @@ except Exception as e:
 
 ## 2. 模式2：簇级 triage（处理非精确重复的簇）
 
-模式1 砍掉精确和高重复后，剩下的 candidate 会聚成若干主题簇（或小积压直接从这里开始）。对每个簇，先判断它讲的内容是否已被现有 permanent 覆盖（这就是「冗余」维度），再决定怎么处置：
+模式1 砍掉精确和高度相似两档后，剩下的 candidate 会聚成若干主题簇（或小积压直接从这里开始）。对每个簇，先判断它讲的内容是否已被现有 permanent 覆盖（这就是「冗余」维度），再决定怎么处置：
 
 1. **查是否已被现有 permanent 覆盖**：
    ```bash
@@ -318,6 +318,6 @@ jfox fragments show <fragment_id>             # 查看碎片详情（默认 JSON
 ## 使用建议
 
 - **定期过审**：建议每批 L3 合成完成后立即过审，避免 pending candidate 堆积。
-- **大积压先模式1**：pending > 50 时先用模式1 客观去重砍掉精确和高重复条目，再簇级 triage——别逐条过。
+- **大积压先模式1**：pending > 50 时先用模式1 客观去重砍掉精确和高度相似两档，再簇级 triage——别逐条过。
 - **大胆 reject**：整体不可信、或已被现有 permanent 覆盖（冗余）的 candidate 不应强行晋升；拒绝并归档是对知识库质量的保护。
 - **别按 confidence 排序**：confidence 是合成器自评，不等于质量或冗余，按它挑条目是误导信号。

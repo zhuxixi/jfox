@@ -10,9 +10,9 @@
 
 ## Global Constraints（所有 task 隐含遵守）
 
-- **只动散文解释层**：命令块、Python 脚本（dedup_scan、clean_for_promote）、触发词、frontmatter、错误处理表「场景-处理」骨架——原样保留。
-- **去重档改名映射**（全文档散文统一）：`L1 → 精确`、`L2 → 高度相似`、`L3 → 中度相似`。改名后正文「L3」只指合成层。注意：脚本代码块里的变量名/注释不动（那是功能代码）。
-- **平台差异保留**：cc 用 `/jfox:promote`、`/jfox:manage`；kimi 用 `/skill:jfox-promote`、`/skill:jfox-manage`。
+- **只动散文解释层**：命令块、Python 脚本（dedup_scan、clean_for_promote）的逻辑 / 触发词、frontmatter、错误处理表「场景-处理」骨架——原样保留。脚本内仅 print 输出标签和代码注释随去重档改名同步（与 spec §2 一致）。
+- **去重档改名映射**（全文档统一）：`L1 → 精确`、`L2 → 高度相似`、`L3 → 中度相似`。改名后正文「L3」只指合成层。脚本逻辑 / 控制流 / 变量名（l1/l2/l3 等）不动；仅 print 输出标签和代码注释随改名同步，避免散文与脚本输出术语不一致。
+- **平台差异保留**：cc promote 自身无跨 skill 引用；kimi 用 `/skill:jfox-promote`、`/skill:jfox-manage` 指向 manage 等。
 - **commit message**：中文，type(scope): 描述（#341），结尾 `Co-Authored-By: Claude <noreply@anthropic.com>`。
 - **stage 按文件**：`git add <具体文件>`，不用 `git add -A`。
 
@@ -56,7 +56,7 @@
 
 - [ ] **Step 4: §2 模式2（簇级 triage）**
 
-  「已被覆盖 → keep-best + reject 其余」「未被覆盖 → promote-merge」改完整句。`keep-best`（簇内留信息最全的一条）、`fold`（折进现有 permanent）、`merge`（簇内多条合并成一条）首现解释。
+  「已被覆盖 → keep-best + reject 其余」「未被覆盖 → promote-merge」改完整句。`keep-best`（簇内留信息最全的一条）、`fold`（折进现有 permanent）、`merge`（簇内多条合并成一条）、`grounding`（candidate 合成时依据的永久笔记，`grounded_by` 是其 frontmatter 字段）首现解释。
 
 - [ ] **Step 5: §3 模式3（单条 A/B/C）**
 
@@ -85,7 +85,7 @@
   grep -nE "直接清|留 1|2\+H1|降级 H2|keep-best|reject 其余" packages/cc-plugin/skills/promote/SKILL.md
   grep -nE "\bL1\b|\bL2\b|\bL3\b" packages/cc-plugin/skills/promote/SKILL.md
   ```
-  Expected: 第一条无命中（或仅保留并已配解释的）；第二条「L3」只出现在指合成层处（如「L3 合成」），去重档已改名。
+  Expected: 第一条无命中（或仅保留并已配解释的）；第二条「L3」只出现在指合成层处（如「L3 合成」），去重档已改名。基线对照：`git show main:packages/cc-plugin/skills/promote/SKILL.md` 取改写前版本，比对命令数与脚本完整性。
 
 - [ ] **Step 11: 人工通读 cc 版**
 
@@ -156,7 +156,7 @@
   ```bash
   grep -c "jfox candidates\|jfox gem-synth\|jfox edit\|jfox suggest-links" packages/{cc,kimi}-plugin/skills/{promote,jfox-promote}/SKILL.md
   ```
-  Expected: 命令数量与改写前一致（命令块未被误删/误改）。Python 脚本块（dedup_scan、clean_for_promote）逐字未动。
+  Expected: 命令数量与改写前一致（基线 `git show main:<path>` 对照；命令块未被误删/误改）。Python 脚本块逻辑逐字未动（仅 print 输出标签 + 代码注释随去重档改名同步）。
 
 - [ ] **Step 4: 人工通读 cc 版**
 

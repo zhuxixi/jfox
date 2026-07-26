@@ -21,11 +21,11 @@ promote（cc）+ jfox-promote（kimi）两个 SKILL.md 是 #340 评估的 P0 重
 
 **目标**
 - 按 clear-reports 七规则重写 promote / jfox-promote 的**散文解释层**。
-- cc/kimi 两版同步、风格一致（仅 `/jfox:promote` vs `/skill:jfox-promote` 引用差异）。
+- cc/kimi 两版过审核心（§0–§7 + 关键约束）同步、风格一致；kimi 另保留「监控 L3 合成 / 命令参考 / 错误处理 / 使用建议」等独有章节（见 §7 表）。cc promote 自身无跨 skill 引用。
 - 本 spec 文档本身按 clear-reports 写（示范 + 防下次飘）。
 
 **非目标**
-- 不改命令块 / Python 脚本（dedup_scan、clean_for_promote 原样保留）。
+- 不改命令块；Python 脚本（dedup_scan、clean_for_promote）的逻辑 / 控制流 / 变量名原样保留，仅 print 输出标签和代码注释随去重档改名同步（避免散文叫「高度相似」、脚本输出叫「L2」的新不一致）。
 - 不改触发词 / frontmatter / 错误处理表「场景-处理」骨架。
 - 不改工作流步骤顺序与判定逻辑（只改表达，不改行为）。
 - 不动 skills-recommend（无 promote 副本，调研已确认）。
@@ -47,6 +47,8 @@ promote 开篇补一段，让新读者不依赖 #249/#319 也能读懂。3 条�
 > 积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。注意：candidate 的 pending（过审状态）和 gem-synth status（合成进度）是两回事。
 
 ## 4. 电报体改写范式（前后对照）
+
+> **clear-reports 七规则**（源自 `~/.claude/skills/clear-reports`，即《写作的逻辑》段落写作法）：①总论先行 + 心智模型 ②每段一主题 ③段首概要句 ④补充信息 what/why/how ⑤衔接前后段 ⑥统一并列表达 ⑦由已知→未知 + 句子完整（电报体违反此条）。下文所有改写均以这七条为标尺。
 
 | 现状（电报） | 改后（完整句 + 术语解释） |
 |---|---|
@@ -72,7 +74,7 @@ candidate、pending/flawed、permanent、grounded_by（合成依据的永久笔�
 | §0–§7 散文层（模式1/2/3、机械清理、已知坑、输出格式、约束） | 同步改 | 同步改 |
 | 监控 L3 合成 / fragments 章 | 无 | kimi 独有，按同方法论润色 |
 | 命令参考 / 错误处理表 / 使用建议 | 无 | kimi 独有，表格补结论句 |
-| 引用语法 | `/jfox:promote`、`/jfox:manage` | `/skill:jfox-promote`、`/skill:jfox-manage` |
+| 引用语法 | 无跨 skill 引用（cc promote 不指向 manage） | `/skill:jfox-promote`、`/skill:jfox-manage` |
 
 ## 8. 验证（grep 断言，skill 无单测）
 
