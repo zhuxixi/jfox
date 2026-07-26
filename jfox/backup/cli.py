@@ -53,7 +53,7 @@ def _cfg():
 
 def _backup_root() -> Path:
     cfg = _cfg()
-    return Path(cfg.backup_root) if cfg.backup_root else Path.home() / ".jfox-backup"
+    return Path(cfg.backup_root).expanduser() if cfg.backup_root else Path.home() / ".jfox-backup"
 
 
 def _make_mgr():
@@ -63,7 +63,7 @@ def _make_mgr():
     return BackupManager(
         backup_root=_backup_root(),
         kb_root=DEFAULT_KB_PATH,
-        config_path=Path.home() / ".zk_config.json",
+        config_path=get_global_config_manager().config_path,  # 与 loop 一致（CR kimi#29）
         retain=cfg.retain,
     )
 

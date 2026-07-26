@@ -116,6 +116,10 @@ class SubprocessDaemonController(DaemonController):
             data = json.loads(body)
         except ValueError:
             return False
+        if not isinstance(
+            data, dict
+        ):  # 非 dict JSON（端口被其他服务占用）→ 非本 daemon（CR cc#25）
+            return False
         return bool(data.get("status") == "ok" or data.get("running"))
 
 
@@ -235,11 +239,12 @@ class BackupManager:
                 pass
             raise
 
-        # 归档已落盘即视为备份成功；manifest 写入/轮转失败只记警告不抛（CR kimi#25）
+        # manifest 写失败：unlink 归档保「落盘⇔可恢复」不变量并抛出，让调用方记失败、下轮重试（CR cc#26）
         try:
             atomic_write_json(self._manifest_path(archive), manifest)
         except Exception:
-            logger.warning("写 manifest 失败（归档已成功，verify 会报 unverified）", exc_info=True)
+            archive.unlink(missing_ok=True)
+            raise
         try:
             self._rotate()
         except Exception:
@@ -344,8 +349,18 @@ class BackupManager:
 
     def _restore_body(self, snapshot: Path, mpath: Path) -> None:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        aside_kb = self.kb_root.with_name(self.kb_root.name + f".pre-restore-{ts}")
-        aside_cfg = self.config_path.with_name(self.config_path.name + f".pre-restore-{ts}")
+        # 同秒内多次 restore：序号递增防旁置目录/文件撞名（CR kimi#27）
+        suffix = ""
+        n = 2
+        while True:
+            aside_kb = self.kb_root.with_name(self.kb_root.name + f".pre-restore-{ts}{suffix}")
+            aside_cfg = self.config_path.with_name(
+                self.config_path.name + f".pre-restore-{ts}{suffix}"
+            )
+            if not aside_kb.exists() and not aside_cfg.exists():
+                break
+            suffix = f"-{n}"
+            n += 1
 
         # 1. 校验 sha256（先于 rename，避免无谓挪动）
         manifest = json.loads(mpath.read_text(encoding="utf-8"))
@@ -449,6 +464,10 @@ class BackupManager:
     def list_snapshots(self) -> list[dict]:
         out: list[dict] = []
         for archive in sorted(self.daily_dir.glob("jfox-*.tar.gz"), reverse=True):
+            try:
+                size = archive.stat().st_size
+            except OSError:
+                continue  # 归档被并发删除 → 跳过（CR kimi#28）
             mpath = self._manifest_path(archive)
             manifest = None
             if mpath.exists():
@@ -459,7 +478,7 @@ class BackupManager:
             out.append(
                 {
                     "archive": archive.name,
-                    "size": archive.stat().st_size,
+                    "size": size,
                     "created": manifest.get("created") if manifest else None,
                     "ok": self.verify(archive),
                 }

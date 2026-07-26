@@ -49,7 +49,7 @@ def write_backup_state(backup_root: Path, ok: bool, archive: Optional[str]) -> N
 
 
 def _resolve_backup_root(cfg) -> Path:
-    return Path(cfg.backup_root) if cfg.backup_root else Path.home() / ".jfox-backup"
+    return Path(cfg.backup_root).expanduser() if cfg.backup_root else Path.home() / ".jfox-backup"
 
 
 def _tick_once() -> str:
