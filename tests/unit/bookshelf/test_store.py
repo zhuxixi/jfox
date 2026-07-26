@@ -367,3 +367,21 @@ def test_validate_slug_length_cap(tmp_path):
         BookShelf._validate_slug("书" * 28)
     # 26 个汉字 = 78 字节，合法
     BookShelf._validate_slug("书" * 26)
+
+
+def test_add_rejects_non_dict_meta_json(tmp_path, make_book_folder):
+    """meta.json 非 dict（JSON list）→ InvalidBundleError，不抛 AttributeError（kimi#21）"""
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="badmeta", with_meta=[1, 2, 3])  # JSON list，非 dict
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, added_at="t")
+
+
+def test_add_coerces_non_dict_source_in_meta(tmp_path, make_book_folder):
+    """meta.json 的 source 非 dict → 覆为空 dict 再注入 original_*，不崩（kimi#21）"""
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="badsrc", with_meta={"title": "X", "source": "notadict"})
+    meta = shelf.add(folder, added_at="t")  # 不抛 AttributeError
+    assert meta.source["original_file"]  # source 被规整、original_file 注入
