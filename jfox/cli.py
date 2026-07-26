@@ -103,6 +103,11 @@ from .auto_summary.cli import auto_summary_app  # noqa: E402
 
 app.add_typer(auto_summary_app, name="auto-summary")
 
+# Backup 子命令组（KB 滚动备份/恢复：daemon 定时 + 手动 run/restore）
+from .backup.cli import backup_app  # noqa: E402
+
+app.add_typer(backup_app, name="backup", help="KB 滚动备份/恢复")
+
 # Fragments 子命令组（查看 Hook 采集的 session 碎片）
 from .fragment.cli import fragments_app  # noqa: E402
 

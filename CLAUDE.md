@@ -74,6 +74,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `fragment/` | 碎片采集：detector 分类 + store SQLite(WAL) + service 编排 |
 | `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重，命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补进已有草稿，#309；permanent 仍跳过）；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
 | `auto_summary/` | 自动总结子系统：daemon 内扫描 `~/.claude/projects/` 已结束的 Claude Code session，经 `claude -p` 生成摘要写入 `session` 笔记；CLI `jfox auto-summary run/scan/status/enable/disable`，ledger 去重 + schedule time window |
+| `backup/` | KB 滚动备份/恢复：`manager.py` BackupManager（tar.gz+sha256 清单+滚动轮转+可逆 restore）+ daemon `loop.py` 定时备份（镜像 auto-summary，quiesce 标志让 gem_synth/auto_summary 跳过写 tick）+ `jfox backup run/enable/disable/status/list/verify/restore`；默认关，opt-in |
 | `vector_store.py` | ChromaDB vector store for semantic search |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
