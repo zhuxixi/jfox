@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from ..config import config, use_kb
@@ -44,7 +45,7 @@ def _fail(message: str, output_format: str) -> None:
             _json.dumps({"success": False, "error": message}, ensure_ascii=False), soft_wrap=True
         )
     else:
-        console.print(f"[red]{message}[/red]")
+        console.print(f"[red]{escape(message)}[/red]")
     raise typer.Exit(code=1)
 
 
@@ -82,10 +83,10 @@ def add_cmd(
     if output_format == "json":
         _emit_json(data)
     else:
-        console.print(f"[green]已加入书架[/green] {meta.title}")
-        console.print(f"  slug:  {meta.slug}")
+        console.print(f"[green]已加入书架[/green] {escape(meta.title)}")
+        console.print(f"  slug:  {escape(meta.slug)}")
         console.print(f"  页数:  {meta.book.get('page_count', 0)}")
-        console.print(f"  路径:  {shelf.book_dir(meta.slug)}")
+        console.print(f"  路径:  {escape(str(shelf.book_dir(meta.slug)))}")
 
 
 @bookshelf_app.command("list")
@@ -117,7 +118,11 @@ def list_cmd(
         table.add_column(col)
     for r in rows:
         table.add_row(
-            r["slug"], r["title"], str(r["page_count"]), r["added_at"], r["distill_status"]
+            escape(r["slug"]),
+            escape(r["title"]),
+            str(r["page_count"]),
+            r["added_at"],
+            r["distill_status"],
         )
     console.print(table)
 
@@ -156,15 +161,15 @@ def show_cmd(
             data: Dict[str, Any] = meta.to_dict()
             data["path"] = str(shelf.book_dir(slug))
             data["pages"] = pages_summary
-    except BookNotFoundError as e:
+    except (BookNotFoundError, InvalidBundleError) as e:
         _fail(f"找不到书/页：{e}", output_format)
         return
     if output_format == "json":
         _emit_json(data)
     else:
-        console.print(f"[bold]{meta.title}[/bold]  ({meta.slug})")
+        console.print(f"[bold]{escape(meta.title)}[/bold]  ({escape(meta.slug)})")
         console.print(f"页数: {meta.book.get('page_count', 0)}  添加于: {meta.added_at}")
-        console.print(f"路径: {shelf.book_dir(slug)}")
+        console.print(f"路径: {escape(str(shelf.book_dir(slug)))}")
 
 
 @bookshelf_app.command("remove")
@@ -197,13 +202,13 @@ def remove_cmd(
                     return
             shelf.remove(slug)
             data = {"slug": slug, "removed": True}
-    except BookNotFoundError as e:
+    except (BookNotFoundError, InvalidBundleError) as e:
         _fail(f"找不到书：{e}", output_format)
         return
     if output_format == "json":
         _emit_json(data)
     else:
-        console.print(f"[green]已删除[/green] {slug}")
+        console.print(f"[green]已删除[/green] {escape(slug)}")
 
 
 __all__ = ["bookshelf_app"]

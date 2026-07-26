@@ -16,7 +16,8 @@ def test_add_json(cli_fast, make_book_folder):
 
 
 def test_add_collision_rejected(cli_fast, make_book_folder):
-    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", pages=1)))
+    r1 = cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", pages=1)))
+    assert r1.success, r1.stderr
     result = cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", pages=1)))
     assert not result.success
     err = (result.json() or {}).get("error", "")
@@ -24,10 +25,12 @@ def test_add_collision_rejected(cli_fast, make_book_folder):
 
 
 def test_add_force(cli_fast, make_book_folder):
-    cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", title="Old", pages=1)))
-    cli_fast.run(
+    r1 = cli_fast.run("bookshelf", "add", str(make_book_folder(slug="dup", title="Old", pages=1)))
+    assert r1.success, r1.stderr
+    r2 = cli_fast.run(
         "bookshelf", "add", str(make_book_folder(slug="dup", title="New", pages=2)), "--force"
     )
+    assert r2.success, r2.stderr
     listing = cli_fast.run("bookshelf", "list").json()
     book = [b for b in listing["books"] if b["slug"] == "dup"][0]
     assert book["title"] == "New"

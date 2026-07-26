@@ -47,6 +47,7 @@ jfox/
 │   ├── embedding_backend.py   # 嵌入模型后端（支持 daemon 代理）
 │   ├── daemon/                # Embedding 模型 HTTP 守护进程
 │   ├── fragment/              # 碎片采集（Hook → daemon API → SQLite）
+│   ├── bookshelf/            # 好书资产管理：PDF + scan2book bundle + jfox 自有元数据（纯文件管理，不进索引）
 │   ├── gem_synth/             # L3 宝石合成（碎裂→破损 candidate 笔记，daemon 循环）
 │   ├── vector_store.py        # ChromaDB 向量存储
 │   ├── bm25_index.py          # BM25 关键词索引
@@ -164,6 +165,7 @@ uv run jfox --version
 | `indexer.py` | 文件监控（watchdog）+ 增量索引 |
 | `daemon/` | Embedding 模型 HTTP 守护进程（server/client/process） |
 | `fragment/` | 碎片采集：detector 分类 + store SQLite + service 编排 |
+| `bookshelf/` | 好书资产管理：store 文件夹 CRUD + meta jfox 自有元数据（wrap scan2book manifest）+ cli sub-app；纯文件管理不进索引 |
 | `gem_synth/` | L3 宝石合成：daemon 循环 + transcript 解析 + grounding 检索 + LLM 合成 |
 
 ### 笔记类型
