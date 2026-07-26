@@ -494,10 +494,11 @@ class BackupManager:
             manifest = json.loads(mpath.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             return False  # 损坏 manifest → 校验失败（CR kimi#24）
-        if self._sha256(str(archive)) != manifest.get("archive_sha256"):
-            return False
+        # sha256/tar 读取整体兜底 OSError：归档可能在 exists() 检查后被并发删除（CR cc#27）
         try:
+            if self._sha256(str(archive)) != manifest.get("archive_sha256"):
+                return False
             self._assert_tar_ok(str(archive))
-        except tarfile.TarError:
+        except (OSError, tarfile.TarError):
             return False
         return True
