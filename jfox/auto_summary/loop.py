@@ -31,6 +31,12 @@ def _tick_once(stop_event: threading.Event) -> str:
     if not cfg.enabled:
         return "auto-summary 已禁用，跳过本轮"
 
+    # 备份进行中则跳过写 tick，避免 ChromaDB 并发写（见 jfox/backup/）
+    from jfox.backup.manager import BackupCoordinator
+
+    if BackupCoordinator.is_running():
+        return "backup 进行中，跳过本轮 auto-summary"
+
     # 将 stop_event 注入 config，让 _invoke_claude → _run_claude 能检查
     cfg._stop_event = stop_event
 
