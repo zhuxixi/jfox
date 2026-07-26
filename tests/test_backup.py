@@ -13,8 +13,11 @@ import pytest
 class _NoOpDaemonController:
     """测试用：不碰真实 daemon。"""
 
-    def stop(self) -> bool:
+    def is_running(self) -> bool:
         return False
+
+    def stop(self) -> None:
+        pass
 
     def start(self) -> None:
         pass
@@ -192,6 +195,55 @@ def test_restore_rolls_back_on_extract_failure(tmp_path, monkeypatch):
         mgr.restore(archive, yes=True)
     # 原始 KB 完好（没有被半成品覆盖、旁置态已挪回）
     assert (tmp_path / "kb" / "notes" / "fleeting" / "a.md").read_text(encoding="utf-8") == original
+
+
+def test_restore_aborts_when_daemon_wont_stop(tmp_path):
+    """daemon 在跑但停不掉时，restore 必须中止、KB 未动"""
+    from jfox.backup.manager import BackupManager
+
+    class _StubbornDaemon:
+        def is_running(self):
+            return True
+
+        def stop(self):
+            raise RuntimeError("停不下来")
+
+        def start(self):
+            pass
+
+    mgr_noop = _make_manager(tmp_path)
+    archive = mgr_noop.backup()  # 合法快照（_make_manager 已建 kb + cfg）
+
+    mgr = BackupManager(
+        backup_root=tmp_path / "backups",
+        kb_root=mgr_noop.kb_root,
+        config_path=mgr_noop.config_path,
+        retain=3,
+        daemon_controller=_StubbornDaemon(),
+    )
+    with pytest.raises(RuntimeError):
+        mgr.restore(archive, yes=True)
+    # KB 原样未动（没被挪走、没被解压覆盖）
+    assert (mgr_noop.kb_root / "notes" / "fleeting" / "a.md").read_text(
+        encoding="utf-8"
+    ) == "# A\nhello"
+
+
+def test_safe_member_rejects_traversal_and_special_types():
+    """_safe_member 拒绝 symlink/device/路径越界，只放行常规文件/目录"""
+    import tarfile
+
+    from jfox.backup.manager import BackupManager
+
+    reg = tarfile.TarInfo("x")
+    reg.type = tarfile.REGTYPE
+    sym = tarfile.TarInfo("evil")
+    sym.type = tarfile.SYMTYPE
+
+    assert BackupManager._safe_member(sym, "ok") is False  # symlink 拒绝
+    assert BackupManager._safe_member(reg, "../evil") is False  # .. 越界
+    assert BackupManager._safe_member(reg, "/etc/passwd") is False  # 绝对路径
+    assert BackupManager._safe_member(reg, "notes/a.md") is True  # 干净相对路径
 
 
 # =============================================================================

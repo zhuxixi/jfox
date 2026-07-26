@@ -67,14 +67,14 @@ def _tick_once() -> str:
         config_path=Path.home() / ".zk_config.json",
         retain=cfg.retain,
     )
-    ts = datetime.now().isoformat()
     try:
         archive = mgr.backup()
-        _write_last_run(backup_root, ts, True, archive.name)
+        # ts 取于备份成功之后（跨午夜场景避免 last_run 记前一日 → 当日二次备份）
+        _write_last_run(backup_root, datetime.now().isoformat(), True, archive.name)
         return f"备份成功: {archive.name}"
     except Exception as e:
         logger.exception("backup_loop 备份失败: %s", e)
-        _write_last_run(backup_root, ts, False, None)
+        _write_last_run(backup_root, datetime.now().isoformat(), False, None)
         return f"备份失败: {e}"
 
 

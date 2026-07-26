@@ -34,7 +34,7 @@ def _tick_once(stop_event: threading.Event) -> str:
         return "gem-synth 已禁用，跳过本轮"
 
     # 备份进行中则跳过写 tick，避免 ChromaDB 并发写（见 jfox/backup/）
-    from jfox.backup.manager import BackupCoordinator
+    from ..backup.manager import BackupCoordinator
 
     if BackupCoordinator.is_running():
         return "backup 进行中，跳过本轮 gem-synth"

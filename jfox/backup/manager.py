@@ -53,37 +53,37 @@ class DaemonController:
     不停 daemon、走 quiesce 标志，不用本类。
     """
 
-    def stop(self) -> bool:
-        """停 daemon，返回原先是否在跑。无 daemon 返回 False。"""
+    def is_running(self) -> bool:
+        """daemon 是否在跑"""
+        raise NotImplementedError
+
+    def stop(self) -> None:
+        """停 daemon（假定在跑）；停不掉抛异常，让 restore 拒绝继续"""
         raise NotImplementedError
 
     def start(self) -> None:
-        """起 daemon（best-effort）。"""
+        """起 daemon（best-effort）"""
         raise NotImplementedError
 
 
 class SubprocessDaemonController(DaemonController):
-    """默认实现：subprocess 调 `jfox daemon stop/start`。"""
+    """默认实现：subprocess 调 `jfox daemon status/stop/start`。"""
 
-    def stop(self) -> bool:
+    def is_running(self) -> bool:
+        return self._probe_running()
+
+    def stop(self) -> None:
         import subprocess
 
         try:
-            r = subprocess.run(
-                ["jfox", "daemon", "status"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            was = r.returncode == 0 and "运行中" in r.stdout
-        except Exception:
-            return False
-        if was:
-            try:
-                subprocess.run(["jfox", "daemon", "stop"], timeout=30)
-            except Exception:
-                pass
-        return was
+            subprocess.run(["jfox", "daemon", "stop"], timeout=30)
+        except Exception as e:
+            raise RuntimeError(f"停 daemon 失败: {e}") from e
+        # 关键：验证确已停止；否则抛异常让 restore 拒绝继续——
+        # 不让在 daemon 仍持有 ChromaDB/SQLite 时挪走 kb_root（Windows rename
+        # 被打开目录会直接失败，POSIX 上 daemon fd 继续写旧位）。
+        if self._probe_running():
+            raise RuntimeError("daemon 停不下来，拒绝继续 restore")
 
     def start(self) -> None:
         import subprocess
@@ -93,23 +93,83 @@ class SubprocessDaemonController(DaemonController):
         except Exception:
             pass
 
+    @staticmethod
+    def _probe_running() -> bool:
+        """探测 daemon 是否在跑。优先解析 status 输出，回退「运行中」字样"""
+        import subprocess
+
+        try:
+            r = subprocess.run(
+                ["jfox", "daemon", "status"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except Exception:
+            return False
+        if r.returncode != 0:
+            return False
+        # 尝试 json（若 status 支持 --format json）；否则回退中文状态字
+        try:
+            data = json.loads(r.stdout)
+            return bool(
+                data.get("running")
+                or data.get("status") in ("running", "运行中")
+                or data.get("状态") == "运行中"
+            )
+        except (ValueError, json.JSONDecodeError):
+            return "运行中" in r.stdout
+
+
+def _acquire_lock(fd: int) -> None:
+    """跨平台阻塞式独占锁。Unix fcntl.flock，Windows msvcrt.locking"""
+    try:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return
+    except ImportError:
+        pass
+    import msvcrt
+    import time
+
+    while True:
+        try:
+            msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+            return
+        except OSError:
+            time.sleep(0.1)
+
+
+def _release_lock(fd: int) -> None:
+    try:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return
+    except ImportError:
+        pass
+    import msvcrt
+
+    try:
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
+
 
 @contextmanager
-def _fcntl_lock(lock_path: Path) -> Iterator[None]:
-    """阻塞式文件锁，防 loop tick 与手动 run 撞车。
+def _file_lock(lock_path: Path) -> Iterator[None]:
+    """跨平台阻塞式文件锁，防 loop tick 与手动 run 撞车。
 
-    阻塞而非 LOCK_NB：日备份场景并发概率极低，对方几秒内完成；flock 绑定 fd，
-    进程崩溃即释放，不会永久锁死。
+    锁绑定 fd，进程崩溃即释放，不会永久锁死。
     """
-    import fcntl
-
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        _acquire_lock(fd)
         yield
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
+        _release_lock(fd)
         os.close(fd)
 
 
@@ -134,7 +194,7 @@ class BackupManager:
     # --------------------------------------------------------------------------
     def backup(self) -> Path:
         """打一份自包含 tar.gz + manifest，返回归档路径。失败抛异常。"""
-        with _fcntl_lock(self.backup_root / ".lock"):
+        with _file_lock(self.backup_root / ".lock"):
             with BackupCoordinator.quiesce():
                 return self._do_backup()
 
@@ -212,7 +272,8 @@ class BackupManager:
         return archive.with_name(archive.name[: -len(".tar.gz")] + ".manifest.json")
 
     def _rotate(self) -> None:
-        archives = sorted(self.daily_dir.glob("jfox-*.tar.gz"))
+        # 按 mtime 排序（文件名序在 -N 后缀同秒场景下会误排，见 CR #11）
+        archives = sorted(self.daily_dir.glob("jfox-*.tar.gz"), key=lambda p: p.stat().st_mtime)
         for old in archives[: max(0, len(archives) - self.retain)]:
             old.unlink(missing_ok=True)
             self._manifest_path(old).unlink(missing_ok=True)
@@ -223,8 +284,8 @@ class BackupManager:
     def restore(self, snapshot: Path, yes: bool = False) -> None:
         """从快照恢复。先停 daemon→rename 当前态旁置→校验 sha256→解压→起 daemon。
 
-        任何步骤失败都 rename 回，真实 KB 不被破坏。daemon 停启 best-effort
-        （沙箱/无 daemon 环境下跳过）。
+        daemon 停不掉则中止（拒绝在 daemon 持有 ChromaDB 时挪走 KB）；解压失败
+        清理半成品 + rename 回，真实 KB 不被破坏。
         """
         snapshot = Path(snapshot)
         if not snapshot.exists():
@@ -233,11 +294,13 @@ class BackupManager:
         if not mpath.exists():
             raise FileNotFoundError(f"清单缺失: {mpath}")
 
-        daemon_was_running = self._daemon_controller.stop()
+        was_running = self._daemon_controller.is_running()
+        if was_running:
+            self._daemon_controller.stop()  # 停不掉抛 → restore 中止，KB 未动
         try:
             self._restore_body(snapshot, mpath)
         finally:
-            if daemon_was_running:
+            if was_running:
                 self._daemon_controller.start()
 
     def _restore_body(self, snapshot: Path, mpath: Path) -> None:
@@ -250,15 +313,20 @@ class BackupManager:
         if self._sha256(str(snapshot)) != manifest.get("archive_sha256"):
             raise ValueError("归档 sha256 与清单不符，拒绝恢复")
 
-        # 2. rename 当前态旁置
+        # 2. rename 当前态旁置（两步同 try，任一失败回滚已做的）
         renamed_kb = False
-        if self.kb_root.exists():
-            self.kb_root.rename(aside_kb)
-            renamed_kb = True
         renamed_cfg = False
-        if self.config_path.exists():
-            self.config_path.rename(aside_cfg)
-            renamed_cfg = True
+        try:
+            if self.kb_root.exists():
+                self.kb_root.rename(aside_kb)
+                renamed_kb = True
+            if self.config_path.exists():
+                self.config_path.rename(aside_cfg)
+                renamed_cfg = True
+        except Exception:
+            if renamed_kb and aside_kb.exists():
+                aside_kb.rename(self.kb_root)
+            raise
 
         try:
             # 3. 解压到位
@@ -284,6 +352,7 @@ class BackupManager:
         self._rotate_pre_restore(self.config_path, ".pre-restore-")
 
     def _extract(self, snapshot: Path) -> None:
+        """解压归档到 kb_root / config_path。成员经安全净化（PEP 706 tar-slip 防护）"""
         with tarfile.open(snapshot, "r:gz") as tar:
             members = tar.getmembers()
             root = members[0].name.split("/")[0] if members else ""
@@ -292,12 +361,33 @@ class BackupManager:
                 if not rel:
                     continue
                 if rel.startswith("zettelkasten/"):
-                    m.name = rel[len("zettelkasten/") :]
-                    if m.name:
-                        tar.extract(m, path=str(self.kb_root))
+                    dest_rel = rel[len("zettelkasten/") :]
+                    dest_root = self.kb_root
                 elif rel == "zk_config.json":
-                    m.name = "zk_config.json"
-                    tar.extract(m, path=str(self.config_path.parent))
+                    dest_rel = "zk_config.json"
+                    dest_root = self.config_path.parent
+                else:
+                    continue
+                if not self._safe_member(m, dest_rel):
+                    continue
+                m.name = dest_rel
+                if dest_rel:
+                    tar.extract(m, path=str(dest_root))
+
+    @staticmethod
+    def _safe_member(m: tarfile.TarInfo, dest_rel: str) -> bool:
+        """只放行常规文件/目录；拒绝 symlink/hardlink/device 与路径越界（..、绝对、盘符）"""
+        if not (m.isfile() or m.isdir()):
+            return False
+        norm = dest_rel.replace("\\", "/")
+        if norm.startswith("/"):
+            return False
+        # Windows 盘符（C:、D: …）
+        if len(norm) >= 2 and norm[1] == ":":
+            return False
+        if any(part == ".." for part in norm.split("/")):
+            return False
+        return True
 
     def _rotate_pre_restore(self, target: Path, marker: str) -> None:
         sibs = sorted(
