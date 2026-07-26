@@ -149,19 +149,22 @@ class BookShelf:
                 raw = json.loads(user_meta_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as e:
                 raise InvalidBundleError(f"meta.json 解析失败: {e}") from e
-            # meta.json 必须是 dict（kimi#21：非 dict 或 source 非 dict 会致未捕获
-            # AttributeError）；source 必须是 dict，否则覆为空 dict。
+            # meta.json 必须是 dict；嵌套 dict 字段（source/distill）防非 dict——
+            # 否则下游 .get() 抛未捕获 AttributeError（kimi#21/cc#1/kimi#22）。
+            # book 字段下游不 .get()，非 dict 无害。
             if not isinstance(raw, dict):
                 raise InvalidBundleError(f"meta.json 必须是 JSON 对象，得到 {type(raw).__name__}")
             if not isinstance(raw.get("source"), dict):
                 raw["source"] = {}
+            if not isinstance(raw.get("distill"), dict):
+                raw["distill"] = {}
             # original_file/sha256 是"实际复制了哪个文件"的客观事实，以计算值为准
             # （覆盖用户值），否则 meta 指向的文件名可能和 dest/ 里真实文件对不上。
             raw["source"]["original_file"] = original_file or ""
             raw["source"]["original_sha256"] = original_sha256 or ""
             try:
                 meta = normalize_user_meta(raw, slug=slug, added_at=added_at)
-            except (KeyError, TypeError, ValueError) as e:
+            except (KeyError, TypeError, ValueError, AttributeError) as e:
                 raise InvalidBundleError(f"meta 构造失败: {e}") from e
         else:
             try:

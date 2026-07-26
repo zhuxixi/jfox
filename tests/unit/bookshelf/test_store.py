@@ -385,3 +385,11 @@ def test_add_coerces_non_dict_source_in_meta(tmp_path, make_book_folder):
     folder = make_book_folder(slug="badsrc", with_meta={"title": "X", "source": "notadict"})
     meta = shelf.add(folder, added_at="t")  # 不抛 AttributeError
     assert meta.source["original_file"]  # source 被规整、original_file 注入
+
+
+def test_add_coerces_non_dict_distill_in_meta(tmp_path, make_book_folder):
+    """meta.json 的 distill 非 dict（truthy list）→ 覆为空 dict，不抛 AttributeError（cc#1/kimi#22）"""
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="baddistill", with_meta={"title": "X", "distill": [1, 2, 3]})
+    meta = shelf.add(folder, added_at="t")  # 不抛 AttributeError
+    assert meta.distill["status"] == "none"  # distill 被规整、normalize 给默认
