@@ -31,7 +31,7 @@ ls "$(jfox kb current --format json | jq -r .path)/notes/candidate/" | wc -l  # 
 
 - **精确去重**（清理后正文逐字节一致）：把清理过的正文算 content_hash（一段正文的字节级指纹），完全相同的归为一组，每组只保留一条、其余直接 reject（拒绝即软归档），无需逐条阅读。
 - **高度相似**（cosine ≥ 0.95；cosine 是余弦相似度，衡量两段正文的语义接近度，越接近 1 越像）：很可能是重复，把同组的标题、分数、内容片段报给用户，确认后 reject。
-- **中度相似**（cosine 0.88–0.95）：可能是重复，读一眼正文确认；相似度低于 0.88 的不标记。
+- **中度相似**（cosine 在 0.88 到 0.95 之间，不含 0.95——0.95 归高度相似档）：可能是重复，读一眼正文确认；相似度低于 0.88 的不标记。
 
 > 下面是扫描脚本（dry-run 默认，只报簇不删；加 `--apply` 才在精确去重档批量 reject、每组保留一条——脚本取文件名最早的那条。高度/中度相似档无论是否加 `--apply` 都只报簇，需你确认后再手动 reject）：
 
@@ -194,7 +194,7 @@ def clean_for_promote(content: str) -> str:
 # 写回：jfox edit <candidate_id> --content-file cleaned.md
 ```
 
-清理分四步（前三步对应上面脚本的 `clean_for_promote`，第四步单独做）：
+清理分四步（第一步清 frontmatter 由 promote 命令自动完成、不在脚本里；第二步删元段落、第三步处理多 H1 对应上面脚本的 `clean_for_promote`；第四步修 wiki link 单独做）：
 
 1. **清 frontmatter 字段**：promote 命令会自动清掉 `status` / `gem_level` / `confidence` / `knowledge_type` / `reject_reason`；但 `source_fragments`（来源碎片）和 `grounded_by`（合成依据）这两个溯源字段会保留，以便晋升后仍能追溯 candidate 的来历。
 2. **删元段落**：用脚本里的 META_RE 正则，截断掉 `## 来源` / `## 参考的永久笔记` / `## 置信度说明` / `## 可信度说明` 这类合成器附加的元信息段落。

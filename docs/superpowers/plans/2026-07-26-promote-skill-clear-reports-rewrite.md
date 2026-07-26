@@ -12,7 +12,7 @@
 
 - **只动散文解释层**：命令块、Python 脚本（dedup_scan、clean_for_promote）的逻辑 / 触发词、frontmatter、错误处理表「场景-处理」骨架——原样保留。脚本内仅 print 输出标签和代码注释随去重档改名同步（与 spec §2 一致）。
 - **去重档改名映射**（全文档统一）：`L1 → 精确`、`L2 → 高度相似`、`L3 → 中度相似`。改名后正文「L3」只指合成层。脚本逻辑 / 控制流 / 变量名（l1/l2/l3 等）不动；仅 print 输出标签和代码注释随改名同步，避免散文与脚本输出术语不一致。
-- **平台差异保留**：cc promote 自身无跨 skill 引用；kimi 用 `/skill:jfox-promote`、`/skill:jfox-manage` 指向 manage 等。
+- **平台差异保留**：cc promote 自身无跨 skill 引用；kimi 跨 skill 引用 `/skill:jfox-manage`（共享约定）和 `/skill:jfox-session-summary`（kimi 不自引用 `/skill:jfox-promote`）。
 - **commit message**：中文，type(scope): 描述（#341），结尾 `Co-Authored-By: Claude <noreply@anthropic.com>`。
 - **stage 按文件**：`git add <具体文件>`，不用 `git add -A`。
 
