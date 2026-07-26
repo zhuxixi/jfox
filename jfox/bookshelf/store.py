@@ -164,7 +164,7 @@ class BookShelf:
             raw["source"]["original_sha256"] = original_sha256 or ""
             try:
                 meta = normalize_user_meta(raw, slug=slug, added_at=added_at)
-            except (KeyError, TypeError, ValueError, AttributeError) as e:
+            except (KeyError, TypeError, ValueError) as e:
                 raise InvalidBundleError(f"meta 构造失败: {e}") from e
         else:
             try:
