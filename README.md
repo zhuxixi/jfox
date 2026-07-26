@@ -483,6 +483,31 @@ backlinks:
 
 ---
 
+## Backup & Restore
+
+JFox 自带 KB 滚动备份，由 jfox daemon 定时调度（默认关闭，opt-in）。
+
+```bash
+# 启用：每天 08:00 自动备份，滚动保留 7 份
+jfox backup enable --time 08:00 --retain 7
+jfox backup status              # 配置 + 上次运行情况
+jfox backup list                # 列快照
+jfox backup verify <snapshot>   # 校验完整性（sha256 + tar）
+
+# 手动备份一份
+jfox backup run
+
+# 从快照恢复（可逆：当前态自动旁置为 .pre-restore-*）
+jfox backup restore <snapshot> [--yes]
+```
+
+备份内容：`~/.zettelkasten`（全部知识库）+ `~/.zk_config.json`，存于 `~/.jfox-backup/daily/`，每份带 sha256 清单。
+
+- **定时备份**由 daemon 内 `backup_loop` 跑，备份期间通过 quiesce 标志让 gem-synth/auto-summary 跳过写，ChromaDB 无并发写。
+- **恢复**是独立进程，会短暂停 embedding daemon 拿干净快照；恢复前当前态自动 `rename` 旁置为 `.pre-restore-*`，校验失败可手动挪回，安全可逆。
+
+---
+
 ## Contributing
 
 ```bash
