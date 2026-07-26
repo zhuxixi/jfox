@@ -176,3 +176,47 @@ def test_restore_aborts_on_corrupt_archive(tmp_path):
     assert (tmp_path / "kb" / "notes" / "fleeting" / "a.md").read_text(
         encoding="utf-8"
     ) == "CURRENT"
+
+
+# =============================================================================
+# Task 4: schedule 定点判断
+# =============================================================================
+
+
+def test_should_run_now_due():
+    from datetime import datetime
+
+    from jfox.backup.schedule import should_run_now
+
+    # 现在 08:30，调度 08:00，今天没跑过 → 该跑
+    now = datetime(2026, 7, 26, 8, 30)
+    assert should_run_now("08:00", last_run_ts=None, now=now) is True
+
+
+def test_should_run_now_already_done_today():
+    from datetime import datetime
+
+    from jfox.backup.schedule import should_run_now
+
+    now = datetime(2026, 7, 26, 9, 0)
+    last = datetime(2026, 7, 26, 8, 0).isoformat()  # 今天已跑
+    assert should_run_now("08:00", last_run_ts=last, now=now) is False
+
+
+def test_should_run_now_before_time():
+    from datetime import datetime
+
+    from jfox.backup.schedule import should_run_now
+
+    now = datetime(2026, 7, 26, 7, 0)  # 还没到 08:00
+    assert should_run_now("08:00", last_run_ts=None, now=now) is False
+
+
+def test_should_run_now_yesterday_last_run():
+    from datetime import datetime
+
+    from jfox.backup.schedule import should_run_now
+
+    now = datetime(2026, 7, 26, 8, 30)
+    last = datetime(2026, 7, 25, 8, 0).isoformat()  # 昨天跑的
+    assert should_run_now("08:00", last_run_ts=last, now=now) is True
