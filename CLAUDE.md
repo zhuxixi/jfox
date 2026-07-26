@@ -144,7 +144,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
 - `packages/cc-plugin/skills/` — 7 skills: `search`, `ingest`, `manage`, `organize`, `promote`, `session-summary`, `using-jfox`
 
-**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.5.1.
+**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.6.0.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 
 ## Branch Rules
