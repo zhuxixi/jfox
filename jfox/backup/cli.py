@@ -1,8 +1,8 @@
 """CLI subapp: jfox backup / jfox restore
 
 子命令：
-- run [--quiet]               立即手动备份（不停 daemon，靠崩溃一致；定时备份由
-                              daemon loop 跑、有 quiesce 加持更干净）
+- run [--quiet]               立即手动备份（停 daemon 拿干净快照；定时备份由 daemon
+                              loop 跑、靠 quiesce 标志让兄弟 loop 跳过写）
 - enable [--time] [--retain]  开启 daemon 定时调度（首次启用/改时间需重启 daemon）
 - disable                     关闭 daemon 定时调度
 - status [-f json]            配置 + last_run
