@@ -220,3 +220,65 @@ def test_should_run_now_yesterday_last_run():
     now = datetime(2026, 7, 26, 8, 30)
     last = datetime(2026, 7, 25, 8, 0).isoformat()  # 昨天跑的
     assert should_run_now("08:00", last_run_ts=last, now=now) is True
+
+
+# =============================================================================
+# Task 6: CLI
+# =============================================================================
+
+
+class _FakeGlobalMgr:
+    """假全局配置管理器，避免 CLI 测试触碰真实 ~/.zk_config.json。"""
+
+    def __init__(self, cfg=None):
+        from jfox.global_config import BackupConfig
+
+        self._cfg = cfg or BackupConfig()
+        self.updates = {}
+
+    def get_backup_config(self):
+        return self._cfg
+
+    def update_backup_config(self, **changes):
+        self.updates.update(changes)
+        return True
+
+
+def test_backup_enable_writes_config(monkeypatch):
+    from typer.testing import CliRunner
+
+    from jfox.backup import cli as backup_cli
+
+    fake = _FakeGlobalMgr()
+    monkeypatch.setattr(backup_cli, "get_global_config_manager", lambda: fake)
+    runner = CliRunner()
+    r = runner.invoke(backup_cli.backup_app, ["enable", "--time", "03:00", "--retain", "5"])
+    assert r.exit_code == 0, r.stdout
+    assert fake.updates == {"enabled": True, "schedule_time": "03:00", "retain": 5}
+
+
+def test_backup_status_runs(monkeypatch):
+    from typer.testing import CliRunner
+
+    from jfox.backup import cli as backup_cli
+    from jfox.global_config import BackupConfig
+
+    fake = _FakeGlobalMgr(BackupConfig(enabled=True, schedule_time="08:00", retain=7))
+    monkeypatch.setattr(backup_cli, "get_global_config_manager", lambda: fake)
+    runner = CliRunner()
+    r = runner.invoke(backup_cli.backup_app, ["status"])
+    assert r.exit_code == 0, r.stdout
+    assert "08:00" in r.stdout
+
+
+def test_backup_disable_writes_config(monkeypatch):
+    from typer.testing import CliRunner
+
+    from jfox.backup import cli as backup_cli
+
+    fake = _FakeGlobalMgr()
+    monkeypatch.setattr(backup_cli, "get_global_config_manager", lambda: fake)
+    runner = CliRunner()
+    r = runner.invoke(backup_cli.backup_app, ["disable"])
+    assert r.exit_code == 0, r.stdout
+    assert fake.updates == {"enabled": False}
