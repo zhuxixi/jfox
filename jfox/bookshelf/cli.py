@@ -226,9 +226,11 @@ def show_cmd(
         KeyError,
         TypeError,
         ValueError,
-        OSError,
     ) as e:
         _fail(f"找不到书/页：{e}", output_format)
+        return
+    except OSError as e:
+        _fail(f"读取失败：{e}", output_format)
         return
     if output_format == "json":
         _emit_json(data)
@@ -285,9 +287,11 @@ def remove_cmd(
         KeyError,
         TypeError,
         ValueError,
-        OSError,
     ) as e:
         _fail(f"找不到书：{e}", output_format)
+        return
+    except OSError as e:
+        _fail(f"删除失败：{e}", output_format)
         return
     if output_format == "json":
         _emit_json(data)

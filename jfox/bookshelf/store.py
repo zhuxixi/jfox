@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +68,9 @@ class BookShelf:
             return []
         out: List[BookMeta] = []
         for meta_file in sorted(self.root.glob("*/meta.json")):
+            # k-14：跳过历史 stage/retire 残留目录名（新代码已移出 bookshelf/，此为兜底）
+            if re.match(r"^\..*\.(stage|retire)\.\d+$", meta_file.parent.name):
+                continue
             try:
                 m = BookMeta.load(meta_file)
             except (
@@ -175,6 +179,11 @@ class BookShelf:
         import os as _os
 
         stage = self.base_dir / f".bookshelf.{slug}.stage.{_os.getpid()}"
+        # k-12：清理同 slug 历史 stage/retire 残留（上次崩溃遗留），避免 os.replace 目标已存在
+        for stale in self.base_dir.glob(f".bookshelf.{slug}.stage.*"):
+            shutil.rmtree(stale, ignore_errors=True)
+        for stale in self.base_dir.glob(f".bookshelf.{slug}.retire.*"):
+            shutil.rmtree(stale, ignore_errors=True)
         if stage.exists():
             shutil.rmtree(stage)
         try:
@@ -203,11 +212,19 @@ class BookShelf:
                 raise
             # 成功后才删旧书备份（cc-21：放 finally 会吞掉双失败的唯一幸存副本）
             if dest_bak is not None and dest_bak.exists():
-                shutil.rmtree(dest_bak, ignore_errors=True)
+                try:
+                    shutil.rmtree(dest_bak)
+                except OSError as e:
+                    # cc-23：不静默吞——记录孤儿 dest_bak 残留，便于排查/清理
+                    logger.warning("清理旧书备份失败，残留孤儿目录 %s: %s", dest_bak, e)
         finally:
             # stage 是一次性中间产物，无论成败都清；dest_bak 由成功分支自己清
             if stage.exists():
                 shutil.rmtree(stage, ignore_errors=True)
+            if dest_bak is not None and dest_bak.exists():
+                # cc-23：到这里说明成功分支没清掉 dest_bak（写入/回滚失败）——它是旧书唯一幸存
+                # 副本，不能删，记录在案供排查
+                logger.warning("写入未完成，旧书备份保留在 %s", dest_bak)
 
         # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）
         if move:
