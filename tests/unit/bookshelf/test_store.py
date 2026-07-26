@@ -192,6 +192,18 @@ def test_book_dir_rejects_traversal(tmp_path):
         shelf.book_dir("..")
 
 
+def test_book_dir_rejects_empty_and_root(tmp_path):
+    # r3 cc-#18（CRITICAL 数据丢失）：book_dir("") 会 resolve 成 root，
+    # 不挡则 remove("") rmtree 整个书架；"." 同理
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    with pytest.raises(InvalidBundleError):
+        shelf.book_dir("")
+    with pytest.raises(InvalidBundleError):
+        shelf.book_dir(".")
+
+
 def test_add_rejects_traversal_slug(tmp_path, make_book_folder):
     # issue-3：add 时 slug="../evil" 必须被拒（_validate_slug 先挡 / ，book_dir 兜底）
     from jfox.bookshelf.store import InvalidBundleError
@@ -259,24 +271,55 @@ def test_add_corrupt_manifest_raises_invalid(tmp_path):
 
 
 def test_list_books_skips_stage_dir(tmp_path):
-    # r2 cc-#16：list_books 跳过 .{slug}.stage.{pid} 目录（add 期间不出现 ghost book）
+    # r3 cc-#16/19：stage/retire 已挪到 base_dir（bookshelf 外），不再出现 ghost；
+    # 因此 dot-prefix 过滤已撤销——合法的 dot-slug 书（如 ".hidden"）现在会被列出。
+    # 此测试验证新语义：base_dir 里的 stray stage 目录不进 list，dot-slug 书可见。
     import json as _json
 
     shelf = BookShelf(tmp_path)
+    # 合法的 dot-slug 书：现在应该被列出（cc-19 撤销 dot 过滤）
+    dot_dir = shelf.root / ".hidden"
+    dot_dir.mkdir(parents=True)
+    (dot_dir / "meta.json").write_text(
+        _json.dumps({"slug": ".hidden", "title": "Hidden", "added_at": "t"}),
+        encoding="utf-8",
+    )
     real_dir = shelf.root / "real"
     real_dir.mkdir(parents=True)
     (real_dir / "meta.json").write_text(
         _json.dumps({"slug": "real", "title": "Real", "added_at": "t"}),
         encoding="utf-8",
     )
-    stage_dir = shelf.root / ".x.stage.123"
-    stage_dir.mkdir(parents=True)
-    (stage_dir / "meta.json").write_text(
+    # stray stage 在 base_dir（不在 bookshelf/ 下），list_books 根本扫不到
+    stage_in_base = shelf.base_dir / ".bookshelf.x.stage.123"
+    stage_in_base.mkdir(parents=True)
+    (stage_in_base / "meta.json").write_text(
         _json.dumps({"slug": "ghost", "title": "Ghost", "added_at": "t"}),
         encoding="utf-8",
     )
     books = shelf.list_books()
-    assert [b.slug for b in books] == ["real"]
+    assert sorted(b.slug for b in books) == [".hidden", "real"]
+
+
+def test_list_books_skips_empty_slug(tmp_path):
+    # r3 cc-#22/k-#11：meta 缺 slug（或 slug=null）→ list_books 跳过，不当作空 slug 书
+    import json as _json
+
+    shelf = BookShelf(tmp_path)
+    bad_dir = shelf.root / "no-slug"
+    bad_dir.mkdir(parents=True)
+    (bad_dir / "meta.json").write_text(
+        _json.dumps({"title": "x", "added_at": "t"}),  # 没 slug 字段
+        encoding="utf-8",
+    )
+    good_dir = shelf.root / "good"
+    good_dir.mkdir(parents=True)
+    (good_dir / "meta.json").write_text(
+        _json.dumps({"slug": "good", "title": "Good", "added_at": "t"}),
+        encoding="utf-8",
+    )
+    books = shelf.list_books()
+    assert [b.slug for b in books] == ["good"]
 
 
 def test_read_bundle_manifest_corrupt_raises_invalid(shelf_with_book):
@@ -313,9 +356,14 @@ def test_list_books_corrupt_tags_skipped(tmp_path):
 
 
 def test_validate_slug_length_cap(tmp_path):
-    # r2 cc-#12：slug 长度上限 80（考虑 stage-dir 开销 + Windows MAX_PATH）
+    # r3 cc-#20：slug 长度按字节算（CJK/emoji 每字 3-4 字节），上限 80 字节
     from jfox.bookshelf.store import InvalidBundleError
 
-    BookShelf._validate_slug("a" * 80)  # 边界值，合法
+    BookShelf._validate_slug("a" * 80)  # 80 ASCII 字节，边界值合法
     with pytest.raises(InvalidBundleError):
-        BookShelf._validate_slug("a" * 81)
+        BookShelf._validate_slug("a" * 81)  # 81 ASCII 字节，超 1 字节
+    # CJK：每个汉字 UTF-8 3 字节，28 个 = 84 字节，超 80
+    with pytest.raises(InvalidBundleError):
+        BookShelf._validate_slug("书" * 28)
+    # 26 个汉字 = 78 字节，合法
+    BookShelf._validate_slug("书" * 26)

@@ -46,10 +46,13 @@ class BookShelf:
         self.root = self.base_dir / "bookshelf"
 
     def book_dir(self, slug: str) -> Path:
+        # 空 slug 会被 resolve 成 root 自身，必须显式挡，否则 remove("") 会 rmtree 整个书架
+        if not slug:
+            raise InvalidBundleError("空 slug")
         # resolve + is_relative_to 防路径遍历（issue-3：read/delete 路径也要挡）
         root = self.root.resolve()
         path = (self.root / slug).resolve()
-        if not path.is_relative_to(root):
+        if path == root or not path.is_relative_to(root):
             raise InvalidBundleError(f"非法 slug（越界）: {slug!r}")
         return path
 
@@ -64,19 +67,23 @@ class BookShelf:
             return []
         out: List[BookMeta] = []
         for meta_file in sorted(self.root.glob("*/meta.json")):
-            if meta_file.parent.name.startswith("."):
-                continue
             try:
-                out.append(BookMeta.load(meta_file))
+                m = BookMeta.load(meta_file)
             except (
                 json.JSONDecodeError,
                 KeyError,
                 TypeError,
                 ValueError,
+                AttributeError,
                 OSError,
             ) as e:
                 logger.warning("跳过无法加载的 meta.json: %s (%s)", meta_file, e)
                 continue
+            if not m.slug:
+                # cc-22/k-11：损坏 meta（缺 slug 或 slug=null）不进列表，也不当空 slug 书
+                logger.warning("跳过 slug 为空的 meta.json: %s", meta_file)
+                continue
+            out.append(m)
         return out
 
     def get(self, slug: str) -> BookMeta:
@@ -162,12 +169,18 @@ class BookShelf:
         # 写入 stage 目录，完成后原子替换 dest（issue-2/11：中断/崩溃只残留 stage，
         # dest 不受污染；并发 add 各自 stage 独立，最后 os.replace 最后写入者胜。
         # 单用户本地 CLI 不再加文件锁——见 issue-11 取舍。）
+        # stage/dest_bak 放 base_dir（KB 根）而非 bookshelf/ 下：避免被 list_books 扫到
+        # 出现 ghost（cc-16），也不再需要 dot-prefix 过滤（该过滤反而会挡合法 dot-slug
+        # 书，cc-19）；同文件系统 os.replace 仍然原子（k-12）。
         import os as _os
 
-        stage = self.root / f".{slug}.stage.{_os.getpid()}"
+        stage = self.base_dir / f".bookshelf.{slug}.stage.{_os.getpid()}"
         if stage.exists():
             shutil.rmtree(stage)
         try:
+            # 显式建书架根：stage 不再位于 bookshelf/ 下，不再有 mkdir(parents=True)
+            # 顺带把 bookshelf/ 建出来的副作用；os.replace 需要目标父目录存在
+            self.root.mkdir(parents=True, exist_ok=True)
             stage.mkdir(parents=True)
             bundle_src = src_folder / BUNDLE_DIRNAME
             shutil.copytree(str(bundle_src), str(stage / BUNDLE_DIRNAME))
@@ -179,21 +192,20 @@ class BookShelf:
             dest = self.book_dir(slug)
             dest_bak: Optional[Path] = None
             if dest.exists():
-                dest_bak = self.root / f".{slug}.retire.{_os.getpid()}"
+                dest_bak = self.base_dir / f".bookshelf.{slug}.retire.{_os.getpid()}"
                 _os.replace(str(dest), str(dest_bak))  # 原子挪走旧 dest
             try:
-                _os.replace(str(stage), str(dest))  # stage 就位为新 dest
+                _os.replace(str(stage), str(dest))  # 成功：新书就位
             except OSError:
                 # 替换失败：回滚，把旧 dest 挪回
                 if dest_bak is not None and dest_bak.exists():
                     _os.replace(str(dest_bak), str(dest))
                 raise
-            finally:
-                if stage.exists():
-                    shutil.rmtree(stage, ignore_errors=True)
-                if dest_bak is not None and dest_bak.exists():
-                    shutil.rmtree(dest_bak, ignore_errors=True)
+            # 成功后才删旧书备份（cc-21：放 finally 会吞掉双失败的唯一幸存副本）
+            if dest_bak is not None and dest_bak.exists():
+                shutil.rmtree(dest_bak, ignore_errors=True)
         finally:
+            # stage 是一次性中间产物，无论成败都清；dest_bak 由成功分支自己清
             if stage.exists():
                 shutil.rmtree(stage, ignore_errors=True)
 
@@ -230,8 +242,9 @@ class BookShelf:
             raise InvalidBundleError(f"非法 slug（尾点/尾空格）: {slug!r}")
         if slug.split(".")[0].upper() in BookShelf._WINDOWS_RESERVED:
             raise InvalidBundleError(f"非法 slug（Windows 保留名）: {slug!r}")
-        if len(slug) > 80:
-            raise InvalidBundleError(f"非法 slug（超长，>80 字符）: {slug!r}")
+        if len(slug.encode("utf-8")) > 80:
+            # cc-20：按字节算（CJK/emoji 每字 3-4 字节），与 stage-dir 路径开销更贴切
+            raise InvalidBundleError(f"非法 slug（超长，>80 字节）: {slug!r}")
 
     _KNOWN_ORIGINAL_EXTS = {".pdf", ".epub", ".mobi", ".azw", ".cbz", ".cbr", ".djvu"}
 

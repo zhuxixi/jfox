@@ -97,7 +97,7 @@ def add_cmd(
     except BookAlreadyExistsError as e:
         _fail(f"书 '{e}' 已存在；用 --force 覆盖重加", output_format)
         return
-    except (InvalidBundleError, KeyError, TypeError, ValueError) as e:
+    except (InvalidBundleError, KeyError, TypeError, ValueError, OSError) as e:
         _fail(str(e), output_format)
         return
     if not meta.source.get("original_file"):
@@ -226,6 +226,7 @@ def show_cmd(
         KeyError,
         TypeError,
         ValueError,
+        OSError,
     ) as e:
         _fail(f"找不到书/页：{e}", output_format)
         return
@@ -284,6 +285,7 @@ def remove_cmd(
         KeyError,
         TypeError,
         ValueError,
+        OSError,
     ) as e:
         _fail(f"找不到书：{e}", output_format)
         return

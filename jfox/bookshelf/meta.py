@@ -57,6 +57,9 @@ class BookMeta:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "BookMeta":
+        # cc-22：JSON 解出 list/null/str 等（非 dict）在此显式报错，被 list_books 捕获跳过
+        if not isinstance(d, dict):
+            raise ValueError(f"meta 不是 dict: {type(d).__name__}")
         return cls(
             slug=d.get("slug", ""),
             title=d.get("title", d.get("slug", "")),

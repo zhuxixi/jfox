@@ -111,3 +111,12 @@ def test_to_dict_canonical_order():
         "tags",
         "distill",
     ]
+
+
+def test_from_dict_rejects_non_dict():
+    # r3 cc-#22：JSON 解出 list/null/str 等（非 dict）→ ValueError，被 list_books 捕获跳过
+    import pytest
+
+    for bad in ([], None, "scalar", 42):
+        with pytest.raises(ValueError):
+            BookMeta.from_dict(bad)
