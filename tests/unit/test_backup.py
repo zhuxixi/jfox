@@ -123,6 +123,15 @@ def test_retention_rotates(tmp_path):
     assert len(archives) == 3  # 只留 retain 份
 
 
+def test_retention_rotates_many_same_second(tmp_path):
+    """同秒内 >=10 份备份也只留 retain 份（_rotate 按 mtime 排序，CR kimi#17）"""
+    mgr = _make_manager(tmp_path)  # retain=3
+    for _ in range(12):
+        mgr.backup()
+    archives = list((tmp_path / "backups" / "daily").glob("jfox-*.tar.gz"))
+    assert len(archives) == 3
+
+
 def test_backup_quiesce_flag_resets(tmp_path):
     from jfox.backup.manager import BackupCoordinator
 

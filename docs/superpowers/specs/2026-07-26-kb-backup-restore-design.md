@@ -41,7 +41,7 @@ class BackupManager:
     def verify(self, snapshot) -> bool:              # 重算sha256比对+tar -tzf
 ```
 - 复用 `jfox/utils.py:atomic_write_json` 写 manifest；复用 global_config 路径解析。
-- 并发锁：`~/.jfox-backup/.lock`（fcntl），防 loop tick 与手动 `jfox backup run` 撞车。
+- 并发锁：`~/.jfox-backup/.lock`（跨平台：fcntl Unix / msvcrt Windows），防 loop tick 与手动 `jfox backup run` 撞车。
 
 ### 3.2 `jfox/backup/loop.py` + `schedule.py`（daemon 调度，镜像 auto_summary）
 - `backup_loop(stop_event)`：周期 tick，到 `schedule_time` 且今日未备份 → 调 `BackupManager.backup()`；记录 last_run/结果到状态文件供 `status` 读。

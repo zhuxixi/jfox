@@ -97,7 +97,20 @@ class SubprocessDaemonController(DaemonController):
 
     @staticmethod
     def _probe_running() -> bool:
-        """探测 daemon 是否在跑。优先解析 status 输出，回退「运行中」字样"""
+        """探测 daemon 是否在跑。优先 TCP 探活默认端口（robust，不依赖 status 输出
+        格式），回退 subprocess status 解析（端口非默认时）。"""
+        import socket
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        try:
+            s.connect(("127.0.0.1", 18700))  # daemon 默认端口
+            return True
+        except OSError:
+            pass
+        finally:
+            s.close()
+
         import subprocess
 
         try:
@@ -291,8 +304,13 @@ class BackupManager:
 
     def _rotate(self) -> None:
         # 按 mtime 排序（文件名序在 -N 后缀同秒场景下会误排，见 CR #11）；
-        # 一次性取 mtime 避免 TOCTOU（CR cc#15）
-        timed = [(p, p.stat().st_mtime) for p in self.daily_dir.glob("jfox-*.tar.gz")]
+        # 一次性取 mtime 避免 TOCTOU；stat 兜底 FileNotFoundError（CR cc#15）
+        timed = []
+        for p in self.daily_dir.glob("jfox-*.tar.gz"):
+            try:
+                timed.append((p, p.stat().st_mtime))
+            except FileNotFoundError:
+                continue
         timed.sort(key=lambda x: x[1])
         for old, _mtime in timed[: max(0, len(timed) - self.retain)]:
             old.unlink(missing_ok=True)

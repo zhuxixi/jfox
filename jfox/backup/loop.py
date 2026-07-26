@@ -62,25 +62,39 @@ def _tick_once() -> str:
 
     backup_root = _resolve_backup_root(cfg)
     state = read_backup_state(backup_root)
+    last_run = state.get("last_run")
+    last_ok = bool(state.get("last_ok"))
     # 今日已「成功」则跳过；上次失败则允许当日重试（should_run_now 看 last_ok）
-    if not should_run_now(
-        cfg.schedule_time, state.get("last_run"), last_ok=bool(state.get("last_ok"))
-    ):
+    if not should_run_now(cfg.schedule_time, last_run, last_ok=last_ok):
         return "未到点或今日已成功备份，跳过"
+    # 失败重试退避：上次失败且距上次尝试 <30min → 跳过本轮（避免每 5min 重试整天，CR cc#19）
+    if last_run and not last_ok:
+        try:
+            if (datetime.now() - datetime.fromisoformat(last_run)).total_seconds() < 1800:
+                return "上次失败，退避中（≥30min 间隔），跳过"
+        except ValueError:
+            pass
 
     mgr = BackupManager(
         backup_root=backup_root,
         kb_root=DEFAULT_KB_PATH,
-        config_path=Path.home() / ".zk_config.json",
+        config_path=gm.config_path,  # 与 GlobalConfigManager 一致（CR kimi#13）
         retain=cfg.retain,
     )
     try:
         archive = mgr.backup()
-        write_backup_state(backup_root, True, archive.name)
+        try:
+            # state 写失败不掩盖备份成功（CR cc#17）
+            write_backup_state(backup_root, True, archive.name)
+        except Exception:
+            logger.warning("写 state 失败（不影响备份成功）", exc_info=True)
         return f"备份成功: {archive.name}"
     except Exception as e:
         logger.exception("backup_loop 备份失败: %s", e)
-        write_backup_state(backup_root, False, None)
+        try:
+            write_backup_state(backup_root, False, None)
+        except Exception:
+            logger.warning("写 state 失败", exc_info=True)
         return f"备份失败: {e}"
 
 

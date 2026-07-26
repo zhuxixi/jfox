@@ -6,7 +6,7 @@
 
 **Architecture:** 镜像既有 `auto_summary` 子系统——新包 `jfox/backup/`（`manager.py` 核心逻辑 + `loop.py` daemon 调度 + `schedule.py` 定时判断 + `cli.py` 子命令），`global_config.py` 加 `BackupConfig`，`daemon/server.py` 加 `_maybe_start_backup`/`_maybe_stop_backup` 并接 `lifespan`，`gem_synth`/`auto_summary` loop 加 quiesce flag 检查。一致性：daemon 内备份靠 quiesce 标志让兄弟 loop 跳过写 tick + ChromaDB 崩溃一致；手动/restore 是独立进程，停 daemon 拿干净快照。
 
-**Tech Stack:** Python 3.10+，typer（CLI），rich（输出），stdlib `tarfile`/`hashlib`/`fcntl`/`subprocess`/`contextlib`，既有 `jfox.utils.atomic_write_json`、`jfox.global_config`。
+**Tech Stack:** Python 3.10+，typer（CLI），rich（输出），stdlib `tarfile`/`hashlib`/跨平台文件锁（`fcntl` Unix / `msvcrt` Windows）/`subprocess`/`contextlib`，既有 `jfox.utils.atomic_write_json`、`jfox.global_config`。
 
 ## Global Constraints
 

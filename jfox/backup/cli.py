@@ -166,13 +166,20 @@ def run(
         raise typer.Exit(1)
     try:
         archive = mgr.backup()
-        write_backup_state(_backup_root(), True, archive.name)
     except Exception as e:
-        write_backup_state(_backup_root(), False, None)
+        try:
+            write_backup_state(_backup_root(), False, None)
+        except Exception:
+            pass
         console.print(f"[red]备份失败：{e}[/red]")
         raise typer.Exit(1)
     finally:
         mgr.restore_daemon(was_running)
+    # 成功：写 state（写失败不掩盖备份成功，CR cc#17）
+    try:
+        write_backup_state(_backup_root(), True, archive.name)
+    except Exception:
+        pass
     if not quiet:
         console.print(f"[green]备份成功[/green]：{archive}")
 
@@ -227,7 +234,9 @@ def restore_cmd(
             raise typer.Abort()
     try:
         _make_mgr().restore(p, yes=True)
-    except (FileNotFoundError, ValueError, RuntimeError) as e:
+    except (
+        Exception
+    ) as e:  # 捕获全部（OSError/TarError/ValueError 等），干净报错（CR cc#18/kimi#22）
         console.print(f"[red]恢复失败：{e}[/red]")
         raise typer.Exit(1)
     console.print(f"[green]恢复完成[/green]：{p}")
