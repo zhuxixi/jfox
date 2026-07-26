@@ -281,6 +281,22 @@ class BackupManager:
     # --------------------------------------------------------------------------
     # 恢复
     # --------------------------------------------------------------------------
+    def prepare_clean_snapshot(self) -> bool:
+        """停 daemon 拿干净快照，返回原先是否在跑（调用方 finally 用 restore_daemon 恢复）。
+
+        停不掉抛异常，让调用方（restore / 手动 run）拒绝继续——避免在 daemon 仍
+        持有 ChromaDB/SQLite 时挪走 kb_root。
+        """
+        was_running = self._daemon_controller.is_running()
+        if was_running:
+            self._daemon_controller.stop()
+        return was_running
+
+    def restore_daemon(self, was_running: bool) -> None:
+        """配合 prepare_clean_snapshot 恢复 daemon（best-effort）"""
+        if was_running:
+            self._daemon_controller.start()
+
     def restore(self, snapshot: Path, yes: bool = False) -> None:
         """从快照恢复。先停 daemon→rename 当前态旁置→校验 sha256→解压→起 daemon。
 
@@ -294,14 +310,11 @@ class BackupManager:
         if not mpath.exists():
             raise FileNotFoundError(f"清单缺失: {mpath}")
 
-        was_running = self._daemon_controller.is_running()
-        if was_running:
-            self._daemon_controller.stop()  # 停不掉抛 → restore 中止，KB 未动
+        was_running = self.prepare_clean_snapshot()
         try:
             self._restore_body(snapshot, mpath)
         finally:
-            if was_running:
-                self._daemon_controller.start()
+            self.restore_daemon(was_running)
 
     def _restore_body(self, snapshot: Path, mpath: Path) -> None:
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")

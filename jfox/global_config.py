@@ -85,11 +85,19 @@ class BackupConfig:
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "BackupConfig":
         if not data:
             return cls()
+        # retain 防御：null/非数字 → 默认 7（避免 int(None) TypeError）
+        try:
+            retain = int(data.get("retain", 7))
+        except (TypeError, ValueError):
+            retain = 7
+        # backup_root 防御：只接受 str，其余（数字/列表/null）→ None
+        raw_root = data.get("backup_root")
+        backup_root = raw_root if isinstance(raw_root, str) and raw_root.strip() else None
         return cls(
             enabled=bool(data.get("enabled", False)),
             schedule_time=str(data.get("schedule_time", "08:00")),
-            retain=int(data.get("retain", 7)),
-            backup_root=data.get("backup_root"),
+            retain=retain,
+            backup_root=backup_root,
         )
 
 

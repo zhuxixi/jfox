@@ -66,11 +66,17 @@ def _make_mgr():
 
 
 def _resolve_snapshot(snapshot: str) -> Path:
-    """展开 ~ + 相对路径解析到 backup_root/daily/（CR #8 路径安全）"""
-    p = Path(snapshot).expanduser()
-    if not p.is_absolute():
-        p = _backup_root() / "daily" / snapshot
-    return p
+    """展开 ~ + 相对路径解析到 backup_root/daily/；相对名不得逃逸 daily/（CR #4/#8）"""
+    expanded = Path(snapshot).expanduser()
+    if expanded.is_absolute():
+        return expanded
+    daily = (_backup_root() / "daily").resolve()
+    resolved = (daily / snapshot).resolve()
+    try:
+        resolved.relative_to(daily)
+    except ValueError:
+        raise typer.BadParameter(f"快照名不得逃逸 daily/ 目录: {snapshot}")
+    return resolved
 
 
 @backup_app.command("status")
@@ -80,7 +86,12 @@ def status(
     """显示备份配置与上次运行情况"""
     cfg = _cfg()
     state_p = _backup_root() / "state.json"
-    state = _json.loads(state_p.read_text(encoding="utf-8")) if state_p.exists() else {}
+    state = {}
+    if state_p.exists():
+        try:
+            state = _json.loads(state_p.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            state = {}
     data = {
         "enabled": cfg.enabled,
         "schedule_time": cfg.schedule_time,
@@ -144,8 +155,24 @@ def disable():
 def run(
     quiet: bool = typer.Option(False, "--quiet", help="成功时不打印"),
 ):
-    """立即手动备份一份（不停 daemon，靠崩溃一致）"""
-    archive = _make_mgr().backup()
+    """立即手动备份一份（停 daemon 拿干净快照，与 restore 同；写 state.json）"""
+    from .loop import write_backup_state
+
+    mgr = _make_mgr()
+    try:
+        was_running = mgr.prepare_clean_snapshot()
+    except Exception as e:
+        console.print(f"[red]无法停 daemon，取消备份：{e}[/red]")
+        raise typer.Exit(1)
+    try:
+        archive = mgr.backup()
+        write_backup_state(_backup_root(), True, archive.name)
+    except Exception as e:
+        write_backup_state(_backup_root(), False, None)
+        console.print(f"[red]备份失败：{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        mgr.restore_daemon(was_running)
     if not quiet:
         console.print(f"[green]备份成功[/green]：{archive}")
 
@@ -198,5 +225,9 @@ def restore_cmd(
         console.print("[dim]当前态会 rename 旁置为 .pre-restore-*（安全可逆）[/dim]")
         if not typer.confirm("确认恢复？", default=False):
             raise typer.Abort()
-    _make_mgr().restore(p, yes=True)
+    try:
+        _make_mgr().restore(p, yes=True)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        console.print(f"[red]恢复失败：{e}[/red]")
+        raise typer.Exit(1)
     console.print(f"[green]恢复完成[/green]：{p}")

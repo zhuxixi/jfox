@@ -350,3 +350,55 @@ def test_backup_disable_writes_config(monkeypatch):
     r = runner.invoke(backup_cli.backup_app, ["disable"])
     assert r.exit_code == 0, r.stdout
     assert fake.updates == {"enabled": False}
+
+
+# =============================================================================
+# CR 防御补充：parse_time 段数 / from_dict null 防御 / 失败重试 / 路径穿越
+# =============================================================================
+
+
+def test_parse_time_rejects_bad_segments():
+    """parse_time 拒绝无冒号 / 多段 / 非数字（避免 split 解包 ValueError）"""
+    from jfox.backup.schedule import parse_time
+
+    with pytest.raises(ValueError):
+        parse_time("12")  # 无冒号
+    with pytest.raises(ValueError):
+        parse_time("12:30:45")  # 三段
+    with pytest.raises(ValueError):
+        parse_time("ab:cd")  # 非数字
+
+
+def test_backup_config_from_dict_null_retain():
+    """from_dict 对 retain=null / 非数字不崩，回退默认 7"""
+    from jfox.global_config import BackupConfig
+
+    assert BackupConfig.from_dict({"retain": None}).retain == 7
+    assert BackupConfig.from_dict({"retain": "notanint"}).retain == 7
+    assert BackupConfig.from_dict({"backup_root": 123}).backup_root is None  # 非 str → None
+
+
+def test_should_run_now_retries_after_failure():
+    """今日已跑但失败 → 允许重试（last_ok=False）；成功则跳过"""
+    from datetime import datetime
+
+    from jfox.backup.schedule import should_run_now
+
+    now = datetime(2026, 7, 26, 12, 0)
+    last = datetime(2026, 7, 26, 8, 0).isoformat()
+    assert should_run_now("08:00", last, now=now, last_ok=False) is True
+    assert should_run_now("08:00", last, now=now, last_ok=True) is False
+
+
+def test_resolve_snapshot_rejects_traversal(tmp_path, monkeypatch):
+    """相对快照名含 .. 逃逸 daily/ 应被拒（非零退出）"""
+    from typer.testing import CliRunner
+
+    from jfox.backup import cli as backup_cli
+    from jfox.global_config import BackupConfig
+
+    fake = _FakeGlobalMgr(BackupConfig(backup_root=str(tmp_path / "backups")))
+    monkeypatch.setattr(backup_cli, "get_global_config_manager", lambda: fake)
+    runner = CliRunner()
+    r = runner.invoke(backup_cli.backup_app, ["verify", "../../etc/passwd"])
+    assert r.exit_code != 0  # BadParameter → 非零退出

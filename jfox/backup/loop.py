@@ -28,20 +28,24 @@ def _state_path(backup_root: Path) -> Path:
     return Path(backup_root) / "state.json"
 
 
-def _read_last_run(backup_root: Path) -> Optional[str]:
+def read_backup_state(backup_root: Path) -> dict:
+    """读 state.json（{last_run, last_ok, last_archive}）；缺失/损坏返回 {}"""
     p = _state_path(backup_root)
     if not p.exists():
-        return None
+        return {}
     try:
-        return json.loads(p.read_text(encoding="utf-8")).get("last_run")
+        return json.loads(p.read_text(encoding="utf-8"))
     except Exception:
-        return None
+        return {}
 
 
-def _write_last_run(backup_root: Path, ts: str, ok: bool, archive: Optional[str]) -> None:
+def write_backup_state(backup_root: Path, ok: bool, archive: Optional[str]) -> None:
+    """写 state.json（ts 取当前时刻）。CLI run 与 daemon loop 共用"""
     p = _state_path(backup_root)
     p.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(p, {"last_run": ts, "last_ok": ok, "last_archive": archive})
+    atomic_write_json(
+        p, {"last_run": datetime.now().isoformat(), "last_ok": ok, "last_archive": archive}
+    )
 
 
 def _resolve_backup_root(cfg) -> Path:
@@ -57,9 +61,12 @@ def _tick_once() -> str:
         return "backup 未启用，跳过"
 
     backup_root = _resolve_backup_root(cfg)
-    last = _read_last_run(backup_root)
-    if not should_run_now(cfg.schedule_time, last):
-        return "未到点或今日已备份，跳过"
+    state = read_backup_state(backup_root)
+    # 今日已「成功」则跳过；上次失败则允许当日重试（should_run_now 看 last_ok）
+    if not should_run_now(
+        cfg.schedule_time, state.get("last_run"), last_ok=bool(state.get("last_ok"))
+    ):
+        return "未到点或今日已成功备份，跳过"
 
     mgr = BackupManager(
         backup_root=backup_root,
@@ -69,12 +76,11 @@ def _tick_once() -> str:
     )
     try:
         archive = mgr.backup()
-        # ts 取于备份成功之后（跨午夜场景避免 last_run 记前一日 → 当日二次备份）
-        _write_last_run(backup_root, datetime.now().isoformat(), True, archive.name)
+        write_backup_state(backup_root, True, archive.name)
         return f"备份成功: {archive.name}"
     except Exception as e:
         logger.exception("backup_loop 备份失败: %s", e)
-        _write_last_run(backup_root, datetime.now().isoformat(), False, None)
+        write_backup_state(backup_root, False, None)
         return f"备份失败: {e}"
 
 
