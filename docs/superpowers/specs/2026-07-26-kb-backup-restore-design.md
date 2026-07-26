@@ -95,7 +95,7 @@ manifest：`{version, created, jfox_version, archive, archive_sha256, kb_path, c
 
 ## 5. 一致性 & 安全
 - **隔离**：`backup`/`restore` 直接动真实 `~/.zettelkasten`（其职责）；恢复演练在 pytest 的 `temp_kb` fixture（天然沙箱），真实 KB 不动。
-- **quiesce 保证（daemon 内定时备份）**：备份期间 gem_synth/auto_summary 不写 → ChromaDB 无并发写 → 文件级 tar 干净；即便遗漏，SQLite WAL 崩溃一致、restore 自恢复（双保险）。注：quiesce 标志仅同进程可见，故**手动 `run` 与 `restore`（独立进程）改走"停 daemon 拿干净快照"**，不依赖 quiesce。
+- **quiesce 保证（daemon 内定时备份）**：备份期间 gem_synth/auto_summary 不写 → ChromaDB 无并发写 → 文件级 tar 干净。**崩溃一致性机制**：ChromaDB 底层 SQLite+WAL，tar 拷贝含 `.wal` 文件，restore 重开时 SQLite 自动 replay WAL 恢复到一致点（无需显式 checkpoint/关闭 DB）；quiesce 进一步消除并发写，双保险。注：quiesce 标志仅同进程可见，故**手动 `run` 与 `restore`（独立进程）改走"停 daemon 拿干净快照"**，不依赖 quiesce。
 - **原子性**：manifest 用 `atomic_write_json`；归档先 tmp 再 rename；restore 用 rename 旁置保证可逆。
 - **不删源**：restore 只 rename 旁置、永不 `rm` 当前 KB。
 

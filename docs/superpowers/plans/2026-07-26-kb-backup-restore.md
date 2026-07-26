@@ -4,7 +4,7 @@
 
 **Goal:** 给 jfox 加 `backup`/`restore` 能力：jfox daemon 内 `backup_loop` 每天 08:00 自动滚动备份 7 份 `~/.zettelkasten` + `~/.zk_config.json`，失败靠 status 看，恢复可逆且经 pytest 沙箱验证。
 
-**Architecture:** 镜像既有 `auto_summary` 子系统——新包 `jfox/backup/`（`manager.py` 核心逻辑 + `loop.py` daemon 调度 + `schedule.py` 定时判断 + `cli.py` 子命令），`global_config.py` 加 `BackupConfig`，`daemon/server.py` 加 `_maybe_start_backup`/`_maybe_stop_backup` 并接 `lifespan`，`gem_synth`/`auto_summary` loop 加 quiesce flag 检查。一致性：daemon 内备份靠 quiesce 标志让兄弟 loop 跳过写 tick + ChromaDB 崩溃一致；手动/restore 是独立进程，停 daemon 拿干净快照。
+**Architecture:** 镜像既有 `auto_summary` 子系统——新包 `jfox/backup/`（`manager.py` 核心逻辑 + `loop.py` daemon 调度 + `schedule.py` 定时判断 + `cli.py` 子命令），`global_config.py` 加 `BackupConfig`，`daemon/server.py` 加 `_maybe_start_backup`/`_maybe_stop_backup` 并接 `lifespan`，`gem_synth`/`auto_summary` loop 加 quiesce flag 检查。一致性：daemon 内备份靠 quiesce 标志让兄弟 loop 跳过写 tick（ChromaDB 无并发写）；ChromaDB 底层 SQLite+WAL，文件级 tar 含 WAL 文件，restore 重开时 SQLite 自动 replay WAL → 崩溃一致（无需显式 checkpoint）；手动 `run`/`restore` 是独立进程，停 daemon 拿最干净快照。
 
 **Tech Stack:** Python 3.10+，typer（CLI），rich（输出），stdlib `tarfile`/`hashlib`/跨平台文件锁（`fcntl` Unix / `msvcrt` Windows）/`subprocess`/`contextlib`，既有 `jfox.utils.atomic_write_json`、`jfox.global_config`。
 

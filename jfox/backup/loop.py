@@ -72,8 +72,8 @@ def _tick_once() -> str:
         try:
             if (datetime.now() - datetime.fromisoformat(last_run)).total_seconds() < 1800:
                 return "上次失败，退避中（≥30min 间隔），跳过"
-        except ValueError:
-            pass
+        except (ValueError, TypeError):
+            pass  # state 损坏致 last_run 非法（含非字符串）→ 跳过退避门照常重试（CR cc#24）
 
     mgr = BackupManager(
         backup_root=backup_root,

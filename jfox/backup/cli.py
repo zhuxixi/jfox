@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import json as _json
+import logging
+import tarfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,6 +30,7 @@ from ..global_config import DEFAULT_KB_PATH, get_global_config_manager
 from .schedule import parse_time
 
 console = Console(legacy_windows=False)
+logger = logging.getLogger(__name__)
 
 backup_app = typer.Typer(
     name="backup",
@@ -166,20 +169,20 @@ def run(
         raise typer.Exit(1)
     try:
         archive = mgr.backup()
+        # 成功：写 state（独立 try/except，写失败不掩盖备份成功、与 loop.py 对齐，CR cc#17/#21/#23）
+        try:
+            write_backup_state(_backup_root(), True, archive.name)
+        except Exception:
+            logger.warning("写 state 失败（不影响备份成功）", exc_info=True)
     except Exception as e:
         try:
             write_backup_state(_backup_root(), False, None)
         except Exception:
-            pass
+            logger.warning("写 state 失败", exc_info=True)
         console.print(f"[red]备份失败：{e}[/red]")
         raise typer.Exit(1)
     finally:
         mgr.restore_daemon(was_running)
-    # 成功：写 state（写失败不掩盖备份成功，CR cc#17）
-    try:
-        write_backup_state(_backup_root(), True, archive.name)
-    except Exception:
-        pass
     if not quiet:
         console.print(f"[green]备份成功[/green]：{archive}")
 
@@ -234,9 +237,9 @@ def restore_cmd(
             raise typer.Abort()
     try:
         _make_mgr().restore(p, yes=True)
-    except (
-        Exception
-    ) as e:  # 捕获全部（OSError/TarError/ValueError 等），干净报错（CR cc#18/kimi#22）
+    except (OSError, tarfile.TarError, ValueError, RuntimeError) as e:
+        # 具体异常 + 留栈，排障友好（AGENTS.md 要求捕获具体异常，CR cc#18/#20）
+        logger.exception("restore 失败")
         console.print(f"[red]恢复失败：{e}[/red]")
         raise typer.Exit(1)
     console.print(f"[green]恢复完成[/green]：{p}")

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import sys
@@ -22,6 +23,8 @@ from pathlib import Path
 from typing import Iterator
 
 from jfox.utils import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 
 class BackupCoordinator:
@@ -97,45 +100,23 @@ class SubprocessDaemonController(DaemonController):
 
     @staticmethod
     def _probe_running() -> bool:
-        """探测 daemon 是否在跑。优先 TCP 探活默认端口（robust，不依赖 status 输出
-        格式），回退 subprocess status 解析（端口非默认时）。"""
-        import socket
+        """探测 jfox daemon 是否在跑：HTTP GET 默认端口 /health，校验 status==ok。
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(1)
-        try:
-            s.connect(("127.0.0.1", 18700))  # daemon 默认端口
-            return True
-        except OSError:
-            pass
-        finally:
-            s.close()
-
-        import subprocess
+        相比 TCP connect 多一道身份校验（防默认端口被其他进程占用致假阳性，CR cc#22），
+        且不依赖 status 命令的输出格式（CR kimi#14）。daemon 默认端口 18700。
+        """
+        import urllib.request
 
         try:
-            r = subprocess.run(
-                ["jfox", "daemon", "status"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
+            with urllib.request.urlopen("http://127.0.0.1:18700/health", timeout=2) as r:
+                body = r.read().decode("utf-8", "replace")
         except Exception:
-            return False
-        if r.returncode != 0:
-            return False
-        # 尝试 json（若 status 支持 --format json）；否则回退中文状态字
+            return False  # 无监听 / 连不上 → 视为未跑
         try:
-            data = json.loads(r.stdout)
-        except (ValueError, json.JSONDecodeError):
-            return "运行中" in r.stdout
-        if not isinstance(data, dict):  # 防非 dict JSON（CR kimi#21）
-            return "运行中" in r.stdout
-        return bool(
-            data.get("running")
-            or data.get("status") in ("running", "运行中")
-            or data.get("状态") == "运行中"
-        )
+            data = json.loads(body)
+        except ValueError:
+            return False
+        return bool(data.get("status") == "ok" or data.get("running"))
 
 
 _LOCK_TIMEOUT = 300  # 锁等待上限（秒），防对方进程僵死致永久阻塞（CR cc#14）
@@ -254,8 +235,15 @@ class BackupManager:
                 pass
             raise
 
-        atomic_write_json(self._manifest_path(archive), manifest)
-        self._rotate()
+        # 归档已落盘即视为备份成功；manifest 写入/轮转失败只记警告不抛（CR kimi#25）
+        try:
+            atomic_write_json(self._manifest_path(archive), manifest)
+        except Exception:
+            logger.warning("写 manifest 失败（归档已成功，verify 会报 unverified）", exc_info=True)
+        try:
+            self._rotate()
+        except Exception:
+            logger.warning("轮转旧快照失败（不影响本次备份）", exc_info=True)
         return archive
 
     def _write_tar(self, out_path: str, ts: str) -> None:
@@ -462,7 +450,12 @@ class BackupManager:
         out: list[dict] = []
         for archive in sorted(self.daily_dir.glob("jfox-*.tar.gz"), reverse=True):
             mpath = self._manifest_path(archive)
-            manifest = json.loads(mpath.read_text(encoding="utf-8")) if mpath.exists() else None
+            manifest = None
+            if mpath.exists():
+                try:
+                    manifest = json.loads(mpath.read_text(encoding="utf-8"))
+                except (ValueError, OSError):
+                    manifest = None  # 损坏 manifest 当缺失处理（CR kimi#24）
             out.append(
                 {
                     "archive": archive.name,
@@ -478,7 +471,10 @@ class BackupManager:
         mpath = self._manifest_path(archive)
         if not archive.exists() or not mpath.exists():
             return False
-        manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        try:
+            manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return False  # 损坏 manifest → 校验失败（CR kimi#24）
         if self._sha256(str(archive)) != manifest.get("archive_sha256"):
             return False
         try:
