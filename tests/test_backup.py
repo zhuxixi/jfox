@@ -178,6 +178,22 @@ def test_restore_aborts_on_corrupt_archive(tmp_path):
     ) == "CURRENT"
 
 
+def test_restore_rolls_back_on_extract_failure(tmp_path, monkeypatch):
+    """解压中途失败时，原始 KB 必须完好（rollback 把旁置态挪回，清理半成品）"""
+    mgr = _make_manager(tmp_path)
+    archive = mgr.backup()
+    original = (tmp_path / "kb" / "notes" / "fleeting" / "a.md").read_text(encoding="utf-8")
+
+    def _boom(snapshot):
+        raise RuntimeError("模拟解压中途失败")
+
+    monkeypatch.setattr(mgr, "_extract", _boom)
+    with pytest.raises(RuntimeError):
+        mgr.restore(archive, yes=True)
+    # 原始 KB 完好（没有被半成品覆盖、旁置态已挪回）
+    assert (tmp_path / "kb" / "notes" / "fleeting" / "a.md").read_text(encoding="utf-8") == original
+
+
 # =============================================================================
 # Task 4: schedule 定点判断
 # =============================================================================

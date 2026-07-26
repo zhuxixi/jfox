@@ -264,9 +264,17 @@ class BackupManager:
             # 3. 解压到位
             self._extract(snapshot)
         except Exception:
-            # 回退：把旁置的当前态挪回
+            # 回退：先清理可能写了一半的 kb_root/config，再把旁置的当前态挪回
+            # （否则 rename 覆盖已存在的目录/文件会失败，导致新旧两空）
+            if self.kb_root.exists():
+                shutil.rmtree(self.kb_root, ignore_errors=True)
             if renamed_kb and aside_kb.exists():
                 aside_kb.rename(self.kb_root)
+            if self.config_path.exists():
+                try:
+                    self.config_path.unlink()
+                except OSError:
+                    pass
             if renamed_cfg and aside_cfg.exists():
                 aside_cfg.rename(self.config_path)
             raise
