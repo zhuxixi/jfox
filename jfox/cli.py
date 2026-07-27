@@ -123,6 +123,11 @@ from .gem_synth.cli import gem_synth_app  # noqa: E402
 
 app.add_typer(gem_synth_app, name="gem-synth", help="L3 宝石合成进度查看")
 
+# bookshelf 子命令组（好书资产管理）
+from .bookshelf.cli import bookshelf_app  # noqa: E402
+
+app.add_typer(bookshelf_app, name="bookshelf", help="管理好书书架：PDF + 抽取 bundle + 元数据")
+
 console = Console(legacy_windows=False)
 
 
