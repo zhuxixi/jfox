@@ -12,6 +12,7 @@ jfox release 辅助脚本
     python release_helper.py 0.5.0          # 指定版本
     python release_helper.py ... --dry-run  # 只计算不修改文件
 """
+
 import json
 import re
 import subprocess
@@ -145,8 +146,16 @@ def parse_commits(last_tag: str) -> list[dict]:
 
     # -c core.quotepath=false 确保 git 输出中文不被转义
     result = subprocess.run(
-        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8",
-         "log", range_spec, "--format=%s"],
+        [
+            "git",
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "i18n.logoutputencoding=utf-8",
+            "log",
+            range_spec,
+            "--format=%s",
+        ],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
@@ -204,7 +213,9 @@ def parse_commits(last_tag: str) -> list[dict]:
     return entries
 
 
-def generate_changelog(new_version: str, current_version: str, entries: list[dict], last_tag: str = "") -> str:
+def generate_changelog(
+    new_version: str, current_version: str, entries: list[dict], last_tag: str = ""
+) -> str:
     """生成 CHANGELOG Markdown 内容"""
     today = date.today().isoformat()
 
@@ -244,8 +255,7 @@ def generate_changelog(new_version: str, current_version: str, entries: list[dic
     # 底部比较链接
     tag_prev = last_tag.lstrip("v") if last_tag else current_version
     lines.append(
-        f"[{new_version}]: https://github.com/zhuxixi/jfox/compare/"
-        f"v{tag_prev}...v{new_version}"
+        f"[{new_version}]: https://github.com/zhuxixi/jfox/compare/" f"v{tag_prev}...v{new_version}"
     )
 
     return "\n".join(lines)
@@ -289,9 +299,87 @@ def summarize_entries(entries: list[dict]) -> str:
     return ", ".join(parts) if parts else "0 changes"
 
 
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    """git 调用封装（verify 用，cwd 可注入便于测试）。"""
+    return subprocess.run(
+        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def functional_commits_since_last_tag(root: Path) -> list[str]:
+    """last v* tag..HEAD 的功能类 commit subject。
+
+    功能类 = conventional type 不属于 chore/test/style/ci/build（含非 conventional 与
+    feat/fix/refactor/docs/perf 等）；额外排除含 "bump version" 的提交。
+    """
+    out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
+    tag = out.stdout.strip() if out.returncode == 0 else ""
+    rng = f"{tag}..HEAD" if tag else "HEAD"
+    out = _git(["log", rng, "--format=%s"], root)
+    excluded = {"chore", "test", "style", "ci", "build"}
+    result = []
+    for line in out.stdout.splitlines():
+        s = line.strip()
+        if not s or "bump version" in s.lower():
+            continue
+        m = re.match(r"^(\w+)(?:\([^)]*\))?:", s)
+        ctype = m.group(1).lower() if m else ""
+        if ctype in excluded:
+            continue
+        result.append(s)
+    return result
+
+
+def changelog_top_prs(root: Path) -> set[int]:
+    """解析 CHANGELOG.md 最新版本段（首个 ## [ ... 到下一个 ## [）内的 (#NNN) 集合。"""
+    cl = root / "CHANGELOG.md"
+    if not cl.exists():
+        return set()
+    text = cl.read_text(encoding="utf-8")
+    m = re.search(
+        r"^##\s*\[[^\]]+\][^\n]*\n(.*?)(?=^##\s*\[|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    section = m.group(1) if m else text
+    return {int(x) for x in re.findall(r"\(#(\d+)\)", section)}
+
+
+def verify(root: Path | None = None) -> dict:
+    """#333：创建 Release 前核对 last_tag..HEAD 功能 commit 的 PR 号是否都被 CHANGELOG 顶段收录。
+
+    返回 {"ok": bool, "missing": sorted[int], "extra": sorted[int], "functional_commits": int}。
+    ok=False 表示有功能 commit 的 PR 未进 CHANGELOG（漂移），应阻止发 Release。
+    """
+    root = Path(root) if root else PROJECT_ROOT
+    func_prs: set[int] = set()
+    for s in functional_commits_since_last_tag(root):
+        for x in re.findall(r"\(#(\d+)\)", s):
+            func_prs.add(int(x))
+    cl_prs = changelog_top_prs(root)
+    missing = sorted(func_prs - cl_prs)
+    extra = sorted(cl_prs - func_prs)
+    return {
+        "ok": not missing,
+        "missing": missing,
+        "extra": extra,
+        "functional_commits": len(func_prs),
+    }
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "verify":
+        res = verify()
+        output_json(res)
+        sys.exit(0 if res["ok"] else 1)
+
     if len(sys.argv) < 2:
-        output_error("用法: release_helper.py <version|patch|minor|major> [--dry-run]")
+        output_error("用法: release_helper.py <version|patch|minor|major|verify> [--dry-run]")
 
     version_arg = sys.argv[1]
     dry_run = "--dry-run" in sys.argv
