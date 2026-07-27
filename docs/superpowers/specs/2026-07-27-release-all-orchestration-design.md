@@ -130,7 +130,7 @@ uv run python .claude/skills/release-all/release_all_helper.py detect
 git branch --show-current                            # 期望 main
 git status --porcelain                               # 期望 空
 git branch --list 'chore/bump-*'                     # 期望 空（三组件任一 bump 分支都不能存在）
-gh pr list --state open --head "chore/bump-*"        # 期望 空
+gh pr list --state open --json headRefName --jq '.[].headRefName' | grep 'chore/bump-'  # 期望无输出（--head 不支持通配）
 ```
 
 **Step 2 · 检测**：
