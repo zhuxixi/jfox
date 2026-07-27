@@ -35,8 +35,7 @@ def _init_repo(tmp_path: Path):
 def _commit(tmp_path: Path, msg: str, filename: str = "f.txt"):
     (tmp_path / filename).write_text(msg, encoding="utf-8")
     subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), check=True)
-    subprocess.run(["git", "commit", "-q", "-m", msg], cwd=str(tmp_path),
-                   check=True, env=_GIT_ENV)
+    subprocess.run(["git", "commit", "-q", "-m", msg], cwd=str(tmp_path), check=True, env=_GIT_ENV)
 
 
 def _write_changelog(tmp_path: Path, prs: list[int], version: str = "0.2.0"):
@@ -90,8 +89,13 @@ class TestVerifyCLI:
     def test_cli_returns_json_with_ok_key(self):
         e = {**os.environ, "PYTHONUTF8": "1"}
         result = subprocess.run(
-            ["python", HELPER, "verify"], capture_output=True, text=True,
-            cwd=str(PROJECT_ROOT), env=e, encoding="utf-8", errors="replace",
+            ["python", HELPER, "verify"],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            env=e,
+            encoding="utf-8",
+            errors="replace",
         )
         data = json.loads(result.stdout.strip())
         assert "ok" in data and "missing" in data
