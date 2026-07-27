@@ -311,6 +311,18 @@ def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
+def _repo_has_v_tag(root: Path) -> bool:
+    """仓库是否存在任意 v* tag（locale 无关地判定「有无 tag」）。
+
+    用 `git tag --list v*` 而非 stderr 文本——非英文 locale 下 git 的报错文案会被本地化，
+    靠 "No names found" 之类子串匹配会误判。tag --list 自身失败则 raise（真正 git 错误）。
+    """
+    out = _git(["tag", "--list", "v*"], root)
+    if out.returncode != 0:
+        raise RuntimeError(f"git tag --list 失败: {out.stderr.strip()}")
+    return bool(out.stdout.strip())
+
+
 def functional_commits_since_last_tag(root: Path) -> list[str]:
     """last v* tag..HEAD 的功能类 commit subject（白名单：feat/fix/refactor/docs/perf）。
 
@@ -323,11 +335,11 @@ def functional_commits_since_last_tag(root: Path) -> list[str]:
     """
     out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
     if out.returncode != 0:
-        err = out.stderr.strip()
-        # 合法：仓库无 v* tag（首次发版）→ 无基线可校验；其余是真正 git 错误 → fail-closed
-        if "No names found" in err or "No tags can describe" in err:
+        # 区分「无 v* tag」（合法，首次发版）与真正 git 错误。
+        # 用 tag --list（locale 无关）判定——非英文 locale 下 git stderr 会被本地化，不能靠文本匹配。
+        if not _repo_has_v_tag(root):
             return []
-        raise RuntimeError(f"git describe 失败: {err}")
+        raise RuntimeError(f"git describe 失败: {out.stderr.strip()}")
     tag = out.stdout.strip()
     out = _git(["log", f"{tag}..HEAD", "--format=%s"], root)
     if out.returncode != 0:

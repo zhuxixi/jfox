@@ -56,13 +56,21 @@ def _bump_version(current: str, spec: str) -> str:
     raise ValueError(f"非法 bump 规格: {spec}")
 
 
+def _repo_has_v_tag(root: Path) -> bool:
+    """仓库是否存在任意 v* tag（locale 无关地判定「有无 tag」）。tag --list 自身失败则 raise。"""
+    out = _git(["tag", "--list", "v*"], root)
+    if out.returncode != 0:
+        raise RuntimeError(f"git tag --list 失败: {out.stderr.strip()}")
+    return bool(out.stdout.strip())
+
+
 def _last_jfox_tag(root: Path) -> str:
     out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
     if out.returncode != 0:
-        err = out.stderr.strip()
-        if "No names found" in err or "No tags can describe" in err:
+        # 用 tag --list（locale 无关）区分「无 v* tag」与真正 git 错误，不依赖 stderr 文本
+        if not _repo_has_v_tag(root):
             return ""  # 无 v* tag（首次发版），合法
-        raise RuntimeError(f"git describe 失败: {err}")
+        raise RuntimeError(f"git describe 失败: {out.stderr.strip()}")
     return out.stdout.strip()
 
 
@@ -102,30 +110,33 @@ def _read_pyproject_version(root: Path) -> str:
 
 def detect_jfox(root: Path) -> dict:
     """jfox CLI：last v* tag..HEAD 是否有非 bump 的功能性 commit。"""
-    current = ""
-    tag = ""
+    # 阶段 1：读版本（文件缺失/格式错误）
     try:
         current = _read_pyproject_version(root)
+    except (OSError, ValueError) as e:
+        return {
+            "name": "jfox",
+            "changed": False,
+            "current_version": "",
+            "baseline": "",
+            "commits": [],
+            "skip_reason": f"读取版本失败: {e}",
+        }
+    # 阶段 2：git 操作（tag/log；RuntimeError=git 失败，OSError/SubprocessError=git 二进制缺失等）
+    tag = ""
+    try:
         tag = _last_jfox_tag(root)
         out = _git(["log", f"{tag}..HEAD" if tag else "HEAD", "--format=%s"], root)
         if out.returncode != 0:
             raise RuntimeError(f"git log 失败: {out.stderr.strip()}")
-    except RuntimeError as e:
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
         return {
             "name": "jfox",
             "changed": False,
             "current_version": current,
             "baseline": tag,
             "commits": [],
-            "skip_reason": str(e),
-        }
-    except (OSError, ValueError) as e:
-        return {
-            "name": "jfox",
-            "changed": False,
-            "current_version": "",
-            "commits": [],
-            "skip_reason": f"读取版本失败: {e}",
+            "skip_reason": f"git 操作失败: {e}",
         }
     subjects = [
         s.strip() for s in out.stdout.splitlines() if s.strip() and "bump version" not in s.lower()
@@ -161,10 +172,21 @@ def _detect_plugin(
       kimi=kimi.plugin.json）。
     - watch_paths：检测改动的路径（cc/kimi 各自 packages/ 目录）。
     """
-    current = ""
-    baseline = ""
+    # 阶段 1：读版本
     try:
         current = _read_json_version(root, version_source)
+    except (OSError, KeyError, ValueError) as e:
+        return {
+            "name": name,
+            "changed": False,
+            "current_version": "",
+            "baseline": "",
+            "commits": [],
+            "skip_reason": f"读取版本失败: {e}",
+        }
+    # 阶段 2：git 操作（baseline/log）
+    baseline = ""
+    try:
         baseline = _find_last_bump_commit(root, current, baseline_file)
         if baseline:
             out = _git(["log", "--oneline", f"{baseline}..HEAD", "--", *watch_paths], root)
@@ -172,22 +194,14 @@ def _detect_plugin(
             out = _git(["log", "--oneline", "--max-count=30", "--", *watch_paths], root)
         if out.returncode != 0:
             raise RuntimeError(f"git log 失败: {out.stderr.strip()}")
-    except RuntimeError as e:
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
         return {
             "name": name,
             "changed": False,
             "current_version": current,
             "baseline": baseline,
             "commits": [],
-            "skip_reason": str(e),
-        }
-    except (OSError, KeyError, ValueError) as e:
-        return {
-            "name": name,
-            "changed": False,
-            "current_version": "",
-            "commits": [],
-            "skip_reason": f"读取版本失败: {e}",
+            "skip_reason": f"git 操作失败: {e}",
         }
     commits = [c for c in out.stdout.splitlines() if c.strip()]
     if not commits:

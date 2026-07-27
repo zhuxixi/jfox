@@ -141,12 +141,21 @@ class TestFunctionalCommits:
         assert set(res) == {"feat!: big (#999)", "feat(scope)!: also (#998)"}
 
     def test_describe_real_error_raises(self, tmp_path):
-        """git describe 真正失败（非「无 tag」）→ raise，不静默返回 []（fail-closed）。"""
+        """describe 失败但仓库有 v* tag → 真正错误 → raise（locale 无关，靠 tag --list 判定）。"""
         mod = _load_helper_module()
-        fake_err = MagicMock(stdout="", stderr="fatal: not a git repository", returncode=1)
-        with patch.object(mod, "_git", return_value=fake_err):
+        describe_fail = MagicMock(stdout="", stderr="fatal: 本地化报错", returncode=1)
+        tag_list = MagicMock(stdout="v1.0.0\n", returncode=0)  # 有 v* tag
+        with patch.object(mod, "_git", side_effect=[describe_fail, tag_list]):
             with pytest.raises(RuntimeError, match="git describe 失败"):
                 mod.functional_commits_since_last_tag(tmp_path)
+
+    def test_no_tag_locale_independent(self, tmp_path):
+        """describe 失败 + 无 v* tag（即使 stderr 是中文 locale）→ 返回 []，不误判为错误。"""
+        mod = _load_helper_module()
+        describe_fail = MagicMock(stdout="", stderr="fatal: 没有发现名称，无法描述", returncode=1)
+        tag_list_empty = MagicMock(stdout="", returncode=0)
+        with patch.object(mod, "_git", side_effect=[describe_fail, tag_list_empty]):
+            assert mod.functional_commits_since_last_tag(tmp_path) == []
 
 
 class TestVerifyEdgeCases:
