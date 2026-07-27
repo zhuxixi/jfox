@@ -132,6 +132,21 @@ Four jobs in `.github/workflows/integration-test.yml`:
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
+## Release Tooling
+
+三条独立发版轨道，各有单组件 skill + 一个编排 skill（`.claude/skills/`）：
+
+| 轨道 | skill | helper | 发版方式 |
+|------|-------|--------|----------|
+| jfox CLI | `/release` | `release_helper.py` | tag `v*` + GitHub Release（触发 PyPI publish） |
+| cc-plugin | `/release-cc-plugin` | `release_cc_plugin_helper.py` | 三处版本号原子 bump + PR，合 main 即发布（`/plugin update` 拉新） |
+| kimi-plugin | `/release-kimi-plugin` | `release_kimi_plugin_helper.py` | 单一 version bump + PR，合 main 即发布 |
+| 编排 | `/release-all` | `release_all_helper.py` | detect 三组件跳过无改动者、批量建 PR、最后发 jfox Release |
+
+- **三组件版本轨道独立**，语义各自不同；`/release-all` 只统一编排、不统一版本号。
+- **只有 jfox CLI 打 tag / 发 GitHub Release**；cc/kimi 仅 bump + PR。
+- `release_helper.py verify`（#333）：创建 jfox GitHub Release 前核对 `last_tag..HEAD` 功能 commit 的 PR 号是否都进 CHANGELOG 顶段，防 bump 后被外部 PR 抢先合入致漏项（v1.1.0/v1.5.0 踩过）。`/release` Step 9 与 `/release-all` 都调用。
+
 ## Windows Notes
 
 - `robocopy` flags get misinterpreted by bash — use `cmd.exe /c "robocopy source dest /E"`
