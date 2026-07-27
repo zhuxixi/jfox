@@ -217,6 +217,27 @@ class TestDetectFailClosed:
         assert "读取版本失败" in res["skip_reason"]
 
 
+class TestFindLastBumpCommit:
+    def test_fallback_after_s_fail(self, tmp_path):
+        """-S 失败时尝试 fallback；fallback 成功则用之（不直接 raise）。"""
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        s_fail = MagicMock(stdout="", stderr="fatal: pickaxe error", returncode=1)
+        s_ok = MagicMock(stdout="deadbeef\n", returncode=0)
+        with patch.object(mod, "_git", side_effect=[s_fail, s_ok]):
+            res = mod._find_last_bump_commit(tmp_path, "0.6.0", ".claude-plugin/marketplace.json")
+        assert res == "deadbeef"
+
+    def test_both_fail_raises(self, tmp_path):
+        """两次 git log 都失败 → raise（fail-closed）。"""
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        fail = MagicMock(stdout="", stderr="fatal: corrupt repo", returncode=1)
+        with patch.object(mod, "_git", return_value=fail):
+            with pytest.raises(RuntimeError, match="git log 失败"):
+                mod._find_last_bump_commit(tmp_path, "0.6.0", ".claude-plugin/marketplace.json")
+
+
 class TestMain:
     def test_main_outputs_error_json_on_failure(self, monkeypatch, capsys):
         """detect 抛异常时 main 兜底输出 error JSON + exit 1（不 traceback）。"""

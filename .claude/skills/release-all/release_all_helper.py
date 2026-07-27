@@ -75,18 +75,25 @@ def _last_jfox_tag(root: Path) -> str:
 
 
 def _find_last_bump_commit(root: Path, version: str, rel_path: str) -> str:
-    """定位引入该 version 的提交（git log -S），fallback 到最后改该文件的提交。"""
+    """定位引入该 version 的提交（git log -S），fallback 到最后改该文件的提交。
+
+    -S 失败时先尝试 fallback（与 kimi/cc helper 一致）；两次都失败才 raise（fail-closed）。
+    """
     needle = f'"version": "{version}"'
+    last_err = ""
     for args in (
         ["log", "-S", needle, "--format=%H", "--", rel_path],
         ["log", "--format=%H", "-1", "--", rel_path],
     ):
         out = _git(args, root)
         if out.returncode != 0:
-            raise RuntimeError(f"git log 失败（定位 bump commit）: {out.stderr.strip()}")
+            last_err = out.stderr.strip() or last_err
+            continue  # 先试 fallback
         hits = [ln for ln in out.stdout.splitlines() if ln.strip()]
         if hits:
             return hits[0]
+    if last_err:
+        raise RuntimeError(f"git log 失败（定位 bump commit）: {last_err}")
     return ""
 
 

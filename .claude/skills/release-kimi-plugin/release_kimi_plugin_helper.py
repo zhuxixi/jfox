@@ -99,15 +99,16 @@ def find_last_bump_commit(root: Path, current_version: str) -> str | None:
 
 def get_changelog(root: Path, current_version: str) -> list[str]:
     """自上次发版以来 packages/kimi-plugin/ 的 oneline 提交摘要；无基线时取最近 30 条。"""
-    last = find_last_bump_commit(root, current_version)
-    if last:
-        args = ["log", "--oneline", f"{last}..HEAD", "--", "packages/kimi-plugin/"]
-    else:
-        # 无基线：用 --max-count 避免 HEAD~30 在浅克隆/小仓报 bad revision
-        args = ["log", "--oneline", "--max-count=30", "--", "packages/kimi-plugin/"]
     try:
+        last = find_last_bump_commit(root, current_version)
+        if last:
+            args = ["log", "--oneline", f"{last}..HEAD", "--", "packages/kimi-plugin/"]
+        else:
+            # 无基线：用 --max-count 避免 HEAD~30 在浅克隆/小仓报 bad revision
+            args = ["log", "--oneline", "--max-count=30", "--", "packages/kimi-plugin/"]
         out = _run_git(args, root)
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
+        # git 异常（含二进制缺失 FileNotFoundError）→ 空 changelog 降级，不崩
         return []
     return [ln for ln in out.stdout.splitlines() if ln.strip()]
 

@@ -115,6 +115,12 @@ class TestChangelog:
             result = mod.get_changelog(tmp_path, "0.14.0")
         assert result == ["abc1234 feat: x", "def5678 fix: y"]
 
+    def test_get_changelog_git_missing_returns_empty(self, tmp_path):
+        """git 二进制缺失（FileNotFoundError）→ get_changelog 返回 []，不崩。"""
+        mod = _load_helper_module()
+        with patch.object(mod.subprocess, "run", side_effect=FileNotFoundError("git not found")):
+            assert mod.get_changelog(tmp_path, "0.14.0") == []
+
 
 # ── bump 单字段 + 原子性（直接调函数，tmp 隔离）──
 
