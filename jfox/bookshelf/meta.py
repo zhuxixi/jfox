@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 SCHEMA_VERSION = 1
-_DEFAULT_DISTILL: Dict[str, Any] = {"status": "none", "reference_notes": []}
 
 
 @dataclass
@@ -65,7 +64,10 @@ class BookMeta:
         # 下游 .get() 会崩（kimi bookshelf-r13）。所有加载路径（list/show/get）经此兜底。
         src = d.get("source", {})
         bk = d.get("book", {})
-        dl = d.get("distill", _DEFAULT_DISTILL)
+        dl = d.get("distill")
+        if not isinstance(dl, dict):
+            # 新建独立实例，不复用模块级共享常量（cc r15：避免多 BookMeta 共享可变默认）
+            dl = {"status": "none", "reference_notes": []}
         _tags = d.get("tags")
         return cls(
             slug=d.get("slug", ""),
@@ -75,7 +77,7 @@ class BookMeta:
             book=bk if isinstance(bk, dict) else {},
             # cc-5：非 list 不拆字符/不崩
             tags=list(_tags) if isinstance(_tags, list) else [],
-            distill=dl if isinstance(dl, dict) else _DEFAULT_DISTILL,
+            distill=dl,
             schema_version=d.get("schema_version", SCHEMA_VERSION),
         )
 
