@@ -138,6 +138,14 @@ git pull origin main
 
 ### Step 9: 创建 GitHub Release
 
+**先跑 verify 校验**（#333：核对 `last_tag..HEAD` 功能 commit 的 PR 号是否都进了 CHANGELOG 顶段，防 bump 后被外部 PR 抢先合入致漏项——v1.1.0/v1.5.0 踩过）：
+
+```bash
+uv run python .claude/skills/release/release_helper.py verify
+```
+
+退出码非 0 → 打印 missing 条目，**停止**，提示用户补 CHANGELOG（开 `docs(changelog)` PR 合并）后重跑本步。退出码 0 才继续创建 Release：
+
 ```bash
 gh release create v{new_version} \
   --title "v{new_version}" \
