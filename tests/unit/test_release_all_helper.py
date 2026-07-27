@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 HELPER = str(
     Path(__file__).resolve().parents[2]
@@ -156,6 +157,49 @@ class TestDetectAggregate:
         _commit(tmp_path, "feat: a (#1)", {"jfox/a.py": "1"})
         res2 = mod.detect(tmp_path)
         assert res2["any_changed"] is True
+
+
+class TestDetectFailClosed:
+    """git 异常时 detect 报独立的 skip_reason（与「无改动」区分），不静默跳过。"""
+
+    def test_detect_jfox_git_log_failure(self, tmp_path):
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        fake_describe = MagicMock(stdout="v1.5.0\n", returncode=0)
+        fake_log_fail = MagicMock(stdout="", stderr="fatal: bad object", returncode=1)
+        with patch.object(mod, "_git", side_effect=[fake_describe, fake_log_fail]):
+            res = mod.detect_jfox(tmp_path)
+        assert res["changed"] is False
+        assert "git log 失败" in res["skip_reason"]
+
+    def test_detect_cc_git_log_failure(self, tmp_path):
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        fake_fail = MagicMock(stdout="", stderr="fatal: bad object", returncode=1)
+        with patch.object(mod, "_find_last_bump_commit", return_value="deadbeef"):
+            with patch.object(mod, "_git", return_value=fake_fail):
+                res = mod.detect_cc(tmp_path)
+        assert res["changed"] is False
+        assert "git log 失败" in res["skip_reason"]
+
+    def test_detect_cc_bad_version_format(self, tmp_path):
+        """版本号非 X.Y.Z → 降级为 changed=False + skip_reason，不冒泡 traceback。"""
+        mod = _load_helper_module()
+        _git_repo(tmp_path)
+        ccj = tmp_path / "packages/cc-plugin/.claude-plugin/plugin.json"
+        ccj.parent.mkdir(parents=True)
+        ccj.write_text(json.dumps({"name": "jfox", "version": "0.6"}), encoding="utf-8")
+        mkt = tmp_path / ".claude-plugin/marketplace.json"
+        mkt.parent.mkdir(parents=True)
+        mkt.write_text(
+            json.dumps(
+                {"metadata": {"version": "0.6"}, "plugins": [{"name": "jfox", "version": "0.6"}]}
+            ),
+            encoding="utf-8",
+        )
+        res = mod.detect_cc(tmp_path)
+        assert res["changed"] is False
+        assert "读取版本失败" in res["skip_reason"]
 
 
 class TestDetectCLI:

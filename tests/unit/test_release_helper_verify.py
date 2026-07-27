@@ -5,6 +5,9 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 HELPER = str(
     Path(__file__).resolve().parents[2] / ".claude" / "skills" / "release" / "release_helper.py"
@@ -83,6 +86,40 @@ class TestVerify:
         res = mod.verify(tmp_path)
         assert res["ok"] is True
         assert res["missing"] == []
+
+    def test_fails_closed_on_git_error(self, tmp_path):
+        """git log 失败时 verify fail-closed：ok=False + error，防安全网静默放行。"""
+        mod = _load_helper_module()
+        with patch.object(
+            mod, "functional_commits_since_last_tag", side_effect=RuntimeError("git log 失败")
+        ):
+            res = mod.verify(tmp_path)
+        assert res["ok"] is False
+        assert "git log 失败" in res["error"]
+
+
+class TestFunctionalCommits:
+    def test_raises_on_git_log_failure(self, tmp_path):
+        """git log returncode!=0 → RuntimeError（由 verify 捕获转 fail-closed）。"""
+        mod = _load_helper_module()
+        fake_describe = MagicMock(stdout="v0.1.0\n", returncode=0)
+        fake_log_fail = MagicMock(stdout="", stderr="fatal: bad object HEAD", returncode=1)
+        with patch.object(mod, "_git", side_effect=[fake_describe, fake_log_fail]):
+            with pytest.raises(RuntimeError):
+                mod.functional_commits_since_last_tag(tmp_path)
+
+    def test_merge_and_nonconventional_excluded(self, tmp_path):
+        """merge commit 与非 conventional 提交的 (#NNN) 不注入 func_prs（白名单）。"""
+        mod = _load_helper_module()
+        _init_repo(tmp_path)
+        _commit(tmp_path, "chore: base")  # tag 锚点（不在 tag..HEAD 范围内）
+        subprocess.run(["git", "tag", "v0.1.0"], cwd=str(tmp_path), check=True)
+        _commit(tmp_path, "feat: c (#404)", "c.txt")  # 功能性，应入选
+        _commit(tmp_path, "Merge branch 'x' (#202)", "m.txt")  # merge，排除
+        _commit(tmp_path, "random non-conv (#303)", "n.txt")  # 非 conventional，排除
+        res = mod.functional_commits_since_last_tag(tmp_path)
+        # 仅 feat: c 入选；merge (#202) 与非 conventional (#303) 被排除
+        assert res == ["feat: c (#404)"]
 
 
 class TestVerifyCLI:

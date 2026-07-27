@@ -66,49 +66,47 @@ def compute_new_version(current: str, spec: str) -> str:
     return new
 
 
-def find_last_bump_commit(root: Path, current_version: str) -> str:
+def _run_git(args: list[str], root: Path) -> subprocess.CompletedProcess:
+    """git 调用封装：与 release_helper._git / release_all_helper._git 一致地带上
+    `-c core.quotepath=false -c i18n.logoutputencoding=utf-8`，防中文 commit subject 乱码。"""
+    return subprocess.run(
+        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+
+
+def find_last_bump_commit(root: Path, current_version: str) -> str | None:
     """定位上次发版提交：引入 current_version 的提交；降级为最近改 kimi.plugin.json 的提交。"""
     rel = KIMI_PLUGIN_JSON_REL
     for args in (
-        ["git", "log", "-S", f'"version": "{current_version}"', "--format=%H", "--", rel],
-        ["git", "log", "--format=%H", "-1", "--", rel],
+        ["log", "-S", f'"version": "{current_version}"', "--format=%H", "--", rel],
+        ["log", "--format=%H", "-1", "--", rel],
     ):
         try:
-            out = subprocess.run(
-                args,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                check=True,
-            )
+            out = _run_git(args, root)
         except subprocess.CalledProcessError:
             continue
         hits = [ln for ln in out.stdout.splitlines() if ln.strip()]
         if hits:
             return hits[0]
-    return ""
+    return None
 
 
 def get_changelog(root: Path, current_version: str) -> list[str]:
     """自上次发版以来 packages/kimi-plugin/ 的 oneline 提交摘要；无基线时取最近 30 条。"""
     last = find_last_bump_commit(root, current_version)
     if last:
-        args = ["git", "log", "--oneline", f"{last}..HEAD", "--", "packages/kimi-plugin/"]
+        args = ["log", "--oneline", f"{last}..HEAD", "--", "packages/kimi-plugin/"]
     else:
         # 无基线：用 --max-count 避免 HEAD~30 在浅克隆/小仓报 bad revision
-        args = ["git", "log", "--oneline", "--max-count=30", "--", "packages/kimi-plugin/"]
+        args = ["log", "--oneline", "--max-count=30", "--", "packages/kimi-plugin/"]
     try:
-        out = subprocess.run(
-            args,
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=True,
-        )
+        out = _run_git(args, root)
     except subprocess.CalledProcessError:
         return []
     return [ln for ln in out.stdout.splitlines() if ln.strip()]

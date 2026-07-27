@@ -312,24 +312,30 @@ def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
 
 
 def functional_commits_since_last_tag(root: Path) -> list[str]:
-    """last v* tag..HEAD 的功能类 commit subject。
+    """last v* tag..HEAD 的功能类 commit subject（白名单：feat/fix/refactor/docs/perf）。
 
-    功能类 = conventional type 不属于 chore/test/style/ci/build（含非 conventional 与
-    feat/fix/refactor/docs/perf 等）；额外排除含 "bump version" 的提交。
+    白名单比黑名单更抗格式偏差（非 conventional 提交 ctype='' 不入选，避免其 (#NNN)
+    注入伪 PR 号）；额外跳过 merge commit 与含 "bump version" 的提交。
+    git log 本身失败（仓库损坏/锁/浅克隆缺对象等）时 raise RuntimeError——由 verify()
+    捕获转为 ok=False，防 #333 安全网在数据源出错时静默放行（fail-open）。
     """
     out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
     tag = out.stdout.strip() if out.returncode == 0 else ""
     rng = f"{tag}..HEAD" if tag else "HEAD"
     out = _git(["log", rng, "--format=%s"], root)
-    excluded = {"chore", "test", "style", "ci", "build"}
+    if out.returncode != 0:
+        raise RuntimeError(f"git log 失败（{rng}）: {out.stderr.strip()}")
+    functional = {"feat", "fix", "refactor", "docs", "perf"}
     result = []
     for line in out.stdout.splitlines():
         s = line.strip()
         if not s or "bump version" in s.lower():
             continue
+        if s.startswith("Merge "):
+            continue
         m = re.match(r"^(\w+)(?:\([^)]*\))?:", s)
         ctype = m.group(1).lower() if m else ""
-        if ctype in excluded:
+        if ctype not in functional:
             continue
         result.append(s)
     return result
@@ -355,12 +361,22 @@ def verify(root: Path | None = None) -> dict:
 
     返回 {"ok": bool, "missing": sorted[int], "extra": sorted[int], "functional_commits": int}。
     ok=False 表示有功能 commit 的 PR 未进 CHANGELOG（漂移），应阻止发 Release。
+    数据源出错（git log 失败等）时 fail-closed：返回 ok=False + error，迫使流程停而非误判通过。
     """
     root = Path(root) if root else PROJECT_ROOT
-    func_prs: set[int] = set()
-    for s in functional_commits_since_last_tag(root):
-        for x in re.findall(r"\(#(\d+)\)", s):
-            func_prs.add(int(x))
+    try:
+        func_prs: set[int] = set()
+        for s in functional_commits_since_last_tag(root):
+            for x in re.findall(r"\(#(\d+)\)", s):
+                func_prs.add(int(x))
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"verify 失败: {e}",
+            "missing": [],
+            "extra": [],
+            "functional_commits": 0,
+        }
     cl_prs = changelog_top_prs(root)
     missing = sorted(func_prs - cl_prs)
     extra = sorted(cl_prs - func_prs)

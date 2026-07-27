@@ -19,6 +19,7 @@ PYPROJECT_TOML = "pyproject.toml"
 CC_PLUGIN_JSON = "packages/cc-plugin/.claude-plugin/plugin.json"
 CC_MARKETPLACE = ".claude-plugin/marketplace.json"
 KIMI_PLUGIN_JSON = "packages/kimi-plugin/kimi.plugin.json"
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 def output_json(data: dict) -> None:
@@ -74,7 +75,10 @@ def _find_last_bump_commit(root: Path, version: str, rel_path: str) -> str:
 
 
 def _read_json_version(root: Path, rel: str) -> str:
-    return json.loads((root / rel).read_text(encoding="utf-8"))["version"]
+    v = json.loads((root / rel).read_text(encoding="utf-8"))["version"]
+    if not VERSION_RE.match(v):
+        raise ValueError(f"非法版本号格式: {v!r}（{rel}）")
+    return v
 
 
 def _read_pyproject_version(root: Path) -> str:
@@ -102,6 +106,15 @@ def detect_jfox(root: Path) -> dict:
         }
     tag = _last_jfox_tag(root)
     out = _git(["log", f"{tag}..HEAD" if tag else "HEAD", "--format=%s"], root)
+    if out.returncode != 0:
+        return {
+            "name": "jfox",
+            "changed": False,
+            "current_version": current,
+            "baseline": tag,
+            "commits": [],
+            "skip_reason": f"git log 失败: {out.stderr.strip()}",
+        }
     subjects = [
         s.strip() for s in out.stdout.splitlines() if s.strip() and "bump version" not in s.lower()
     ]
@@ -150,6 +163,15 @@ def _detect_plugin(
         out = _git(["log", "--oneline", f"{baseline}..HEAD", "--", *watch_paths], root)
     else:
         out = _git(["log", "--oneline", "--max-count=30", "--", *watch_paths], root)
+    if out.returncode != 0:
+        return {
+            "name": name,
+            "changed": False,
+            "current_version": current,
+            "baseline": baseline,
+            "commits": [],
+            "skip_reason": f"git log 失败: {out.stderr.strip()}",
+        }
     commits = [c for c in out.stdout.splitlines() if c.strip()]
     if not commits:
         return {
@@ -173,9 +195,14 @@ def _detect_plugin(
 
 def detect_cc(root: Path) -> dict:
     # plugin.json 含顶层 version（读版本）；marketplace.json 用于 -S 定位 bump（与
-    # release_cc_plugin_helper 一致）；watch packages/cc-plugin/ 覆盖 skills + plugin.json
+    # release_cc_plugin_helper 一致）；watch packages/cc-plugin/（skills + plugin.json）
+    # 外加 marketplace.json 本身——改其非 version 元数据也算 cc 改动，该发版。
     return _detect_plugin(
-        root, "cc-plugin", CC_PLUGIN_JSON, CC_MARKETPLACE, ["packages/cc-plugin/"]
+        root,
+        "cc-plugin",
+        CC_PLUGIN_JSON,
+        CC_MARKETPLACE,
+        ["packages/cc-plugin/", ".claude-plugin/marketplace.json"],
     )
 
 
