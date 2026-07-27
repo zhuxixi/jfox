@@ -56,11 +56,17 @@ uv run python .claude/skills/release-all/release_all_helper.py detect
 
 ### Step 4: 逐组件 bump + 建 PR（顺序 jfox → cc → kimi，仅 changed 者）
 
-detect 已算出 suggested_version 并经确认，跳过各单组件 skill 的 dry-run 预览步，直接正式 bump → 分支 → commit → push → `gh pr create`：
+detect 已算出 suggested_version 并经确认，跳过各单组件 skill 的 dry-run 预览步。
 
-- **jfox** → `release_helper.py <v>` → 分支 `chore/bump-version-<v>` → PR（body 用 changelog_preview）
-- **cc-plugin** → `release_cc_plugin_helper.py <v>` → 分支 `chore/bump-cc-plugin-<v>` → PR
-- **kimi-plugin** → `release_kimi_plugin_helper.py <v>` → 分支 `chore/bump-kimi-plugin-<v>` → PR
+⚠️ **每个组件开始前必须先 `git checkout main`**：上一组件的 bump 提交落在它自己的分支上，若不回 main，下一组件的 `git checkout -b` 会从上一组件分支拉出，导致 PR diff 串进别的组件文件（如 cc PR 里混入 jfox 的 pyproject.toml）。
+
+对每个 changed 组件，循环执行（helper 在 main 工作树改文件 → 从 main 拉 bump 分支 → commit → push → 开 PR）：
+
+1. `git checkout main`（确保下一组件从干净的 main 拉分支）
+2. 正式 bump + 建分支 + commit + push + `gh pr create`：
+   - **jfox** → `release_helper.py <v>` → `git checkout -b chore/bump-version-<v>` → `git add pyproject.toml jfox/__init__.py uv.lock CHANGELOG.md` → commit → push → PR（body 用 changelog_preview）
+   - **cc-plugin** → `release_cc_plugin_helper.py <v>` → `git checkout -b chore/bump-cc-plugin-<v>` → `git add packages/cc-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json` → commit → push → PR
+   - **kimi-plugin** → `release_kimi_plugin_helper.py <v>` → `git checkout -b chore/bump-kimi-plugin-<v>` → `git add packages/kimi-plugin/kimi.plugin.json` → commit → push → PR
 
 三组件文件不冲突，PR 可并存。收集所有 PR URL。
 
