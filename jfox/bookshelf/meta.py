@@ -94,6 +94,9 @@ def build_meta_from_bundle(
 ) -> BookMeta:
     """从 scan2book bundle/manifest.json + 原件信息构造 BookMeta。"""
     meta_block = bundle_manifest.get("meta", {})
+    # kimi r15 issue-35：manifest.meta 非 dict 时 .get("title") 会崩，兜底为 {}
+    if not isinstance(meta_block, dict):
+        meta_block = {}
     title = meta_block.get("title") or slug
     page_count = int(bundle_manifest.get("page_count", 0))
     return BookMeta(

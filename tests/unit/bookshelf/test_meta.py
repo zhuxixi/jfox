@@ -56,6 +56,20 @@ def test_build_meta_title_falls_back_to_slug():
     assert meta.source["original_file"] == ""
 
 
+def test_build_meta_non_dict_meta_field():
+    """kimi r15 issue-35：manifest.meta 非 dict（list/str/null/数字）不崩，title 回退 slug。"""
+    for bad_meta in ([1, 2], "a string", None, 42):
+        meta = build_meta_from_bundle(
+            slug="fb",
+            bundle_manifest={"slug": "fb", "meta": bad_meta, "page_count": 0, "pages": []},
+            original_file=None,
+            original_sha256=None,
+            added_at="t",
+        )
+        assert meta.title == "fb"  # meta_block 被兜底为 {}，title 回退 slug
+        assert meta.book["meta"] == {}
+
+
 def test_meta_roundtrip(tmp_path):
     meta = build_meta_from_bundle(
         slug="sapiens",
