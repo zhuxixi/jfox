@@ -60,16 +60,21 @@ class BookMeta:
         # cc-22：JSON 解出 list/null/str 等（非 dict）在此显式报错，被 list_books 捕获跳过
         if not isinstance(d, dict):
             raise ValueError(f"meta 不是 dict: {type(d).__name__}")
+        # source/book/distill 防 non-dict：旧/手改 meta.json 可能含非 dict 字段，
+        # 下游 .get() 会崩（kimi bookshelf-r13）。所有加载路径（list/show/get）经此兜底。
+        src = d.get("source", {})
+        bk = d.get("book", {})
+        dl = d.get("distill", {"status": "none", "reference_notes": []})
         return cls(
             slug=d.get("slug", ""),
             title=d.get("title", d.get("slug", "")),
             added_at=d.get("added_at", ""),
-            source=d.get("source", {}),
-            book=d.get("book", {}),
+            source=src if isinstance(src, dict) else {},
+            book=bk if isinstance(bk, dict) else {},
             tags=(
                 list(d.get("tags")) if isinstance(d.get("tags"), list) else []
             ),  # cc-5：非 list 不拆字符/不崩
-            distill=d.get("distill", {"status": "none", "reference_notes": []}),
+            distill=dl if isinstance(dl, dict) else {"status": "none", "reference_notes": []},
             schema_version=d.get("schema_version", SCHEMA_VERSION),
         )
 

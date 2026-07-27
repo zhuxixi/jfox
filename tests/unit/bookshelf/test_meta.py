@@ -120,3 +120,15 @@ def test_from_dict_rejects_non_dict():
     for bad in ([], None, "scalar", 42):
         with pytest.raises(ValueError):
             BookMeta.from_dict(bad)
+
+
+def test_from_dict_coerces_non_dict_source_book_distill():
+    """旧/手改 meta 的 source/book/distill 非 dict 时 from_dict 规整为 dict，不崩（kimi bookshelf-r13）"""
+    from jfox.bookshelf.meta import BookMeta
+
+    m = BookMeta.from_dict(
+        {"slug": "s", "title": "T", "added_at": "t", "source": "x", "book": 5, "distill": [1, 2]}
+    )
+    assert m.source == {}
+    assert m.book == {}
+    assert m.distill == {"status": "none", "reference_notes": []}
