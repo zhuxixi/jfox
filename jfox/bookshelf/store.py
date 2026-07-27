@@ -41,6 +41,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
+def _is_candidate_file(f: Path) -> bool:
+    """原件候选：普通文件、非软链（cc-7）、非 meta.json。"""
+    return f.is_file() and not f.is_symlink() and f.name != META_FILENAME
+
+
 class BookShelf:
     """一个知识库的书架：<base_dir>/bookshelf/<slug>/。"""
 
@@ -114,9 +119,12 @@ class BookShelf:
         if not path.exists():
             raise BookNotFoundError(f"{slug} bundle manifest")
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             raise InvalidBundleError(f"{slug} bundle manifest 解析失败: {e}") from e
+        if not isinstance(data, dict):
+            raise InvalidBundleError(f"{slug} manifest 非 dict: {type(data).__name__}")
+        return data
 
     def add(
         self,
@@ -144,6 +152,8 @@ class BookShelf:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             raise InvalidBundleError(f"manifest.json 解析失败: {e}") from e
+        if not isinstance(manifest, dict):
+            raise InvalidBundleError(f"manifest 非 dict: {type(manifest).__name__}")
         if slug is None:
             slug = manifest.get("slug") or src_folder.name
         self._validate_slug(slug)
@@ -160,7 +170,7 @@ class BookShelf:
             # 否则下游 .get() 抛未捕获 AttributeError（kimi#21/cc#1/kimi#22/cc-2：
             # book 在 cli 多处 .get('page_count')）。
             if not isinstance(raw, dict):
-                raise InvalidBundleError(f"meta.json 必须是 JSON 对象，得到 {type(raw).__name__}")
+                raise InvalidBundleError(f"meta.json 非 dict: {type(raw).__name__}")
             if not isinstance(raw.get("source"), dict):
                 raw["source"] = {}
             if not isinstance(raw.get("distill"), dict):
@@ -296,11 +306,8 @@ class BookShelf:
     def _find_original(src_folder: Path):
         """挑原件：优先已知原件扩展名，否则退回最大文件。按 (-size, name) 确定性排序，
         避免大小并列时 max() 因遍历顺序不同而跨机器不稳定。"""
-        all_entries = list(src_folder.iterdir())
-        # 排除符号链接原件（cc-7：软链可能指向外部大文件/敏感文件，复制进来有风险）
-        files = [
-            f for f in all_entries if f.is_file() and not f.is_symlink() and f.name != META_FILENAME
-        ]
+        # 排除软链原件（cc-7：软链可能指向外部大/敏感文件，复制进来有风险）
+        files = [f for f in src_folder.iterdir() if _is_candidate_file(f)]
         if not files:
             return None, None
         known = [f for f in files if f.suffix.lower() in BookShelf._KNOWN_ORIGINAL_EXTS]

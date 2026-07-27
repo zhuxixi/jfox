@@ -119,6 +119,19 @@ def test_add_without_manifest_raises(tmp_path):
         shelf.add(bad, added_at="t")
 
 
+def test_add_non_dict_manifest_raises(tmp_path):
+    """kimi r14 issue-33：manifest.json 是合法 JSON 但非 dict（list/str）时须报错，不能 .get() 崩。"""
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    for bad_content in ("[1, 2, 3]", '"a string"', "null", "42"):
+        bad = tmp_path / "src" / f"bad_{hash(bad_content) % 10000}"
+        (bad / "bundle").mkdir(parents=True)
+        (bad / "bundle" / "manifest.json").write_text(bad_content, encoding="utf-8")
+        with pytest.raises(InvalidBundleError):
+            shelf.add(bad, added_at="t")
+
+
 def test_add_user_meta_normalized(tmp_path, make_book_folder):
     from jfox.bookshelf.meta import SCHEMA_VERSION
 
