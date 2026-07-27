@@ -127,6 +127,13 @@ class BookShelf:
         force: bool = False,
         added_at: Optional[str] = None,
     ) -> BookMeta:
+        """把 scan2book bundle 文件夹加入书架。
+
+        - slug：取 bundle manifest 的 slug，否则用 src_folder 名；--slug 覆盖。
+        - force：目标 slug 已存在时先删后写（原子 stage→dest 替换，中断只残留 stage）。
+        - move：成功后删源；但源在书架内则跳过（删源=删新书，cc-1）。
+        返回写入的 BookMeta。
+        """
         src_folder = Path(src_folder).expanduser().resolve()
         manifest_path = src_folder / BUNDLE_DIRNAME / MANIFEST_FILENAME
         if not manifest_path.exists():
@@ -149,15 +156,17 @@ class BookShelf:
                 raw = json.loads(user_meta_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as e:
                 raise InvalidBundleError(f"meta.json 解析失败: {e}") from e
-            # meta.json 必须是 dict；嵌套 dict 字段（source/distill）防非 dict——
-            # 否则下游 .get() 抛未捕获 AttributeError（kimi#21/cc#1/kimi#22）。
-            # book 字段下游不 .get()，非 dict 无害。
+            # meta.json 必须是 dict；嵌套 dict 字段（source/distill/book）防非 dict——
+            # 否则下游 .get() 抛未捕获 AttributeError（kimi#21/cc#1/kimi#22/cc-2：
+            # book 在 cli 多处 .get('page_count')）。
             if not isinstance(raw, dict):
                 raise InvalidBundleError(f"meta.json 必须是 JSON 对象，得到 {type(raw).__name__}")
             if not isinstance(raw.get("source"), dict):
                 raw["source"] = {}
             if not isinstance(raw.get("distill"), dict):
                 raw["distill"] = {}
+            if not isinstance(raw.get("book"), dict):
+                raw["book"] = {}
             # original_file/sha256 是"实际复制了哪个文件"的客观事实，以计算值为准
             # （覆盖用户值），否则 meta 指向的文件名可能和 dest/ 里真实文件对不上。
             raw["source"]["original_file"] = original_file or ""
@@ -240,13 +249,17 @@ class BookShelf:
                 # dest_bak 是旧书唯一幸存副本，保留供排查
                 logger.warning("写入未完成，旧书备份保留在 %s", dest_bak)
 
-        # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）
-        if move:
+        # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）。
+        # 源在书架内部时跳过删源——那种情况源==目标书目录，删源=删新书（cc-1）。
+        if move and not src_folder.is_relative_to(self.root.resolve()):
             shutil.rmtree(str(src_folder / BUNDLE_DIRNAME), ignore_errors=True)
             if original_file:
                 orig_src = src_folder / original_file
                 if orig_src.exists():
-                    orig_src.unlink()
+                    try:  # cc-6：unlink 失败不致「新书已就位却报失败」
+                        orig_src.unlink()
+                    except OSError as e:
+                        logger.warning("删源原件失败（新书已就位）%s: %s", orig_src, e)
 
         return meta
 
@@ -284,7 +297,10 @@ class BookShelf:
         """挑原件：优先已知原件扩展名，否则退回最大文件。按 (-size, name) 确定性排序，
         避免大小并列时 max() 因遍历顺序不同而跨机器不稳定。"""
         all_entries = list(src_folder.iterdir())
-        files = [f for f in all_entries if f.is_file() and f.name != META_FILENAME]
+        # 排除符号链接原件（cc-7：软链可能指向外部大文件/敏感文件，复制进来有风险）
+        files = [
+            f for f in all_entries if f.is_file() and not f.is_symlink() and f.name != META_FILENAME
+        ]
         if not files:
             return None, None
         known = [f for f in files if f.suffix.lower() in BookShelf._KNOWN_ORIGINAL_EXTS]

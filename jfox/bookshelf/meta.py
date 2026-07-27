@@ -66,7 +66,9 @@ class BookMeta:
             added_at=d.get("added_at", ""),
             source=d.get("source", {}),
             book=d.get("book", {}),
-            tags=list(d.get("tags", [])),
+            tags=(
+                list(d.get("tags")) if isinstance(d.get("tags"), list) else []
+            ),  # cc-5：非 list 不拆字符/不崩
             distill=d.get("distill", {"status": "none", "reference_notes": []}),
             schema_version=d.get("schema_version", SCHEMA_VERSION),
         )
@@ -121,7 +123,10 @@ def normalize_user_meta(d: Dict[str, Any], *, slug: str, added_at: str) -> BookM
     if status not in ("none", "partial", "done"):
         status = "none"
     notes = (meta.distill or {}).get("reference_notes", [])
-    meta.distill = {"status": status, "reference_notes": list(notes)}
+    meta.distill = {
+        "status": status,
+        "reference_notes": list(notes) if isinstance(notes, list) else [],  # cc-5
+    }
     return meta
 
 

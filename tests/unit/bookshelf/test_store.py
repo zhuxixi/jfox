@@ -333,14 +333,13 @@ def test_read_bundle_manifest_corrupt_raises_invalid(shelf_with_book):
         shelf_with_book.read_bundle_manifest("sapiens")
 
 
-def test_list_books_corrupt_tags_skipped(tmp_path):
-    # r2 cc-#14：meta.json 的 tags=null 触发 TypeError → list_books 跳过不崩
+def test_list_books_corrupt_tags_coerced(tmp_path):
+    # cc-5：meta.json tags=null/非 list 不再崩、不再丢书，规整为 [] 照常列出
     import json as _json
 
     shelf = BookShelf(tmp_path)
     bad_dir = shelf.root / "bad"
     bad_dir.mkdir(parents=True)
-    # tags=null 会让 BookMeta.from_dict 里 list(None) 抛 TypeError
     (bad_dir / "meta.json").write_text(
         _json.dumps({"slug": "bad", "title": "Bad", "added_at": "t", "tags": None}),
         encoding="utf-8",
@@ -351,8 +350,9 @@ def test_list_books_corrupt_tags_skipped(tmp_path):
         _json.dumps({"slug": "good", "title": "Good", "added_at": "t"}),
         encoding="utf-8",
     )
-    books = shelf.list_books()
-    assert [b.slug for b in books] == ["good"]
+    books = {b.slug: b for b in shelf.list_books()}
+    assert set(books) == {"bad", "good"}  # bad 不再被跳过
+    assert books["bad"].tags == []  # null tags 规整为 []
 
 
 def test_validate_slug_length_cap(tmp_path):

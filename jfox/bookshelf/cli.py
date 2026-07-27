@@ -209,13 +209,17 @@ def show_cmd(
                 return
             meta = shelf.get(slug)
             bundle_manifest = shelf.read_bundle_manifest(slug)
+            raw_pages = bundle_manifest.get("pages", [])
+            if not isinstance(raw_pages, list):  # cc-4：损坏 manifest 的 pages 非 list
+                raw_pages = []
             pages_summary = [
                 {
                     "page": p.get("page"),
                     "chars": p.get("chars", 0),
                     "has_image": p.get("has_image", False),
                 }
-                for p in bundle_manifest.get("pages", [])
+                for p in raw_pages
+                if isinstance(p, dict)  # cc-4：非 dict 元素跳过，避免 .get 崩
             ]
             data: Dict[str, Any] = meta.to_dict()
             data["path"] = str(shelf.book_dir(slug))
