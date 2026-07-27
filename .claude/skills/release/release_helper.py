@@ -12,6 +12,7 @@ jfox release 辅助脚本
     python release_helper.py 0.5.0          # 指定版本
     python release_helper.py ... --dry-run  # 只计算不修改文件
 """
+
 import json
 import re
 import subprocess
@@ -145,8 +146,16 @@ def parse_commits(last_tag: str) -> list[dict]:
 
     # -c core.quotepath=false 确保 git 输出中文不被转义
     result = subprocess.run(
-        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8",
-         "log", range_spec, "--format=%s"],
+        [
+            "git",
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "i18n.logoutputencoding=utf-8",
+            "log",
+            range_spec,
+            "--format=%s",
+        ],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
@@ -204,7 +213,9 @@ def parse_commits(last_tag: str) -> list[dict]:
     return entries
 
 
-def generate_changelog(new_version: str, current_version: str, entries: list[dict], last_tag: str = "") -> str:
+def generate_changelog(
+    new_version: str, current_version: str, entries: list[dict], last_tag: str = ""
+) -> str:
     """生成 CHANGELOG Markdown 内容"""
     today = date.today().isoformat()
 
@@ -244,8 +255,7 @@ def generate_changelog(new_version: str, current_version: str, entries: list[dic
     # 底部比较链接
     tag_prev = last_tag.lstrip("v") if last_tag else current_version
     lines.append(
-        f"[{new_version}]: https://github.com/zhuxixi/jfox/compare/"
-        f"v{tag_prev}...v{new_version}"
+        f"[{new_version}]: https://github.com/zhuxixi/jfox/compare/" f"v{tag_prev}...v{new_version}"
     )
 
     return "\n".join(lines)
@@ -289,9 +299,131 @@ def summarize_entries(entries: list[dict]) -> str:
     return ", ".join(parts) if parts else "0 changes"
 
 
+def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
+    """git 调用封装（verify 用，cwd 可注入便于测试）。"""
+    return subprocess.run(
+        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+
+def _repo_has_v_tag(root: Path) -> bool:
+    """仓库是否存在任意 v* tag（locale 无关地判定「有无 tag」）。
+
+    用 `git tag --list v*` 而非 stderr 文本——非英文 locale 下 git 的报错文案会被本地化，
+    靠 "No names found" 之类子串匹配会误判。tag --list 自身失败则 raise（真正 git 错误）。
+    """
+    out = _git(["tag", "--list", "v*"], root)
+    if out.returncode != 0:
+        raise RuntimeError(f"git tag --list 失败: {out.stderr.strip()}")
+    return bool(out.stdout.strip())
+
+
+def functional_commits_since_last_tag(root: Path) -> list[str]:
+    """last v* tag..HEAD 的功能类 commit subject（白名单：feat/fix/refactor/docs/perf）。
+
+    白名单比黑名单更抗格式偏差（非 conventional 提交 ctype='' 不入选）；额外跳过
+    merge commit、含 "bump version" 的提交，以及 docs(changelog) 这类 CHANGELOG 维护
+    提交（其 PR 号本身就是补 CHANGELOG 的，不应反过来要求进 CHANGELOG，否则 verify 陷入
+    无限修复循环）。支持 conventional 破坏性标记（feat!:/feat(scope)!:）。
+    无 v* tag（首次发版）时返回 []——没有上一版基线，无从谈漂移。
+    git log 失败时 raise RuntimeError，由 verify() 捕获转 fail-closed。
+    """
+    out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
+    if out.returncode != 0:
+        # 区分「无 v* tag」（合法，首次发版）与真正 git 错误。
+        # 用 tag --list（locale 无关）判定——非英文 locale 下 git stderr 会被本地化，不能靠文本匹配。
+        if not _repo_has_v_tag(root):
+            return []
+        raise RuntimeError(f"git describe 失败: {out.stderr.strip()}")
+    tag = out.stdout.strip()
+    out = _git(["log", f"{tag}..HEAD", "--format=%s"], root)
+    if out.returncode != 0:
+        raise RuntimeError(f"git log 失败（{tag}..HEAD）: {out.stderr.strip()}")
+    functional = {"feat", "fix", "refactor", "docs", "perf"}
+    result = []
+    for line in out.stdout.splitlines():
+        s = line.strip()
+        if not s or "bump version" in s.lower():
+            continue
+        if s.startswith("Merge "):
+            continue
+        # conventional: type[(scope)][!]:  —— 捕获 type/scope，容忍破坏性标记 !
+        m = re.match(r"^(\w+)(?:\(([^)]*)\))?!?:", s)
+        if not m:
+            continue
+        ctype = m.group(1).lower()
+        scope = (m.group(2) or "").lower()
+        if ctype not in functional:
+            continue
+        if ctype == "docs" and "changelog" in scope:
+            continue  # docs(changelog) 是补 CHANGELOG 的维护提交，跳过防 verify 死循环
+        result.append(s)
+    return result
+
+
+def changelog_top_prs(root: Path) -> set[int]:
+    """解析 CHANGELOG.md 最新版本段（首个 ## [ ... 到下一个 ## [）内的 (#NNN) 集合。"""
+    cl = root / "CHANGELOG.md"
+    if not cl.exists():
+        return set()
+    text = cl.read_text(encoding="utf-8")
+    m = re.search(
+        r"^##\s*\[[^\]]+\][^\n]*\n(.*?)(?=^##\s*\[|\Z)",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    section = m.group(1) if m else text
+    return {int(x) for x in re.findall(r"\(#(\d+)\)", section)}
+
+
+def verify(root: Path | None = None) -> dict:
+    """#333：创建 Release 前核对 last_tag..HEAD 功能 commit 的 PR 号是否都被 CHANGELOG 顶段收录。
+
+    返回 {"ok": bool, "missing": sorted[int], "extra": sorted[int], "functional_commits": int}。
+    ok=False 表示有功能 commit 的 PR 未进 CHANGELOG（漂移），应阻止发 Release。
+    数据源出错（git log 失败等）时 fail-closed：返回 ok=False + error，迫使流程停而非误判通过。
+    """
+    root = Path(root) if root else PROJECT_ROOT
+    try:
+        func_prs: set[int] = set()
+        for s in functional_commits_since_last_tag(root):
+            # 只取 subject 末尾的 (#NNN)（squash 标题里的本提交 PR 号），
+            # 避免正文引用多个 PR（如协作）把非本提交 PR 误判为必须进 CHANGELOG。
+            m = re.search(r"\(#(\d+)\)\s*$", s)
+            if m:
+                func_prs.add(int(m.group(1)))
+        cl_prs = changelog_top_prs(root)
+    except (RuntimeError, OSError, UnicodeDecodeError, ValueError) as e:
+        return {
+            "ok": False,
+            "error": f"verify 失败: {e}",
+            "missing": [],
+            "extra": [],
+            "functional_commits": 0,
+        }
+    missing = sorted(func_prs - cl_prs)
+    extra = sorted(cl_prs - func_prs)
+    return {
+        "ok": not missing,
+        "missing": missing,
+        "extra": extra,
+        "functional_commits": len(func_prs),
+    }
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "verify":
+        res = verify()
+        output_json(res)
+        sys.exit(0 if res["ok"] else 1)
+
     if len(sys.argv) < 2:
-        output_error("用法: release_helper.py <version|patch|minor|major> [--dry-run]")
+        output_error("用法: release_helper.py <version|patch|minor|major|verify> [--dry-run]")
 
     version_arg = sys.argv[1]
     dry_run = "--dry-run" in sys.argv

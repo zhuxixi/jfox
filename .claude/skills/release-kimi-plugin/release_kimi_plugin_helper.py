@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-cc-plugin release 辅助脚本
+kimi-plugin release 辅助脚本
 
-处理版本号计算、三处版本号同步 bump、changelog 生成。
-输出 JSON 供 Claude 解析。
+单一 version 字段（packages/kimi-plugin/kimi.plugin.json）的 bump + changelog。
+输出 JSON 供 Claude 解析。镜像 release_cc_plugin_helper.py，差异：仅一处版本号。
 
 用法:
-    python release_cc_plugin_helper.py patch          # bump patch
-    python release_cc_plugin_helper.py minor          # bump minor
-    python release_cc_plugin_helper.py major          # bump major
-    python release_cc_plugin_helper.py 0.6.0          # 指定版本
-    python release_cc_plugin_helper.py ... --dry-run  # 只计算不修改文件
+    python release_kimi_plugin_helper.py patch          # bump patch
+    python release_kimi_plugin_helper.py minor          # bump minor
+    python release_kimi_plugin_helper.py major          # bump major
+    python release_kimi_plugin_helper.py 0.15.0         # 指定版本
+    python release_kimi_plugin_helper.py ... --dry-run  # 只计算不修改文件
 """
 
 import argparse
@@ -20,10 +20,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 项目根目录（脚本位于 .claude/skills/release-cc-plugin/，向上 3 级）
+# 项目根目录（脚本位于 .claude/skills/release-kimi-plugin/，向上 3 级）
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-PLUGIN_JSON_REL = "packages/cc-plugin/.claude-plugin/plugin.json"
-MARKETPLACE_JSON_REL = ".claude-plugin/marketplace.json"
+KIMI_PLUGIN_JSON_REL = "packages/kimi-plugin/kimi.plugin.json"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -41,8 +40,8 @@ def _version_tuple(v: str) -> tuple[int, ...]:
 
 
 def read_current_version(root: Path) -> str:
-    """从 plugin.json 读当前版本号（单一真相源）。"""
-    data = json.loads((root / PLUGIN_JSON_REL).read_text(encoding="utf-8"))
+    """读 kimi.plugin.json 的 version（单一真相源）。"""
+    data = json.loads((root / KIMI_PLUGIN_JSON_REL).read_text(encoding="utf-8"))
     return data["version"]
 
 
@@ -67,23 +66,29 @@ def compute_new_version(current: str, spec: str) -> str:
     return new
 
 
+def _run_git(args: list[str], root: Path) -> subprocess.CompletedProcess:
+    """git 调用封装：与 release_helper._git / release_all_helper._git 一致地带上
+    `-c core.quotepath=false -c i18n.logoutputencoding=utf-8`，防中文 commit subject 乱码。"""
+    return subprocess.run(
+        ["git", "-c", "core.quotepath=false", "-c", "i18n.logoutputencoding=utf-8", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+
+
 def find_last_bump_commit(root: Path, current_version: str) -> str | None:
-    """定位上次发版提交：引入 current_version 的提交；降级为最近改 marketplace.json 的提交。"""
-    rel = MARKETPLACE_JSON_REL
+    """定位上次发版提交：引入 current_version 的提交；降级为最近改 kimi.plugin.json 的提交。"""
+    rel = KIMI_PLUGIN_JSON_REL
     for args in (
-        ["git", "log", "-S", f'"version": "{current_version}"', "--format=%H", "--", rel],
-        ["git", "log", "--format=%H", "-1", "--", rel],
+        ["log", "-S", f'"version": "{current_version}"', "--format=%H", "--", rel],
+        ["log", "--format=%H", "-1", "--", rel],
     ):
         try:
-            out = subprocess.run(
-                args,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                check=True,
-            )
+            out = _run_git(args, root)
         except subprocess.CalledProcessError:
             continue
         hits = [ln for ln in out.stdout.splitlines() if ln.strip()]
@@ -93,23 +98,15 @@ def find_last_bump_commit(root: Path, current_version: str) -> str | None:
 
 
 def get_changelog(root: Path, current_version: str) -> list[str]:
-    """自上次发版以来 packages/cc-plugin/ 的 oneline 提交摘要；无基线时取最近 30 条。"""
+    """自上次发版以来 packages/kimi-plugin/ 的 oneline 提交摘要；无基线时取最近 30 条。"""
     try:
         last = find_last_bump_commit(root, current_version)
         if last:
-            args = ["git", "log", "--oneline", f"{last}..HEAD", "--", "packages/cc-plugin/"]
+            args = ["log", "--oneline", f"{last}..HEAD", "--", "packages/kimi-plugin/"]
         else:
             # 无基线：用 --max-count 避免 HEAD~30 在浅克隆/小仓报 bad revision
-            args = ["git", "log", "--oneline", "--max-count=30", "--", "packages/cc-plugin/"]
-        out = subprocess.run(
-            args,
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=True,
-        )
+            args = ["log", "--oneline", "--max-count=30", "--", "packages/kimi-plugin/"]
+        out = _run_git(args, root)
     except (subprocess.CalledProcessError, OSError):
         # git 异常（含二进制缺失 FileNotFoundError）→ 空 changelog 降级，不崩
         return []
@@ -117,16 +114,10 @@ def get_changelog(root: Path, current_version: str) -> list[str]:
 
 
 def assert_versions(root: Path, expected: str) -> None:
-    """断言三处版本号都 == expected，否则 raise AssertionError。"""
-    plugin = json.loads((root / PLUGIN_JSON_REL).read_text(encoding="utf-8"))
-    market = json.loads((root / MARKETPLACE_JSON_REL).read_text(encoding="utf-8"))
-    actuals = [
-        plugin["version"],
-        market["metadata"]["version"],
-        market["plugins"][0]["version"],
-    ]
-    if any(a != expected for a in actuals):
-        raise AssertionError(f"写后版本号校验失败: 期望 {expected}，实际 {actuals}")
+    """写后断言 version == expected，否则 raise AssertionError。"""
+    data = json.loads((root / KIMI_PLUGIN_JSON_REL).read_text(encoding="utf-8"))
+    if data["version"] != expected:
+        raise AssertionError(f"写后版本号校验失败: 期望 {expected}，实际 {data['version']}")
 
 
 def _read_raw(path: Path) -> str:
@@ -140,45 +131,30 @@ def _write_raw(path: Path, text: str) -> None:
 
 
 def bump_version_files(root: Path, old: str, new: str) -> list[str]:
-    """原子 bump 三处版本号：计数预校验 + 落盘失败回滚已写文件 + 写后断言。"""
-    targets = [
-        (root / PLUGIN_JSON_REL, 1),
-        (root / MARKETPLACE_JSON_REL, 2),
-    ]
+    """原子 bump 单一 version 字段：计数预校验（=1）+ 落盘 + 写后断言；失败回滚。"""
+    path = root / KIMI_PLUGIN_JSON_REL
     needle = f'"version": "{old}"'
     replacement = f'"version": "{new}"'
-    # 预校验：读原文 + 计数，全过才准备落盘
-    pending = []  # (path, original_text, new_text, rel)
-    for path, expected_count in targets:
-        original = _read_raw(path)
-        count = original.count(needle)
-        if count != expected_count:
-            raise ValueError(
-                f"{path.relative_to(root)} 命中 {count} 次（期望 {expected_count}），"
-                f"版本号 {old}。中止，未写任何文件。"
-            )
-        pending.append(
-            (path, original, original.replace(needle, replacement), path.relative_to(root))
+    original = _read_raw(path)
+    count = original.count(needle)
+    if count != 1:
+        raise ValueError(
+            f"{KIMI_PLUGIN_JSON_REL} 命中 {count} 次（期望 1），版本号 {old}。中止，未写。"
         )
-    # 落盘：先记账再写，任一写/断言失败则回滚已写文件（尽力，堵 CLAUDE.md 版本不一致坑）
-    written: list[tuple[Path, str]] = []
     try:
-        for path, original, new_text, _ in pending:
-            written.append((path, original))  # 先记账：写中途失败也回滚此文件
-            _write_raw(path, new_text)
+        _write_raw(path, original.replace(needle, replacement))
         assert_versions(root, new)  # 写后兜底断言；失败也走回滚
     except (OSError, AssertionError, ValueError, KeyError, IndexError):
-        for path, original in written:
-            try:
-                _write_raw(path, original)
-            except OSError:
-                pass  # 回滚失败只能尽力而为
+        try:
+            _write_raw(path, original)
+        except OSError:
+            pass  # 回滚失败只能尽力而为
         raise
-    return [str(rel) for _, _, _, rel in pending]
+    return [KIMI_PLUGIN_JSON_REL]
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="cc-plugin release helper")
+    parser = argparse.ArgumentParser(description="kimi-plugin release helper")
     parser.add_argument("version", help="patch | minor | major | x.y.z")
     parser.add_argument("--dry-run", action="store_true", help="只计算不修改文件")
     args = parser.parse_args()
@@ -207,7 +183,7 @@ def main() -> None:
             {
                 "current_version": current,
                 "new_version": new,
-                "files_to_change": [PLUGIN_JSON_REL, MARKETPLACE_JSON_REL],
+                "files_to_change": [KIMI_PLUGIN_JSON_REL],
                 "changelog_summary": changelog,
             }
         )
