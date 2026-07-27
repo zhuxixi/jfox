@@ -237,6 +237,27 @@ class TestFindLastBumpCommit:
             with pytest.raises(RuntimeError, match="git log 失败"):
                 mod._find_last_bump_commit(tmp_path, "0.6.0", ".claude-plugin/marketplace.json")
 
+    def test_single_fail_fallback_empty_no_raise(self, tmp_path):
+        """-S 失败 + fallback 成功但无命中 → 返回 ''（单次失败不 raise，与 docstring 一致）。"""
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        s_fail = MagicMock(stdout="", stderr="fatal: pickaxe error", returncode=1)
+        s_ok_empty = MagicMock(stdout="", returncode=0)
+        with patch.object(mod, "_git", side_effect=[s_fail, s_ok_empty]):
+            assert (
+                mod._find_last_bump_commit(tmp_path, "0.6.0", ".claude-plugin/marketplace.json")
+                == ""
+            )
+
+    def test_both_fail_empty_stderr_raises(self, tmp_path):
+        """两次都失败即使 stderr 为空也 raise（fail-closed，不依赖 stderr 文本）。"""
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        fail_empty = MagicMock(stdout="", stderr="", returncode=1)
+        with patch.object(mod, "_git", return_value=fail_empty):
+            with pytest.raises(RuntimeError, match="git log 失败"):
+                mod._find_last_bump_commit(tmp_path, "0.6.0", ".claude-plugin/marketplace.json")
+
 
 class TestMain:
     def test_main_outputs_error_json_on_failure(self, monkeypatch, capsys):
