@@ -322,9 +322,13 @@ def functional_commits_since_last_tag(root: Path) -> list[str]:
     git log 失败时 raise RuntimeError，由 verify() 捕获转 fail-closed。
     """
     out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
-    tag = out.stdout.strip() if out.returncode == 0 else ""
-    if not tag:
-        return []  # 无上一版基线（首次发版），无漂移可校验
+    if out.returncode != 0:
+        err = out.stderr.strip()
+        # 合法：仓库无 v* tag（首次发版）→ 无基线可校验；其余是真正 git 错误 → fail-closed
+        if "No names found" in err or "No tags can describe" in err:
+            return []
+        raise RuntimeError(f"git describe 失败: {err}")
+    tag = out.stdout.strip()
     out = _git(["log", f"{tag}..HEAD", "--format=%s"], root)
     if out.returncode != 0:
         raise RuntimeError(f"git log 失败（{tag}..HEAD）: {out.stderr.strip()}")
@@ -381,6 +385,7 @@ def verify(root: Path | None = None) -> dict:
             m = re.search(r"\(#(\d+)\)\s*$", s)
             if m:
                 func_prs.add(int(m.group(1)))
+        cl_prs = changelog_top_prs(root)
     except (RuntimeError, OSError, UnicodeDecodeError, ValueError) as e:
         return {
             "ok": False,
@@ -389,7 +394,6 @@ def verify(root: Path | None = None) -> dict:
             "extra": [],
             "functional_commits": 0,
         }
-    cl_prs = changelog_top_prs(root)
     missing = sorted(func_prs - cl_prs)
     extra = sorted(cl_prs - func_prs)
     return {

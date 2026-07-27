@@ -140,6 +140,14 @@ class TestFunctionalCommits:
         res = mod.functional_commits_since_last_tag(tmp_path)
         assert set(res) == {"feat!: big (#999)", "feat(scope)!: also (#998)"}
 
+    def test_describe_real_error_raises(self, tmp_path):
+        """git describe 真正失败（非「无 tag」）→ raise，不静默返回 []（fail-closed）。"""
+        mod = _load_helper_module()
+        fake_err = MagicMock(stdout="", stderr="fatal: not a git repository", returncode=1)
+        with patch.object(mod, "_git", return_value=fake_err):
+            with pytest.raises(RuntimeError, match="git describe 失败"):
+                mod.functional_commits_since_last_tag(tmp_path)
+
 
 class TestVerifyEdgeCases:
     def test_takes_only_trailing_pr(self, tmp_path):
@@ -166,6 +174,15 @@ class TestVerifyEdgeCases:
         res = mod.verify(tmp_path)
         assert res["ok"] is True
         assert res["missing"] == []
+
+    def test_changelog_read_error_caught(self, tmp_path):
+        """CHANGELOG 读取异常也在 verify 的 try 内 → ok=False+error（不冒泡 traceback）。"""
+        mod = _load_helper_module()
+        with patch.object(mod, "functional_commits_since_last_tag", return_value=[]):
+            with patch.object(mod, "changelog_top_prs", side_effect=OSError("read fail")):
+                res = mod.verify(tmp_path)
+        assert res["ok"] is False
+        assert "read fail" in res["error"]
 
 
 class TestVerifyCLI:

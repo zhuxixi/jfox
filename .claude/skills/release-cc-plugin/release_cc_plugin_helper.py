@@ -166,7 +166,7 @@ def bump_version_files(root: Path, old: str, new: str) -> list[str]:
             written.append((path, original))  # 先记账：写中途失败也回滚此文件
             _write_raw(path, new_text)
         assert_versions(root, new)  # 写后兜底断言；失败也走回滚
-    except Exception:
+    except (OSError, AssertionError, ValueError, KeyError):
         for path, original in written:
             try:
                 _write_raw(path, original)

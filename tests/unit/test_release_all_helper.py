@@ -184,6 +184,19 @@ class TestDetectFailClosed:
         assert res["changed"] is False
         assert "git log 失败" in res["skip_reason"]
 
+    def test_detect_cc_find_bump_git_error(self, tmp_path):
+        """_find_last_bump_commit 的 git log -S 失败 → detect 报 skip_reason，不静默。"""
+        mod = _load_helper_module()
+        _bootstrap_all(tmp_path)
+        with patch.object(
+            mod,
+            "_find_last_bump_commit",
+            side_effect=RuntimeError("git log 失败（定位 bump commit）: x"),
+        ):
+            res = mod.detect_cc(tmp_path)
+        assert res["changed"] is False
+        assert "git log 失败" in res["skip_reason"]
+
     def test_detect_cc_bad_version_format(self, tmp_path):
         """版本号非 X.Y.Z → 降级为 changed=False + skip_reason，不冒泡 traceback。"""
         mod = _load_helper_module()
