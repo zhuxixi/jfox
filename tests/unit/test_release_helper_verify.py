@@ -121,6 +121,52 @@ class TestFunctionalCommits:
         # 仅 feat: c 入选；merge (#202) 与非 conventional (#303) 被排除
         assert res == ["feat: c (#404)"]
 
+    def test_no_tag_returns_empty(self, tmp_path):
+        """无 v* tag（首次发版）→ 无基线，返回 []（不把全部历史 commit 纳入校验）。"""
+        mod = _load_helper_module()
+        _init_repo(tmp_path)
+        _commit(tmp_path, "feat: a (#101)")
+        _commit(tmp_path, "fix: b (#102)", "g.txt")
+        assert mod.functional_commits_since_last_tag(tmp_path) == []
+
+    def test_breaking_change_marker_matched(self, tmp_path):
+        """conventional 破坏性标记 !（feat!:/feat(scope)!:) 应被识别为 functional。"""
+        mod = _load_helper_module()
+        _init_repo(tmp_path)
+        _commit(tmp_path, "chore: base")
+        subprocess.run(["git", "tag", "v0.1.0"], cwd=str(tmp_path), check=True)
+        _commit(tmp_path, "feat!: big (#999)", "b.txt")
+        _commit(tmp_path, "feat(scope)!: also (#998)", "c.txt")
+        res = mod.functional_commits_since_last_tag(tmp_path)
+        assert set(res) == {"feat!: big (#999)", "feat(scope)!: also (#998)"}
+
+
+class TestVerifyEdgeCases:
+    def test_takes_only_trailing_pr(self, tmp_path):
+        """subject 含多个 (#NNN) 时只取末尾（本提交 PR 号），避免引用 PR 误判 missing。"""
+        mod = _load_helper_module()
+        _init_repo(tmp_path)
+        _commit(tmp_path, "chore: base")
+        subprocess.run(["git", "tag", "v0.1.0"], cwd=str(tmp_path), check=True)
+        _commit(tmp_path, "feat: merge a & b (#111) (#222)", "m.txt")
+        _write_changelog(tmp_path, [222])  # 仅末尾 222 在 CHANGELOG
+        res = mod.verify(tmp_path)
+        assert res["ok"] is True  # #111 非末尾，不计入；#222 已覆盖
+        assert res["missing"] == []
+
+    def test_skips_changelog_scope(self, tmp_path):
+        """docs(changelog) 维护提交的 PR 号不要求进 CHANGELOG（防 verify 死循环）。"""
+        mod = _load_helper_module()
+        _init_repo(tmp_path)
+        _commit(tmp_path, "chore: base")
+        subprocess.run(["git", "tag", "v0.1.0"], cwd=str(tmp_path), check=True)
+        _commit(tmp_path, "feat: real (#401)", "f.txt")
+        _commit(tmp_path, "docs(changelog): fix missing (#402)", "d.txt")
+        _write_changelog(tmp_path, [401])  # 401 覆盖；402 是维护提交无需进 CHANGELOG
+        res = mod.verify(tmp_path)
+        assert res["ok"] is True
+        assert res["missing"] == []
+
 
 class TestVerifyCLI:
     def test_cli_returns_json_with_ok_key(self):

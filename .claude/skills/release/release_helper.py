@@ -314,17 +314,20 @@ def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
 def functional_commits_since_last_tag(root: Path) -> list[str]:
     """last v* tag..HEAD 的功能类 commit subject（白名单：feat/fix/refactor/docs/perf）。
 
-    白名单比黑名单更抗格式偏差（非 conventional 提交 ctype='' 不入选，避免其 (#NNN)
-    注入伪 PR 号）；额外跳过 merge commit 与含 "bump version" 的提交。
-    git log 本身失败（仓库损坏/锁/浅克隆缺对象等）时 raise RuntimeError——由 verify()
-    捕获转为 ok=False，防 #333 安全网在数据源出错时静默放行（fail-open）。
+    白名单比黑名单更抗格式偏差（非 conventional 提交 ctype='' 不入选）；额外跳过
+    merge commit、含 "bump version" 的提交，以及 docs(changelog) 这类 CHANGELOG 维护
+    提交（其 PR 号本身就是补 CHANGELOG 的，不应反过来要求进 CHANGELOG，否则 verify 陷入
+    无限修复循环）。支持 conventional 破坏性标记（feat!:/feat(scope)!:）。
+    无 v* tag（首次发版）时返回 []——没有上一版基线，无从谈漂移。
+    git log 失败时 raise RuntimeError，由 verify() 捕获转 fail-closed。
     """
     out = _git(["describe", "--tags", "--abbrev=0", "--match", "v*"], root)
     tag = out.stdout.strip() if out.returncode == 0 else ""
-    rng = f"{tag}..HEAD" if tag else "HEAD"
-    out = _git(["log", rng, "--format=%s"], root)
+    if not tag:
+        return []  # 无上一版基线（首次发版），无漂移可校验
+    out = _git(["log", f"{tag}..HEAD", "--format=%s"], root)
     if out.returncode != 0:
-        raise RuntimeError(f"git log 失败（{rng}）: {out.stderr.strip()}")
+        raise RuntimeError(f"git log 失败（{tag}..HEAD）: {out.stderr.strip()}")
     functional = {"feat", "fix", "refactor", "docs", "perf"}
     result = []
     for line in out.stdout.splitlines():
@@ -333,10 +336,16 @@ def functional_commits_since_last_tag(root: Path) -> list[str]:
             continue
         if s.startswith("Merge "):
             continue
-        m = re.match(r"^(\w+)(?:\([^)]*\))?:", s)
-        ctype = m.group(1).lower() if m else ""
+        # conventional: type[(scope)][!]:  —— 捕获 type/scope，容忍破坏性标记 !
+        m = re.match(r"^(\w+)(?:\(([^)]*)\))?!?:", s)
+        if not m:
+            continue
+        ctype = m.group(1).lower()
+        scope = (m.group(2) or "").lower()
         if ctype not in functional:
             continue
+        if ctype == "docs" and "changelog" in scope:
+            continue  # docs(changelog) 是补 CHANGELOG 的维护提交，跳过防 verify 死循环
         result.append(s)
     return result
 
@@ -367,9 +376,12 @@ def verify(root: Path | None = None) -> dict:
     try:
         func_prs: set[int] = set()
         for s in functional_commits_since_last_tag(root):
-            for x in re.findall(r"\(#(\d+)\)", s):
-                func_prs.add(int(x))
-    except Exception as e:
+            # 只取 subject 末尾的 (#NNN)（squash 标题里的本提交 PR 号），
+            # 避免正文引用多个 PR（如协作）把非本提交 PR 误判为必须进 CHANGELOG。
+            m = re.search(r"\(#(\d+)\)\s*$", s)
+            if m:
+                func_prs.add(int(m.group(1)))
+    except (RuntimeError, OSError, UnicodeDecodeError, ValueError) as e:
         return {
             "ok": False,
             "error": f"verify 失败: {e}",

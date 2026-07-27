@@ -10,6 +10,7 @@ release-all 编排辅助脚本：检测三组件（jfox CLI / cc-plugin / kimi-p
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 # 项目根目录（脚本位于 .claude/skills/release-all/，向上 3 级）
@@ -145,7 +146,8 @@ def _detect_plugin(
     """cc/kimi 通用检测：自上次 bump commit 起是否有改 watch_paths 的提交。
 
     - version_source：含顶层 version 字段的文件（读当前版本）。
-    - baseline_file：用于 git log -S 定位上次 bump 的文件（cc=marketplace.json，kimi=kimi.plugin.json）。
+    - baseline_file：git log -S 定位上次 bump 的文件（cc=marketplace.json、
+      kimi=kimi.plugin.json）。
     - watch_paths：检测改动的路径（cc/kimi 各自 packages/ 目录）。
     """
     try:
@@ -219,7 +221,11 @@ def detect(root: Path) -> dict:
 
 def main() -> None:
     # 仅支持 detect（默认）；无参数或参数为 detect 都走 detect
-    output_json(detect(PROJECT_ROOT))
+    try:
+        output_json(detect(PROJECT_ROOT))
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        output_json({"error": f"detect 失败: {e}"})
+        sys.exit(1)
 
 
 if __name__ == "__main__":

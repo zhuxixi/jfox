@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 HELPER = str(
     Path(__file__).resolve().parents[2]
     / ".claude"
@@ -200,6 +202,21 @@ class TestDetectFailClosed:
         res = mod.detect_cc(tmp_path)
         assert res["changed"] is False
         assert "读取版本失败" in res["skip_reason"]
+
+
+class TestMain:
+    def test_main_outputs_error_json_on_failure(self, monkeypatch, capsys):
+        """detect 抛异常时 main 兜底输出 error JSON + exit 1（不 traceback）。"""
+        mod = _load_helper_module()
+        monkeypatch.setattr(mod, "PROJECT_ROOT", Path("/tmp/nonexistent-release-all-test"))
+        monkeypatch.setattr(
+            mod, "detect", lambda root: (_ for _ in ()).throw(OSError("git missing"))
+        )
+        with pytest.raises(SystemExit) as exc:
+            mod.main()
+        assert exc.value.code == 1
+        data = json.loads(capsys.readouterr().out.strip())
+        assert "error" in data and "git missing" in data["error"]
 
 
 class TestDetectCLI:

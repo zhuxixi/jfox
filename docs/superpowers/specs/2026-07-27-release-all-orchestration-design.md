@@ -5,6 +5,8 @@
 - 日期：2026-07-27
 - 状态：spec draft（待用户 review）
 
+> **演进声明（2026-07-27，CR 后）**：本 spec 为设计阶段产物，**最终实现以 `.claude/skills/` 下代码 + Zima 双 Bot CR 加固为准**。已知与 §3/§5 描述的偏差（均已落地为更稳的实现）：verify 改白名单 + fail-closed（窄异常）+ 只取末尾 PR 号 + 跳 `docs(changelog)`；detect 检 git returncode、`_read_json_version` 校验版本格式、`detect_cc` 用 `plugin.json` 读版本而 `marketplace.json` 仅作 `-S` 基线；各 SKILL Step 1 用 `gh pr list --json | grep` 替代 `--head` 通配（`--head` 不支持通配）。下文代码片段若与上述不符，以 shipped 代码为准。
+
 ## 1. 背景与目标
 
 jfox 有三条**独立**发版轨道，skill 覆盖参差：
@@ -209,7 +211,7 @@ cc/kimi 在计划内但无 Release 步骤。
 - `release_kimi_plugin_helper`：bump 原子性（count≠1 报错不写）、compute_new_version 边界（降级/同号拒）、changelog 取基线..HEAD。
 - `release_helper.verify`：CHANGELOG 顶段 PR 号 ⊇/≠ functional commits 的 `(#NNN)` → 退出码 0/1 + missing 输出正确。
 
-放 `tests/unit/release/`（与现有 unit 测试组织一致）。
+放 `tests/unit/`（与现有 unit 测试组织一致）。
 
 ## 7. 改动清单
 
@@ -218,9 +220,9 @@ cc/kimi 在计划内但无 Release 步骤。
 - `.claude/skills/release-all/release_all_helper.py`
 - `.claude/skills/release-kimi-plugin/SKILL.md`
 - `.claude/skills/release-kimi-plugin/release_kimi_plugin_helper.py`
-- `tests/unit/release/test_release_all_helper.py`
-- `tests/unit/release/test_release_kimi_plugin_helper.py`
-- `tests/unit/release/test_release_helper_verify.py`
+- `tests/unit/test_release_all_helper.py`
+- `tests/unit/test_release_kimi_plugin_helper.py`
+- `tests/unit/test_release_helper_verify.py`
 
 修改：
 - `.claude/skills/release/release_helper.py`（加 `verify` 子命令；main 路由 `verify` 分支）

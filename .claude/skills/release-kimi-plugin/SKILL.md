@@ -34,7 +34,8 @@ description: Release a new version of the kimi-plugin (Kimi Code 集成). Bumps 
 git branch --show-current                                  # 期望 main
 git status --porcelain                                     # 期望 空
 git branch --list 'chore/bump-kimi-plugin-*'               # 期望 空
-gh pr list --state open --head "chore/bump-kimi-plugin-*"  # 期望 空
+# gh pr list --head 只支持精确分支名（不支持通配），改用 json+grep 列 open kimi bump PR
+gh pr list --state open --json headRefName --jq '.[].headRefName' | grep 'chore/bump-kimi-plugin-'   # 期望无输出
 ```
 
 ### Step 2: dry-run 预览

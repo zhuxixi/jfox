@@ -144,15 +144,18 @@ git pull origin main
 uv run python .claude/skills/release/release_helper.py verify
 ```
 
-退出码非 0 → 打印 missing 条目，**停止**，提示用户补 CHANGELOG（开 `docs(changelog)` PR 合并）后重跑本步。退出码 0 才继续创建 Release：
+退出码非 0 → 打印 missing 条目，**停止**，按下面流程修复后重跑（**不能直接重跑**——本地 main 须先拉取补丁，否则 verify 仍会失败）：
+
+1. 开 `docs(changelog)` PR，把 missing PR 号补进 CHANGELOG.md 顶段（首个 `## [...]` 版本段），合并到 main。
+2. `git checkout main && git pull origin main`（拉取刚合并的 CHANGELOG 补丁）。
+3. 重跑 `uv run python .claude/skills/release/release_helper.py verify`，退出码 0 才继续。
+
+退出码 0 → 创建 Release。**release notes 必须取自当前 CHANGELOG.md 的顶段**（首个 `## [{new_version}]` 版本段的全部条目）——若中间经过 verify 补丁，顶段已含新增条目，**不要复用 Step 2/3 缓存的 `{changelog_preview}`**：
 
 ```bash
 gh release create v{new_version} \
   --title "v{new_version}" \
-  --notes "$(cat <<'EOF'
-{changelog_preview}
-EOF
-)"
+  --notes "<CHANGELOG.md 顶段（## [{new_version}] ... 到下一个 ## [ 之间）的全部条目>"
 ```
 
 告知用户：

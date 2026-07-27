@@ -30,7 +30,8 @@ description: Release all three components (jfox CLI + cc-plugin + kimi-plugin) i
 git branch --show-current                       # 期望 main
 git status --porcelain                          # 期望 空
 git branch --list 'chore/bump-*'                # 期望 空（三组件任一 bump 分支都不能存在）
-gh pr list --state open --head "chore/bump-*"   # 期望 空
+# gh pr list --head 只支持精确分支名（不支持通配），改用 json+grep 列 open bump PR
+gh pr list --state open --json headRefName --jq '.[].headRefName' | grep 'chore/bump-'   # 期望无输出
 ```
 
 ### Step 2: 检测
@@ -63,10 +64,10 @@ detect 已算出 suggested_version 并经确认，跳过各单组件 skill 的 d
 对每个 changed 组件，循环执行（helper 在 main 工作树改文件 → 从 main 拉 bump 分支 → commit → push → 开 PR）：
 
 1. `git checkout main`（确保下一组件从干净的 main 拉分支）
-2. 正式 bump + 建分支 + commit + push + `gh pr create`：
-   - **jfox** → `release_helper.py <v>` → `git checkout -b chore/bump-version-<v>` → `git add pyproject.toml jfox/__init__.py uv.lock CHANGELOG.md` → commit → push → PR（body 用 changelog_preview）
-   - **cc-plugin** → `release_cc_plugin_helper.py <v>` → `git checkout -b chore/bump-cc-plugin-<v>` → `git add packages/cc-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json` → commit → push → PR
-   - **kimi-plugin** → `release_kimi_plugin_helper.py <v>` → `git checkout -b chore/bump-kimi-plugin-<v>` → `git add packages/kimi-plugin/kimi.plugin.json` → commit → push → PR
+2. 正式 bump + 建分支 + commit + push + 开 PR（每条都用完整命令，`git push` 须带 `-u` 设 upstream）：
+   - **jfox**：`uv run python .claude/skills/release/release_helper.py <v>` → `git checkout -b chore/bump-version-<v>` → `git add pyproject.toml jfox/__init__.py uv.lock CHANGELOG.md` → `git commit -m "chore: bump version to <v>"` → `git push -u origin chore/bump-version-<v>` → `gh pr create --title "chore: bump version to <v>" --body "<changelog_preview>"`
+   - **cc-plugin**：`uv run python .claude/skills/release-cc-plugin/release_cc_plugin_helper.py <v>` → `git checkout -b chore/bump-cc-plugin-<v>` → `git add packages/cc-plugin/.claude-plugin/plugin.json .claude-plugin/marketplace.json` → `git commit -m "chore(cc-plugin): bump version <cur> → <v>"` → `git push -u origin chore/bump-cc-plugin-<v>` → `gh pr create --title "chore(cc-plugin): bump version <cur> → <v>" --body "<changelog>"`
+   - **kimi-plugin**：`uv run python .claude/skills/release-kimi-plugin/release_kimi_plugin_helper.py <v>` → `git checkout -b chore/bump-kimi-plugin-<v>` → `git add packages/kimi-plugin/kimi.plugin.json` → `git commit -m "chore(kimi-plugin): bump version <cur> → <v>"` → `git push -u origin chore/bump-kimi-plugin-<v>` → `gh pr create --title "chore(kimi-plugin): bump version <cur> → <v>" --body "<changelog>"`
 
 三组件文件不冲突，PR 可并存。收集所有 PR URL。
 

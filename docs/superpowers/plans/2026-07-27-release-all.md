@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.10+、stdlib only（json/re/subprocess/pathlib/argparse）、pytest、git CLI。
 
+> **演进声明（2026-07-27，CR 后）**：本文是 point-in-time 实现计划。**最终实现以 `.claude/skills/` 下代码为准**，并融合了 Zima 双 Bot CR 的多轮加固：`functional_commits_since_last_tag` 白名单 + 跳 merge + 跳 `docs(changelog)` + 容忍 `!` + 无 tag 返回 []；`verify` 只取末尾 PR 号 + fail-closed（窄异常）；`detect_jfox`/`_detect_plugin` 检 git returncode；`_read_json_version` 加 VERSION_RE 校验；`detect_cc` 用 `plugin.json` 读版本 / `marketplace.json` 仅作 `-S` 基线；`release_all_helper.main` 顶层 try-except；各 SKILL Step 1 用 `gh pr list --json | grep` 替代 `--head` 通配。下文代码片段若与上述不符，以 shipped 实现为准。
+
 ## Global Constraints
 
 - 行宽 100（black + ruff）；中文注释。
@@ -1029,7 +1031,7 @@ git commit -m "feat(release): #334 release_all_helper detect——三组件改�
 
 **Files:**
 - Create: `.claude/skills/release-all/SKILL.md`
-- Modify: `.claude/skills/release/SkILL.md`（Step 9 前插 verify）
+- Modify: `.claude/skills/release/SKILL.md`（Step 9 前插 verify）
 
 **Interfaces:**
 - Produces: `/release-all` skill 编排散文；`/release` Step 9 增加 verify gate。
