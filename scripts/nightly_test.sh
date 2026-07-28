@@ -55,8 +55,49 @@ fi
 
 # --- 核心流程（Task 4 实现）---
 run_tests() {
-  echo "TODO: run_tests 占位（Task 4 填充）" >&2
-  return 1
+  # 建 fresh worktree（基于 origin/main，绝不 checkout 本地 main）
+  local ts; ts="$(date +%s)"
+  # NOTE: wt/sandbox 故意不写 local —— cleanup EXIT trap 在 run_tests 返回后
+  # 才触发（脚本退出时），local 变量届时已出栈，set -u 下会报 unbound variable。
+  wt="$LOG_DIR/worktree-$ts"
+  git -C "$REPO_ROOT" fetch -q origin main
+  git -C "$REPO_ROOT" worktree add -q --detach "$wt" origin/main
+
+  # 换假 HOME 沙箱，但 HF 缓存指回真实路径（避免重下 bge-m3 ~2GB）
+  sandbox="$(mktemp -d "$LOG_DIR/home-XXXXXX")"
+  local real_hf="$REAL_HOME/.cache/huggingface"
+
+  # 清理函数（无论成败都跑）
+  cleanup() {
+    if [[ "$KEEP_WORKTREE" -eq 1 ]]; then
+      log "保留 worktree: $wt（沙箱: $sandbox）"
+    else
+      git -C "$REPO_ROOT" worktree remove --force "$wt" 2>/dev/null || true
+      rm -rf "$sandbox"
+    fi
+  }
+  trap cleanup EXIT
+
+  log "worktree=$wt sandbox=$sandbox"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    # 人造失败输出（验证 issue 流程用）；不真跑 pytest
+    echo "==== dry-run 人造失败 ===="
+    echo "FAILED tests/unit/test_nightly_test_helpers.py::test_extract_failures_parses_nodeids - FakeError: dry-run"
+    echo "FAILED tests/unit/test_nightly_test_helpers.py::test_compute_signature_order_invariant - FakeError: dry-run"
+    echo "===== 2 failed in 0.01s ====="
+    return 1
+  fi
+
+  # 在 worktree 内、假 HOME 下跑全量测试
+  (
+    cd "$wt"
+    export HOME="$sandbox"
+    [[ -d "$real_hf" ]] && export HF_HOME="$real_hf"
+    # 守 lockfile，不漂移依赖
+    uv sync --frozen --extra dev
+    uv run pytest tests/ -v --tb=short -ra
+  )
 }
 
 # --- 失败分支（Task 5 实现）---
