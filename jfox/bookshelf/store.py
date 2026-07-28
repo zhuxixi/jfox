@@ -156,7 +156,7 @@ class BookShelf:
         返回写入的 BookMeta。
         """
         src_folder = Path(src_folder).expanduser().resolve()
-        bundle_src = self._detect_bundle(src_folder)
+        bundle_src, layout = self._detect_bundle(src_folder)
         manifest_path = bundle_src / MANIFEST_FILENAME
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -269,7 +269,11 @@ class BookShelf:
         # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）。
         # 源在书架内部时跳过删源——那种情况源==目标书目录，删源=删新书（cc-1）。
         if move and not src_folder.is_relative_to(self.root.resolve()):
-            self._remove_consumed_sources(bundle_src, orig_src_path)
+            safe_orig = orig_src_path
+            if safe_orig is not None and safe_orig.is_relative_to(self.root.resolve()):
+                # cc-1/D5：--original 指向书架内既有书的文件时跳过删源（删了=破坏既有书）
+                safe_orig = None
+            self._remove_consumed_sources(bundle_src, safe_orig, layout)
 
         return meta
 
@@ -301,15 +305,17 @@ class BookShelf:
             raise InvalidBundleError(f"非法 slug（超长，>80 字节）: {slug!r}")
 
     @staticmethod
-    def _detect_bundle(src_folder: Path) -> Path:
-        """识别 bundle 源目录：包装布局 <folder>/bundle/manifest.json（向后兼容）优先，
-        否则扁平布局 <folder>/manifest.json（scan2book v1 真实产出）。都不在则报错。"""
+    def _detect_bundle(src_folder: Path) -> tuple[Path, str]:
+        """识别 bundle 源目录与布局：包装（<folder>/bundle/manifest.json，向后兼容）
+        或扁平（<folder>/manifest.json，scan2book v1 真实产出）。返回 (bundle_src, layout)；
+        都不在则报错。layout 供 --move 删源时区分整目录删 vs 仅删消费项（不靠 bundle_src
+        名字猜——flat 文件夹可能恰叫 bundle）。"""
         wrapped = src_folder / BUNDLE_DIRNAME / MANIFEST_FILENAME
         if wrapped.exists():
-            return src_folder / BUNDLE_DIRNAME
+            return src_folder / BUNDLE_DIRNAME, "wrapped"
         flat = src_folder / MANIFEST_FILENAME
         if flat.exists():
-            return src_folder
+            return src_folder, "flat"
         raise InvalidBundleError(
             f"找不到 scan2book 产物 manifest.json（已尝试 "
             f"{BUNDLE_DIRNAME}/{MANIFEST_FILENAME} 与 {MANIFEST_FILENAME}）"
@@ -359,16 +365,16 @@ class BookShelf:
         return src_folder / name, name, sha
 
     @staticmethod
-    def _remove_consumed_sources(bundle_src: Path, orig_src_path: Optional[Path]) -> None:
+    def _remove_consumed_sources(
+        bundle_src: Path, orig_src_path: Optional[Path], layout: str
+    ) -> None:
         """--move 删除本次消费的源：bundle 白名单组件（manifest/pages/images）+ 原件。
-        包装布局（bundle_src=<folder>/bundle）整目录删；扁平布局（bundle_src=<folder>）
-        只删消费项，不动 sibling 过程文件（checkpoint/qa_*）。"""
-        # 扁平：bundle_src == 其父文件夹的 manifest 所在层；用「是否含 bundle/ 子目录」区分更稳
-        is_wrapped = bundle_src.name == BUNDLE_DIRNAME
-        if is_wrapped:
+        layout 由 _detect_bundle 判定。包装→整 bundle/ 目录删；扁平→只删消费项，不动
+        sibling 过程文件（checkpoint/qa_*）。原件删源见 add() 的书架内守卫。"""
+        if layout == "wrapped":
             if bundle_src.exists():
                 shutil.rmtree(bundle_src, ignore_errors=True)
-        else:
+        else:  # flat
             for name in BUNDLE_WHITELIST_FILES:
                 f = bundle_src / name
                 if f.is_file():

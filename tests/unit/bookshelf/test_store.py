@@ -428,7 +428,7 @@ def test_detect_bundle_wrapped(tmp_path):
     folder = tmp_path / "src" / "w"
     (folder / "bundle").mkdir(parents=True)
     (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
-    assert BookShelf._detect_bundle(folder) == folder / "bundle"
+    assert BookShelf._detect_bundle(folder) == (folder / "bundle", "wrapped")
 
 
 def test_detect_bundle_flat(tmp_path):
@@ -437,7 +437,7 @@ def test_detect_bundle_flat(tmp_path):
     folder = tmp_path / "src" / "f"
     folder.mkdir(parents=True)
     (folder / "manifest.json").write_text("{}", encoding="utf-8")
-    assert BookShelf._detect_bundle(folder) == folder
+    assert BookShelf._detect_bundle(folder) == (folder, "flat")
 
 
 def test_detect_bundle_wrapped_preferred_over_flat(tmp_path):
@@ -448,7 +448,7 @@ def test_detect_bundle_wrapped_preferred_over_flat(tmp_path):
     (folder / "bundle").mkdir(parents=True)
     (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
     (folder / "manifest.json").write_text("{}", encoding="utf-8")
-    assert BookShelf._detect_bundle(folder) == folder / "bundle"
+    assert BookShelf._detect_bundle(folder) == (folder / "bundle", "wrapped")
 
 
 def test_detect_bundle_neither_raises(tmp_path):
@@ -563,3 +563,32 @@ def test_add_move_wrapped_still_removes_bundle_dir(tmp_path, make_book_folder):
     shelf.add(folder, move=True, added_at="t")
     assert not (folder / "bundle").exists()
     assert not (folder / "original.pdf").exists()
+
+
+def test_add_move_flat_when_folder_named_bundle_keeps_process_files(tmp_path, make_book_folder):
+    # #349 C1 回归：flat 源文件夹恰叫 "bundle" 时，--move 不能 rmtree 整目录
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="bundle", pages=1, layout="flat", with_original=True, with_process_files=True
+    )
+    assert folder.name == "bundle"
+    shelf.add(folder, move=True, added_at="t")
+    assert folder.exists()  # 文件夹还在（只删了消费项）
+    assert not (folder / "manifest.json").exists()
+    assert not (folder / "pages").exists()
+    assert (folder / "checkpoint.json").exists()  # 过程文件保留
+    assert (folder / "qa_review.html").exists()
+    assert shelf.exists("bundle")
+
+
+def test_add_move_original_inside_shelf_skips_unlink(tmp_path, make_book_folder):
+    # #349 I1 回归：--original 指向书架内既有书的原件时，--move 不能删它
+    shelf = BookShelf(tmp_path)
+    folder_a = make_book_folder(slug="a", pages=1, layout="wrapped", with_original=True)
+    shelf.add(folder_a, added_at="t")
+    original_in_shelf = shelf.book_dir("a") / "original.pdf"
+    assert original_in_shelf.exists()
+    folder_b = make_book_folder(slug="b", pages=1, layout="flat", with_original=False)
+    shelf.add(folder_b, original=str(original_in_shelf), move=True, added_at="t2")
+    assert original_in_shelf.exists()  # 书 a 的原件未被 --move 删
+    assert shelf.exists("b")
