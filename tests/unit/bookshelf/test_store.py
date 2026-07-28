@@ -458,3 +458,45 @@ def test_detect_bundle_neither_raises(tmp_path):
     folder.mkdir(parents=True)
     with pytest.raises(InvalidBundleError):
         BookShelf._detect_bundle(folder)
+
+
+def test_add_flat_layout_excludes_process_files(tmp_path, make_book_folder):
+    # #349：扁平 bundle（含 checkpoint/qa_*）入库后，dest bundle/ 不含过程文件
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="sapiens", pages=2, layout="flat", with_process_files=True, with_original=False
+    )
+    meta = shelf.add(folder, added_at="t")
+    assert meta.slug == "sapiens"
+    dest = shelf.book_dir("sapiens")
+    # 白名单内容齐全
+    assert (dest / "bundle" / "manifest.json").exists()
+    assert (dest / "bundle" / "pages" / "p001.md").exists()
+    assert (dest / "bundle" / "images" / "p001.jpg").exists()
+    # 过程文件被排除
+    assert not (dest / "bundle" / "checkpoint.json").exists()
+    assert not (dest / "bundle" / "qa_report.json").exists()
+    assert not (dest / "bundle" / "qa_review.html").exists()
+    # 无原件（with_original=False 且无已知扩展名）
+    assert meta.source["original_file"] == ""
+
+
+def test_add_flat_layout_without_manifest_raises(tmp_path):
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    bad = tmp_path / "src" / "noflat"
+    bad.mkdir(parents=True)
+    # 既无 bundle/manifest.json 也无 manifest.json
+    with pytest.raises(InvalidBundleError):
+        shelf.add(bad, added_at="t")
+
+
+def test_add_wrapped_layout_still_works(tmp_path, make_book_folder):
+    # 回归：包装布局照旧（向后兼容）
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="wrap", pages=1, layout="wrapped")
+    meta = shelf.add(folder, added_at="t")
+    assert meta.slug == "wrap"
+    assert (shelf.book_dir("wrap") / "bundle" / "pages" / "p001.md").exists()
+    assert (shelf.book_dir("wrap") / "original.pdf").exists()

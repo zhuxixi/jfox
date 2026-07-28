@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 BUNDLE_DIRNAME = "bundle"
 MANIFEST_FILENAME = "manifest.json"
 META_FILENAME = "meta.json"
+# #349：bundle 白名单——只有这些进 dest/bundle/，scan2book 过程文件（checkpoint/qa_*）自然丢弃
+BUNDLE_WHITELIST_FILES = (MANIFEST_FILENAME,)
+BUNDLE_WHITELIST_DIRS = ("pages", "images")
 # 历史 stage/retire 残留目录名前缀（新代码已移出 bookshelf/，list_books 兜底过滤；k-14/k-17）
 _STAGE_RETIRE_RE = re.compile(r"^\.bookshelf\..*\.(stage|retire)\.\d+$")
 
@@ -152,11 +155,8 @@ class BookShelf:
         返回写入的 BookMeta。
         """
         src_folder = Path(src_folder).expanduser().resolve()
-        manifest_path = src_folder / BUNDLE_DIRNAME / MANIFEST_FILENAME
-        if not manifest_path.exists():
-            raise InvalidBundleError(
-                f"找不到 {manifest_path}（需要 scan2book 产物 bundle/manifest.json）"
-            )
+        bundle_src = self._detect_bundle(src_folder)
+        manifest_path = bundle_src / MANIFEST_FILENAME
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
@@ -230,8 +230,7 @@ class BookShelf:
             # 顺带把 bookshelf/ 建出来的副作用；os.replace 需要目标父目录存在
             self.root.mkdir(parents=True, exist_ok=True)
             stage.mkdir(parents=True)
-            bundle_src = src_folder / BUNDLE_DIRNAME
-            shutil.copytree(str(bundle_src), str(stage / BUNDLE_DIRNAME))
+            self._copy_bundle_whitelist(bundle_src, stage / BUNDLE_DIRNAME)
             if original_file:
                 orig_src = src_folder / original_file
                 if orig_src.exists():
@@ -323,6 +322,20 @@ class BookShelf:
             f"找不到 scan2book 产物 manifest.json（已尝试 "
             f"{BUNDLE_DIRNAME}/{MANIFEST_FILENAME} 与 {MANIFEST_FILENAME}）"
         )
+
+    @staticmethod
+    def _copy_bundle_whitelist(bundle_src: Path, dest_bundle: Path) -> None:
+        """白名单复制：只 manifest.json + pages/ + images/ 进 dest/bundle/。
+        跳过 checkpoint.json / qa_report.json / qa_review.html / original.* 等。"""
+        dest_bundle.mkdir(parents=True, exist_ok=True)
+        for name in BUNDLE_WHITELIST_FILES:
+            src = bundle_src / name
+            if src.is_file():
+                shutil.copy2(str(src), str(dest_bundle / name))
+        for d in BUNDLE_WHITELIST_DIRS:
+            src = bundle_src / d
+            if src.is_dir():
+                shutil.copytree(str(src), str(dest_bundle / d))
 
     _KNOWN_ORIGINAL_EXTS = {".pdf", ".epub", ".mobi", ".azw", ".cbz", ".cbr", ".djvu"}
 
