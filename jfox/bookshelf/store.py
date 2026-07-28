@@ -24,6 +24,8 @@ META_FILENAME = "meta.json"
 # #349：bundle 白名单——只有这些进 dest/bundle/，scan2book 过程文件（checkpoint/qa_*）自然丢弃
 BUNDLE_WHITELIST_FILES = (MANIFEST_FILENAME,)
 BUNDLE_WHITELIST_DIRS = ("pages", "images")
+# --original 的 basename 不能冲撞 dest 保留名（meta.json 会被 meta.save 覆盖致原件静默丢失）
+_ORIGINAL_RESERVED_NAMES = {META_FILENAME, BUNDLE_DIRNAME, *BUNDLE_WHITELIST_DIRS}
 # 历史 stage/retire 残留目录名前缀（新代码已移出 bookshelf/，list_books 兜底过滤；k-14/k-17）
 _STAGE_RETIRE_RE = re.compile(r"^\.bookshelf\..*\.(stage|retire)\.\d+$")
 
@@ -358,9 +360,20 @@ class BookShelf:
         --original 给定 → 用它（不存在则 InvalidBundleError，覆盖自动探测）；
         否则自动探测（仅已知扩展名，无则全 None）。原件源路径用于复制与 --move 删源。"""
         if original:
-            p = Path(original).expanduser().resolve()
+            raw = Path(original).expanduser()
+            # cc-7（cc r1 issue-2）：拒绝软链——resolve 跟随软链会让 --move unlink 目标真实文件、
+            # 留下悬空软链；自动探测 _find_original 经 _is_candidate_file 已排除软链，此处对齐
+            if raw.is_symlink():
+                raise InvalidBundleError(f"--original 不能是软链: {raw}")
+            p = raw.resolve()
             if not p.is_file():
                 raise InvalidBundleError(f"--original 指定的文件不存在: {p}")
+            # cc r1 issue-3：防 basename 冲撞 dest 保留名（meta.json 会被 meta.save 覆盖致原件
+            # 静默丢失）；再校验扩展名与 _find_original 的 _KNOWN_ORIGINAL_EXTS 白名单一致
+            if p.name in _ORIGINAL_RESERVED_NAMES:
+                raise InvalidBundleError(f"--original basename 与保留名冲撞: {p.name}")
+            if p.suffix.lower() not in BookShelf._KNOWN_ORIGINAL_EXTS:
+                raise InvalidBundleError(f"--original 非已知原件扩展名: {p.suffix or '(无)'}")
             return p, p.name, _sha256_of(p)
         name, sha = self._find_original(src_folder)
         if name is None:
@@ -381,7 +394,10 @@ class BookShelf:
             for name in BUNDLE_WHITELIST_FILES:
                 f = bundle_src / name
                 if f.is_file():
-                    f.unlink()
+                    try:  # cc-6/cc r1 issue-1：删源失败不致「新书已就位却报失败」
+                        f.unlink()
+                    except OSError as e:
+                        logger.warning("删源 bundle 文件失败（新书已就位）%s: %s", f, e)
             for d in BUNDLE_WHITELIST_DIRS:
                 p = bundle_src / d
                 if p.exists():

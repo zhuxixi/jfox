@@ -622,3 +622,44 @@ def test_add_move_original_inside_shelf_skips_unlink(tmp_path, make_book_folder)
     shelf.add(folder_b, original=str(original_in_shelf), move=True, added_at="t2")
     assert original_in_shelf.exists()  # 书 a 的原件未被 --move 删
     assert shelf.exists("b")
+
+
+def test_add_original_rejects_symlink(tmp_path, make_book_folder):
+    # cc r1 issue-2：--original 软链拒绝（cc-7 一致；resolve 会跟随软链，--move 会删目标真实文件）
+    import os
+
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="s", pages=1, layout="flat", with_original=False)
+    real = tmp_path / "real.pdf"
+    real.write_bytes(b"%PDF-1.4 real")
+    link = tmp_path / "link.pdf"
+    os.symlink(real, link)
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(link), added_at="t")
+
+
+def test_add_original_rejects_unknown_ext(tmp_path, make_book_folder):
+    # cc r1 issue-3：--original 非已知原件扩展名拒绝（与 _find_original 白名单一致）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="s", pages=1, layout="flat", with_original=False)
+    weird = tmp_path / "notes.txt"
+    weird.write_text("not a book original")
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(weird), added_at="t")
+
+
+def test_add_original_rejects_reserved_basename(tmp_path, make_book_folder):
+    # cc r1 issue-3：--original basename 冲撞 meta.json 拒绝（防 meta.save 覆盖致原件静默丢失）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="s", pages=1, layout="flat", with_original=False)
+    fake = tmp_path / "x" / "meta.json"
+    fake.parent.mkdir()
+    fake.write_text("{}", encoding="utf-8")
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(fake), added_at="t")

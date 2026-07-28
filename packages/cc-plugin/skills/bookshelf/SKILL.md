@@ -29,7 +29,7 @@ description: |
 
 | 命令 | 作用 |
 |------|------|
-| `jfox bookshelf add <folder> [--force] [--move]` | 加一本书进书架（默认复制原件） |
+| `jfox bookshelf add <folder> [--force] [--move] [--original PATH]` | 加一本书进书架（默认复制原件；scan2book 未把原件纳入 bundle 时用 `--original` 指 sibling PDF） |
 | `jfox bookshelf list` | 列书架上的书 |
 | `jfox bookshelf show <slug> [--page N]` | 看元数据 / 指定页 md |
 | `jfox bookshelf remove <slug> [--yes]` | 删一本书（不可逆） |
