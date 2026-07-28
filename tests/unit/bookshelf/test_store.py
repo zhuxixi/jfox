@@ -406,3 +406,16 @@ def test_add_coerces_non_dict_distill_in_meta(tmp_path, make_book_folder):
     folder = make_book_folder(slug="baddistill", with_meta={"title": "X", "distill": [1, 2, 3]})
     meta = shelf.add(folder, added_at="t")  # 不抛 AttributeError
     assert meta.distill["status"] == "none"  # distill 被规整、normalize 给默认
+
+
+def test_make_book_folder_flat_layout(make_book_folder):
+    """fixture 的 flat 布局：manifest/pages/images 在 folder 顶层，无 bundle/ 包装。"""
+    folder = make_book_folder(slug="flatbook", pages=2, layout="flat", with_process_files=True)
+    assert (folder / "manifest.json").exists()
+    assert not (folder / "bundle").exists()
+    assert (folder / "pages" / "p001.md").exists()
+    assert (folder / "images" / "p001.jpg").exists()
+    # 过程文件在顶层（sibling of manifest）
+    assert (folder / "checkpoint.json").exists()
+    assert (folder / "qa_report.json").exists()
+    assert (folder / "qa_review.html").exists()

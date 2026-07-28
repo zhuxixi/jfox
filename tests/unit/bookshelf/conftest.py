@@ -22,9 +22,12 @@ def make_book_folder(tmp_path):
         with_original: bool = True,
         original_name: str = "original.pdf",
         with_meta: dict | None = None,
+        layout: str = "wrapped",
+        with_process_files: bool = False,
     ) -> Path:
         folder = tmp_path / "src" / slug
-        bundle = folder / "bundle"
+        # wrapped: manifest 在 folder/bundle/；flat: manifest 在 folder/ 顶层
+        bundle = folder / "bundle" if layout == "wrapped" else folder
         (bundle / "pages").mkdir(parents=True, exist_ok=True)
         (bundle / "images").mkdir(parents=True, exist_ok=True)
         pages_list = []
@@ -57,6 +60,14 @@ def make_book_folder(tmp_path):
             (folder / "meta.json").write_text(
                 json.dumps(with_meta, ensure_ascii=False), encoding="utf-8"
             )
+        if with_process_files:
+            # scan2book 过程文件（顶层，sibling of manifest）
+            for pname, content in (
+                ("checkpoint.json", "{}"),
+                ("qa_report.json", "{}"),
+                ("qa_review.html", "<html><body>qa</body></html>"),
+            ):
+                (folder / pname).write_text(content, encoding="utf-8")
         return folder
 
     return _make
