@@ -300,6 +300,21 @@ class BookShelf:
             # cc-20：按字节算（CJK/emoji 每字 3-4 字节），与 stage-dir 路径开销更贴切
             raise InvalidBundleError(f"非法 slug（超长，>80 字节）: {slug!r}")
 
+    @staticmethod
+    def _detect_bundle(src_folder: Path) -> Path:
+        """识别 bundle 源目录：包装布局 <folder>/bundle/manifest.json（向后兼容）优先，
+        否则扁平布局 <folder>/manifest.json（scan2book v1 真实产出）。都不在则报错。"""
+        wrapped = src_folder / BUNDLE_DIRNAME / MANIFEST_FILENAME
+        if wrapped.exists():
+            return src_folder / BUNDLE_DIRNAME
+        flat = src_folder / MANIFEST_FILENAME
+        if flat.exists():
+            return src_folder
+        raise InvalidBundleError(
+            f"找不到 scan2book 产物 manifest.json（已尝试 "
+            f"{BUNDLE_DIRNAME}/{MANIFEST_FILENAME} 与 {MANIFEST_FILENAME}）"
+        )
+
     _KNOWN_ORIGINAL_EXTS = {".pdf", ".epub", ".mobi", ".azw", ".cbz", ".cbr", ".djvu"}
 
     @staticmethod

@@ -419,3 +419,41 @@ def test_make_book_folder_flat_layout(make_book_folder):
     assert (folder / "checkpoint.json").exists()
     assert (folder / "qa_report.json").exists()
     assert (folder / "qa_review.html").exists()
+
+
+def test_detect_bundle_wrapped(tmp_path):
+    from jfox.bookshelf.store import BookShelf
+
+    folder = tmp_path / "src" / "w"
+    (folder / "bundle").mkdir(parents=True)
+    (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
+    assert BookShelf._detect_bundle(folder) == folder / "bundle"
+
+
+def test_detect_bundle_flat(tmp_path):
+    from jfox.bookshelf.store import BookShelf
+
+    folder = tmp_path / "src" / "f"
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text("{}", encoding="utf-8")
+    assert BookShelf._detect_bundle(folder) == folder
+
+
+def test_detect_bundle_wrapped_preferred_over_flat(tmp_path):
+    # 两种都在时优先 wrapped（向后兼容）
+    from jfox.bookshelf.store import BookShelf
+
+    folder = tmp_path / "src" / "both"
+    (folder / "bundle").mkdir(parents=True)
+    (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
+    (folder / "manifest.json").write_text("{}", encoding="utf-8")
+    assert BookShelf._detect_bundle(folder) == folder / "bundle"
+
+
+def test_detect_bundle_neither_raises(tmp_path):
+    from jfox.bookshelf.store import BookShelf, InvalidBundleError
+
+    folder = tmp_path / "src" / "empty"
+    folder.mkdir(parents=True)
+    with pytest.raises(InvalidBundleError):
+        BookShelf._detect_bundle(folder)
