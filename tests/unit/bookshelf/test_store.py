@@ -259,16 +259,17 @@ def test_find_original_prefers_known_ext(tmp_path):
     assert sha
 
 
-def test_find_original_fallback_largest_when_no_known_ext(tmp_path):
-    # 无已知原件扩展名时退回最大文件，且大小并列时按名字确定性排序
+def test_find_original_returns_none_when_no_known_ext(tmp_path):
+    # #349 收紧：无已知原件扩展名 → (None, None)，不再退回最大文件（避免误选 qa_review.html）
     folder = tmp_path / "src" / "fallback"
     folder.mkdir(parents=True)
     (folder / "bundle").mkdir()
     (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
-    (folder / "a.bin").write_bytes(b"XXXX")  # 4 字节
-    (folder / "b.bin").write_bytes(b"XX")  # 2 字节
-    name, _ = BookShelf._find_original(folder)
-    assert name == "a.bin"
+    (folder / "qa_review.html").write_bytes(b"X" * 200)  # 更大但非已知原件扩展名
+    (folder / "checkpoint.json").write_bytes(b"XX")
+    name, sha = BookShelf._find_original(folder)
+    assert name is None
+    assert sha is None
 
 
 def test_add_corrupt_manifest_raises_invalid(tmp_path):

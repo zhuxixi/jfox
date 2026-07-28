@@ -46,6 +46,15 @@ def _is_candidate_file(f: Path) -> bool:
     return f.is_file() and not f.is_symlink() and f.name != META_FILENAME
 
 
+def _sha256_of(path: Path) -> str:
+    """流式算文件 sha256（_find_original 与 --original 共用）。"""
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 class BookShelf:
     """一个知识库的书架：<base_dir>/bookshelf/<slug>/。"""
 
@@ -319,17 +328,13 @@ class BookShelf:
 
     @staticmethod
     def _find_original(src_folder: Path):
-        """挑原件：优先已知原件扩展名，否则退回最大文件。按 (-size, name) 确定性排序，
-        避免大小并列时 max() 因遍历顺序不同而跨机器不稳定。"""
+        """挑原件：仅已知原件扩展名的普通文件（非软链）；无则 (None, None)。
+        多个时按 (-size, name) 确定性选最大。#349：去掉「最大文件兜底」，
+        避免扁平布局下把过程文件 qa_review.html 误当原件。"""
         # 排除软链原件（cc-7：软链可能指向外部大/敏感文件，复制进来有风险）
         files = [f for f in src_folder.iterdir() if _is_candidate_file(f)]
-        if not files:
-            return None, None
         known = [f for f in files if f.suffix.lower() in BookShelf._KNOWN_ORIGINAL_EXTS]
-        pool = known or files
-        biggest = sorted(pool, key=lambda f: (-f.stat().st_size, f.name.lower()))[0]
-        h = hashlib.sha256()
-        with biggest.open("rb") as fh:
-            for chunk in iter(lambda: fh.read(65536), b""):
-                h.update(chunk)
-        return biggest.name, h.hexdigest()
+        if not known:
+            return None, None
+        biggest = sorted(known, key=lambda f: (-f.stat().st_size, f.name.lower()))[0]
+        return biggest.name, _sha256_of(biggest)
