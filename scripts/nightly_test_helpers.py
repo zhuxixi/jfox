@@ -25,7 +25,7 @@ def extract_failures(pytest_output: str) -> list[str]:
 
 
 def compute_signature(failures: list[str], top_n: int = 10) -> str:
-    """失败 nodeid 取前 N 个后排序，sha1[:12] 作为去重签名（与顺序无关）。"""
-    head = sorted(failures[:top_n])
+    """失败 nodeid 排序后取前 N 个，sha1[:12] 作为去重签名（与顺序无关）。"""
+    head = sorted(failures)[:top_n]
     digest = hashlib.sha1("\n".join(head).encode("utf-8")).hexdigest()
     return digest[:12]

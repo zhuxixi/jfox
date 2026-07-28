@@ -42,6 +42,45 @@ def test_compute_signature_order_invariant():
     assert len(a) == 12  # sha1[:12]
 
 
+def test_compute_signature_large_set_order_invariant():
+    """失败数 > top_n（15 项 vs top_n=10）时，不同输入顺序签名仍相同。
+
+    回归 #263 review round 1：prior impl 用 `sorted(failures[:top_n])`，
+    先按出现顺序截断再排序，输入顺序变化会导致截断到不同子集 → 签名不同，
+    违反 spec §5「签名对相同失败集合与顺序无关」的去重承诺。正确实现
+    `sorted(failures)[:top_n]` 在任意顺序下取到同一组字典序最小 top_n。
+    """
+    items = [f"tests/x.py::test_{i:02d}" for i in range(15)]
+    forward = list(items)
+    backward = list(reversed(items))
+    shuffled = items[::2] + items[1::2]  # 奇偶重排，非纯反转
+    assert compute_signature(forward) == compute_signature(backward)
+    assert compute_signature(forward) == compute_signature(shuffled)
+
+
 def test_compute_signature_top_n_caps():
-    many = [f"tests/x.py::test_{i}" for i in range(20)]
-    assert compute_signature(many, top_n=10) == compute_signature(many[:10], top_n=10)
+    """spec: 排序后超出 top_n 的失败（字典序靠后）不影响签名。
+
+    用零填充命名 test_00..test_19，确保字典序=数值序，test_10..test_19
+    严格排在 test_00..test_09 之后，被 top_n 截断。
+    """
+    base = [f"tests/x.py::test_{i:02d}" for i in range(10)]
+    extra = base + [f"tests/x.py::test_{i:02d}" for i in range(10, 20)]
+    assert compute_signature(base, top_n=10) == compute_signature(extra, top_n=10)
+
+
+def test_compute_signature_empty_input():
+    """边界：空失败列表返回长度 12 的稳定签名。"""
+    sig = compute_signature([])
+    assert isinstance(sig, str)
+    assert len(sig) == 12
+    assert compute_signature([]) == sig  # 多次调用稳定
+
+
+def test_compute_signature_top_n_zero():
+    """边界：top_n=0 时签名仍与顺序无关、长度 12。"""
+    items = [f"tests/x.py::test_{i:02d}" for i in range(5)]
+    sig = compute_signature(items, top_n=0)
+    assert isinstance(sig, str)
+    assert len(sig) == 12
+    assert compute_signature(list(reversed(items)), top_n=0) == sig
