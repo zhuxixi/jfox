@@ -167,7 +167,10 @@ class BookShelf:
         if slug is None:
             slug = manifest.get("slug") or src_folder.name
         self._validate_slug(slug)
-        orig_src_path, original_file, original_sha256 = self._resolve_original(src_folder, original)
+        orig_src_path, original_file, original_sha256 = self._resolve_original(
+            src_folder,
+            original,
+        )
         if added_at is None:
             added_at = _now_iso()
         user_meta_path = src_folder / META_FILENAME

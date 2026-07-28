@@ -108,7 +108,11 @@ def test_bookshelf_help_registered(cli_fast):
 
 def test_add_original_flag_cli(cli_fast, make_book_folder, tmp_path):
     folder = make_book_folder(
-        slug="sapiens", pages=1, layout="flat", with_original=False, with_process_files=True
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=False,
+        with_process_files=True,
     )
     external = tmp_path / "sibling.pdf"
     external.write_bytes(b"%PDF-1.4 cli original")
@@ -122,7 +126,11 @@ def test_add_original_flag_cli(cli_fast, make_book_folder, tmp_path):
 def test_add_flat_layout_cli(cli_fast, make_book_folder):
     # 扁平 bundle（无原件）CLI 跑通，stderr 给出 ⚠️ 未找到原件提示
     folder = make_book_folder(
-        slug="noflat", pages=2, layout="flat", with_original=False, with_process_files=True
+        slug="noflat",
+        pages=2,
+        layout="flat",
+        with_original=False,
+        with_process_files=True,
     )
     r = cli_fast.run("bookshelf", "add", str(folder))
     assert r.success, r.stderr

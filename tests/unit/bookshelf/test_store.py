@@ -411,7 +411,12 @@ def test_add_coerces_non_dict_distill_in_meta(tmp_path, make_book_folder):
 
 def test_make_book_folder_flat_layout(make_book_folder):
     """fixture 的 flat 布局：manifest/pages/images 在 folder 顶层，无 bundle/ 包装。"""
-    folder = make_book_folder(slug="flatbook", pages=2, layout="flat", with_process_files=True)
+    folder = make_book_folder(
+        slug="flatbook",
+        pages=2,
+        layout="flat",
+        with_process_files=True,
+    )
     assert (folder / "manifest.json").exists()
     assert not (folder / "bundle").exists()
     assert (folder / "pages" / "p001.md").exists()
@@ -464,7 +469,11 @@ def test_add_flat_layout_excludes_process_files(tmp_path, make_book_folder):
     # #349：扁平 bundle（含 checkpoint/qa_*）入库后，dest bundle/ 不含过程文件
     shelf = BookShelf(tmp_path)
     folder = make_book_folder(
-        slug="sapiens", pages=2, layout="flat", with_process_files=True, with_original=False
+        slug="sapiens",
+        pages=2,
+        layout="flat",
+        with_process_files=True,
+        with_original=False,
     )
     meta = shelf.add(folder, added_at="t")
     assert meta.slug == "sapiens"
@@ -506,7 +515,11 @@ def test_add_original_flag_copies_external_pdf(tmp_path, make_book_folder):
     # #349：--original 指外部 sibling PDF（scan2book 未把原件纳入 bundle）
     shelf = BookShelf(tmp_path)
     folder = make_book_folder(
-        slug="sapiens", pages=1, layout="flat", with_original=False, with_process_files=True
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=False,
+        with_process_files=True,
     )
     external = tmp_path / "sibling.pdf"
     external.write_bytes(b"%PDF-1.4 external original")
@@ -521,7 +534,12 @@ def test_add_original_flag_missing_raises(tmp_path, make_book_folder):
     from jfox.bookshelf.store import InvalidBundleError
 
     shelf = BookShelf(tmp_path)
-    folder = make_book_folder(slug="sapiens", pages=1, layout="flat", with_original=False)
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=False,
+    )
     with pytest.raises(InvalidBundleError):
         shelf.add(folder, original=str(tmp_path / "nope.pdf"), added_at="t")
 
@@ -529,7 +547,12 @@ def test_add_original_flag_missing_raises(tmp_path, make_book_folder):
 def test_add_original_flag_overrides_auto_detect(tmp_path, make_book_folder):
     # --original 优先于自动探测（folder 里有 original.pdf 但 flag 指另一个）
     shelf = BookShelf(tmp_path)
-    folder = make_book_folder(slug="sapiens", pages=1, layout="flat", with_original=True)
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=True,
+    )
     external = tmp_path / "override.epub"
     external.write_bytes(b"EPUB override")
     meta = shelf.add(folder, original=str(external), added_at="t")
@@ -565,11 +588,18 @@ def test_add_move_wrapped_still_removes_bundle_dir(tmp_path, make_book_folder):
     assert not (folder / "original.pdf").exists()
 
 
-def test_add_move_flat_when_folder_named_bundle_keeps_process_files(tmp_path, make_book_folder):
+def test_add_move_flat_when_folder_named_bundle_keeps_process_files(
+    tmp_path,
+    make_book_folder,
+):
     # #349 C1 回归：flat 源文件夹恰叫 "bundle" 时，--move 不能 rmtree 整目录
     shelf = BookShelf(tmp_path)
     folder = make_book_folder(
-        slug="bundle", pages=1, layout="flat", with_original=True, with_process_files=True
+        slug="bundle",
+        pages=1,
+        layout="flat",
+        with_original=True,
+        with_process_files=True,
     )
     assert folder.name == "bundle"
     shelf.add(folder, move=True, added_at="t")
