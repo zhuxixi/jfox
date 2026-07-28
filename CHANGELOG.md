@@ -2,6 +2,20 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.6.0] - 2026-07-28
+
+### Features
+- **release**: #334 /release-all 统一发版编排 + #333 CHANGELOG verify (#344)
+- **bookshelf**: 好书资产管理子命令 (PDF + scan2book bundle + 元数据) (#325) (#336)
+- **backup**: #338 KB 滚动备份 + 恢复（daemon 调度，#263 前置） (#339)
+- **gem-synth**: dedup 命中 candidate 时增量合并补入（#309） (#335)
+
+### Changes
+- **promote**: 按 clear-reports 重写 promote/jfox-promote SKILL.md 散文层（#341） (#342)
+- **claude.md**: cc-plugin 版本 0.5.1 → 0.6.0 (#337)
+
+[1.6.0]: https://github.com/zhuxixi/jfox/compare/v1.5.0...v1.6.0
+
 ## [1.5.0] - 2026-07-25
 
 ### Features
