@@ -259,16 +259,17 @@ def test_find_original_prefers_known_ext(tmp_path):
     assert sha
 
 
-def test_find_original_fallback_largest_when_no_known_ext(tmp_path):
-    # 无已知原件扩展名时退回最大文件，且大小并列时按名字确定性排序
+def test_find_original_returns_none_when_no_known_ext(tmp_path):
+    # #349 收紧：无已知原件扩展名 → (None, None)，不再退回最大文件（避免误选 qa_review.html）
     folder = tmp_path / "src" / "fallback"
     folder.mkdir(parents=True)
     (folder / "bundle").mkdir()
     (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
-    (folder / "a.bin").write_bytes(b"XXXX")  # 4 字节
-    (folder / "b.bin").write_bytes(b"XX")  # 2 字节
-    name, _ = BookShelf._find_original(folder)
-    assert name == "a.bin"
+    (folder / "qa_review.html").write_bytes(b"X" * 200)  # 更大但非已知原件扩展名
+    (folder / "checkpoint.json").write_bytes(b"XX")
+    name, sha = BookShelf._find_original(folder)
+    assert name is None
+    assert sha is None
 
 
 def test_add_corrupt_manifest_raises_invalid(tmp_path):
@@ -406,3 +407,259 @@ def test_add_coerces_non_dict_distill_in_meta(tmp_path, make_book_folder):
     folder = make_book_folder(slug="baddistill", with_meta={"title": "X", "distill": [1, 2, 3]})
     meta = shelf.add(folder, added_at="t")  # 不抛 AttributeError
     assert meta.distill["status"] == "none"  # distill 被规整、normalize 给默认
+
+
+def test_make_book_folder_flat_layout(make_book_folder):
+    """fixture 的 flat 布局：manifest/pages/images 在 folder 顶层，无 bundle/ 包装。"""
+    folder = make_book_folder(
+        slug="flatbook",
+        pages=2,
+        layout="flat",
+        with_process_files=True,
+    )
+    assert (folder / "manifest.json").exists()
+    assert not (folder / "bundle").exists()
+    assert (folder / "pages" / "p001.md").exists()
+    assert (folder / "images" / "p001.jpg").exists()
+    # 过程文件在顶层（sibling of manifest）
+    assert (folder / "checkpoint.json").exists()
+    assert (folder / "qa_report.json").exists()
+    assert (folder / "qa_review.html").exists()
+
+
+def test_detect_bundle_wrapped(tmp_path):
+    from jfox.bookshelf.store import BookShelf
+
+    folder = tmp_path / "src" / "w"
+    (folder / "bundle").mkdir(parents=True)
+    (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
+    assert BookShelf._detect_bundle(folder) == (folder / "bundle", "wrapped")
+
+
+def test_detect_bundle_flat(tmp_path):
+    from jfox.bookshelf.store import BookShelf
+
+    folder = tmp_path / "src" / "f"
+    folder.mkdir(parents=True)
+    (folder / "manifest.json").write_text("{}", encoding="utf-8")
+    assert BookShelf._detect_bundle(folder) == (folder, "flat")
+
+
+def test_detect_bundle_wrapped_preferred_over_flat(tmp_path):
+    # 两种都在时优先 wrapped（向后兼容）
+    from jfox.bookshelf.store import BookShelf
+
+    folder = tmp_path / "src" / "both"
+    (folder / "bundle").mkdir(parents=True)
+    (folder / "bundle" / "manifest.json").write_text("{}", encoding="utf-8")
+    (folder / "manifest.json").write_text("{}", encoding="utf-8")
+    assert BookShelf._detect_bundle(folder) == (folder / "bundle", "wrapped")
+
+
+def test_detect_bundle_neither_raises(tmp_path):
+    from jfox.bookshelf.store import BookShelf, InvalidBundleError
+
+    folder = tmp_path / "src" / "empty"
+    folder.mkdir(parents=True)
+    with pytest.raises(InvalidBundleError):
+        BookShelf._detect_bundle(folder)
+
+
+def test_add_flat_layout_excludes_process_files(tmp_path, make_book_folder):
+    # #349：扁平 bundle（含 checkpoint/qa_*）入库后，dest bundle/ 不含过程文件
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=2,
+        layout="flat",
+        with_process_files=True,
+        with_original=False,
+    )
+    meta = shelf.add(folder, added_at="t")
+    assert meta.slug == "sapiens"
+    dest = shelf.book_dir("sapiens")
+    # 白名单内容齐全
+    assert (dest / "bundle" / "manifest.json").exists()
+    assert (dest / "bundle" / "pages" / "p001.md").exists()
+    assert (dest / "bundle" / "images" / "p001.jpg").exists()
+    # 过程文件被排除
+    assert not (dest / "bundle" / "checkpoint.json").exists()
+    assert not (dest / "bundle" / "qa_report.json").exists()
+    assert not (dest / "bundle" / "qa_review.html").exists()
+    # 无原件（with_original=False 且无已知扩展名）
+    assert meta.source["original_file"] == ""
+
+
+def test_add_flat_layout_without_manifest_raises(tmp_path):
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    bad = tmp_path / "src" / "noflat"
+    bad.mkdir(parents=True)
+    # 既无 bundle/manifest.json 也无 manifest.json
+    with pytest.raises(InvalidBundleError):
+        shelf.add(bad, added_at="t")
+
+
+def test_add_wrapped_layout_still_works(tmp_path, make_book_folder):
+    # 回归：包装布局照旧（向后兼容）
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="wrap", pages=1, layout="wrapped")
+    meta = shelf.add(folder, added_at="t")
+    assert meta.slug == "wrap"
+    assert (shelf.book_dir("wrap") / "bundle" / "pages" / "p001.md").exists()
+    assert (shelf.book_dir("wrap") / "original.pdf").exists()
+
+
+def test_add_original_flag_copies_external_pdf(tmp_path, make_book_folder):
+    # #349：--original 指外部 sibling PDF（scan2book 未把原件纳入 bundle）
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=False,
+        with_process_files=True,
+    )
+    external = tmp_path / "sibling.pdf"
+    external.write_bytes(b"%PDF-1.4 external original")
+    meta = shelf.add(folder, original=str(external), added_at="t")
+    assert meta.source["original_file"] == "sibling.pdf"
+    assert meta.source["original_sha256"]
+    assert (shelf.book_dir("sapiens") / "sibling.pdf").exists()
+    assert external.exists()  # 默认 copy 不删源
+
+
+def test_add_original_flag_missing_raises(tmp_path, make_book_folder):
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=False,
+    )
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(tmp_path / "nope.pdf"), added_at="t")
+
+
+def test_add_original_flag_overrides_auto_detect(tmp_path, make_book_folder):
+    # --original 优先于自动探测（folder 里有 original.pdf 但 flag 指另一个）
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=True,
+    )
+    external = tmp_path / "override.epub"
+    external.write_bytes(b"EPUB override")
+    meta = shelf.add(folder, original=str(external), added_at="t")
+    assert meta.source["original_file"] == "override.epub"  # flag 胜出，非 original.pdf
+
+
+def test_add_move_flat_removes_consumed_keeps_process(tmp_path, make_book_folder):
+    # #349：扁平 --move 只删消费项（manifest/pages/images + 原件），不动 sibling 过程文件
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="mv", pages=1, layout="flat", with_original=True, with_process_files=True
+    )
+    shelf.add(folder, move=True, added_at="t")
+    # 消费项已删
+    assert not (folder / "manifest.json").exists()
+    assert not (folder / "pages").exists()
+    assert not (folder / "images").exists()
+    assert not (folder / "original.pdf").exists()
+    # 过程文件保留（scan2book 产物，不该 bookshelf 清理）
+    assert (folder / "checkpoint.json").exists()
+    assert (folder / "qa_report.json").exists()
+    assert (folder / "qa_review.html").exists()
+    # 书已入库
+    assert shelf.exists("mv")
+
+
+def test_add_move_wrapped_still_removes_bundle_dir(tmp_path, make_book_folder):
+    # 回归：包装 --move 仍整目录删 bundle/
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="mvw", pages=1, layout="wrapped")
+    shelf.add(folder, move=True, added_at="t")
+    assert not (folder / "bundle").exists()
+    assert not (folder / "original.pdf").exists()
+
+
+def test_add_move_flat_when_folder_named_bundle_keeps_process_files(
+    tmp_path,
+    make_book_folder,
+):
+    # #349 C1 回归：flat 源文件夹恰叫 "bundle" 时，--move 不能 rmtree 整目录
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="bundle",
+        pages=1,
+        layout="flat",
+        with_original=True,
+        with_process_files=True,
+    )
+    assert folder.name == "bundle"
+    shelf.add(folder, move=True, added_at="t")
+    assert folder.exists()  # 文件夹还在（只删了消费项）
+    assert not (folder / "manifest.json").exists()
+    assert not (folder / "pages").exists()
+    assert (folder / "checkpoint.json").exists()  # 过程文件保留
+    assert (folder / "qa_review.html").exists()
+    assert shelf.exists("bundle")
+
+
+def test_add_move_original_inside_shelf_skips_unlink(tmp_path, make_book_folder):
+    # #349 I1 回归：--original 指向书架内既有书的原件时，--move 不能删它
+    shelf = BookShelf(tmp_path)
+    folder_a = make_book_folder(slug="a", pages=1, layout="wrapped", with_original=True)
+    shelf.add(folder_a, added_at="t")
+    original_in_shelf = shelf.book_dir("a") / "original.pdf"
+    assert original_in_shelf.exists()
+    folder_b = make_book_folder(slug="b", pages=1, layout="flat", with_original=False)
+    shelf.add(folder_b, original=str(original_in_shelf), move=True, added_at="t2")
+    assert original_in_shelf.exists()  # 书 a 的原件未被 --move 删
+    assert shelf.exists("b")
+
+
+def test_add_original_rejects_symlink(tmp_path, make_book_folder):
+    # cc r1 issue-2：--original 软链拒绝（cc-7 一致；resolve 会跟随软链，--move 会删目标真实文件）
+    import os
+
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="s", pages=1, layout="flat", with_original=False)
+    real = tmp_path / "real.pdf"
+    real.write_bytes(b"%PDF-1.4 real")
+    link = tmp_path / "link.pdf"
+    os.symlink(real, link)
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(link), added_at="t")
+
+
+def test_add_original_rejects_unknown_ext(tmp_path, make_book_folder):
+    # cc r1 issue-3：--original 非已知原件扩展名拒绝（与 _find_original 白名单一致）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="s", pages=1, layout="flat", with_original=False)
+    weird = tmp_path / "notes.txt"
+    weird.write_text("not a book original")
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(weird), added_at="t")
+
+
+def test_add_original_rejects_reserved_basename(tmp_path, make_book_folder):
+    # cc r1 issue-3：--original basename 冲撞 meta.json 拒绝（防 meta.save 覆盖致原件静默丢失）
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="s", pages=1, layout="flat", with_original=False)
+    fake = tmp_path / "x" / "meta.json"
+    fake.parent.mkdir()
+    fake.write_text("{}", encoding="utf-8")
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(fake), added_at="t")

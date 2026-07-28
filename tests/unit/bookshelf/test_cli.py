@@ -106,6 +106,38 @@ def test_bookshelf_help_registered(cli_fast):
         assert cmd in stdout
 
 
+def test_add_original_flag_cli(cli_fast, make_book_folder, tmp_path):
+    folder = make_book_folder(
+        slug="sapiens",
+        pages=1,
+        layout="flat",
+        with_original=False,
+        with_process_files=True,
+    )
+    external = tmp_path / "sibling.pdf"
+    external.write_bytes(b"%PDF-1.4 cli original")
+    r = cli_fast.run("bookshelf", "add", str(folder), "--original", str(external))
+    assert r.success, r.stderr
+    data = r.json()
+    assert data["success"] is True
+    assert data["slug"] == "sapiens"
+
+
+def test_add_flat_layout_cli(cli_fast, make_book_folder):
+    # 扁平 bundle（无原件）CLI 跑通，stderr 给出 ⚠️ 未找到原件提示
+    folder = make_book_folder(
+        slug="noflat",
+        pages=2,
+        layout="flat",
+        with_original=False,
+        with_process_files=True,
+    )
+    r = cli_fast.run("bookshelf", "add", str(folder))
+    assert r.success, r.stderr
+    assert r.json()["slug"] == "noflat"
+    assert "未找到原件" in r.stderr
+
+
 def test_emit_json_long_path_not_wrapped(capsys):
     """regression #336: rich 默认按 80 列折行，曾在 windows CI 把长 path 折进 JSON
     字符串内部（插入换行），破坏 json.loads。soft_wrap=True 后须保持可解析。"""

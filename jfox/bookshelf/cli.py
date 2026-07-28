@@ -63,6 +63,12 @@ def add_cmd(
     ),
     force: bool = typer.Option(False, "--force", help="同名 slug 覆盖重加"),
     move: bool = typer.Option(False, "--move", help="移动原件而非复制"),
+    original: Optional[str] = typer.Option(
+        None,
+        "--original",
+        "-O",
+        help="原件路径（PDF/EPUB…），覆盖自动探测；用于 scan2book 未把原件纳入 bundle",
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库"),
     output_format: str = typer.Option(
         "table",
@@ -86,6 +92,7 @@ def add_cmd(
                 Path(folder).expanduser().resolve(),
                 move=move,
                 force=force,
+                original=original,
             )
             data = {
                 "success": True,
