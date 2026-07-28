@@ -500,3 +500,37 @@ def test_add_wrapped_layout_still_works(tmp_path, make_book_folder):
     assert meta.slug == "wrap"
     assert (shelf.book_dir("wrap") / "bundle" / "pages" / "p001.md").exists()
     assert (shelf.book_dir("wrap") / "original.pdf").exists()
+
+
+def test_add_original_flag_copies_external_pdf(tmp_path, make_book_folder):
+    # #349：--original 指外部 sibling PDF（scan2book 未把原件纳入 bundle）
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="sapiens", pages=1, layout="flat", with_original=False, with_process_files=True
+    )
+    external = tmp_path / "sibling.pdf"
+    external.write_bytes(b"%PDF-1.4 external original")
+    meta = shelf.add(folder, original=str(external), added_at="t")
+    assert meta.source["original_file"] == "sibling.pdf"
+    assert meta.source["original_sha256"]
+    assert (shelf.book_dir("sapiens") / "sibling.pdf").exists()
+    assert external.exists()  # 默认 copy 不删源
+
+
+def test_add_original_flag_missing_raises(tmp_path, make_book_folder):
+    from jfox.bookshelf.store import InvalidBundleError
+
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="sapiens", pages=1, layout="flat", with_original=False)
+    with pytest.raises(InvalidBundleError):
+        shelf.add(folder, original=str(tmp_path / "nope.pdf"), added_at="t")
+
+
+def test_add_original_flag_overrides_auto_detect(tmp_path, make_book_folder):
+    # --original 优先于自动探测（folder 里有 original.pdf 但 flag 指另一个）
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="sapiens", pages=1, layout="flat", with_original=True)
+    external = tmp_path / "override.epub"
+    external.write_bytes(b"EPUB override")
+    meta = shelf.add(folder, original=str(external), added_at="t")
+    assert meta.source["original_file"] == "override.epub"  # flag 胜出，非 original.pdf

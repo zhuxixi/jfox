@@ -145,6 +145,7 @@ class BookShelf:
         slug: Optional[str] = None,
         move: bool = False,
         force: bool = False,
+        original: Optional[str] = None,
         added_at: Optional[str] = None,
     ) -> BookMeta:
         """把 scan2book bundle 文件夹加入书架。
@@ -166,7 +167,7 @@ class BookShelf:
         if slug is None:
             slug = manifest.get("slug") or src_folder.name
         self._validate_slug(slug)
-        original_file, original_sha256 = self._find_original(src_folder)
+        orig_src_path, original_file, original_sha256 = self._resolve_original(src_folder, original)
         if added_at is None:
             added_at = _now_iso()
         user_meta_path = src_folder / META_FILENAME
@@ -231,10 +232,8 @@ class BookShelf:
             self.root.mkdir(parents=True, exist_ok=True)
             stage.mkdir(parents=True)
             self._copy_bundle_whitelist(bundle_src, stage / BUNDLE_DIRNAME)
-            if original_file:
-                orig_src = src_folder / original_file
-                if orig_src.exists():
-                    shutil.copy2(str(orig_src), str(stage / original_file))
+            if original_file and orig_src_path is not None:
+                shutil.copy2(str(orig_src_path), str(stage / original_file))
             meta.save(stage / META_FILENAME)
             dest = self.book_dir(slug)
             if dest.exists():
@@ -351,3 +350,17 @@ class BookShelf:
             return None, None
         biggest = sorted(known, key=lambda f: (-f.stat().st_size, f.name.lower()))[0]
         return biggest.name, _sha256_of(biggest)
+
+    def _resolve_original(self, src_folder: Path, original: Optional[str]) -> tuple:
+        """返回 (原件绝对路径, 存储 basename, sha256)。
+        --original 给定 → 用它（不存在则 InvalidBundleError，覆盖自动探测）；
+        否则自动探测（仅已知扩展名，无则全 None）。原件源路径用于复制与 --move 删源。"""
+        if original:
+            p = Path(original).expanduser().resolve()
+            if not p.is_file():
+                raise InvalidBundleError(f"--original 指定的文件不存在: {p}")
+            return p, p.name, _sha256_of(p)
+        name, sha = self._find_original(src_folder)
+        if name is None:
+            return None, None, None
+        return src_folder / name, name, sha
