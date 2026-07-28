@@ -534,3 +534,32 @@ def test_add_original_flag_overrides_auto_detect(tmp_path, make_book_folder):
     external.write_bytes(b"EPUB override")
     meta = shelf.add(folder, original=str(external), added_at="t")
     assert meta.source["original_file"] == "override.epub"  # flag 胜出，非 original.pdf
+
+
+def test_add_move_flat_removes_consumed_keeps_process(tmp_path, make_book_folder):
+    # #349：扁平 --move 只删消费项（manifest/pages/images + 原件），不动 sibling 过程文件
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(
+        slug="mv", pages=1, layout="flat", with_original=True, with_process_files=True
+    )
+    shelf.add(folder, move=True, added_at="t")
+    # 消费项已删
+    assert not (folder / "manifest.json").exists()
+    assert not (folder / "pages").exists()
+    assert not (folder / "images").exists()
+    assert not (folder / "original.pdf").exists()
+    # 过程文件保留（scan2book 产物，不该 bookshelf 清理）
+    assert (folder / "checkpoint.json").exists()
+    assert (folder / "qa_report.json").exists()
+    assert (folder / "qa_review.html").exists()
+    # 书已入库
+    assert shelf.exists("mv")
+
+
+def test_add_move_wrapped_still_removes_bundle_dir(tmp_path, make_book_folder):
+    # 回归：包装 --move 仍整目录删 bundle/
+    shelf = BookShelf(tmp_path)
+    folder = make_book_folder(slug="mvw", pages=1, layout="wrapped")
+    shelf.add(folder, move=True, added_at="t")
+    assert not (folder / "bundle").exists()
+    assert not (folder / "original.pdf").exists()

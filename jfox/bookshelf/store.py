@@ -269,14 +269,7 @@ class BookShelf:
         # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）。
         # 源在书架内部时跳过删源——那种情况源==目标书目录，删源=删新书（cc-1）。
         if move and not src_folder.is_relative_to(self.root.resolve()):
-            shutil.rmtree(str(src_folder / BUNDLE_DIRNAME), ignore_errors=True)
-            if original_file:
-                orig_src = src_folder / original_file
-                if orig_src.exists():
-                    try:  # cc-6：unlink 失败不致「新书已就位却报失败」
-                        orig_src.unlink()
-                    except OSError as e:
-                        logger.warning("删源原件失败（新书已就位）%s: %s", orig_src, e)
+            self._remove_consumed_sources(bundle_src, orig_src_path)
 
         return meta
 
@@ -364,3 +357,28 @@ class BookShelf:
         if name is None:
             return None, None, None
         return src_folder / name, name, sha
+
+    @staticmethod
+    def _remove_consumed_sources(bundle_src: Path, orig_src_path: Optional[Path]) -> None:
+        """--move 删除本次消费的源：bundle 白名单组件（manifest/pages/images）+ 原件。
+        包装布局（bundle_src=<folder>/bundle）整目录删；扁平布局（bundle_src=<folder>）
+        只删消费项，不动 sibling 过程文件（checkpoint/qa_*）。"""
+        # 扁平：bundle_src == 其父文件夹的 manifest 所在层；用「是否含 bundle/ 子目录」区分更稳
+        is_wrapped = bundle_src.name == BUNDLE_DIRNAME
+        if is_wrapped:
+            if bundle_src.exists():
+                shutil.rmtree(bundle_src, ignore_errors=True)
+        else:
+            for name in BUNDLE_WHITELIST_FILES:
+                f = bundle_src / name
+                if f.is_file():
+                    f.unlink()
+            for d in BUNDLE_WHITELIST_DIRS:
+                p = bundle_src / d
+                if p.exists():
+                    shutil.rmtree(p, ignore_errors=True)
+        if orig_src_path is not None and orig_src_path.exists():
+            try:
+                orig_src_path.unlink()
+            except OSError as e:
+                logger.warning("删源原件失败（新书已就位）%s: %s", orig_src_path, e)
