@@ -1,12 +1,18 @@
 """nightly_test_helpers 纯逻辑单测。"""
 
 import sys
+from datetime import date
 from pathlib import Path
 
 # 让 tests 能 import scripts/ 下的模块
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from nightly_test_helpers import compute_signature, extract_failures
+from nightly_test_helpers import (
+    check_backup_last_ok,
+    compute_signature,
+    decide_issue_action,
+    extract_failures,
+)
 
 
 def test_extract_failures_parses_nodeids():
@@ -84,3 +90,50 @@ def test_compute_signature_top_n_zero():
     assert isinstance(sig, str)
     assert len(sig) == 12
     assert compute_signature(list(reversed(items)), top_n=0) == sig
+
+
+def test_decide_reuses_matching_open_issue():
+    issues = [
+        {"number": 42, "title": "nightly-test 失败 2026-07-28 [sig:abc123def456]"},
+        {"number": 7, "title": "nightly-test 失败 2026-07-21 [sig:zzz999]"},
+    ]
+    assert decide_issue_action("abc123def456", issues) == ("comment", 42)
+
+
+def test_decide_creates_when_no_match():
+    assert decide_issue_action("new123sig456", []) == ("create", None)
+    assert decide_issue_action("new123sig456", [{"number": 1, "title": "unrelated"}]) == (
+        "create",
+        None,
+    )
+
+
+def test_check_backup_ok_when_today_and_true(tmp_path):
+    state = tmp_path / "state.json"
+    state.write_text(
+        '{"last_run": "2026-07-28T08:00:00", "last_ok": true, "last_archive": "x"}',
+        encoding="utf-8",
+    )
+    assert check_backup_last_ok(state, date(2026, 7, 28)) is True
+
+
+def test_check_backup_false_when_not_ok(tmp_path):
+    state = tmp_path / "state.json"
+    state.write_text(
+        '{"last_run": "2026-07-28T08:00:00", "last_ok": false, "last_archive": null}',
+        encoding="utf-8",
+    )
+    assert check_backup_last_ok(state, date(2026, 7, 28)) is False
+
+
+def test_check_backup_false_when_other_day(tmp_path):
+    state = tmp_path / "state.json"
+    state.write_text(
+        '{"last_run": "2026-07-27T08:00:00", "last_ok": true, "last_archive": "x"}',
+        encoding="utf-8",
+    )
+    assert check_backup_last_ok(state, date(2026, 7, 28)) is False
+
+
+def test_check_backup_false_when_missing(tmp_path):
+    assert check_backup_last_ok(tmp_path / "nope.json", date(2026, 7, 28)) is False
