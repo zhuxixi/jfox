@@ -105,6 +105,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Comments/docs**: Chinese (中文)
 - **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
+- **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 gem_synth/backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
 - **Modifying data models**: Update `Note` class in `models.py`, update `to_markdown()`/`from_markdown()`, consider backward compat
 - **Viewing note content**: `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，默认输出完整 Markdown（`--json` / `--format json` 输出结构化字段）
 - **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `gem_synth/lifecycle.py` 同步 dedup 表）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
