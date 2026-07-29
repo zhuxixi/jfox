@@ -174,3 +174,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
 - Test directory migration mostly complete; root-level `test_config_unit.py` and `test_config_set_unit.py` remain but test different things from `tests/unit/`
 - 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `gem_synth/lifecycle.py`
+- `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
