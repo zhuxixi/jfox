@@ -124,11 +124,14 @@ report_failure() {
     echo "- 失败签名: \`$sig\`（首个失败: \`$first\`，共 $count 个）"
     echo
     echo "## 失败的 test（前 10）"
-    # || true 防 SIGPIPE：head 提前关闭管道时 grep/sed 退出码非 0，pipefail+set -e 会中断函数
+    # head 提前关闭管道会让 grep 在 pipefail 下退出码非 0（SIGPIPE）。
+    # 当前调用点（report_failure ... || log）下 bash 自动禁用函数体内 set -e，实际不会中断；
+    # || true 防御性保留：若将来调用点移除 || 或本函数被独立调用，保证 SIGPIPE 不致中断。
     grep -E '^FAILED ' "$pytest_log" | head -10 || true
     echo
     echo "## traceback 摘要（截断）"
-    # 取失败摘要段，限 200 行 / 8KB；|| true 同上（大 traceback 必触发 SIGPIPE）
+    # 取失败摘要段，限 200 行 / 8KB；|| true 防御性保留（同上：head 关闭管道触发 SIGPIPE，
+    # 当前调用点下 set -e 已被禁用，仅防未来调用点变更或独立调用）
     sed -n '/==== FAILURES ====/,/^==== short test summary/p' "$pytest_log" | head -200 | head -c 8192 || true
     echo
     echo "---"
