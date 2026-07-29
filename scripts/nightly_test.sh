@@ -93,7 +93,17 @@ run_tests() {
   (
     cd "$wt"
     export HOME="$sandbox"
-    [[ -d "$real_hf" ]] && export HF_HOME="$real_hf"
+    # 假 HOME 下 uv/git/HF 的缓存与全局配置指回真实路径：
+    # 否则沙箱里空 ~/.cache/uv 会让 uv 每次 cron 重下 Python 工具链与包缓存，
+    # 空 ~/.gitconfig 会让任何 git 调用丢配置，空 HF 缓存会重下 bge-m3 ~2GB。
+    export UV_CACHE_DIR="$REAL_HOME/.cache/uv"
+    export UV_PYTHON_INSTALL_DIR="$REAL_HOME/.local/share/uv/python"
+    export GIT_CONFIG_GLOBAL="$REAL_HOME/.gitconfig"
+    if [[ -d "$real_hf" ]]; then
+      export HF_HOME="$real_hf"
+    else
+      log "WARN: HF cache $real_hf 不存在，测试可能重下 bge-m3"
+    fi
     # 守 lockfile，不漂移依赖
     uv sync --frozen --extra dev
     uv run pytest tests/ -v --tb=short -ra
