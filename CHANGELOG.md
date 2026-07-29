@@ -2,6 +2,13 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.6.1] - 2026-07-29
+
+### Fixes
+- **bookshelf**: #349 add 对齐 scan2book 扁平 bundle 契约 (#350)
+
+[1.6.1]: https://github.com/zhuxixi/jfox/compare/v1.6.0...v1.6.1
+
 ## [1.6.0] - 2026-07-28
 
 ### Features
