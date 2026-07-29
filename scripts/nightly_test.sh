@@ -59,24 +59,35 @@ run_tests() {
   local ts; ts="$(date +%s)"
   # NOTE: wt/sandbox 故意不写 local —— cleanup EXIT trap 在 run_tests 返回后
   # 才触发（脚本退出时），local 变量届时已出栈，set -u 下会报 unbound variable。
-  wt="$LOG_DIR/worktree-$ts"
-  git -C "$REPO_ROOT" fetch -q origin main
-  git -C "$REPO_ROOT" worktree add -q --detach "$wt" origin/main
+  # 预置空串：worktree add 成功后、mktemp 之前若失败（set -e 提前退出），
+  # trap 调 cleanup 时 sandbox 仍为空，空值守卫会跳过 rm，避免泄漏已建的 worktree。
+  wt=""
+  sandbox=""
 
-  # 换假 HOME 沙箱，但 HF 缓存指回真实路径（避免重下 bge-m3 ~2GB）
-  sandbox="$(mktemp -d "$LOG_DIR/home-XXXXXX")"
-  local real_hf="$REAL_HOME/.cache/huggingface"
-
-  # 清理函数（无论成败都跑）
+  # 清理函数（无论成败都跑）；空值守卫保证部分初始化下也安全
   cleanup() {
     if [[ "$KEEP_WORKTREE" -eq 1 ]]; then
       log "保留 worktree: $wt（沙箱: $sandbox）"
     else
-      git -C "$REPO_ROOT" worktree remove --force "$wt" 2>/dev/null || true
-      rm -rf "$sandbox"
+      if [[ -n "$wt" ]]; then
+        git -C "$REPO_ROOT" worktree remove --force "$wt" 2>/dev/null || true
+      fi
+      if [[ -n "$sandbox" ]]; then
+        rm -rf "$sandbox"
+      fi
     fi
   }
+
+  wt="$LOG_DIR/worktree-$ts"
+  git -C "$REPO_ROOT" fetch -q origin main
+  git -C "$REPO_ROOT" worktree add -q --detach "$wt" origin/main
+  # worktree 已落盘，立即布防 EXIT trap：之后的 mktemp 若失败（set -e 退出），
+  # cleanup 仍会回收已添加的 worktree，杜绝泄漏窗口。
   trap cleanup EXIT
+
+  # 换假 HOME 沙箱，但 HF 缓存指回真实路径（避免重下 bge-m3 ~2GB）
+  sandbox="$(mktemp -d "$LOG_DIR/home-XXXXXX")"
+  local real_hf="$REAL_HOME/.cache/huggingface"
 
   log "worktree=$wt sandbox=$sandbox"
 
