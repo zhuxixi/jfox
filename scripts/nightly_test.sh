@@ -103,7 +103,69 @@ run_tests() {
 # --- 失败分支（Task 5 实现）---
 report_failure() {
   # $1 = pytest 输出文件路径
-  echo "TODO: report_failure 占位（Task 5 填充）" >&2
+  local pytest_log="$1"
+  local today; today="$(date '+%F')"
+  local ts; ts="$(date '+%s')"
+
+  # 算签名 + 首个失败 + 失败数（helpers CLI）
+  local sig_line sig first count
+  sig_line="$(python3 "$REPO_ROOT/scripts/nightly_test_helpers.py" signature <"$pytest_log")"
+  sig="${sig_line%%	*}"
+  first="$(printf '%s' "$sig_line" | cut -f2)"
+  count="$(printf '%s' "$sig_line" | cut -f3)"
+
+  # issue body（截断 traceback，避免巨型 issue）
+  local body="$LOG_DIR/issue-body-$ts.md"
+  {
+    echo "## #263 夜间全量测试失败"
+    echo
+    echo "- 日期: $today"
+    echo "- commit: \`$(git -C "$REPO_ROOT" rev-parse --short origin/main)\`"
+    echo "- 失败签名: \`$sig\`（首个失败: \`$first\`，共 $count 个）"
+    echo
+    echo "## 失败的 test（前 10）"
+    # || true 防 SIGPIPE：head 提前关闭管道时 grep/sed 退出码非 0，pipefail+set -e 会中断函数
+    grep -E '^FAILED ' "$pytest_log" | head -10 || true
+    echo
+    echo "## traceback 摘要（截断）"
+    # 取失败摘要段，限 200 行 / 8KB；|| true 同上（大 traceback 必触发 SIGPIPE）
+    sed -n '/==== FAILURES ====/,/^==== short test summary/p' "$pytest_log" | head -200 | head -c 8192 || true
+    echo
+    echo "---"
+    echo "完整日志: \`$pytest_log\`（本机）。由 \`scripts/nightly_test.sh\` 自动提交。"
+  } >"$body"
+
+  # gh 不可用 → 降级写本地
+  if ! command -v gh >/dev/null; then
+    log "WARN: gh 缺失，失败摘要写到 $body（未提 GitHub issue）"
+    return 0
+  fi
+  if ! gh auth status >/dev/null 2>&1; then
+    log "WARN: gh 未认证，失败摘要写到 $body（未提 GitHub issue）"
+    return 0
+  fi
+
+  # 确保 label 存在
+  gh label create "$ISSUE_LABEL" --repo "$REPO_SLUG" --color D73B3B \
+    --description "夜间全量测试（#263）自动失败" --force >/dev/null 2>&1 || true
+
+  # 去重决策：查 open issue 的 title 里有没有同签名
+  local decision action num
+  decision="$(gh issue list --repo "$REPO_SLUG" --label "$ISSUE_LABEL" \
+                --state open --json number,title --limit 50 \
+              | python3 "$REPO_ROOT/scripts/nightly_test_helpers.py" decide "$sig")"
+  action="${decision%%	*}"
+  num="$(printf '%s' "$decision" | cut -f2)"
+
+  if [[ "$action" == "comment" && -n "$num" ]]; then
+    log "复用 issue #$num（同签名 $sig）追加评论"
+    gh issue comment "$num" --repo "$REPO_SLUG" --body-file "$body"
+  else
+    log "新开 issue（签名 $sig）"
+    gh issue create --repo "$REPO_SLUG" \
+      --title "nightly-test 失败 $today [sig:$sig]" \
+      --label "$ISSUE_LABEL" --body-file "$body"
+  fi
 }
 
 # --- 主流程 ---
