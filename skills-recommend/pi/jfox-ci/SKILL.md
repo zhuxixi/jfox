@@ -62,17 +62,45 @@ gh run list --workflow=integration-test.yml --limit 1 --json databaseId,status,h
 | fast    | ~30 min | 10 min  | 5 次    |
 | core    | ~30 min | 10 min  | 5 次    |
 
-每轮执行：
+每轮执行（轮询检查 CI 状态并汇报结果；pi 无 CronCreate，由 agent 定期重跑或用 subagent scheduled run 驱动）：
 
-1. 检查 run 状态：`gh run view <run_id> --json status,conclusion`
-2. 检查各 job 状态：`gh run view <run_id> --json jobs`
-3. 报告进度
+### Step A: 检查 run 状态
 
-**全部完成后**：
-- 全绿 → 报告 "CI 全绿 ✅"
-- 有失败 → 报告 "CI 失败 ❌" 并列出失败 job，建议查看日志：`gh run view <run_id> --log-failed`
+```bash
+gh run view <run_id> --json status,conclusion,jobs --jq '{status,conclusion}'
+```
 
-**超时**（超过最大轮次）→ 报告超时，建议手动检查
+- status: "completed" → 检查 conclusion
+- status: "in_progress" / "queued" / "waiting" → 仍在跑，继续轮询
+
+### Step B: 逐 job 状态报告
+
+```bash
+gh run view <run_id> --json jobs --jq '.jobs[] | {name, status, conclusion}'
+```
+
+逐个 job 报告状态：
+- conclusion: "success" → ✅
+- conclusion: "failure" → ❌
+- status: "in_progress" / "queued" → ⏳
+
+### Step C: 决策
+
+**全部 job 完成时**：
+- 全绿 → 报告 "CI 全绿 ✅"，告知用户，结束轮询
+- 有失败 → 报告 "CI 失败 ❌" 列出失败 job，建议查看日志：`gh run view <run_id> --log-failed`，结束轮询
+
+**仍在跑时**：
+- 轮次计数 +1
+- 若超过该测试类型的最大轮次 → 报告超时，建议手动检查，结束轮询
+- 否则报告当前进度，继续轮询
+
+向用户展示：
+
+```
+已触发 <type> 测试: <run_url>
+预计耗时 ~<duration> 分钟，每 10 分钟检查一次进度。
+```
 
 ## 错误处理
 

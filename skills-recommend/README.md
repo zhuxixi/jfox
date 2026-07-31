@@ -23,8 +23,14 @@ skills-recommend/
     ├── jfox-search/
     ├── jfox-session-summary/
     ├── jfox-common/
+    ├── jfox-promote/
+    ├── jfox-bookshelf/
+    ├── jfox-overview/
     ├── jfox-ci/
-    └── jfox-release/
+    ├── jfox-release/
+    ├── jfox-release-cc-plugin/
+    ├── jfox-release-kimi-plugin/
+    └── jfox-release-all/
 ```
 
 ## 使用方法
@@ -93,14 +99,20 @@ pi install git:github.com/zhuxixi/jfox
 - **jfox-ingest** — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
 - **jfox-organize** — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
 - **jfox-search** — 搜索笔记、图谱查询、链接推荐
+- **jfox-promote** — 过审 gem-synth 候选宝石、晋升为 permanent 或拒绝归档（三模式 + 冗余维度）
 - **jfox-session-summary** — 将会话总结写入知识库
+- **jfox-bookshelf** — 书架资产管理（PDF + scan2book bundle，纯文件不进索引）
+- **jfox-overview** — jfox 总览与 skill 路由（判断该用哪个 skill）
 - **jfox-ci** — 触发 GitHub Actions CI 工作流
 - **jfox-release** — 版本发布（bump → CHANGELOG → PR → Release）
+- **jfox-release-cc-plugin** — cc-plugin（Claude Code marketplace）发版
+- **jfox-release-kimi-plugin** — kimi-plugin 发版
+- **jfox-release-all** — 三件套编排发版（自动跳过无改动者）
 
 **与 kimi-cli 版的差异：**
 - description 中英双语，触发词覆盖更广
 - 交叉引用使用 pi 的 `/skill:name` 语法
-- 额外包含 `jfox-ci` 和 `jfox-release`（从 `.claude/skills/` 移植）
+- 额外包含 `jfox-promote`、`jfox-bookshelf`、`jfox-overview`（从 cc-plugin 移植）、`jfox-ci`（从 `.claude/skills/` 移植），以及 `jfox-release`、`jfox-release-cc-plugin`、`jfox-release-kimi-plugin`、`jfox-release-all` 四条发版轨道（从 `.claude/skills/` 移植）
 - 内容以 cc-plugin 的详细版为基础，保持中文主体
 
 ### OpenCode / Codex / Cursor 等
