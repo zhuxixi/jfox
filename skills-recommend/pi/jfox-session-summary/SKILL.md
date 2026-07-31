@@ -8,12 +8,14 @@ description: |
 
 # JFox Session Summary
 
-将当前 Claude Code 会话的总结写入 jfox 知识库（session 类型，生成后直接写入）。
+将当前会话的总结写入 jfox 知识库（session 类型，生成后直接写入）。
 
 ## 前置条件
 
 - 知识库已初始化（`jfox init`）
 - 确认目标知识库（通过 `--kb` 或当前默认）
+
+> 本技能复用 `/skill:jfox-common` §4.1 的共享约定（`--kb` / `--json` / `--content-file`）。`jfox add` 通用参数语法详见 `/skill:jfox-common` §4.2；下文记录的是 session 类型专属约束。
 
 ## 工作流程
 
