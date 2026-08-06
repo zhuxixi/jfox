@@ -1,13 +1,7 @@
 ---
 name: session-to-permanent
 description: |
-  Capture CURRENT STATE as permanent notes — project facts, file/script locations,
-  architecture decisions (ADR), design rationale, how things stand now — plus
-  reusable knowledge (tool usage, gotchas, debug patterns). Unlike session-summary
-  (a log of actions: what you did) and organize (refine notes already piled in the
-  inbox), this skill distills current-state facts from the live conversation into
-  permanent notes, dedups against existing ones, and writes after explicit user
-  review.
+  Use when user wants to distill reusable knowledge from the current conversation into permanent notes — capturing current state (project facts, file/script locations, architecture decisions/ADR, design rationale, how things stand now) plus tool usage, gotchas, debug patterns. Unlike session-summary (a log of actions: what you did) and organize (refine notes already piled in the inbox), this skill distills current-state facts from the live conversation into permanent notes, dedups against existing ones, and writes after explicit user review.
   Triggers on: "session to permanent", "提炼到永久笔记", "会话沉淀永久笔记",
   "把这次对话沉淀成永久笔记", "提炼会话知识", "distill session to permanent",
   "会话提炼", "沉淀永久笔记", "提炼永久笔记".
@@ -152,18 +146,19 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 **审阅交互：用 AskUserQuestion 出选择题**
 
-展示完草稿后，调用 AskUserQuestion 出选择题（每个选项给 `label` 和 `description`），四个选项覆盖主要处置路径，特殊情况走「其他」自由说明：
+展示完草稿后，调用 AskUserQuestion 出选择题（`questions` 数组，每个选项给 `label` 和 `description`），三个选项覆盖主要处置路径，特殊情况走 Other（AskUserQuestion 自动提供，用户可自由输入）说明：
 
 ```
-AskUserQuestion(
-    question="请确认如何处置本批 2 条草稿？",
-    options=[
+AskUserQuestion(questions=[{
+    "question": "请确认如何处置本批 2 条草稿？",
+    "header": "草稿审阅",
+    "options": [
         {"label": "全部写入", "description": "本批 2 条全部落库（新笔记 jfox add / 补充 jfox edit）"},
         {"label": "跳过某条", "description": "先指定要跳过的草稿，其余写入"},
         {"label": "改某条", "description": "先修改某条草稿内容，改完重新展示后回到本选择题"},
-        {"label": "其他", "description": "以上都不合适，需要自由说明（混合处置、调标题/标签、临时改主意等）"},
     ],
-)
+    "multiSelect": false,
+}])
 ```
 
 按用户选择走分支：
@@ -171,19 +166,21 @@ AskUserQuestion(
 - **全部写入** → 直接进 Step 5 落库。
 - **跳过某条** → 再调一次 AskUserQuestion，把本批每条草稿列成选项（label 用「编号+标题」），选中即跳过该条；要跳过多条就重复此步，直到用户选「不再跳过」。其余照常写入。
 - **改某条** → 同上列出草稿让用户选要改的编号，按反馈改完、重新展示该条草稿，再回到本选择题。
-- **其他** → 选项覆盖不了的场景（混合处置、想调整标题/标签、临时改主意等），直接请用户说明意图（打字/语音均可），按其指示处置，处置完再回到本选择题收尾。
+- **Other**（AskUserQuestion 自动提供）→ 选项覆盖不了的场景（混合处置、想调整标题/标签、临时改主意等），用户在 Other 里说明意图，按其指示处置，处置完再回到本选择题收尾。
 - 用户对某条明确说「不要了」→ 等同跳过，不写入；若本批全部被跳过/否决 → 不写入任何内容，按「错误处理」结束。
 
 一批落库后，若仍有剩余候选，继续下一批同样用选择题确认：
 
 ```
-AskUserQuestion(
-    question="本批 5 条已写入，还剩 3 条候选，继续下一批吗？",
-    options=[
+AskUserQuestion(questions=[{
+    "question": "本批 5 条已写入，还剩 3 条候选，继续下一批吗？",
+    "header": "下一批",
+    "options": [
         {"label": "继续下一批", "description": "回到 Step 1–2 处理剩余候选"},
         {"label": "就此结束", "description": "剩余候选本次不处理"},
     ],
-)
+    "multiSelect": false,
+}])
 ```
 
 选「继续下一批」则回到 Step 1–2 启动下一批；选「就此结束」则本次流程结束。

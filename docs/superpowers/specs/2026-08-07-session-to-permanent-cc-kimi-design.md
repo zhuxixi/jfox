@@ -1,7 +1,7 @@
 # session-to-permanent skill —— CC + Kimi 平台适配设计
 
 - **issue**: #317（pi 已在 #366 合入，本设计覆盖剩余 CC + Kimi 两平台）
-- **日期**: 2026-08-06
+- **日期**: 2026-08-07
 - **PR 粒度**: 一个 PR 同时做两平台，合并后关闭 #317
 
 ## 目标
@@ -20,9 +20,9 @@
 |---------|----|----|----|
 | 共享约定（`--kb`/`--json`/`--content-file`） | `/jfox:manage` §4.1 | `/skill:jfox-manage` §4.1 | `/skill:jfox-common` §4.1 |
 | `jfox add` 通用参数 | `/jfox:manage` §4.2 | `/skill:jfox-manage` §4.2 | `/skill:jfox-common` §4.2 |
-| suggest-links 误命中坑 | `/jfox:promote` §6 | `/skill:jfox-promote` §6 | `/skill:jfox-promote` §6 |
-| organize（图谱健康度目标） | `/jfox:organize` Step 3 | `/skill:jfox-organize` Step 3 | `/skill:jfox-organize` Step 3 |
-| 写入后验证 | `/jfox:manage` §4.5 | `/skill:jfox-manage` §4.5 | `/skill:jfox-common` §4.5 |
+| suggest-links 误命中坑（泛指 promote，非调用） | `promote` §6 | `jfox-promote` §6 | `jfox-promote` §6 |
+| organize 图谱健康度（泛指 organize，非调用） | `organize` Step 3 | `jfox-organize` Step 3 | `jfox-organize` Step 3 |
+| 写入后验证（调用 manage/common） | `/jfox:manage` §4.5 | `/skill:jfox-manage` §4.6 | `/skill:jfox-common` §4.5 |
 | daemon 启动 | `/jfox:manage` §6 | `/skill:jfox-manage` §6 | `/skill:jfox-common` §6 |
 
 ### 2. 审阅交互（Step 4）
@@ -54,7 +54,7 @@ pi 版写死默认知识库（不带 `--kb`，呼应原 #365）。**CC/Kimi 不�
    - description 与 pi 对齐，交叉引用改 `/skill:jfox-xxx`
    - 审阅交互改 AskUserQuestion，`--kb` 显式
 
-### 同步入口文件（3 处）
+### 同步入口文件（4 处）
 
 3. **`packages/cc-plugin/skills/using-jfox/SKILL.md`**
    - 路由表「我该用哪个 skill」加一行：会话提炼永久笔记 → `session-to-permanent`
@@ -69,6 +69,9 @@ pi 版写死默认知识库（不带 `--kb`，呼应原 #365）。**CC/Kimi 不�
 5. **`packages/kimi-plugin/skills/using-jfox/SKILL.md`**
    - 术语映射表加一行：会话提炼永久笔记 → `/skill:jfox-session-to-permanent`
    - 跨 skill 引用语法列表加 `/skill:jfox-session-to-permanent`
+
+6. **`CLAUDE.md`**（项目根，cc-plugin skill 清单）
+   - cc-plugin skill 清单「8 skills」→「9 skills」，在 `session-summary` 后补 `session-to-permanent`（kimi-plugin 无对应枚举清单，不需改）
 
 ### 不改
 

@@ -1,13 +1,7 @@
 ---
 name: jfox-session-to-permanent
 description: |
-  Capture CURRENT STATE as permanent notes — project facts, file/script locations,
-  architecture decisions (ADR), design rationale, how things stand now — plus
-  reusable knowledge (tool usage, gotchas, debug patterns). Unlike session-summary
-  (a log of actions: what you did) and organize (refine notes already piled in the
-  inbox), this skill distills current-state facts from the live conversation into
-  permanent notes, dedups against existing ones, and writes after explicit user
-  review.
+  Use when user wants to distill reusable knowledge from the current conversation into permanent notes — capturing current state (project facts, file/script locations, architecture decisions/ADR, design rationale, how things stand now) plus tool usage, gotchas, debug patterns. Unlike session-summary (a log of actions: what you did) and organize (refine notes already piled in the inbox), this skill distills current-state facts from the live conversation into permanent notes, dedups against existing ones, and writes after explicit user review.
   Triggers on: "session to permanent", "提炼到永久笔记", "会话沉淀永久笔记",
   "把这次对话沉淀成永久笔记", "提炼会话知识", "distill session to permanent",
   "会话提炼", "沉淀永久笔记", "提炼永久笔记".
@@ -213,7 +207,7 @@ EOF
 jfox edit <已有笔记_id> --content-file /tmp/existing.md --kb <kb-name>
 ```
 
-> 写入后的验证（`jfox show` / `jfox refs`）详见 `/skill:jfox-manage` §4.5。落库后可以顺手 `jfox graph --stats --json` 看 avg_degree、isolated_nodes 是否健康（目标见 `jfox-organize` Step 3）。
+> 写入后的验证（`jfox show` / `jfox refs`）详见 `/skill:jfox-manage` §4.6。落库后可以顺手 `jfox graph --stats --json` 看 avg_degree、isolated_nodes 是否健康（目标见 `jfox-organize` Step 3）。
 
 ## 命令参考
 
