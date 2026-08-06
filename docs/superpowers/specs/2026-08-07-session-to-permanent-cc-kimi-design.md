@@ -27,14 +27,14 @@
 
 ### 2. 审阅交互（Step 4）
 
-pi 版用 pi 的 `question` 工具出四选项选择题（#367）。**CC 和 Kimi 均有 AskUserQuestion 工具**（用户确认），两平台都改用 AskUserQuestion 出同样四选项：
+pi 版用 pi 的 `question` 工具出四选项选择题（#367）。**CC 和 Kimi 均有 AskUserQuestion 工具**（用户确认，照 CC 原生用法），两平台都改用 AskUserQuestion——`questions` 数组结构（`question` + `header` + `options[{label,description}]` + `multiSelect`），三个显式选项（全部写入 / 跳过某条 / 改某条），特殊情况走 Other（AskUserQuestion 自动提供，用户自由输入）：
 
 - 全部写入 → 进 Step 5 落库
 - 跳过某条 → 二次选择列出草稿编号，选中即跳过
 - 改某条 → 二次选择列出草稿编号，按反馈改完重新展示后回到本选择题
-- 其他 → 请用户自由说明（混合处置、调标题/标签等）
+- Other → 用户自由说明（混合处置、调标题/标签等）
 
-保留 pi 版的分批规则（每批 ≤ 5 条）、批次间继续确认的结构。伪代码从 pi 的 `question(...)` 改写为 AskUserQuestion 的概念描述（`question` + `options[{label, description}]`），**不绑定具体平台 API 签名**——两平台 AskUserQuestion 细节若有差异，用概念描述规避。
+保留 pi 版的分批规则（每批 ≤ 5 条）、批次间继续确认的结构。两平台 AskUserQuestion 伪代码写法一致（照 CC 契约：`questions=[{...}]`、去掉手动「其他」改用工具自动提供的 Other）。
 
 ### 3. `--kb` 处理
 
@@ -46,12 +46,12 @@ pi 版写死默认知识库（不带 `--kb`，呼应原 #365）。**CC/Kimi 不�
 
 1. **`packages/cc-plugin/skills/session-to-permanent/SKILL.md`**
    - frontmatter `name: session-to-permanent`（无前缀，与 CC 现有 skill 命名一致）
-   - description 与 pi 对齐（英文 + 触发词），交叉引用改 `/jfox:xxx`
+   - description 改「Use when user wants to...」风格（与 CC session-summary 约定一致；pi 用「Capture...」是 pi 自身风格），交叉引用改 `/jfox:xxx`
    - 审阅交互改 AskUserQuestion，`--kb` 显式
 
 2. **`packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md`**
    - frontmatter `name: jfox-session-to-permanent`（`jfox-` 前缀，与 Kimi 现有 skill 一致）
-   - description 与 pi 对齐，交叉引用改 `/skill:jfox-xxx`
+   - description 改「Use when user wants to...」风格（与 Kimi jfox-session-summary 约定一致），交叉引用改 `/skill:jfox-xxx`
    - 审阅交互改 AskUserQuestion，`--kb` 显式
 
 ### 同步入口文件（4 处）
@@ -98,5 +98,5 @@ pi 版写死默认知识库（不带 `--kb`，呼应原 #365）。**CC/Kimi 不�
 
 ## 风险与对策
 
-- **Kimi AskUserQuestion 能力/语法与 CC 的差异** → SKILL.md 用概念描述（`label` + `description` 四选项），不写死 API 签名
+- **AskUserQuestion 契约** → 两平台均按 CC 原生用法（`questions` 数组、三选项 + Other 自动），伪代码照此写（round-1 据 kimi-4 校准）
 - **Zima 双 Bot 对文档严格**（memory：改 skill 文档易多轮挑 drift）→ 走完整 spec + plan；三平台交叉引用逐条核对；同步文件全量 grep 不漏副本
