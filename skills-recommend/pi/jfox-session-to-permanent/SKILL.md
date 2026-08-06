@@ -1,12 +1,13 @@
 ---
 name: jfox-session-to-permanent
 description: |
-  Distill reusable knowledge from the CURRENT conversation into permanent notes.
-  Unlike session-summary (archive the whole conversation as a session note) and
-  organize (refine notes already piled in the inbox), this skill reads the live
-  conversation, extracts only cross-session reusable knowledge points, dedups
-  against existing permanent notes, and writes new permanent notes after explicit
-  user review.
+  Capture CURRENT STATE as permanent notes — project facts, file/script locations,
+  architecture decisions (ADR), design rationale, how things stand now — plus
+  reusable knowledge (tool usage, gotchas, debug patterns). Unlike session-summary
+  (a log of actions: what you did) and organize (refine notes already piled in the
+  inbox), this skill distills current-state facts from the live conversation into
+  permanent notes, dedups against existing ones, and writes after explicit user
+  review.
   Triggers on: "session to permanent", "提炼到永久笔记", "会话沉淀永久笔记",
   "把这次对话沉淀成永久笔记", "提炼会话知识", "distill session to permanent",
   "会话提炼", "沉淀永久笔记", "提炼永久笔记".
@@ -14,7 +15,9 @@ description: |
 
 # JFox 会话沉淀永久笔记（session → permanent）
 
-从当前会话里识别**跨会话可复用**的知识点，比对已有 permanent 笔记去重，提炼成新的 permanent 笔记。核心目的只有一个——把这次对话里「下次还会用到」的知识固化下来，一次性事务则不记。
+从当前会话里提炼**当前现状**，比对已有 permanent 笔记去重，固化成新的 permanent 笔记。核心目的只有一个——让 jfox 知识库**充分描述关于你当前的所有事实和现状**，这样你随时能审视全局、发现潜在的待办、为后续调整和优化提供方向。
+
+permanent 和 session 的本质要分清：**session 记「行为历史」**（我最近在做什么、动作序列，是过去式）；**permanent 记「当前现状」**（事实、设计决策、ADR、文件位置现状，是现在式）。会话里能挖出的「现状」就沉淀为 permanent——即便「后续怎么做」还不清楚，把「当前现状和已做的决策」记下来，后续才有据可依。
 
 ## 和现有 skill 的区别
 
@@ -22,11 +25,11 @@ description: |
 
 | skill | 输入 | 产出 | 区别 |
 |-------|------|------|------|
-| `jfox-session-summary` | 当前会话 | session 笔记 | 完整存档整段对话，不提炼 |
+| `jfox-session-summary` | 当前会话 | session 笔记 | **行为历史**：记录「最近在做什么」的动作序列 |
 | `jfox-organize` | inbox / fleeting 笔记 | permanent | 整理**已堆积**在收件箱的笔记 |
-| `jfox-session-to-permanent`（本技能） | 当前会话 | permanent | 从**当前会话**直接提炼可复用知识，先比对已有 permanent 去重 |
+| `jfox-session-to-permanent`（本技能） | 当前会话 | permanent | **当前现状**：事实、设计决策、ADR、现状快照 |
 
-一句话：session-summary 记「这次干了啥」，organize 整理「早就堆在那的笔记」，本技能沉淀「这次对话里值得长期保留的知识点」。
+一句话：session-summary 记「我最近做了哪些动作」（历史），本技能沉淀「事情当前是什么状态」（现状），organize 整理「早就堆在收件箱的笔记」。
 
 ## 前置条件
 
@@ -41,28 +44,30 @@ description: |
 
 ### Step 1: 会话知识提取
 
-回顾当前会话，挑出**跨会话可复用**的知识点，排除一次性的东西。这一步的判断标准是「下次还会不会用到」。
+回顾当前会话，挑出能构成**当前现状**的事实和决策。判断标准是「它是不是描述了当前的某个真实状态或已落定的决策」——只要是的，就值得记，哪怕看起来是项目特定的小事。
 
-**值得提炼的**（跨会话可复用）：
-- 概念理解（某个工具/机制的原理、术语解释）
-- 工具用法（命令、参数、配置的通用用法）
-- 配置坑 / 踩坑教训（为什么会出错、怎么修）
-- 设计模式 / 最佳实践（通用方法论）
-- 调试思路（排查某类问题的通用路径）
+**值得提炼的**（构成当前现状，都要记）：
+- 项目事实与现状：脚本/文件/配置的位置、端口号、路径、特定 issue 编号及其当前状态（即便后续会变动，当前这个位置就是现状，值得留底）
+- 设计思路与架构决策（ADR）：为什么这么设计、当前决策现状、可能的后续方向（即便后续未定，先把「当前已做的决策」记下来）
+- 业务逻辑现状：系统当前如何运作、各组件之间的关系
+- 概念理解与原理：工具/机制的工作原理、术语解释
+- 工具用法：命令、参数、配置的用法
+- 配置坑 / 踩坑教训：为什么会出错、怎么修
+- 调试思路 / 最佳实践：排查某类问题的通用路径
 
-**要排除的**（一次性事务，不记）：
-- 本次具体改了哪个文件的哪一行
-- 针对当前项目的特定事实（端口号、临时路径、特定 issue 编号）
-- 已经众所周知的常识
-- 纯粹的操作确认（「跑起来了」「测试过了」）
+**要排除的**（确实不记）：
+- 众所周知的常识（没有信息量）
+- 不承载任何现状信息的纯确认（光一句「跑起来了」，若它本身不带现状信息；但「X 方案已验证可行」这种确认了现状的，仍要记）
 
-把筛选结果列成候选清单给用户看一眼（这一步只是预告，草稿还没生成）：
+> 为什么连项目特定事实都要记：充足且准确的现状描述，是你审视全局、挖掘潜在待办的基础。比如「这里加了个脚本，后续可能挪走」——当前脚本在这个位置就是一条有价值的现状，日后审视时能据此判断是否该整理。permanent 笔记越能完整描述你的所有事实和现状，jfox 就越能帮你发现「该做但还没做的事」。
+
+把筛选结果列成候选清单给用户看一眼（这一步只是预告，草稿还没生成；候选多于 5 条时分批，规则见 Step 4）：
 
 ```
-候选知识点（N 条）：
-1. [工具用法] jfox suggest-links 的阈值含义与误命中坑
-2. [配置坑] ChromaDB 多进程并发会报 "Error finding id"，需 jfox index rebuild
-3. [排除] 本次改了 cli.py 第 245 行 —— 一次性事务，不记
+候选知识点（N 条，N>5 时本次将分 ⌈N/5⌉ 批过）：
+1. [现状] scripts/foo.sh 当前位于 X，用途是 Y，后续可能挪到 Z
+2. [ADR] 某模块为何采用方案 A 而非 B，当前决策已落定
+3. [工具用法] jfox suggest-links 的阈值含义与误命中坑
 ```
 
 ### Step 2: 强制去重（硬约束）
@@ -119,9 +124,11 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 ### Step 4: 用户审阅（硬约束）
 
-**严禁未经审阅直接 `jfox add`。** 把所有草稿完整展示给用户，等明确确认。这是本技能和 `jfox-session-summary`（直接写入）最大的区别——session 笔记是存档可以存完再改，permanent 是知识沉淀，落库前必须过眼。
+**严禁未经审阅直接 `jfox add`。** 把草稿完整展示给用户，等明确确认。这是本技能和 `jfox-session-summary`（直接写入）最大的区别——session 笔记是存档可以存完再改，permanent 是知识沉淀，落库前必须过眼。
 
-展示格式（让用户一眼看到去重结论和草稿内容）：
+**分批审阅规则**：候选分批过，**每批最多 5 条**。会话短、候选只有 1–2 条就一批过完；候选超过 5 条时，第一批只取 5 条走完 Step 2–5，落库后再回到 Step 1–2 处理剩余候选、启动第二批……直到某一批不足 5 条（即没有额外可记的知识了）才算挖完结束。这样避免一次甩出十几条草稿把用户淹没，也让用户能逐批消化。
+
+展示格式（每批最多 5 条，让用户一眼看到去重结论和草稿内容）：
 
 ```
 本次拟沉淀 2 条 permanent：
@@ -142,6 +149,8 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 请确认：全部写入 / 改某条 / 跳过某条？
 ```
+
+一批落库后，若仍有剩余候选，主动询问：「本批 N 条已写入，还剩 M 条候选，继续下一批吗？」用户同意则回到 Step 1–2 启动下一批；拒绝则就此结束。
 
 ### Step 5: 落库
 
@@ -184,7 +193,7 @@ jfox graph --stats --json                        # 落库后看图谱健康度
 
 ## 错误处理
 
-- **会话里没有可复用知识**（全是一次性事务）→ 告知用户「本次会话无可沉淀的跨会话知识」，不强行造笔记。
+- **会话里没有可沉淀的现状**（没有事实/决策/现状可记，或只剩众所周知的常识）→ 告知用户「本次会话无可沉淀的现状」，不强行造笔记。
 - **`jfox search` / `suggest-links` 因 daemon 未启动而失败** → 提示用户启动 daemon（见 `/skill:jfox-common` §6），或先用 `jfox search` 关键词模式（不依赖 embedding）。
 - **草稿被用户全部否决** → 不写入任何内容，记录用户反馈后结束。
 - **`suggest-links` 返回低匹配度**（score < 0.6）→ 不强制补链，但 `jfox search` 命中或手动判断相关的仍可嵌入。

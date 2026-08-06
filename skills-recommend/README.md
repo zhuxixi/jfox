@@ -101,7 +101,7 @@ pi install git:github.com/zhuxixi/jfox
 - **jfox-search** — 搜索笔记、图谱查询、链接推荐
 - **jfox-promote** — 过审 gem-synth 候选宝石、晋升为 permanent 或拒绝归档（三模式 + 冗余维度）
 - **jfox-session-summary** — 将会话总结写入知识库
-- **jfox-session-to-permanent** — 从当前会话提炼可复用知识为 permanent 笔记（强制去重 + 落库前审阅）
+- **jfox-session-to-permanent** — 从当前会话提炼当前现状（事实/决策/ADR）为 permanent 笔记（强制去重 + 落库前审阅）
 - **jfox-bookshelf** — 书架资产管理（PDF + scan2book bundle，纯文件不进索引）
 - **jfox-overview** — jfox 总览与 skill 路由（判断该用哪个 skill）
 - **jfox-ci** — 触发 GitHub Actions CI 工作流
