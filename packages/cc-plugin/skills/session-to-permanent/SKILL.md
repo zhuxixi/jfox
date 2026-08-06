@@ -1,0 +1,240 @@
+---
+name: session-to-permanent
+description: |
+  Use when user wants to distill reusable knowledge from the current conversation into permanent notes — capturing current state (project facts, file/script locations, architecture decisions/ADR, design rationale, how things stand now) plus tool usage, gotchas, debug patterns. Unlike session-summary (a log of actions: what you did) and organize (refine notes already piled in the inbox), this skill distills current-state facts from the live conversation into permanent notes, dedups against existing ones, and writes after explicit user review.
+  Triggers on: "session to permanent", "提炼到永久笔记", "会话沉淀永久笔记",
+  "把这次对话沉淀成永久笔记", "提炼会话知识", "distill session to permanent",
+  "会话提炼", "沉淀永久笔记", "提炼永久笔记".
+---
+
+# JFox 会话沉淀永久笔记（session → permanent）
+
+从当前会话里提炼**当前现状**，比对已有 permanent 笔记去重，固化成新的 permanent 笔记。核心目的只有一个——让 jfox 知识库**充分描述关于你当前的所有事实和现状**，这样你随时能审视全局、发现潜在的待办、为后续调整和优化提供方向。
+
+permanent 和 session 的本质要分清：**session 记「行为历史」**（我最近在做什么、动作序列，是过去式）；**permanent 记「当前现状」**（事实、设计决策、ADR、文件位置现状，是现在式）。会话里能挖出的「现状」就沉淀为 permanent——即便「后续怎么做」还不清楚，把「当前现状和已做的决策」记下来，后续才有据可依。
+
+## 和现有 skill 的区别
+
+这三个 skill 容易混淆，先对齐定位：输入和产出不同，适用场景就不同。
+
+| skill | 输入 | 产出 | 区别 |
+|-------|------|------|------|
+| `session-summary` | 当前会话 | session 笔记 | **行为历史**：记录「最近在做什么」的动作序列 |
+| `organize` | inbox / fleeting 笔记 | permanent | 整理**已堆积**在收件箱的笔记 |
+| `session-to-permanent`（本技能） | 当前会话 | permanent | **当前现状**：事实、设计决策、ADR、现状快照 |
+
+一句话：session-summary 记「我最近做了哪些动作」（历史），本技能沉淀「事情当前是什么状态」（现状），organize 整理「早就堆在收件箱的笔记」。
+
+## 前置条件
+
+- 知识库已初始化（`jfox init`）。未初始化时，提示用户先调用 `/jfox:manage` 创建。
+- 确认目标知识库（通过 `--kb <name>` 指定，或使用当前默认）。
+
+> 本技能复用 `/jfox:manage` §4.1 的共享约定（`--kb` / `--json` / `--content-file`），下文示例统一使用 `--json` 简写。
+
+## 五步流程
+
+按顺序走：提取 → 去重 → 起草 → 审阅 → 落库。其中**去重**和**审阅**是两条硬约束，跳过任何一条都算违规。
+
+### Step 1: 会话知识提取
+
+回顾当前会话，挑出能构成**当前现状**的事实和决策。判断标准是「它是不是描述了当前的某个真实状态或已落定的决策」——只要是的，就值得记，哪怕看起来是项目特定的小事。
+
+**值得提炼的**（构成当前现状，都要记）：
+- 项目事实与现状：脚本/文件/配置的位置、端口号、路径、特定 issue 编号及其当前状态（即便后续会变动，当前这个位置就是现状，值得留底）
+- 设计思路与架构决策（ADR）：为什么这么设计、当前决策现状、可能的后续方向（即便后续未定，先把「当前已做的决策」记下来）
+- 业务逻辑现状：系统当前如何运作、各组件之间的关系
+- 概念理解与原理：工具/机制的工作原理、术语解释
+- 工具用法：命令、参数、配置的用法
+- 配置坑 / 踩坑教训：为什么会出错、怎么修
+- 调试思路 / 最佳实践：排查某类问题的通用路径
+
+**要排除的**（确实不记）：
+- 众所周知的常识（没有信息量）
+- 不承载任何现状信息的纯确认（光一句「跑起来了」，若它本身不带现状信息；但「X 方案已验证可行」这种确认了现状的，仍要记）
+
+> 为什么连项目特定事实都要记：充足且准确的现状描述，是你审视全局、挖掘潜在待办的基础。比如「这里加了个脚本，后续可能挪走」——当前脚本在这个位置就是一条有价值的现状，日后审视时能据此判断是否该整理。permanent 笔记越能完整描述你的所有事实和现状，jfox 就越能帮你发现「该做但还没做的事」。
+
+把筛选结果列成候选清单给用户看一眼（这一步只是预告，草稿还没生成；候选多于 5 条时分批，规则见 Step 4）：
+
+```
+候选知识点（N 条，N>5 时本次将分 ⌈N/5⌉ 批过）：
+1. [现状] scripts/foo.sh 当前位于 X，用途是 Y，后续可能挪到 Z
+2. [ADR] 某模块为何采用方案 A 而非 B，当前决策已落定
+3. [工具用法] jfox suggest-links 的阈值含义与误命中坑
+```
+
+### Step 2: 强制去重（硬约束）
+
+对每条候选知识点，**先查知识库里有没有**，没记录过的才进入起草。这一步防止重复造笔记——已有的就跳过或标记为「补充」。
+
+每条候选跑两个命令，互补使用：
+
+```bash
+# 1. 关键词搜已有 permanent（找「讲同一件事」的笔记）
+jfox search "<知识点关键词>" --type permanent --json
+
+# 2. 语义找关联笔记（找「讲相关概念」的笔记，供起草时嵌入 wiki link）
+jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
+```
+
+按搜出来的结果给每条候选分三类：
+
+| 查询结果 | 判定 | 处置 |
+|---------|------|------|
+| 已有 permanent 完整覆盖该知识点 | **已覆盖** | 跳过，不重复造 |
+| 已有 permanent 讲了相关主题，但这条是新增量 | **可补充** | 标记，起草时准备用 `jfox edit` 追加到那条已有笔记 |
+| 没找到对应 permanent | **未记录** | 进入 Step 3 起草新笔记 |
+
+> **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（参见 `promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
+
+### Step 3: 提炼 permanent 草稿
+
+对「未记录」的候选起草新笔记，对「可补充」的候选准备追加内容。每条草稿都按下面的结构组织。
+
+**一事实一笔记**：一条 permanent 笔记只讲一个知识点。如果一次会话有多个知识点，分别建多条，别塞进一条。
+
+**内容结构**（事实 → Why → How to apply）：
+
+```markdown
+<一句话核心事实。开门见山，把这条笔记最重要的结论放第一句。>
+
+## Why
+<这个事实为什么成立、背景是什么。每段只讲一个子主题，段首给概要句。>
+
+## How to apply
+<什么场景下用、具体怎么操作。结合示例或命令。>
+```
+
+**写作规范（遵循 clear-reports 段落写作法）**：草稿正文要按下面五条规则写，目的是让读者用最少的力气看懂——permanent 笔记是写给未来的自己看的，清晰比简短更重要。
+
+1. **先给结论，再展开**：第一句话就是核心事实，不要先铺背景。读者可能随时不读完，最重要的信息放最前面。
+2. **每段一个主题，段首一句概要**：一段只讲一件事，第一句点明本段主题。理想效果是只扫每段第一句就能串起整篇逻辑。段落 4–8 句为宜，别两句一段也别一页一段。
+3. **术语第一次出现，顺手解释一句**：你刚泡在某个概念里半小时（slug、grounding、cosine、MECE……），对未来的读者是生词。第一次出现带半句解释，第二次起可省。
+4. **句子要完整，别过度缩写**：别丢主语丢动词丢助词（「阈值放宽到 0.4」「全良性」）。写完整句子，宁可多两个字。精简是删掉不重要的信息，不是把句子压成电报。
+5. **表格是对比工具，不是结论的替代品**：表格适合放同类项横向对比，表上方必须有一句话总结你看完表想让读者记住的结论。逻辑主线永远用文字承载。
+
+**嵌入 wiki links**：把 Step 2 查到的关联笔记用 `[[精确标题]]` 嵌进正文（wiki link 必须精确匹配目标笔记标题，短链会悬空——见 `promote` §6）。
+
+### Step 4: 用户审阅（硬约束）
+
+**严禁未经审阅直接 `jfox add`。** 把草稿完整展示给用户，等明确确认。这是本技能和 `session-summary`（直接写入）最大的区别——session 笔记是存档可以存完再改，permanent 是知识沉淀，落库前必须过眼。确认环节一律用 AskUserQuestion 出选择题，用户方向键选择、回车即确认，不用打字回复。
+
+**分批审阅规则**：候选分批过，**每批最多 5 条**。会话短、候选只有 1–2 条就一批过完；候选超过 5 条时，第一批只取 5 条走完 Step 2–5，落库后再回到 Step 1–2 处理剩余候选、启动第二批……直到某一批不足 5 条（即没有额外可记的知识了）才算挖完结束。这样避免一次甩出十几条草稿把用户淹没，也让用户能逐批消化。
+
+展示格式（每批最多 5 条，让用户一眼看到去重结论和草稿内容）：
+
+```
+本次拟沉淀 2 条 permanent：
+
+【1】新笔记：jfox suggest-links 的阈值含义与误命中坑
+去重：未记录（search 无命中；suggest-links 最近的相关笔记是 [[ChromaDB 索引重建]]）
+草稿：
+---
+<完整草稿正文>
+---
+
+【2】补充到已有笔记：ChromaDB "Error finding id" 排查
+去重：可补充（已有 [[ChromaDB 索引重建]]，本条补「多进程并发触发」这个新增量）
+追加内容：
+---
+<要追加的段落>
+---
+
+（展示完毕后调用 AskUserQuestion 确认，见下方「审阅交互」）
+```
+
+**审阅交互：用 AskUserQuestion 出选择题**
+
+展示完草稿后，调用 AskUserQuestion 出选择题（`questions` 数组，每个选项给 `label` 和 `description`），三个选项覆盖主要处置路径，特殊情况走 Other（AskUserQuestion 自动提供，用户可自由输入）说明：
+
+```
+AskUserQuestion(questions=[{
+    "question": "请确认如何处置本批 2 条草稿？",
+    "header": "草稿审阅",
+    "options": [
+        {"label": "全部写入", "description": "本批 2 条全部落库（新笔记 jfox add / 补充 jfox edit）"},
+        {"label": "跳过某条", "description": "先指定要跳过的草稿，其余写入"},
+        {"label": "改某条", "description": "先修改某条草稿内容，改完重新展示后回到本选择题"},
+    ],
+    "multiSelect": false,
+}])
+```
+
+按用户选择走分支：
+
+- **全部写入** → 直接进 Step 5 落库。
+- **跳过某条** → 再调一次 AskUserQuestion，把本批每条草稿列成选项（label 用「编号+标题」），选中即跳过该条；要跳过多条就重复此步，直到用户选「不再跳过」。其余照常写入。
+- **改某条** → 同上列出草稿让用户选要改的编号，按反馈改完、重新展示该条草稿，再回到本选择题。
+- **Other**（AskUserQuestion 自动提供）→ 选项覆盖不了的场景（混合处置、想调整标题/标签、临时改主意等），用户在 Other 里说明意图，按其指示处置，处置完再回到本选择题收尾。
+- 用户对某条明确说「不要了」→ 等同跳过，不写入；若本批全部被跳过/否决 → 不写入任何内容，按「错误处理」结束。
+
+一批落库后，若仍有剩余候选，继续下一批同样用选择题确认：
+
+```
+AskUserQuestion(questions=[{
+    "question": "本批 5 条已写入，还剩 3 条候选，继续下一批吗？",
+    "header": "下一批",
+    "options": [
+        {"label": "继续下一批", "description": "回到 Step 1–2 处理剩余候选"},
+        {"label": "就此结束", "description": "剩余候选本次不处理"},
+    ],
+    "multiSelect": false,
+}])
+```
+
+选「继续下一批」则回到 Step 1–2 启动下一批；选「就此结束」则本次流程结束。
+
+### Step 5: 落库
+
+用户确认后再执行写入。**新笔记**用 `jfox add`，**补充已有笔记**用 `jfox edit` 追加。
+
+```bash
+# 新笔记：内容含 [[wiki links]]，类型 permanent
+jfox add "<包含 [[links]] 的草稿>" --title "<标题>" --type permanent \
+  --tag <tag1> --tag <tag2> --kb <kb-name> --json
+
+# 长内容或含特殊字符，用 --content-file
+cat > /tmp/note-draft.md << 'EOF'
+<草稿正文>
+EOF
+jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
+  --tag <tag1> --kb <kb-name> --json
+
+# 补充已有笔记：把追加段落拼到原内容后，整体写回
+jfox show <已有笔记_id> --kb <kb-name> --json | jq -r .content > /tmp/existing.md
+cat >> /tmp/existing.md << 'EOF'
+
+<追加段落>
+EOF
+jfox edit <已有笔记_id> --content-file /tmp/existing.md --kb <kb-name>
+```
+
+> 写入后的验证（`jfox show` / `jfox refs`）详见 `/jfox:manage` §4.5。落库后可以顺手 `jfox graph --stats --json` 看 avg_degree、isolated_nodes 是否健康（目标见 `organize` Step 3）。
+
+## 命令参考
+
+本技能专属命令（通用命令见 `/jfox:manage` §4）：
+
+```bash
+jfox search "<query>" --type permanent --json   # 关键词搜已有 permanent（去重）
+jfox suggest-links "<摘要>" --json              # 语义找关联笔记（去重 + 补链，阈值 ≥ 0.6）
+jfox add ... --type permanent                   # 写入新 permanent 笔记
+jfox edit <id> --content-file <path>            # 追加内容到已有 permanent 笔记
+jfox graph --stats --json                        # 落库后看图谱健康度
+```
+
+## 错误处理
+
+- **会话里没有可沉淀的现状**（没有事实/决策/现状可记，或只剩众所周知的常识）→ 告知用户「本次会话无可沉淀的现状」，不强行造笔记。
+- **`jfox search` / `suggest-links` 因 daemon 未启动而失败** → 提示用户启动 daemon（见 `/jfox:manage` §6），或先用 `jfox search` 关键词模式（不依赖 embedding）。
+- **草稿被用户全部否决** → 不写入任何内容，记录用户反馈后结束。
+- **`suggest-links` 返回低匹配度**（score < 0.6）→ 不强制补链，但 `jfox search` 命中或手动判断相关的仍可嵌入。
+
+## 关键约束
+
+- **去重是硬约束**：起草前必须先 `jfox search --type permanent` 查已有，已覆盖的跳过、可补充的标记。不查就写等于重复造笔记。
+- **审阅是硬约束**：所有草稿必须完整展示给用户确认后才能落库，严禁直接 `jfox add`。
+- **一事实一笔记**：一条 permanent 只讲一个知识点，多个知识点分多条写。
+- **wiki link 精确标题**：`[[xxx]]` 必须精确匹配目标笔记标题，短链会悬空。
+- **知识库指定**：用 `--kb <name>` 指定目标知识库（约定见 `/jfox:manage` §4.1），省略时写入当前默认知识库。

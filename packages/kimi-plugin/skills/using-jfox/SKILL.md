@@ -31,6 +31,7 @@ uv tool install jfox-cli
 | 导入仓库、git log、PR、Issues | `/skill:jfox-ingest` |
 | 整理知识库、提炼笔记、清理 inbox | `/skill:jfox-organize` |
 | 保存会话、总结到知识库 | `/skill:jfox-session-summary` |
+| 会话提炼永久笔记、session to permanent | `/skill:jfox-session-to-permanent` |
 | 健康检查、知识库体检 | `/skill:jfox-manage` §5 |
 
 ## 通用约定
@@ -87,6 +88,7 @@ jfox daemon status
 /skill:jfox-ingest
 /skill:jfox-organize
 /skill:jfox-session-summary
+/skill:jfox-session-to-permanent
 ```
 
 ## 错误处理速查
