@@ -14,6 +14,8 @@ All notable changes to jfox-cli will be documented in this file.
 ### Changes
 - **claude.md**: 记 rich Console JSON soft_wrap Windows gotcha（#336） (#345)
 - **claude.md**: add daemon-scheduled loop convention (backup #339) (#343)
+- **claude.md**: cc-plugin Current 版本指针 0.6.0 → 0.7.0 同步 (#351)
+- **claude.md**: 补 Local nightly full-test（#263/#361）CI 文档段 (#362)
 
 [1.7.0]: https://github.com/zhuxixi/jfox/compare/v1.6.1...v1.7.0
 
