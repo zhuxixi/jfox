@@ -2,6 +2,21 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.7.0] - 2026-08-07
+
+### Features
+- **skills**: add session-to-permanent skill for CC + Kimi (#317) (#368)
+- **skill**: session-to-permanent 审阅确认改用 question 选择题 (#317) (#367)
+- **pi**: add jfox-session-to-permanent skill (#366)
+- **skills**: align pi skills with Claude Code version (#364)
+- **nightly-test**: #263 本机定时全量测试 cronjob + 失败自动提 issue (#361)
+
+### Changes
+- **claude.md**: 记 rich Console JSON soft_wrap Windows gotcha（#336） (#345)
+- **claude.md**: add daemon-scheduled loop convention (backup #339) (#343)
+
+[1.7.0]: https://github.com/zhuxixi/jfox/compare/v1.6.1...v1.7.0
+
 ## [1.6.1] - 2026-07-29
 
 ### Fixes
