@@ -79,8 +79,13 @@ class TestDryRun:
         assert new == [cur[0] + 1, 0, 0]
 
     def test_explicit_version(self):
-        data = _parse_json(_run_helper("0.7.3", "--dry-run")[0])
-        assert data["new_version"] == "0.7.3"
+        # 动态取「大于当前」的版本，避免随 cc-plugin 发版后硬编码值过期
+        # （#378 bump 到 0.7.3 后，旧硬编码 0.7.3 命中「不允许同号」护栏）
+        cur = _parse_json(_run_helper("patch", "--dry-run")[0])["current_version"]
+        parts = [int(x) for x in cur.split(".")]
+        explicit = f"{parts[0]}.{parts[1]}.{parts[2] + 1}"
+        data = _parse_json(_run_helper(explicit, "--dry-run")[0])
+        assert data["new_version"] == explicit
 
     def test_files_to_change_lists_two(self):
         data = _parse_json(_run_helper("patch", "--dry-run")[0])

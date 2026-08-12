@@ -15,7 +15,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
 from jfox.config import ZKConfig
 from jfox.models import Note, NoteType
-from jfox.note_index import NoteIndex, NoteMeta
+from jfox.note_index import NoteIndex, NoteMeta, _parse_frontmatter_only
 
 
 class TestNoteIndexRebuild:
@@ -482,3 +482,85 @@ class TestNoteIndexFindNotesReferencingTitle:
         # 非法文件本身不会被识别为笔记（frontmatter 解析也会失败），
         # 但重点是查询过程不崩溃
         assert "20260428007" not in ids
+
+
+class TestNoteIndexLargeFrontmatter:
+    """#380: frontmatter 超 _MAX_FRONTMATTER_LINES 不应被静默丢弃。
+
+    backlinks 由系统自动回填、随知识库规模无界增长；旧上限 200 行令「被链接越多
+    （越重要）的笔记」越易从索引消失，指向它的 [[wiki link]] 全部解析失败。
+    """
+
+    def test_large_frontmatter_is_indexed(self, temp_kb):
+        """frontmatter 行数远超旧上限 200（此处 245 行）的笔记必须正常入索引。
+
+        回归 #380：240 条 backlinks → frontmatter ~245 行，旧逻辑返回 None 被跳过。
+        """
+        cfg = ZKConfig(base_dir=temp_kb)
+        cfg.ensure_dirs()
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        backlinks = [f"20260428{i:04d}" for i in range(240)]
+        fm_lines = [
+            "---",
+            "id: '202607092305478860'",
+            "title: '热门口碑笔记'",
+            "type: permanent",
+            "links: []",
+            "backlinks:",
+        ]
+        fm_lines += [f"  - {b}" for b in backlinks]
+        fm_lines += ["---", "", "正文。", ""]
+        note_file = note_dir / "202607092305478860.md"
+        note_file.write_text("\n".join(fm_lines), encoding="utf-8")
+
+        # 解析层不得丢弃
+        assert _parse_frontmatter_only(note_file) is not None
+
+        # 索引层能按标题 / ID 命中
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+        meta = idx.find_by_title("热门口碑笔记")
+        assert meta is not None
+        assert meta.id == "202607092305478860"
+        assert idx.find_by_id("202607092305478860") is not None
+
+    def test_over_limit_emits_visible_warning(self, temp_kb, caplog, monkeypatch):
+        """超限时不再静默 return None，而是发出可见 WARNING 并点名文件。"""
+        import logging
+
+        import jfox.note_index as ni
+
+        cfg = ZKConfig(base_dir=temp_kb)
+        cfg.ensure_dirs()
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+        note_file = note_dir / "20260428999.md"
+        note_file.write_text(
+            "---\n"
+            "id: '20260428999'\n"
+            "title: '病理长 frontmatter'\n"
+            "type: permanent\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n正文。\n",
+            encoding="utf-8",
+        )
+
+        # 把上限压到极小，模拟病理超限（无需真造万行文件）
+        monkeypatch.setattr(ni, "_MAX_FRONTMATTER_LINES", 2)
+
+        with caplog.at_level(logging.WARNING, logger="jfox.note_index"):
+            result = _parse_frontmatter_only(note_file)
+
+        assert result is None
+        warnings = [
+            r.getMessage()
+            for r in caplog.records
+            if r.levelno == logging.WARNING and "20260428999" in r.getMessage()
+        ]
+        assert warnings, (
+            "超限丢弃应发出 WARNING 并点名文件，实际记录："
+            f"{[r.getMessage() for r in caplog.records]}"
+        )
