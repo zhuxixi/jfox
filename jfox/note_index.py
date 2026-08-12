@@ -67,7 +67,11 @@ class NoteMeta:
     archived: bool = False
 
 
-_MAX_FRONTMATTER_LINES = 200
+# 防御性 guard：frontmatter 无闭合 ``---`` 时避免把整文件读进内存。
+# backlinks 由系统自动回填、随知识库规模无界增长，上限须远超现实笔记规模
+# （#380：旧值 200 令热门笔记被静默丢弃）。正常 frontmatter 读到闭合 ``---`` 即
+# break，不会触达此上限，故抬高对性能/内存无影响。
+_MAX_FRONTMATTER_LINES = 50000
 
 
 def _parse_frontmatter_only(filepath: Path) -> Optional[dict]:
@@ -89,6 +93,11 @@ def _parse_frontmatter_only(filepath: Path) -> Optional[dict]:
                     break
                 lines.append(line)
                 if len(lines) > _MAX_FRONTMATTER_LINES:
+                    logger.warning(
+                        "frontmatter 超过 %d 行上限，已跳过：%s",
+                        _MAX_FRONTMATTER_LINES,
+                        filepath,
+                    )
                     return None
 
             if not lines:
