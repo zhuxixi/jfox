@@ -44,6 +44,9 @@ cache/
 .claude/worktrees/
 .claude/settings.local.json
 
+# Pi (coding agent) local session config
+.pi/
+
 # Temporary analysis files
 analysis_report.md
 kimi-export-*.md
