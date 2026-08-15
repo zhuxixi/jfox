@@ -130,10 +130,10 @@ Expected: FAIL — `AssertionError: delete 后 B.backlinks 不应残留已删 A 
         from .note_index import get_note_index
 
         now = datetime.now()
-        for tid in note.links:
+        for tid in note.links or []:
             try:
                 t = load_note_by_id(tid)
-                if t and note_id in (t.backlinks or []):
+                if t and isinstance(t.backlinks, list) and note_id in t.backlinks:
                     t.updated = now
                     t.backlinks = [bid for bid in t.backlinks if bid != note_id]
                     _atomic_write(t.filepath, t.to_markdown())

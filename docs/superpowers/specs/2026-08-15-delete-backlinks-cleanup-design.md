@@ -21,10 +21,10 @@
 # 放在删文件之前：若中途崩溃，重跑 delete 幂等收敛（targets 的 backlinks 已无本 id → 直接跳过）。
 # target 损坏/解析失败（如手工编辑 backlinks: null）同样仅 warning 跳过，不阻塞 delete 主流程。
 now = datetime.now()
-for tid in note.links:
+for tid in note.links or []:
     try:
         t = load_note_by_id(tid)
-        if t and note_id in (t.backlinks or []):
+        if t and isinstance(t.backlinks, list) and note_id in t.backlinks:
             t.updated = now
             t.backlinks = [bid for bid in t.backlinks if bid != note_id]
             _atomic_write(t.filepath, t.to_markdown())

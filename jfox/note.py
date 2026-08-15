@@ -313,12 +313,18 @@ def delete_note(note_id: str) -> bool:
         from .note_index import get_note_index
 
         now = datetime.now()
-        for tid in note.links:
+        for tid in note.links or []:
             try:
                 t = load_note_by_id(tid)
-                if t and note_id in (t.backlinks or []):
+                if t and isinstance(t.backlinks, list) and note_id in t.backlinks:
                     t.updated = now
                     t.backlinks = [bid for bid in t.backlinks if bid != note_id]
+                    # 已知限制：t.filepath 是按 type/标题 slug 重算的路径，非 load 命中的
+                    # 磁盘路径；文件名发散时可能另写同 id 双文件（与 promote 回填同病），
+                    # 残留由 `jfox index rebuild --backlinks` / `jfox check` 兜底。
+                    # 已知限制：本循环无锁 read-modify-write，与常驻 daemon 并发写同一
+                    # target 时 last-writer-wins（与 promote 回填 / update_note 同构，全库
+                    # 无文件锁，暂不在本 PR 收敛）。
                     _atomic_write(t.filepath, t.to_markdown())
                     get_note_index().update_note_meta(t)
             except Exception as e:

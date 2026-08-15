@@ -292,3 +292,50 @@ class TestDeleteCleansBacklinks:
 
                 # B 文件仍在（清理 target 失败仅 warning，不影响 delete 主流程）
                 assert b_path.exists(), "B 文件应仍存在"
+
+    def test_delete_note_with_null_links_succeeds(self, mock_embedding_backend):
+        """被删笔记自身 links: null（解析为 None）时，delete 仍成功不中断（issue #386 CR 回归）"""
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                c_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "孤岛笔记正文，无任何 wiki link。",
+                        "--title",
+                        "孤岛笔记C",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert c_result.exit_code == 0, c_result.output
+                c_id = json.loads(c_result.output)["note"]["id"]
+
+                # 手工编辑 C 的 frontmatter：把 links 列表改成 null（模拟手改笔记）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    c_path = note_module.load_note_by_id(c_id).filepath
+                    text = c_path.read_text(encoding="utf-8")
+                    # 替换 "links:" 行及其后的列表项行（"- ..."）为 "links: null"
+                    text = re.sub(
+                        r"links:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        "links: null",
+                        text,
+                        count=1,
+                    )
+                    c_path.write_text(text, encoding="utf-8")
+
+                del_result = runner.invoke(app, ["delete", c_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # C 已真正删除
+                show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
+                assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"
