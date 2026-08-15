@@ -2,6 +2,18 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.7.1] - 2026-08-16
+
+### Fixes
+- **note**: delete_note 清理目标笔记 backlinks，消除悬空 id (#386) (#388)
+- **note_index**: 抬高 frontmatter 行数上限并消除静默丢弃 (#380) (#382)
+
+### Changes
+- ignore pi local session config (#381)
+- **skill**: session-to-permanent 模板改三层结构（#375） (#377)
+
+[1.7.1]: https://github.com/zhuxixi/jfox/compare/v1.7.0...v1.7.1
+
 ## [1.7.0] - 2026-08-07
 
 ### Features
