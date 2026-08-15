@@ -3647,6 +3647,7 @@ def _run_upgrade(command: List[str]) -> dict:
         command,
         check=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,  # 避免子进程等待交互输入而挂住
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -3779,6 +3780,15 @@ def update(
         if output_format not in {"table", "json"}:
             console.print("[red]X[/red] Error: --format 必须是 table 或 json")
             raise typer.Exit(2)
+
+        # table 模式：升级前打印进度提示，避免用户误以为命令挂住
+        # （uv/pipx 从 git 源升级需 git fetch + build + 依赖解析，可能耗时数分钟）
+        method = _detect_install_method()
+        if output_format == "table" and method != "dev":
+            console.print(
+                "[bold green]正在升级 jfox...[/bold green] "
+                "可能需要 1-3 分钟（取决于网络速度），请耐心等待"
+            )
 
         result = _update_impl()
 
