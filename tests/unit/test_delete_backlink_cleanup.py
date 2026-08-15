@@ -29,16 +29,20 @@ class TestDeleteCleansBacklinks:
     def test_delete_removes_note_from_target_backlinks(self, mock_embedding_backend):
         """删除 A 后，B 的 backlinks 不残留 A 的 id（issue #386 核心）"""
         with temp_kb_registered() as kb_name:
-            with patch(
-                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
-            ):
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
                 # 1. 创建 B（被引用方）
                 b_result = runner.invoke(
                     app,
                     [
-                        "add", "B body",
-                        "--title", "笔记B", "--type", "permanent",
-                        "--kb", kb_name, "--json",
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
                     ],
                 )
                 assert b_result.exit_code == 0, b_result.output
@@ -48,9 +52,15 @@ class TestDeleteCleansBacklinks:
                 a_result = runner.invoke(
                     app,
                     [
-                        "add", "A 引用 [[笔记B]]。",
-                        "--title", "笔记A", "--type", "permanent",
-                        "--kb", kb_name, "--json",
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
                     ],
                 )
                 assert a_result.exit_code == 0, a_result.output
@@ -76,21 +86,37 @@ class TestDeleteCleansBacklinks:
         import jfox.note as note_module
 
         with temp_kb_registered() as kb_name:
-            with patch(
-                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
-            ):
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
                 b_result = runner.invoke(
                     app,
-                    ["add", "B body", "--title", "笔记B", "--type", "permanent",
-                     "--kb", kb_name, "--json"],
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
                 )
                 assert b_result.exit_code == 0, b_result.output
                 b_id = json.loads(b_result.output)["note"]["id"]
 
                 a_result = runner.invoke(
                     app,
-                    ["add", "A 引用 [[笔记B]]。", "--title", "笔记A", "--type", "permanent",
-                     "--kb", kb_name, "--json"],
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
                 )
                 assert a_result.exit_code == 0, a_result.output
                 a_id = json.loads(a_result.output)["note"]["id"]
@@ -103,12 +129,8 @@ class TestDeleteCleansBacklinks:
                         raise OSError("simulated disk failure")
                     return original_atomic_write(filepath, content)
 
-                with patch.object(
-                    note_module, "_atomic_write", side_effect=failing_atomic_write
-                ):
-                    del_result = runner.invoke(
-                        app, ["delete", a_id, "--force", "--kb", kb_name]
-                    )
+                with patch.object(note_module, "_atomic_write", side_effect=failing_atomic_write):
+                    del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
                     assert del_result.exit_code == 0, del_result.output
 
                 # A 已删：show A 找不到（exit 1 + not found）
@@ -123,14 +145,20 @@ class TestDeleteCleansBacklinks:
     def test_delete_note_without_links_succeeds(self, mock_embedding_backend):
         """无 links 的笔记删除不受影响（清理循环空转不崩）"""
         with temp_kb_registered() as kb_name:
-            with patch(
-                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
-            ):
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
                 c_result = runner.invoke(
                     app,
-                    ["add", "孤岛笔记正文，无任何 wiki link。",
-                     "--title", "孤岛笔记", "--type", "permanent",
-                     "--kb", kb_name, "--json"],
+                    [
+                        "add",
+                        "孤岛笔记正文，无任何 wiki link。",
+                        "--title",
+                        "孤岛笔记",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
                 )
                 assert c_result.exit_code == 0, c_result.output
                 c_id = json.loads(c_result.output)["note"]["id"]
@@ -146,21 +174,37 @@ class TestDeleteCleansBacklinks:
         from jfox.config import use_kb
 
         with temp_kb_registered() as kb_name:
-            with patch(
-                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
-            ):
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
                 b_result = runner.invoke(
                     app,
-                    ["add", "B body", "--title", "笔记B", "--type", "permanent",
-                     "--kb", kb_name, "--json"],
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
                 )
                 assert b_result.exit_code == 0, b_result.output
                 b_id = json.loads(b_result.output)["note"]["id"]
 
                 a_result = runner.invoke(
                     app,
-                    ["add", "A 引用 [[笔记B]]。", "--title", "笔记A", "--type", "permanent",
-                     "--kb", kb_name, "--json"],
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
                 )
                 assert a_result.exit_code == 0, a_result.output
                 a_id = json.loads(a_result.output)["note"]["id"]

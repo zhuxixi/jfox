@@ -468,7 +468,7 @@ def promote_note(note_id: str) -> bool:
 
     # 增量回填：把本笔记加进每个 target 的 backlinks（刷 updated 时间戳，因为 backlinks 已变更）。
     # 单 target 写盘/索引失败只 warning 不中断——主笔记已 promote 成功；若发生不对称（本笔记 links
-    # 已落盘但某 target backlinks 缺失），用 `jfox rebuild-backlinks` 全量重算修复。
+    # 已落盘但某 target backlinks 缺失），用 `jfox index rebuild --backlinks` 全量重算修复。
     now = datetime.now()
     for tid in target_ids:
         t = load_note_by_id(tid)
