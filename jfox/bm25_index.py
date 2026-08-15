@@ -228,10 +228,7 @@ class BM25Index:
 
             with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=5):
                 disk_version = self._read_disk_write_version()
-                if (
-                    disk_version > self._loaded_write_version
-                    and not self._dirty_full_rebuild
-                ):
+                if disk_version > self._loaded_write_version and not self._dirty_full_rebuild:
                     if not self._load():
                         logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
                         return False
