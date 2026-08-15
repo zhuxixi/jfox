@@ -70,3 +70,114 @@ class TestDeleteCleansBacklinks:
                 assert show_b2.exit_code == 0, show_b2.output
                 backlinks_b = json.loads(show_b2.output)["backlinks"]
                 assert a_id not in backlinks_b, "delete 后 B.backlinks 不应残留已删 A 的 id"
+
+    def test_delete_cleanup_write_failure_warns_but_deletes(self, mock_embedding_backend):
+        """target 写盘失败时 delete 仍成功（A 文件已删），仅 warning——与 promote 回填容错语义一致"""
+        import jfox.note as note_module
+
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
+            ):
+                b_result = runner.invoke(
+                    app,
+                    ["add", "B body", "--title", "笔记B", "--type", "permanent",
+                     "--kb", kb_name, "--json"],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    ["add", "A 引用 [[笔记B]]。", "--title", "笔记A", "--type", "permanent",
+                     "--kb", kb_name, "--json"],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 只让写 B 的那次 _atomic_write 失败（用 b_id 定位），其余走原逻辑
+                original_atomic_write = note_module._atomic_write
+
+                def failing_atomic_write(filepath, content):
+                    if b_id in str(filepath):
+                        raise OSError("simulated disk failure")
+                    return original_atomic_write(filepath, content)
+
+                with patch.object(
+                    note_module, "_atomic_write", side_effect=failing_atomic_write
+                ):
+                    del_result = runner.invoke(
+                        app, ["delete", a_id, "--force", "--kb", kb_name]
+                    )
+                    assert del_result.exit_code == 0, del_result.output
+
+                # A 已删：show A 找不到（exit 1 + not found）
+                show_a = runner.invoke(app, ["show", a_id, "--kb", kb_name, "--json"])
+                assert show_a.exit_code == 1
+
+                # B.backlinks 仍含 A（清理失败 = bug 修复前状态，rebuild 兜底语义）
+                show_b = runner.invoke(app, ["show", b_id, "--kb", kb_name, "--json"])
+                assert show_b.exit_code == 0, show_b.output
+                assert a_id in json.loads(show_b.output)["backlinks"]
+
+    def test_delete_note_without_links_succeeds(self, mock_embedding_backend):
+        """无 links 的笔记删除不受影响（清理循环空转不崩）"""
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
+            ):
+                c_result = runner.invoke(
+                    app,
+                    ["add", "孤岛笔记正文，无任何 wiki link。",
+                     "--title", "孤岛笔记", "--type", "permanent",
+                     "--kb", kb_name, "--json"],
+                )
+                assert c_result.exit_code == 0, c_result.output
+                c_id = json.loads(c_result.output)["note"]["id"]
+
+                del_result = runner.invoke(app, ["delete", c_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
+                assert show_c.exit_code == 1  # 已删除，找不到
+
+    def test_delete_skips_rewrite_when_backlink_absent(self, mock_embedding_backend):
+        """不对称状态（A.links 含 B 但 B.backlinks 不含 A）→ membership 守卫跳过，B 文件不被重写"""
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend", return_value=mock_embedding_backend
+            ):
+                b_result = runner.invoke(
+                    app,
+                    ["add", "B body", "--title", "笔记B", "--type", "permanent",
+                     "--kb", kb_name, "--json"],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    ["add", "A 引用 [[笔记B]]。", "--title", "笔记A", "--type", "permanent",
+                     "--kb", kb_name, "--json"],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 手工构造不对称：清空 B.backlinks 后落盘（模拟历史数据不一致）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    b_note = note_module.load_note_by_id(b_id)
+                    b_note.backlinks = []
+                    note_module._atomic_write(b_note.filepath, b_note.to_markdown())
+                    b_mtime = b_note.filepath.stat().st_mtime_ns
+
+                del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # 守卫判否 → B 未被重写（mtime 不变）
+                with use_kb(kb_name):
+                    b_path = note_module.load_note_by_id(b_id).filepath
+                    assert b_path.stat().st_mtime_ns == b_mtime, "守卫跳过时不应重写 B 文件"
