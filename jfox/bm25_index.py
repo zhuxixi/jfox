@@ -642,6 +642,18 @@ class BM25Index:
             self._dirty_full_rebuild = saved_dirty_full_rebuild
             return False
 
+    def check_stale_and_reload(self) -> None:
+        """轻量 stale 检查：磁盘 write_version 比内存新就 reload。
+
+        用于长驻进程（daemon）的查询路径，避免搜索长期基于过期快照。
+        失败静默兜底（用内存快照），不阻塞查询。
+        """
+        try:
+            if self._read_disk_write_version() > self._loaded_write_version:
+                self._load()
+        except Exception:
+            pass
+
     def get_stats(self) -> Dict:
         """
         获取索引统计信息

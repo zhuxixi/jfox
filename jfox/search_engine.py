@@ -48,6 +48,10 @@ class HybridSearchEngine:
         self.bm25_index = bm25_index or get_bm25_index()
         self.rrf_k = rrf_k
 
+        # 长驻进程（daemon）的查询路径：磁盘被别的进程写过时自动刷新单例，
+        # 避免 hybrid 搜索长期基于过期快照（#391）
+        self.bm25_index.check_stale_and_reload()
+
         # 若 BM25 索引是从 v1 迁移而来，需要全量重建以回填 doc_types
         if self.bm25_index.needs_rebuild:
             if self.rebuild_bm25_index():

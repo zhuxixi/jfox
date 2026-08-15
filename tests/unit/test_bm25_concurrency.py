@@ -125,3 +125,20 @@ class TestRebuildSemantics:
         # a 内存是旧状态，但 rebuild 语义=以我的快照为准：直接覆盖，不 merge
         assert a.rebuild_from_notes([_note("n1"), _note("n2")])
         assert set(_load_disk_ids(tmp_path)) == {"n1", "n2"}
+
+
+class TestStaleDetection:
+    def test_check_stale_and_reload(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        assert "x" not in a.doc_mapping  # a 仍是旧内存
+        a.check_stale_and_reload()
+        assert "x" in a.doc_mapping
+
+    def test_check_stale_and_reload_noop_when_fresh(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        assert a.add_document("x", "hello x", "session")
+        docs_before = list(a.documents)
+        a.check_stale_and_reload()
+        assert a.documents == docs_before  # 未发生 reload
