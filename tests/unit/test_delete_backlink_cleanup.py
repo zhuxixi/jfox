@@ -386,3 +386,116 @@ class TestDeleteCleansBacklinks:
                 # C 已真正删除（裸标量 links 不再导致 for tid in <int> 崩溃）
                 show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
                 assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"
+
+    def test_delete_with_int_element_in_target_backlinks(self, mock_embedding_backend):
+        """target backlinks 为 list 内嵌 int 时，warning 跳过不写坏，delete 主流程不受影响"""
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                b_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 手工编辑 B frontmatter：backlinks 改成 list 内嵌 int（手写漏引号）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    b_path = note_module.load_note_by_id(b_id).filepath
+                    text = b_path.read_text(encoding="utf-8")
+                    text = re.sub(
+                        r"backlinks:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        "backlinks: [123456]",
+                        text,
+                        count=1,
+                    )
+                    b_path.write_text(text, encoding="utf-8")
+                    b_mtime = b_path.stat().st_mtime_ns
+
+                del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # A 已删除
+                show_a = runner.invoke(app, ["show", a_id, "--kb", kb_name, "--json"])
+                assert show_a.exit_code == 1, "删除后 show A 应失败（not found）"
+
+                # B 文件未被触碰（元素守卫 warning 跳过，不写坏数据）
+                with use_kb(kb_name):
+                    assert b_path.stat().st_mtime_ns == b_mtime, "元素守卫跳过时不应重写 B 文件"
+
+    def test_delete_with_int_element_in_links(self, mock_embedding_backend):
+        """被删笔记自身 links 为 list 内嵌 int 时，delete 仍成功不中断（#386 CR round-3）"""
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                c_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "孤岛笔记正文，无任何 wiki link。",
+                        "--title",
+                        "孤岛笔记E",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert c_result.exit_code == 0, c_result.output
+                c_id = json.loads(c_result.output)["note"]["id"]
+
+                # 手工编辑 C frontmatter：links 改成 list 内嵌 int
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    c_path = note_module.load_note_by_id(c_id).filepath
+                    text = c_path.read_text(encoding="utf-8")
+                    text = re.sub(
+                        r"links:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        "links: [123456]",
+                        text,
+                        count=1,
+                    )
+                    c_path.write_text(text, encoding="utf-8")
+
+                del_result = runner.invoke(app, ["delete", c_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
+                assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"

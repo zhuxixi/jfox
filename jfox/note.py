@@ -323,6 +323,14 @@ def delete_note(note_id: str) -> bool:
             )
         for tid in note.links if isinstance(note.links, list) else []:
             try:
+                # 类型守卫（#386 CR）：links 内元素为手编脏数据（如 links: [123]，list 内
+                # 嵌 int）时，非 str 的 tid 无法定位笔记，warning 跳过保持可诊断性。
+                if not isinstance(tid, str):
+                    logger.warning(
+                        f"Skip backlink cleanup for target {tid}: links 元素类型异常 "
+                        f"({type(tid).__name__})"
+                    )
+                    continue
                 t = load_note_by_id(tid)
                 if not t:
                     continue
@@ -332,6 +340,14 @@ def delete_note(note_id: str) -> bool:
                     logger.warning(
                         f"Skip cleaning backlinks from target {tid}: backlinks 类型异常 "
                         f"({type(t.backlinks).__name__})"
+                    )
+                    continue
+                # 类型守卫（#386 CR）：backlinks 元素为手编脏数据（如 backlinks: [123]，
+                # list 内嵌 int）时，str note_id 与 int 元素比较恒为 False，既不清理也无
+                # 提示；warning 跳过，保持与容器级守卫一致的可诊断性，且不写坏数据。
+                if any(not isinstance(bid, str) for bid in t.backlinks):
+                    logger.warning(
+                        f"Skip cleaning backlinks from target {tid}: backlinks 元素类型异常"
                     )
                     continue
                 if note_id in t.backlinks:

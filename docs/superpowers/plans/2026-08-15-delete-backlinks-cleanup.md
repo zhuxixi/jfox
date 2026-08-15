@@ -130,8 +130,8 @@ Expected: FAIL — `AssertionError: delete 后 B.backlinks 不应残留已删 A 
         from .note_index import get_note_index
 
         now = datetime.now()
-        # 类型守卫（#386 CR）：note.links 可能为手编脏数据（links: null → None，或裸标量
-        # → int/str）。非 list 时按空列表处理并 warning，防 `for tid in <int>` 抛
+        # 类型守卫（#386 CR）：note.links 可能是手编脏数据（links: null → None，或裸标量
+        # → int/str）。非 list 时按空列表处理并 warning，防止 `for tid in <int>` 抛
         # TypeError 落到外层 except → return False → 笔记无法删除。
         if not isinstance(note.links, list):
             logger.warning(
@@ -140,22 +140,42 @@ Expected: FAIL — `AssertionError: delete 后 B.backlinks 不应残留已删 A 
             )
         for tid in note.links if isinstance(note.links, list) else []:
             try:
+                # 类型守卫（#386 CR）：links 内元素为手编脏数据（如 links: [123]，list 内
+                # 嵌 int）时，非 str 的 tid 无法定位笔记，warning 跳过保持可诊断性。
+                if not isinstance(tid, str):
+                    logger.warning(
+                        f"Skip backlink cleanup for target {tid}: links 元素类型异常 "
+                        f"({type(tid).__name__})"
+                    )
+                    continue
                 t = load_note_by_id(tid)
                 if not t:
                     continue
+                # 类型守卫（#386 CR）：t.backlinks 为坏类型（None / str / int 标量）时
+                # warning 跳过，不写坏 target 数据，保持与 except 分支一致的可诊断性。
                 if not isinstance(t.backlinks, list):
                     logger.warning(
                         f"Skip cleaning backlinks from target {tid}: backlinks 类型异常 "
                         f"({type(t.backlinks).__name__})"
                     )
                     continue
+                # 类型守卫（#386 CR）：backlinks 元素为手编脏数据（如 backlinks: [123]，
+                # list 内嵌 int）时，str note_id 与 int 元素比较恒为 False，既不清理也无
+                # 提示；warning 跳过，保持与容器级守卫一致的可诊断性，且不写坏数据。
+                if any(not isinstance(bid, str) for bid in t.backlinks):
+                    logger.warning(
+                        f"Skip cleaning backlinks from target {tid}: backlinks 元素类型异常"
+                    )
+                    continue
                 if note_id in t.backlinks:
                     t.updated = now
                     t.backlinks = [bid for bid in t.backlinks if bid != note_id]
-                    # 已知限制：t.filepath 按 type/标题 slug 重算，非 load 命中磁盘路径；
-                    # 文件名发散时可能另写同 id 双文件，残留由 rebuild --backlinks/check 兜底。
-                    # 已知限制：本循环无锁 read-modify-write，与常驻 daemon 并发写 target
-                    # 时 last-writer-wins（与 promote 回填/update_note 同构，全库无文件锁）。
+                    # 已知限制：t.filepath 是按 type/标题 slug 重算的路径，非 load 命中的
+                    # 磁盘路径；文件名发散时可能另写同 id 双文件（与 promote 回填同病），
+                    # 残留由 `jfox index rebuild --backlinks` / `jfox check` 兜底。
+                    # 已知限制：本循环无锁 read-modify-write，与常驻 daemon 并发写同一
+                    # target 时 last-writer-wins（与 promote 回填 / update_note 同构，全库
+                    # 无文件锁，暂不在本 PR 收敛）。
                     _atomic_write(t.filepath, t.to_markdown())
                     get_note_index().update_note_meta(t)
             except Exception as e:
