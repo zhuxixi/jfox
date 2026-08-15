@@ -135,7 +135,7 @@ class TestDeleteCleansBacklinks:
 
                 # A 已删：show A 找不到（exit 1 + not found）
                 show_a = runner.invoke(app, ["show", a_id, "--kb", kb_name, "--json"])
-                assert show_a.exit_code == 1
+                assert show_a.exit_code == 1, "删除后 show A 应失败（not found）"
 
                 # B.backlinks 仍含 A（清理失败 = bug 修复前状态，rebuild 兜底语义）
                 show_b = runner.invoke(app, ["show", b_id, "--kb", kb_name, "--json"])
@@ -167,7 +167,7 @@ class TestDeleteCleansBacklinks:
                 assert del_result.exit_code == 0, del_result.output
 
                 show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
-                assert show_c.exit_code == 1  # 已删除，找不到
+                assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"
 
     def test_delete_skips_rewrite_when_backlink_absent(self, mock_embedding_backend):
         """不对称状态（A.links 含 B 但 B.backlinks 不含 A）→ membership 守卫跳过，B 文件不被重写"""
@@ -225,3 +225,70 @@ class TestDeleteCleansBacklinks:
                 with use_kb(kb_name):
                     b_path = note_module.load_note_by_id(b_id).filepath
                     assert b_path.stat().st_mtime_ns == b_mtime, "守卫跳过时不应重写 B 文件"
+
+    def test_delete_tolerates_null_backlinks_target(self, mock_embedding_backend):
+        """target 手工编辑成 backlinks: null（解析为 None）时，delete 仍成功不中断"""
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                b_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 手工编辑 B 的 frontmatter：把 backlinks 列表改成 null（模拟手改笔记）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    b_path = note_module.load_note_by_id(b_id).filepath
+                    text = b_path.read_text(encoding="utf-8")
+                    # 替换 "backlinks:" 行及其后的列表项行（"- ..."）为 "backlinks: null"
+                    text = re.sub(
+                        r"backlinks:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        "backlinks: null",
+                        text,
+                        count=1,
+                    )
+                    b_path.write_text(text, encoding="utf-8")
+
+                del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # A 已真正删除
+                show_a = runner.invoke(app, ["show", a_id, "--kb", kb_name, "--json"])
+                assert show_a.exit_code == 1, "删除后 show A 应失败（not found）"
+
+                # B 文件仍在（清理 target 失败仅 warning，不影响 delete 主流程）
+                assert b_path.exists(), "B 文件应仍存在"

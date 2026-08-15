@@ -125,19 +125,21 @@ Expected: FAIL — `AssertionError: delete 后 B.backlinks 不应残留已删 A 
         # 收敛（backlinks 已清的 target 被 membership 守卫跳过，只剩删文件）。
         # 单 target 写盘失败仅 warning 不中断；残留悬空由
         # `jfox index rebuild --backlinks` 全量重算兜底。
+        # target 损坏/解析失败（如手工编辑 backlinks: null）同样仅 warning 跳过，
+        # 保证 delete 主流程不因无关 target 的坏状态而失败。
         from .note_index import get_note_index
 
         now = datetime.now()
         for tid in note.links:
-            t = load_note_by_id(tid)
-            if t and note_id in t.backlinks:
-                t.updated = now
-                t.backlinks = [bid for bid in t.backlinks if bid != note_id]
-                try:
+            try:
+                t = load_note_by_id(tid)
+                if t and note_id in (t.backlinks or []):
+                    t.updated = now
+                    t.backlinks = [bid for bid in t.backlinks if bid != note_id]
                     _atomic_write(t.filepath, t.to_markdown())
                     get_note_index().update_note_meta(t)
-                except Exception as e:
-                    logger.warning(f"Failed to clean backlinks from target {tid}: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to clean backlinks from target {tid}: {e}")
 ```
 
 注意：`from .note_index import get_note_index` 必须函数内 import（与 promote_note 一致，避免顶层循环导入）；`datetime` / `_atomic_write` / `load_note_by_id` 已在模块作用域可用，无需新增顶层 import。

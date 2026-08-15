@@ -19,17 +19,18 @@
 ```python
 # backlinks 增量移除：把本笔记从所有 target 的 backlinks 移除（与 promote 回填对称）。
 # 放在删文件之前：若中途崩溃，重跑 delete 幂等收敛（targets 的 backlinks 已无本 id → 直接跳过）。
+# target 损坏/解析失败（如手工编辑 backlinks: null）同样仅 warning 跳过，不阻塞 delete 主流程。
 now = datetime.now()
 for tid in note.links:
-    t = load_note_by_id(tid)
-    if t and note_id in t.backlinks:
-        t.updated = now
-        t.backlinks = [bid for bid in t.backlinks if bid != note_id]
-        try:
+    try:
+        t = load_note_by_id(tid)
+        if t and note_id in (t.backlinks or []):
+            t.updated = now
+            t.backlinks = [bid for bid in t.backlinks if bid != note_id]
             _atomic_write(t.filepath, t.to_markdown())
             get_note_index().update_note_meta(t)
-        except Exception as e:
-            logger.warning(f"Failed to clean backlinks from target {tid}: {e}")
+    except Exception as e:
+        logger.warning(f"Failed to clean backlinks from target {tid}: {e}")
 ```
 
 **函数内 import**：`from .note_index import get_note_index`（与 promote_note 一致，避免顶层循环导入；`_atomic_write`、`datetime` 已在模块内可用）。
@@ -42,6 +43,7 @@ for tid in note.links:
 | 遍历来源 | `note.links`（frontmatter 出链） | 与 promote 回填的 targets 来源对称；极端不一致场景（target backlinks 有本 id 但 links 无该 target）由 `index rebuild --backlinks` 全量重算兜底 |
 | target 不存在 | load 返回 None → 跳过 | 悬空出链不是本 issue 范围 |
 | 单 target 写盘失败 | warning 不中断，主删除流程继续 | 与 promote 回填容错语义一致；残留可 rebuild 兜底 |
+| target 损坏/解析失败 | load/解析异常与写盘失败同等待遇：仅 warning 不中断 delete | 手改笔记常带 `backlinks: null`（`from_markdown` 得 None）或缺 frontmatter（`ValueError`）；清理循环整体在 per-target try 内，保证 delete 主流程不因无关 target 坏状态失败（promote 侧循环在主工作之后、无此风险，delete 侧必须显式防御） |
 | backlinks 为空时 | 清空后写空列表，不删字段 | frontmatter 结构稳定，`to_markdown` 序列化统一 |
 | `update_note_meta` | 保留调用（**必要**，非"顺手一致"） | note_index.py:336 会同步 `meta.backlinks`；refs 的搜索路径（`--search` 显示「引用此笔记: N 处」）读的正是该缓存，漏调会使引用计数过期 |
 
