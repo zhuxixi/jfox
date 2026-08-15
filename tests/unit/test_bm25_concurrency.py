@@ -57,3 +57,48 @@ class TestWriteVersionAndLock:
             ok = idx._save()
         assert ok is False
         assert not (tmp_path / BM25Index.INDEX_FILENAME).exists()
+
+
+class TestOptimisticMerge:
+    """双实例模拟双进程：磁盘较新时 reload + 重放本地增量"""
+
+    def test_concurrent_add_replay(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)  # 模拟 daemon：先 load 旧状态
+        b = BM25Index(index_dir=tmp_path)  # 模拟 CLI
+        assert b.add_document("note-cli", "cli 写入 hello", "session")  # v1
+        assert a.add_document("note-daemon", "daemon 写入 world", "session")  # merge → v2
+        ids = _load_disk_ids(tmp_path)
+        assert "note-cli" in ids
+        assert "note-daemon" in ids
+        assert _disk_version(tmp_path) == 2
+
+    def test_concurrent_remove_replay(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        assert a.add_document("x", "hello x", "permanent")  # v1
+        b = BM25Index(index_dir=tmp_path)  # b load v1（含 x）
+        assert b.add_document("y", "hello y", "permanent")  # v2
+        assert a.remove_document("x")  # a：reload v2 + 重放 remove x → v3
+        ids = _load_disk_ids(tmp_path)
+        assert "y" in ids
+        assert "x" not in ids
+        assert _disk_version(tmp_path) == 3
+
+    def test_conflict_last_writer_wins(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        assert a.add_document("x", "from a", "session")  # v1
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "from b", "session")  # v2
+        assert a.remove_document("x")  # v3：重放 remove 覆盖 b 的 add
+        assert "x" not in _load_disk_ids(tmp_path)
+
+    def test_reload_failure_aborts_save_without_writing(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        # a 内存里产生未落盘的增量，然后破坏磁盘 pkl 使 reload 失败
+        a._add_document_local("y", "local change", "session")
+        a._pending_ops.append(("add", "y", "local change", "session"))
+        corrupted = b"corrupted-pkl"
+        (tmp_path / BM25Index.INDEX_FILENAME).write_bytes(corrupted)
+        assert a._save() is False
+        assert (tmp_path / BM25Index.INDEX_FILENAME).read_bytes() == corrupted

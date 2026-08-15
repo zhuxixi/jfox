@@ -211,9 +211,6 @@ class BM25Index:
             f.write(text)
         os.replace(tmp, path)
 
-    def _replay_pending_ops(self) -> None:
-        """重放本地未落盘的增量操作（Task 2 实现合并逻辑）"""
-
     def _save(self) -> bool:
         """
         保存索引到磁盘（乐观并发控制版）
@@ -322,6 +319,48 @@ class BM25Index:
         logger.warning(f"Unexpected note_type type {type(note_type)}, converting to str")
         return str(note_type)
 
+    def _add_document_local(self, note_id: str, content: str, note_type: Optional[str]) -> bool:
+        """纯内存添加（不含索引重建/落盘/pending 记录）"""
+        if note_id in self.doc_mapping:
+            self._remove_document_local(note_id)
+        tokens = self._tokenize(content)
+        if not tokens:
+            return True
+        normalized_type = self._normalize_note_type(note_type)
+        idx = len(self.documents)
+        self.documents.append(tokens)
+        self.doc_ids.append(note_id)
+        self.doc_types.append(normalized_type)
+        self.doc_mapping[note_id] = idx
+        return True
+
+    def _remove_document_local(self, note_id: str) -> bool:
+        """纯内存移除"""
+        if note_id not in self.doc_mapping:
+            return True
+        idx = self.doc_mapping[note_id]
+        self.documents.pop(idx)
+        self.doc_ids.pop(idx)
+        self.doc_types.pop(idx)
+        del self.doc_mapping[note_id]
+        self.doc_mapping = {doc_id: i for i, doc_id in enumerate(self.doc_ids)}
+        return True
+
+    def _replay_pending_ops(self) -> None:
+        """重放本地未落盘的增量操作：同 id 合并（只留最后 op）后按序 apply"""
+        if not self._pending_ops:
+            return
+        merged: Dict[str, Tuple[str, str, Optional[str]]] = {}
+        for op, nid, content, ntype in self._pending_ops:
+            merged[nid] = (op, content, ntype)
+        logger.warning(f"BM25 merge: 磁盘版本较新，重放 {len(merged)} 条本地操作后合并写入")
+        for nid, (op, content, ntype) in merged.items():
+            if op == "remove":
+                self._remove_document_local(nid)
+            else:
+                self._add_document_local(nid, content, ntype)
+        self._rebuild_index()
+
     def add_document(self, note_id: str, content: str, note_type: Optional[str] = None) -> bool:
         """
         添加文档到索引（增量更新）
@@ -335,24 +374,9 @@ class BM25Index:
             是否成功添加
         """
         try:
-            # 如果已存在，先移除
-            if note_id in self.doc_mapping:
-                self.remove_document(note_id)
-
-            # 分词
-            tokens = self._tokenize(content)
-            if not tokens:
-                return True
-
-            # 标准化笔记类型
-            normalized_type = self._normalize_note_type(note_type)
-
-            # 添加到索引
-            idx = len(self.documents)
-            self.documents.append(tokens)
-            self.doc_ids.append(note_id)
-            self.doc_types.append(normalized_type)
-            self.doc_mapping[note_id] = idx
+            if not self._add_document_local(note_id, content, note_type):
+                return False
+            self._pending_ops.append(("add", note_id, content, note_type))
 
             # 重建索引
             self._rebuild_index()
@@ -380,18 +404,8 @@ class BM25Index:
             if note_id not in self.doc_mapping:
                 return True
 
-            idx = self.doc_mapping[note_id]
-
-            # 移除数据
-            self.documents.pop(idx)
-            self.doc_ids.pop(idx)
-            self.doc_types.pop(idx)
-            del self.doc_mapping[note_id]
-
-            # 更新其他文档的索引
-            self.doc_mapping = {}
-            for i, doc_id in enumerate(self.doc_ids):
-                self.doc_mapping[doc_id] = i
+            self._remove_document_local(note_id)
+            self._pending_ops.append(("remove", note_id, "", None))
 
             # 重建索引
             self._rebuild_index()
@@ -430,6 +444,7 @@ class BM25Index:
         saved_types = list(self.doc_types)
         saved_mapping = dict(self.doc_mapping)
         saved_bm25 = self.bm25
+        saved_pending_len = len(self._pending_ops)
 
         try:
             for doc in documents:
@@ -459,6 +474,8 @@ class BM25Index:
                 self.doc_ids.append(note_id)
                 self.doc_types.append(note_type)
                 self.doc_mapping[note_id] = idx
+                # 记录 pending（save 失败回滚时会截断）
+                self._pending_ops.append(("add", note_id, content, note_type))
 
             # 一次性重建索引
             self._rebuild_index()
@@ -470,6 +487,7 @@ class BM25Index:
                 self.doc_types = saved_types
                 self.doc_mapping = saved_mapping
                 self.bm25 = saved_bm25
+                del self._pending_ops[saved_pending_len:]
                 logger.error("Failed to persist BM25 index after batch add, rolled back")
                 return False
 
@@ -483,6 +501,7 @@ class BM25Index:
             self.doc_types = saved_types
             self.doc_mapping = saved_mapping
             self.bm25 = saved_bm25
+            del self._pending_ops[saved_pending_len:]
             logger.error(
                 f"Failed to batch add {len(documents)} documents to BM25 index",
                 exc_info=True,
