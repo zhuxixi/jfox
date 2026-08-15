@@ -142,3 +142,36 @@ class TestStaleDetection:
         docs_before = list(a.documents)
         a.check_stale_and_reload()
         assert a.documents == docs_before  # 未发生 reload
+
+
+import logging
+
+
+class TestFailureRecovery:
+    """B1：reload 失败不得毒化实例；N1：rebuild 覆盖须记 warning"""
+
+    def test_failed_reload_does_not_poison_instance(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        pkl_path = tmp_path / BM25Index.INDEX_FILENAME
+        good_bytes = pkl_path.read_bytes()
+        # 磁盘 pkl 损坏 → a 的 save 失败且不写盘，实例不得被毒化
+        pkl_path.write_bytes(b"corrupted")
+        assert a.add_document("y", "local y", "session") is False
+        assert pkl_path.read_bytes() == b"corrupted"
+        # 磁盘恢复后，下一次 save 必须 reload + 重放 pending，而不是用旧/空内存覆盖
+        pkl_path.write_bytes(good_bytes)
+        assert a.add_document("z", "local z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" in ids
+        assert "y" in ids
+        assert "z" in ids
+
+    def test_rebuild_overwrite_logs_warning(self, tmp_path, caplog):
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("old", "old note", "session")  # v1
+        with caplog.at_level(logging.WARNING, logger="jfox.bm25_index"):
+            assert a.rebuild_from_notes([_note("n1")])
+        assert any("覆盖" in r.message for r in caplog.records)

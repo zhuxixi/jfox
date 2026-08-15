@@ -94,7 +94,10 @@ class BM25Index:
 
     def _load(self) -> bool:
         """
-        从磁盘加载索引
+        从磁盘加载索引（事务式）
+
+        全部加载与校验先在局部变量完成，成功才提交到实例；任何一步失败
+        self 保持不变（防止失败路径毒化实例后，后续 save 用空/旧状态覆盖磁盘）。
 
         Returns:
             是否成功加载
@@ -108,8 +111,8 @@ class BM25Index:
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
 
-            # 记录磁盘写入版本（乐观锁令牌）；旧格式无此字段视为 0
-            self._loaded_write_version = int(metadata.get("write_version") or 0)
+            # 磁盘写入版本（乐观锁令牌）；旧格式无此字段视为 0
+            write_version = int(metadata.get("write_version") or 0)
 
             # 检查版本，支持从 v1 迁移到 v2
             version = metadata.get("version")
@@ -121,64 +124,66 @@ class BM25Index:
             with open(self.index_path, "rb") as f:
                 index_data = pickle.load(f)
 
-            self.bm25 = index_data["bm25"]
-            self.documents = index_data["documents"]
-            self.doc_ids = index_data["doc_ids"]
-            self.doc_mapping = index_data["doc_mapping"]
+            bm25 = index_data["bm25"]
+            documents = index_data["documents"]
+            doc_ids = index_data["doc_ids"]
+            doc_mapping = index_data["doc_mapping"]
 
             # v1/v2 索引若缺失 doc_types，需要全量重建来回填类型元数据
             loaded_doc_types = index_data.get("doc_types")
             needs_backfill = loaded_doc_types is None
             if needs_backfill:
-                self.doc_types = [None] * len(self.doc_ids)
+                doc_types: List[Optional[str]] = [None] * len(doc_ids)
             else:
                 # 校验 doc_types 必须是 list（支持 append 等可变操作）
                 if not isinstance(loaded_doc_types, list):
                     logger.error(f"BM25 index doc_types is not a list: {type(loaded_doc_types)}")
-                    self._reset()
                     return False
-                self.doc_types = loaded_doc_types
+                doc_types = loaded_doc_types
 
             # 校验核心数据结构长度一致且映射有效，防止持久化损坏导致错位
-            expected_len = len(self.doc_ids)
+            expected_len = len(doc_ids)
             if not (
-                len(self.documents) == expected_len
-                and len(self.doc_types) == expected_len
-                and len(self.doc_mapping) == expected_len
+                len(documents) == expected_len
+                and len(doc_types) == expected_len
+                and len(doc_mapping) == expected_len
             ):
                 logger.error(
                     "BM25 index data length mismatch: "
-                    f"documents={len(self.documents)}, doc_ids={expected_len}, "
-                    f"doc_types={len(self.doc_types)}, doc_mapping={len(self.doc_mapping)}"
+                    f"documents={len(documents)}, doc_ids={expected_len}, "
+                    f"doc_types={len(doc_types)}, doc_mapping={len(doc_mapping)}"
                 )
-                self._reset()
                 return False
 
             # 校验 doc_mapping 与 doc_ids 一一对应，且索引值在有效范围内
-            for idx, note_id in enumerate(self.doc_ids):
-                if self.doc_mapping.get(note_id) != idx:
+            for idx, note_id in enumerate(doc_ids):
+                if doc_mapping.get(note_id) != idx:
                     logger.error(
                         f"BM25 index mapping corrupted: note_id={note_id}, "
-                        f"expected_idx={idx}, got={self.doc_mapping.get(note_id)}"
+                        f"expected_idx={idx}, got={doc_mapping.get(note_id)}"
                     )
-                    self._reset()
                     return False
 
             # 校验 doc_types 元素类型
-            if not all(dt is None or isinstance(dt, str) for dt in self.doc_types):
+            if not all(dt is None or isinstance(dt, str) for dt in doc_types):
                 logger.error("BM25 index doc_types contains invalid element types")
-                self._reset()
                 return False
 
-            # 校验 bm25 实例有效；若损坏则重置并返回 False
-            if self.bm25 is None and expected_len > 0:
+            # 校验 bm25 实例有效
+            if bm25 is None and expected_len > 0:
                 logger.error("BM25 index corrupted: bm25 is None but documents exist")
-                self._reset()
                 return False
 
+            # 全部校验通过，一次性提交到实例
+            self.bm25 = bm25
+            self.documents = documents
+            self.doc_ids = doc_ids
+            self.doc_types = doc_types
+            self.doc_mapping = doc_mapping
+            self._loaded_write_version = write_version
             # 缺失 doc_types 或 metadata 标记需要重建的索引，触发全量重建回填类型元数据
-            if needs_backfill or metadata.get("needs_rebuild"):
-                self.needs_rebuild = True
+            self.needs_rebuild = needs_backfill or bool(metadata.get("needs_rebuild"))
+            if self.needs_rebuild:
                 logger.info("Loaded BM25 index needs rebuild to backfill doc_types")
 
             logger.info(f"Loaded BM25 index: {len(self.doc_ids)} documents")
@@ -186,7 +191,6 @@ class BM25Index:
 
         except Exception as e:
             logger.error(f"Failed to load BM25 index: {e}")
-            self._reset()
             return False
 
     def _read_disk_write_version(self) -> int:
@@ -233,6 +237,13 @@ class BM25Index:
                         logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
                         return False
                     self._replay_pending_ops()
+                elif disk_version > self._loaded_write_version and self._dirty_full_rebuild:
+                    # rebuild 覆盖语义：以本地快照为准，覆盖较新的磁盘状态（记录丢失风险）
+                    logger.warning(
+                        f"BM25 rebuild 覆盖：磁盘版本 {disk_version} 比本地 "
+                        f"{self._loaded_write_version} 新，按 rebuild 快照覆盖，"
+                        "其间其他进程的写入将丢失"
+                    )
                 elif disk_version < self._loaded_write_version:
                     logger.warning(
                         f"BM25 磁盘版本 {disk_version} 比本地 "
@@ -378,10 +389,8 @@ class BM25Index:
             # 重建索引
             self._rebuild_index()
 
-            # 保存
-            self._save()
-
-            return True
+            # 保存（透传结果：锁超时/写失败时调用方能感知索引未落盘）
+            return self._save()
 
         except Exception as e:
             logger.error(f"Failed to add document {note_id}: {e}")
@@ -407,8 +416,8 @@ class BM25Index:
             # 重建索引
             self._rebuild_index()
 
-            # 保存
-            self._save()
+            # 保存（透传结果）
+            return self._save()
 
             return True
 
@@ -465,6 +474,9 @@ class BM25Index:
                 # 分词并添加
                 tokens = self._tokenize(content)
                 if not tokens:
+                    # 已存在 id 的内联移除已发生：记 pending 保持重放一致性
+                    # （重放时 _add_document_local 对空 tokens 同样先移除后跳过）
+                    self._pending_ops.append(("add", note_id, content, note_type))
                     continue  # 跳过分词结果为空的文档
                 idx = len(self.documents)
                 self.documents.append(tokens)
@@ -583,6 +595,7 @@ class BM25Index:
         saved_mapping = dict(self.doc_mapping)
         saved_needs_rebuild = self.needs_rebuild
         saved_dirty_full_rebuild = self._dirty_full_rebuild
+        saved_pending_ops = list(self._pending_ops)
 
         try:
             # 在局部变量中构建新索引
@@ -637,6 +650,7 @@ class BM25Index:
             self.doc_mapping = saved_mapping
             self.needs_rebuild = saved_needs_rebuild
             self._dirty_full_rebuild = saved_dirty_full_rebuild
+            self._pending_ops = saved_pending_ops
             return False
 
     def check_stale_and_reload(self) -> None:
@@ -647,7 +661,9 @@ class BM25Index:
         """
         try:
             if self._read_disk_write_version() > self._loaded_write_version:
-                self._load()
+                if self._load() and self._pending_ops:
+                    # reload 会整体替换内存：重放未落盘的本地增量，防止丢失
+                    self._replay_pending_ops()
         except Exception:
             pass
 
