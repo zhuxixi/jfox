@@ -499,3 +499,69 @@ class TestDeleteCleansBacklinks:
 
                 show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
                 assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"
+
+    def test_delete_mixed_backlinks_cleans_str_ref(self, mock_embedding_backend):
+        """混合数据（backlinks = [被删id(str), 123456]）时仍清理 str 引用，非 str 元素原样透传"""
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                b_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 手工编辑 B frontmatter：backlinks 改成混合数据（A_id 字符串 + 一个 int）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    b_path = note_module.load_note_by_id(b_id).filepath
+                    text = b_path.read_text(encoding="utf-8")
+                    text = re.sub(
+                        r"backlinks:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        f"backlinks: ['{a_id}', 123456]",
+                        text,
+                        count=1,
+                    )
+                    b_path.write_text(text, encoding="utf-8")
+
+                del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # str 引用已被清理，非 str 元素原样透传
+                show_b = runner.invoke(app, ["show", b_id, "--kb", kb_name, "--json"])
+                assert show_b.exit_code == 0, show_b.output
+                backlinks_b = json.loads(show_b.output)["backlinks"]
+                assert a_id not in backlinks_b, "混合数据下 str 悬空引用应被清理"
+                assert 123456 in backlinks_b, "非 str 脏元素应原样透传，不被写坏"

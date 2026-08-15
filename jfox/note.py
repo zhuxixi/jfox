@@ -343,13 +343,17 @@ def delete_note(note_id: str) -> bool:
                     )
                     continue
                 # 类型守卫（#386 CR）：backlinks 元素为手编脏数据（如 backlinks: [123]，
-                # list 内嵌 int）时，str note_id 与 int 元素比较恒为 False，既不清理也无
-                # 提示；warning 跳过，保持与容器级守卫一致的可诊断性，且不写坏数据。
-                if any(not isinstance(bid, str) for bid in t.backlinks):
+                # list 内嵌 int）时仅 warning 不阻塞——str 引用照常清理，非 str 元素
+                # 原样透传（`bid != note_id` 对 int 恒 True，不写入新坏数据）；纯脏 list
+                # 下 membership 为 False，不写盘、不触碰坏数据。
+                bad_types = sorted(
+                    {type(bid).__name__ for bid in t.backlinks if not isinstance(bid, str)}
+                )
+                if bad_types:
                     logger.warning(
-                        f"Skip cleaning backlinks from target {tid}: backlinks 元素类型异常"
+                        f"Cleaning backlinks from target {tid}: backlinks 元素类型异常 "
+                        f"({', '.join(bad_types)})，仅清理 str 引用"
                     )
-                    continue
                 if note_id in t.backlinks:
                     t.updated = now
                     t.backlinks = [bid for bid in t.backlinks if bid != note_id]
