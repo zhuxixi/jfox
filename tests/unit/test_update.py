@@ -498,6 +498,18 @@ class TestRunUpgrade:
             assert result["stderr"] == "standard error"
             mock_run.assert_called_once()
 
+    def test_uses_devnull_stdin(self):
+        """子进程 stdin 应指向 DEVNULL，避免等待交互输入而挂住"""
+        mock_result = type(
+            "obj",
+            (object,),
+            {"stdout": "Upgraded\n", "stderr": ""},
+        )()
+        with patch("jfox.cli.subprocess.run", return_value=mock_result) as mock_run:
+            _run_upgrade(["uv", "tool", "upgrade", "jfox-cli"])
+            mock_run.assert_called_once()
+            assert mock_run.call_args.kwargs["stdin"] == subprocess.DEVNULL
+
 
 class TestUpdateCommand:
     """jfox update CLI 命令测试"""
@@ -553,6 +565,19 @@ class TestUpdateCommand:
                         assert "当前已是最新版本" in result.output
                         assert "1.1.0" in _strip_ansi(result.output)
                         assert "→" not in result.output
+
+    def test_table_output_shows_upgrading_status(self):
+        """升级前显示正在升级的提示，避免用户误以为命令挂住"""
+        with patch("jfox.cli._detect_install_method", return_value="uv"):
+            with patch("jfox.__version__", "1.0.0"):
+                with patch(
+                    "jfox.cli._run_upgrade",
+                    return_value={"stdout": "Upgraded", "stderr": ""},
+                ):
+                    with patch("jfox.cli._get_installed_version", return_value="1.1.0"):
+                        result = runner.invoke(app, ["update"])
+                        assert result.exit_code == 0
+                        assert "正在升级" in _strip_ansi(result.output)
 
     def test_table_output_failure(self):
         """升级失败时 table 输出显示错误和手动命令"""
