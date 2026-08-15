@@ -303,6 +303,25 @@ def delete_note(note_id: str) -> bool:
         return False
 
     try:
+        # backlinks 增量移除（#386）：把本笔记从各 target 的 backlinks 移除，与
+        # promote_note 的增量回填对称。放在删文件之前：中途崩溃后重跑 delete 幂等
+        # 收敛（backlinks 已清的 target 被 membership 守卫跳过，只剩删文件）。
+        # 单 target 写盘失败仅 warning 不中断；残留悬空由
+        # `jfox index rebuild --backlinks` 全量重算兜底。
+        from .note_index import get_note_index
+
+        now = datetime.now()
+        for tid in note.links:
+            t = load_note_by_id(tid)
+            if t and note_id in t.backlinks:
+                t.updated = now
+                t.backlinks = [bid for bid in t.backlinks if bid != note_id]
+                try:
+                    _atomic_write(t.filepath, t.to_markdown())
+                    get_note_index().update_note_meta(t)
+                except Exception as e:
+                    logger.warning(f"Failed to clean backlinks from target {tid}: {e}")
+
         # 删除文件
         note.filepath.unlink()
         logger.info(f"Deleted note file: {note.filepath}")
