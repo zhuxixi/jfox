@@ -6,12 +6,25 @@ BM25Index 并发写防护（#391）单元测试
 
 import json
 import pickle
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 from filelock import Timeout
 
 from jfox.bm25_index import BM25Index
+from jfox.models import Note, NoteType
+
+
+def _note(nid: str, ntype: NoteType = NoteType.PERMANENT) -> Note:
+    return Note(
+        id=nid,
+        title=f"title {nid}",
+        type=ntype,
+        content=f"content {nid}",
+        created=datetime.now(),
+        updated=datetime.now(),
+    )
 
 
 def _load_disk_ids(index_dir: Path) -> list:
@@ -102,3 +115,13 @@ class TestOptimisticMerge:
         (tmp_path / BM25Index.INDEX_FILENAME).write_bytes(corrupted)
         assert a._save() is False
         assert (tmp_path / BM25Index.INDEX_FILENAME).read_bytes() == corrupted
+
+
+class TestRebuildSemantics:
+    def test_rebuild_overwrites_stale_disk(self, tmp_path):
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("old", "old note", "session")  # v1
+        # a 内存是旧状态，但 rebuild 语义=以我的快照为准：直接覆盖，不 merge
+        assert a.rebuild_from_notes([_note("n1"), _note("n2")])
+        assert set(_load_disk_ids(tmp_path)) == {"n1", "n2"}

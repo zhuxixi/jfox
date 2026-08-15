@@ -585,6 +585,7 @@ class BM25Index:
         saved_types = list(self.doc_types)
         saved_mapping = dict(self.doc_mapping)
         saved_needs_rebuild = self.needs_rebuild
+        saved_dirty_full_rebuild = self._dirty_full_rebuild
 
         try:
             # 在局部变量中构建新索引
@@ -618,6 +619,10 @@ class BM25Index:
             # 重建成功，清除 needs_rebuild 标志后再保存
             self.needs_rebuild = False
 
+            # rebuild 语义=以本次快照为准：save 时即便磁盘较新也直接覆盖，不做 merge
+            self._dirty_full_rebuild = True
+            self._pending_ops.clear()
+
             # 保存，失败则回滚
             if not self._save():
                 raise RuntimeError("Failed to persist BM25 index after rebuild")
@@ -634,6 +639,7 @@ class BM25Index:
             self.doc_types = saved_types
             self.doc_mapping = saved_mapping
             self.needs_rebuild = saved_needs_rebuild
+            self._dirty_full_rebuild = saved_dirty_full_rebuild
             return False
 
     def get_stats(self) -> Dict:
