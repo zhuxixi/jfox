@@ -6,11 +6,13 @@ BM25 索引模块
 
 import json
 import logging
+import os
 import pickle
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from filelock import FileLock, Timeout
 from rank_bm25 import BM25Okapi
 
 from .config import config
@@ -29,6 +31,7 @@ class BM25Index:
     INDEX_VERSION = 2
     INDEX_FILENAME = "bm25_index.pkl"
     METADATA_FILENAME = "bm25_metadata.json"
+    LOCK_FILENAME = "bm25_index.lock"
 
     def __init__(self, index_dir: Optional[Path] = None):
         """
@@ -48,6 +51,9 @@ class BM25Index:
         self.doc_types: List[Optional[str]] = []  # 文档类型列表
         self.doc_mapping: Dict[str, int] = {}  # note_id -> index
         self.needs_rebuild: bool = False  # 是否需要全量重建以回填元数据
+        self._loaded_write_version: int = 0  # load 时记录的磁盘写入版本（乐观锁令牌）
+        self._pending_ops: List[Tuple[str, str, str, Optional[str]]] = []  # 未落盘的增量操作
+        self._dirty_full_rebuild: bool = False  # rebuild 后 save 走覆盖语义
 
         # 加载已有索引
         self._load()
@@ -101,6 +107,9 @@ class BM25Index:
             # 加载元数据
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
+
+            # 记录磁盘写入版本（乐观锁令牌）；旧格式无此字段视为 0
+            self._loaded_write_version = int(metadata.get("write_version") or 0)
 
             # 检查版本，支持从 v1 迁移到 v2
             version = metadata.get("version")
@@ -180,9 +189,38 @@ class BM25Index:
             self._reset()
             return False
 
+    def _read_disk_write_version(self) -> int:
+        """读磁盘 metadata 的 write_version；损坏/缺失视为 0"""
+        try:
+            with open(self.metadata_path, "r", encoding="utf-8") as f:
+                return int(json.load(f).get("write_version") or 0)
+        except Exception:
+            return 0
+
+    def _atomic_write_bytes(self, path: Path, data: bytes) -> None:
+        """原子写：先写临时文件再 os.replace，读端永远只能读到完整文件"""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+
+    def _atomic_write_text(self, path: Path, text: str) -> None:
+        """原子写文本（同 _atomic_write_bytes）"""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+
+    def _replay_pending_ops(self) -> None:
+        """重放本地未落盘的增量操作（Task 2 实现合并逻辑）"""
+
     def _save(self) -> bool:
         """
-        保存索引到磁盘
+        保存索引到磁盘（乐观并发控制版）
+
+        流程：拿文件锁 → 比对磁盘 write_version → 磁盘较新则 reload+重放本地增量
+        → 原子写 pkl → 原子写 metadata（commit point）。
+        铁律：任何一步失败都不写盘，返回 False。
 
         Returns:
             是否成功保存
@@ -191,29 +229,56 @@ class BM25Index:
             # 确保目录存在
             self.index_dir.mkdir(parents=True, exist_ok=True)
 
-            # 保存元数据
-            metadata = {
-                "version": self.INDEX_VERSION,
-                "doc_count": len(self.doc_ids),
-                "needs_rebuild": self.needs_rebuild,
-            }
-            with open(self.metadata_path, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, ensure_ascii=False, indent=2)
+            with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=5):
+                disk_version = self._read_disk_write_version()
+                if (
+                    disk_version > self._loaded_write_version
+                    and not self._dirty_full_rebuild
+                ):
+                    if not self._load():
+                        logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
+                        return False
+                    self._replay_pending_ops()
+                elif disk_version < self._loaded_write_version:
+                    logger.warning(
+                        f"BM25 磁盘版本 {disk_version} 比本地 "
+                        f"{self._loaded_write_version} 旧，按本地覆盖"
+                    )
 
-            # 保存索引数据
-            index_data = {
-                "bm25": self.bm25,
-                "documents": self.documents,
-                "doc_ids": self.doc_ids,
-                "doc_types": self.doc_types,
-                "doc_mapping": self.doc_mapping,
-            }
-            with open(self.index_path, "wb") as f:
-                pickle.dump(index_data, f)
+                new_version = max(disk_version, self._loaded_write_version) + 1
+                prev_version = self._loaded_write_version
 
-            logger.info(f"Saved BM25 index: {len(self.doc_ids)} documents")
-            return True
+                # 先写 pkl（数据本体），后写 metadata（commit point）：
+                # 版本号上涨一定意味着 pkl 已完整落盘
+                index_data = {
+                    "bm25": self.bm25,
+                    "documents": self.documents,
+                    "doc_ids": self.doc_ids,
+                    "doc_types": self.doc_types,
+                    "doc_mapping": self.doc_mapping,
+                }
+                self._atomic_write_bytes(self.index_path, pickle.dumps(index_data))
+                metadata = {
+                    "version": self.INDEX_VERSION,
+                    "doc_count": len(self.doc_ids),
+                    "needs_rebuild": self.needs_rebuild,
+                    "write_version": new_version,
+                }
+                self._atomic_write_text(
+                    self.metadata_path, json.dumps(metadata, ensure_ascii=False, indent=2)
+                )
 
+                self._loaded_write_version = new_version
+                self._pending_ops.clear()
+                self._dirty_full_rebuild = False
+                logger.info(
+                    f"Saved BM25 index: {len(self.doc_ids)} documents "
+                    f"(write_version={new_version}, prev={prev_version})"
+                )
+                return True
+        except Timeout:
+            logger.error("BM25 save: 获取索引文件锁超时（5s），放弃写入")
+            return False
         except Exception as e:
             logger.error(f"Failed to save BM25 index: {e}")
             return False
