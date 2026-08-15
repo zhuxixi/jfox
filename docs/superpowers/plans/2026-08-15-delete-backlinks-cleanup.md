@@ -130,12 +130,32 @@ Expected: FAIL — `AssertionError: delete 后 B.backlinks 不应残留已删 A 
         from .note_index import get_note_index
 
         now = datetime.now()
-        for tid in note.links or []:
+        # 类型守卫（#386 CR）：note.links 可能为手编脏数据（links: null → None，或裸标量
+        # → int/str）。非 list 时按空列表处理并 warning，防 `for tid in <int>` 抛
+        # TypeError 落到外层 except → return False → 笔记无法删除。
+        if not isinstance(note.links, list):
+            logger.warning(
+                f"Skip backlink cleanup for note {note_id}: links 类型异常 "
+                f"({type(note.links).__name__})，按空列表处理"
+            )
+        for tid in note.links if isinstance(note.links, list) else []:
             try:
                 t = load_note_by_id(tid)
-                if t and isinstance(t.backlinks, list) and note_id in t.backlinks:
+                if not t:
+                    continue
+                if not isinstance(t.backlinks, list):
+                    logger.warning(
+                        f"Skip cleaning backlinks from target {tid}: backlinks 类型异常 "
+                        f"({type(t.backlinks).__name__})"
+                    )
+                    continue
+                if note_id in t.backlinks:
                     t.updated = now
                     t.backlinks = [bid for bid in t.backlinks if bid != note_id]
+                    # 已知限制：t.filepath 按 type/标题 slug 重算，非 load 命中磁盘路径；
+                    # 文件名发散时可能另写同 id 双文件，残留由 rebuild --backlinks/check 兜底。
+                    # 已知限制：本循环无锁 read-modify-write，与常驻 daemon 并发写 target
+                    # 时 last-writer-wins（与 promote 回填/update_note 同构，全库无文件锁）。
                     _atomic_write(t.filepath, t.to_markdown())
                     get_note_index().update_note_meta(t)
             except Exception as e:

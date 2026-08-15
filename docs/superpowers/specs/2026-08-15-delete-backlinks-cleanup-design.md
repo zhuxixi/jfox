@@ -21,10 +21,25 @@
 # 放在删文件之前：若中途崩溃，重跑 delete 幂等收敛（targets 的 backlinks 已无本 id → 直接跳过）。
 # target 损坏/解析失败（如手工编辑 backlinks: null）同样仅 warning 跳过，不阻塞 delete 主流程。
 now = datetime.now()
-for tid in note.links or []:
+# 类型守卫：note.links 可能为手编脏数据（links: null → None，或裸标量 → int/str），
+# 非 list 时按空列表处理并 warning，防 `for tid in <int>` 抛 TypeError 使笔记无法删除。
+if not isinstance(note.links, list):
+    logger.warning(
+        f"Skip backlink cleanup for note {note_id}: links 类型异常 "
+        f"({type(note.links).__name__})，按空列表处理"
+    )
+for tid in note.links if isinstance(note.links, list) else []:
     try:
         t = load_note_by_id(tid)
-        if t and isinstance(t.backlinks, list) and note_id in t.backlinks:
+        if not t:
+            continue
+        if not isinstance(t.backlinks, list):
+            logger.warning(
+                f"Skip cleaning backlinks from target {tid}: backlinks 类型异常 "
+                f"({type(t.backlinks).__name__})"
+            )
+            continue
+        if note_id in t.backlinks:
             t.updated = now
             t.backlinks = [bid for bid in t.backlinks if bid != note_id]
             _atomic_write(t.filepath, t.to_markdown())

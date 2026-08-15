@@ -313,10 +313,28 @@ def delete_note(note_id: str) -> bool:
         from .note_index import get_note_index
 
         now = datetime.now()
-        for tid in note.links or []:
+        # 类型守卫（#386 CR）：note.links 可能是手编脏数据（links: null → None，或裸标量
+        # → int/str）。非 list 时按空列表处理并 warning，防止 `for tid in <int>` 抛
+        # TypeError 落到外层 except → return False → 笔记无法删除。
+        if not isinstance(note.links, list):
+            logger.warning(
+                f"Skip backlink cleanup for note {note_id}: links 类型异常 "
+                f"({type(note.links).__name__})，按空列表处理"
+            )
+        for tid in note.links if isinstance(note.links, list) else []:
             try:
                 t = load_note_by_id(tid)
-                if t and isinstance(t.backlinks, list) and note_id in t.backlinks:
+                if not t:
+                    continue
+                # 类型守卫（#386 CR）：t.backlinks 为坏类型（None / str / int 标量）时
+                # warning 跳过，不写坏 target 数据，保持与 except 分支一致的可诊断性。
+                if not isinstance(t.backlinks, list):
+                    logger.warning(
+                        f"Skip cleaning backlinks from target {tid}: backlinks 类型异常 "
+                        f"({type(t.backlinks).__name__})"
+                    )
+                    continue
+                if note_id in t.backlinks:
                     t.updated = now
                     t.backlinks = [bid for bid in t.backlinks if bid != note_id]
                     # 已知限制：t.filepath 是按 type/标题 slug 重算的路径，非 load 命中的

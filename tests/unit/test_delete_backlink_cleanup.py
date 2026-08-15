@@ -339,3 +339,50 @@ class TestDeleteCleansBacklinks:
                 # C 已真正删除
                 show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
                 assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"
+
+    def test_delete_note_with_scalar_links_succeeds(self, mock_embedding_backend):
+        """被删笔记自身 links 为裸标量（int，YAML 解析）时，delete 仍成功不中断（#386 CR round-2）"""
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                c_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "孤岛笔记正文，无任何 wiki link。",
+                        "--title",
+                        "孤岛笔记D",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert c_result.exit_code == 0, c_result.output
+                c_id = json.loads(c_result.output)["note"]["id"]
+
+                # 手工编辑 C 的 frontmatter：把 links 列表改成裸标量（jfox id 是纯数字时间戳，
+                # YAML 解析为 int——模拟手写忘加方括号的脏数据）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    c_path = note_module.load_note_by_id(c_id).filepath
+                    text = c_path.read_text(encoding="utf-8")
+                    text = re.sub(
+                        r"links:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        "links: 20260815120000",
+                        text,
+                        count=1,
+                    )
+                    c_path.write_text(text, encoding="utf-8")
+
+                del_result = runner.invoke(app, ["delete", c_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # C 已真正删除（裸标量 links 不再导致 for tid in <int> 崩溃）
+                show_c = runner.invoke(app, ["show", c_id, "--kb", kb_name, "--json"])
+                assert show_c.exit_code == 1, "删除后 show C 应失败（not found）"
