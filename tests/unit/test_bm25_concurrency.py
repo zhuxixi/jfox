@@ -5,7 +5,9 @@ BM25Index 并发写防护（#391）单元测试
 """
 
 import json
+import os
 import pickle
+import time
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -245,3 +247,38 @@ class TestCrRound1Fixes:
         engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=a)
         assert engine.bm25_index is a
         assert "x" not in a.doc_mapping  # a 未被刷新
+
+
+class TestCrRound2Fixes:
+    """cc bot round-2 修复回归（#396）：孤儿 mtime 检测、空内容透传"""
+
+    def test_orphan_pkl_detected_by_mtime(self, tmp_path):
+        """issue-16：pkl 已落盘、metadata 未提交的孤儿由 mtime 检测接住，不被本地内存覆写"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        assert idx.add_document("y", "hello y", "session")  # v2 全落盘
+        # 构造孤儿：metadata 回滚到 v1、pkl 保持 v2 且 mtime 严格更新
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        pkl_path = tmp_path / BM25Index.INDEX_FILENAME
+        future = time.time() + 10
+        os.utime(pkl_path, (future, future))
+        # 长驻写者视角：令牌=1（写 metadata 失败后未推进），磁盘版本比较判定「相等」
+        daemon_view = BM25Index(index_dir=tmp_path)
+        assert daemon_view._loaded_write_version == 2  # _load 已 max 采纳
+        daemon_view._loaded_write_version = 1  # 模拟 metadata 提交失败后的内存令牌
+        # mtime 检测必须发现孤儿 → reload 采纳 v2
+        daemon_view.check_stale_and_reload()
+        assert daemon_view._loaded_write_version == 2
+        assert "y" in daemon_view.doc_mapping
+
+    def test_empty_content_add_transparent_remove_result(self, tmp_path):
+        """issue-17：空内容+已存在 id 透传 remove 的落盘结果"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("a", "hello", "session")  # v1
+        # remove 落盘失败（锁超时）→ add 必须返回 False 而不是恒 True
+        with patch("jfox.bm25_index.FileLock") as mock_lock_cls:
+            mock_lock_cls.return_value.__enter__.side_effect = Timeout("bm25_index.lock")
+            assert idx.add_document("a", "", "session") is False
