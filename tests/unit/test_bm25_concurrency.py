@@ -52,11 +52,15 @@ class TestWriteVersionAndLock:
     def test_legacy_metadata_without_version(self, tmp_path):
         idx = BM25Index(index_dir=tmp_path)
         assert idx.add_document("a", "hello world", "session")
-        # 抹掉 write_version 模拟旧格式文件
+        # 抹掉 metadata 与 pkl 里的 write_version 模拟旧格式文件
         meta_path = tmp_path / BM25Index.METADATA_FILENAME
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         meta.pop("write_version", None)
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        pkl_path = tmp_path / BM25Index.INDEX_FILENAME
+        data = pickle.loads(pkl_path.read_bytes())
+        data.pop("write_version", None)
+        pkl_path.write_bytes(pickle.dumps(data))
         idx2 = BM25Index(index_dir=tmp_path)
         assert idx2._loaded_write_version == 0
         assert "a" in idx2.doc_mapping
@@ -118,6 +122,8 @@ class TestOptimisticMerge:
 
 
 class TestRebuildSemantics:
+    """rebuild 覆盖语义（stale 时不 merge）"""
+
     def test_rebuild_overwrites_stale_disk(self, tmp_path):
         a = BM25Index(index_dir=tmp_path)
         b = BM25Index(index_dir=tmp_path)
@@ -128,6 +134,8 @@ class TestRebuildSemantics:
 
 
 class TestStaleDetection:
+    """读路径 stale 检测与刷新"""
+
     def test_check_stale_and_reload(self, tmp_path):
         a = BM25Index(index_dir=tmp_path)
         b = BM25Index(index_dir=tmp_path)
@@ -175,3 +183,65 @@ class TestFailureRecovery:
         with caplog.at_level(logging.WARNING, logger="jfox.bm25_index"):
             assert a.rebuild_from_notes([_note("n1")])
         assert any("覆盖" in r.message for r in caplog.records)
+
+
+class TestCrRound1Fixes:
+    """cc bot round-1 修复回归（#396）：令牌回退、半提交自愈、空内容语义、注入参数副作用"""
+
+    def test_batch_rollback_restores_version_token(self, tmp_path):
+        """issue-1：batch save 失败回滚必须恢复乐观锁令牌，否则下次 save 走快路径覆盖磁盘"""
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1（磁盘较新）
+        # merge 分支 reload 会把令牌推进到 1，随后写盘失败 → 回滚必须恢复令牌
+        with patch.object(a, "_atomic_write_bytes", side_effect=OSError("disk full")):
+            assert a.add_documents_batch([("y", "hello y", "session")]) is False
+        assert a._loaded_write_version == 0  # 令牌已回退（bug 时 =1）
+        # 磁盘恢复后，下一次 save 必须走 merge（reload），而不是快路径覆盖
+        assert a.add_document("z", "hello z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" in ids
+        assert "z" in ids
+
+    def test_half_commit_pkl_version_self_heals(self, tmp_path):
+        """issue-5：metadata 替换失败的半提交（pkl 新、版本旧）由 pkl 内嵌版本自愈"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        assert idx.add_document("y", "hello y", "session")  # v2（pkl 内嵌 v2）
+        # 模拟半提交：metadata 停留 v1（其 os.replace 失败场景）
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        # 新实例 load：以 pkl 内嵌版本为准，数据与版本一致
+        fresh = BM25Index(index_dir=tmp_path)
+        assert fresh._loaded_write_version == 2
+        assert "y" in fresh.doc_mapping
+        # 下次 save 自愈 metadata 版本
+        assert fresh.add_document("z", "hello z", "session")
+        assert _disk_version(tmp_path) == 3
+
+    def test_add_empty_content_keeps_legacy_semantics(self, tmp_path):
+        """issue-11：空内容 add 恢复旧语义——不存在 id 恒 True 不落盘；已存在 id 仅移除"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("a", "hello", "session")  # v1
+        assert idx.add_document("new-id", "", "session") is True
+        assert _disk_version(tmp_path) == 1  # 未落盘（版本未涨）
+        assert "new-id" not in idx.doc_mapping
+        # 已存在 id + 空内容 = 移除（旧语义）
+        assert idx.add_document("a", "", "session") is True
+        assert "a" not in idx.doc_mapping
+        assert _disk_version(tmp_path) == 2  # remove 落盘了一次
+
+    def test_explicit_bm25_index_not_reloaded(self, tmp_path):
+        """issue-12：显式传入 bm25_index 时构造器不得对其产生隐式 reload 副作用"""
+        from unittest.mock import MagicMock
+
+        from jfox.search_engine import HybridSearchEngine
+
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # 磁盘 v1 较新
+        engine = HybridSearchEngine(vector_store=MagicMock(), bm25_index=a)
+        assert engine.bm25_index is a
+        assert "x" not in a.doc_mapping  # a 未被刷新
