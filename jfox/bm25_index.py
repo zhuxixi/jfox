@@ -57,6 +57,8 @@ class BM25Index:
         self._pending_ops: List[Tuple[str, str, str, Optional[str]]] = []  # 未落盘的增量操作
         self._dirty_full_rebuild: bool = False  # rebuild 后 save 走覆盖语义
         self._mem_lock = threading.RLock()  # 进程内内存状态锁（filelock 只串行化进程间写）
+        # 权衡：写路径全程持锁执行 _save（含文件锁等待+pickle+fsync，慢盘可达数秒），
+        # 会阻塞同进程 search/get_stats——换取状态一致性；daemon 查询延迟尖峰属已知取舍（#396 issue-6）
 
         # 加载已有索引
         self._load()
@@ -216,19 +218,18 @@ class BM25Index:
             logger.warning(f"Failed to read BM25 metadata write_version ({e}), treat as 0")
             return 0
 
-    def _disk_has_orphan_pkl(self) -> bool:
-        """检测半提交孤儿：pkl 已原子落盘、metadata 提交失败时的 mtime 特征。
+    @property
+    def _metadata_tmp_path(self) -> Path:
+        return self.metadata_path.with_suffix(self.metadata_path.suffix + ".tmp")
 
-        正常写入顺序 pkl 先、metadata 后，故正常态 metadata mtime >= pkl mtime；
-        孤儿态（metadata 的 os.replace 最终失败）则 pkl mtime 严格新于 metadata。
-        两个 stat 调用，成本可忽略。
+    def _disk_has_orphan_pkl(self) -> bool:
+        """检测半提交孤儿：pkl 已原子落盘、metadata 提交未完成。
+
+        写序设计为 metadata.tmp → pkl(replace) → metadata.tmp(replace)，
+        故「metadata.tmp 存在」= 上次写在 pkl 落盘后、metadata 提交前中断。
+        相比 mtime 启发式：精确、零成本、无假阳（旧格式文件不误判）/假阴（#396 issue-4）。
         """
-        try:
-            pkl_mtime = self.index_path.stat().st_mtime
-            meta_mtime = self.metadata_path.stat().st_mtime
-            return pkl_mtime > meta_mtime
-        except OSError:
-            return False
+        return self._metadata_tmp_path.exists()
 
     def _atomic_write_bytes(self, path: Path, data: bytes) -> None:
         """原子写：写临时文件 → fsync → os.replace，读端永远只能读到完整文件。
@@ -283,6 +284,21 @@ class BM25Index:
                 time.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
+    @staticmethod
+    def _fsync_dir(path: Path) -> None:
+        """对父目录 fsync：保证 os.replace 的目录项持久化（断电/内核崩溃）。
+
+        不支持目录 fsync 的平台（Windows）静默降级。
+        """
+        try:
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
+
     def _save(self) -> bool:
         """
         保存索引到磁盘（乐观并发控制版）
@@ -298,7 +314,9 @@ class BM25Index:
             # 确保目录存在
             self.index_dir.mkdir(parents=True, exist_ok=True)
 
-            with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=5):
+            with FileLock(
+                str(self.index_dir / self.LOCK_FILENAME), timeout=30
+            ):  # 大索引 pickle+fsync 在慢盘上可达数秒，5s 会误伤合法慢写（#396 issue-8）
                 disk_version = self._read_disk_write_version()
                 orphan_pkl = self._disk_has_orphan_pkl()
                 stale = disk_version > self._loaded_write_version or (
@@ -310,7 +328,7 @@ class BM25Index:
                 if stale and not self._dirty_full_rebuild:
                     if orphan_pkl and disk_version == self._loaded_write_version:
                         logger.warning(
-                            "BM25 检测到半提交孤儿 pkl（mtime 新于 metadata），reload 采纳后合并写入"
+                            "BM25 检测到半提交孤儿 pkl（metadata.tmp 残留），reload 采纳后合并写入"
                         )
                     if not self._load():
                         logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
@@ -332,8 +350,19 @@ class BM25Index:
                 new_version = max(disk_version, self._loaded_write_version) + 1
                 prev_version = self._loaded_write_version
 
-                # 先写 pkl（数据本体），后写 metadata（commit point）：
-                # 版本号上涨一定意味着 pkl 已完整落盘
+                # 写序：metadata.tmp（不 replace）→ pkl 原子替换 → metadata.tmp 替换。
+                # metadata.tmp 的存在即「pkl 已写、metadata 未提交」的孤儿信号（精确判定）。
+                # 版本号上涨一定意味着 pkl 已完整落盘（metadata 作 commit point）。
+                metadata = {
+                    "version": self.INDEX_VERSION,
+                    "doc_count": len(self.doc_ids),
+                    "needs_rebuild": self.needs_rebuild,
+                    "write_version": new_version,
+                }
+                with open(self._metadata_tmp_path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+                    f.flush()
+                    os.fsync(f.fileno())
                 index_data = {
                     "bm25": self.bm25,
                     "documents": self.documents,
@@ -343,15 +372,9 @@ class BM25Index:
                     "write_version": new_version,
                 }
                 self._atomic_write_bytes(self.index_path, pickle.dumps(index_data))
-                metadata = {
-                    "version": self.INDEX_VERSION,
-                    "doc_count": len(self.doc_ids),
-                    "needs_rebuild": self.needs_rebuild,
-                    "write_version": new_version,
-                }
-                self._atomic_write_text(
-                    self.metadata_path, json.dumps(metadata, ensure_ascii=False, indent=2)
-                )
+                self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
+                # issue-5：父目录 fsync，保证两次 rename 的目录项断电持久化
+                self._fsync_dir(self.index_dir)
 
                 self._loaded_write_version = new_version
                 self._pending_ops.clear()
@@ -362,7 +385,7 @@ class BM25Index:
                 )
                 return True
         except Timeout:
-            logger.error("BM25 save: 获取索引文件锁超时（5s），放弃写入")
+            logger.error("BM25 save: 获取索引文件锁超时（30s），放弃写入")
             return False
         except Exception as e:
             logger.error(f"Failed to save BM25 index: {e}")
@@ -435,22 +458,13 @@ class BM25Index:
         return True
 
     def _replay_pending_ops(self) -> None:
-        """重放本地未落盘的增量操作：同 id 合并（只留最后 op）后按序 apply"""
-        if not self._pending_ops:
-            return
-        merged: Dict[str, Tuple[str, str, Optional[str]]] = {}
-        for op, nid, content, ntype in self._pending_ops:
-            merged[nid] = (op, content, ntype)
-        logger.warning(f"BM25 merge: 磁盘版本较新，重放 {len(merged)} 条本地操作后合并写入")
-        for nid, (op, content, ntype) in merged.items():
-            if op == "remove":
-                self._remove_document_local(nid)
-            else:
-                self._add_document_local(nid, content, ntype)
-        self._rebuild_index()
+        """重放本地未落盘的增量操作：同 id 合并（只留最后 op）后按序 apply。
 
-    def _replay_pending_ops(self) -> None:
-        """重放本地未落盘的增量操作：同 id 合并（只留最后 op）后按序 apply"""
+        注意 stale-replay 窗口（并发 CRUD 的 LWW 终局语义）：本进程若在 save 失败后
+        长期持有过期内存，其 pending 中记录的内容可能已陈旧于其他进程在此期间提交的
+        同 id 更新——重放会以陈旧内容覆盖较新磁盘数据。这是乐观并发下 last-writer-wins
+        的固有取舍（见 spec §8 风险段），非数据损坏。
+        """
         if not self._pending_ops:
             return
         merged: Dict[str, Tuple[str, str, Optional[str]]] = {}
@@ -487,8 +501,7 @@ class BM25Index:
                     if note_id in self.doc_mapping:
                         return self.remove_document(note_id)
                     return True
-                if not self._add_document_local(note_id, content, note_type):
-                    return False
+                self._add_document_local(note_id, content, note_type)
                 self._pending_ops.append(("add", note_id, content, note_type))
 
                 # 重建索引
@@ -811,6 +824,12 @@ class BM25Index:
         """
         try:
             self._reset()
+            # 并发状态字段一并重置：残留的高版本令牌会让后续 save 把别进程的新写入
+            # 判为「较旧」并按本地空快照覆盖（#396 issue-3）；pending 残留会把已清空
+            # 的文档在 stale reload 时重放回索引
+            self._loaded_write_version = 0
+            self._pending_ops.clear()
+            self._dirty_full_rebuild = False
 
             # 删除文件
             if self.index_path.exists():
