@@ -132,6 +132,8 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
 
+**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 只含 `jfox/**`/`tests/**`/`pyproject.toml`/自身——`packages/`（cc/kimi-plugin 发版 bump）、`docs/`、`.claude/` 改动**不触发 CI**。后果：`packages/` 下版本 bump 不跑测试，release-helper 测试须按当前版本动态算「下一版」（勿硬编码），否则只在后续触达 `tests/` 的 PR 才暴露（#382 踩过）。
+
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
 **Local nightly full-test**（#263/#361，非 GitHub Action）：`scripts/nightly_test.sh` 是本机 crontab 定时任务（crontab 行装本机、不进仓库），每周二 09:00 跑 CI `test-fast` 跳过的全量 pytest（performance/bulk/slow/embedding）——成功静默，失败按签名去重复用带 `nightly-test-failure` label 的 issue。前置：今日 #338 备份须成功（读 `~/.jfox-backup/state.json` 的 `last_ok`，否则 `SKIP: 今日备份未确认` 退出）。纯逻辑在 `scripts/nightly_test_helpers.py`（单测 `tests/unit/test_nightly_test_helpers.py`）；`--dry-run` 用人造失败走 issue 流程、不跑真实 pytest。
