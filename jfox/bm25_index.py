@@ -331,9 +331,18 @@ class BM25Index:
                             "BM25 检测到半提交孤儿 pkl（metadata.tmp 残留），reload 采纳后合并写入"
                         )
                     if not self._load():
-                        logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
-                        return False
-                    self._replay_pending_ops()
+                        if not self.index_path.exists() and not self.metadata_path.exists():
+                            # 磁盘已无索引（如 clear() 后）：tmp 是无数据残留，清理后继续写（自愈，
+                            # 否则 tmp 永久触发本分支 → _load 永远失败 → save 永久失败，#396 issue-9）
+                            logger.warning(
+                                "BM25 孤儿 tmp 残留但磁盘无索引，清理 tmp 后按内存状态写入"
+                            )
+                            self._metadata_tmp_path.unlink(missing_ok=True)
+                        else:
+                            logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
+                            return False
+                    else:
+                        self._replay_pending_ops()
                 elif disk_version > self._loaded_write_version and self._dirty_full_rebuild:
                     # rebuild 覆盖语义：以本地快照为准，覆盖较新的磁盘状态（记录丢失风险）
                     logger.warning(
@@ -831,7 +840,8 @@ class BM25Index:
             self._pending_ops.clear()
             self._dirty_full_rebuild = False
 
-            # 删除文件
+            # 删除文件（含孤儿 tmp 残留：否则残留会让后续 save 永远走孤儿分支失败，#396 issue-9）
+            self._metadata_tmp_path.unlink(missing_ok=True)
             if self.index_path.exists():
                 self.index_path.unlink()
             if self.metadata_path.exists():

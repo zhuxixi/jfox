@@ -278,3 +278,36 @@ class TestCrRound2Fixes:
         with patch("jfox.bm25_index.FileLock") as mock_lock_cls:
             mock_lock_cls.return_value.__enter__.side_effect = Timeout("bm25_index.lock")
             assert idx.add_document("a", "", "session") is False
+
+
+class TestCrPiRound2Fixes:
+    """pi-cr round-2 修复回归（#396）：孤儿 tmp + clear 自愈"""
+
+    def test_clear_after_orphan_tmp_residue(self, tmp_path):
+        """issue-9：metadata.tmp 残留 + clear() 后 save 不得永久失败"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        # 模拟「tmp 已写、metadata 未提交」的中断残留
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
+        assert idx.clear()
+        # clear 后 save 必须能成功（孤儿 tmp 不应让 save 永久失败）
+        assert idx.add_document("y", "hello y", "session") is True
+        assert (tmp_path / BM25Index.METADATA_FILENAME).exists()
+        assert "y" in _load_disk_ids(tmp_path)
+
+    def test_orphan_tmp_residue_self_heals_without_clear(self, tmp_path):
+        """issue-9：clear() 之外的孤儿 tmp 残留路径——reload 采纳 + tmp 被消费"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        assert idx.add_document("y", "hello y", "session")  # v2
+        # 孤儿：metadata 回滚 v1 + tmp 残留
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
+        daemon_view = BM25Index(index_dir=tmp_path)
+        daemon_view._loaded_write_version = 1
+        daemon_view.check_stale_and_reload()
+        assert daemon_view._loaded_write_version == 2
+        assert "y" in daemon_view.doc_mapping

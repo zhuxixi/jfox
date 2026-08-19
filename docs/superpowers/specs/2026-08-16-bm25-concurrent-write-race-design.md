@@ -134,6 +134,7 @@ def check_stale_and_reload(self) -> None:
 ## 8. 风险
 
 - **rebuild 覆盖窗口**：`rebuild-bm25`（秒级）执行期间 daemon 若 save，其增量会被 rebuild 覆盖丢失——丢失范围限定为「daemon 在 rebuild 窗口内处理的 0-N 条 session 的索引」，且 auto-summary ledger 已标记处理过、不会重试。概率低、影响小（单条 session 的 keyword 可搜性），文档化接受。
+- **stale-replay（LWW 陈旧覆盖）窗口**：进程 save 失败后长期持有过期内存，其 pending 中记录的内容可能已陈旧于其他进程在此期间提交的同 id 更新——重放时 last-writer-wins 会以陈旧内容覆盖较新磁盘数据。这是乐观并发 CRUD 的固有取舍（与「丢整个索引」的现状相比严重度低一个量级），非数据损坏；需要严格一致时应走单写者架构（非目标）。
 - **filelock 显式依赖**：宽松协议，已随 uv.lock 存在，风险低。
 - **pending ops 内存占用**：一个进程生命周期内增量 ops 数量级为百级，每项含一段正文，可忽略。
 - **行为变化面**：所有 `_save` 调用方都会走锁+版本检查；CLI 单进程场景 disk_version 通常 == loaded_version，走快路径，行为不变。
