@@ -68,7 +68,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `note.py` | Markdown file CRUD with YAML frontmatter |
 | `models.py` | `Note` data model with frontmatter serialization |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
-| `bm25_index.py` | BM25 keyword search index |
+| `bm25_index.py` | BM25 keyword search index；写路径 filelock + 原子写 + `write_version` 乐观并发控制，多进程并发写安全（#391/#396） |
 | `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理） |
 | `daemon/` | Embedding 模型 HTTP 守护进程 (`server.py`/`client.py`/`process.py`)，`jfox daemon start/stop/status` |
 | `fragment/` | 碎片采集：detector 分类 + store SQLite(WAL) + service 编排 |
@@ -180,3 +180,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `gem_synth/lifecycle.py`
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：单 target 写盘失败仅 warning 不中断；悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
+- `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
