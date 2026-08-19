@@ -6,11 +6,15 @@ BM25 索引模块
 
 import json
 import logging
+import os
 import pickle
 import re
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from filelock import FileLock, Timeout
 from rank_bm25 import BM25Okapi
 
 from .config import config
@@ -29,6 +33,7 @@ class BM25Index:
     INDEX_VERSION = 2
     INDEX_FILENAME = "bm25_index.pkl"
     METADATA_FILENAME = "bm25_metadata.json"
+    LOCK_FILENAME = "bm25_index.lock"
 
     def __init__(self, index_dir: Optional[Path] = None):
         """
@@ -48,6 +53,12 @@ class BM25Index:
         self.doc_types: List[Optional[str]] = []  # 文档类型列表
         self.doc_mapping: Dict[str, int] = {}  # note_id -> index
         self.needs_rebuild: bool = False  # 是否需要全量重建以回填元数据
+        self._loaded_write_version: int = 0  # load 时记录的磁盘写入版本（乐观锁令牌）
+        self._pending_ops: List[Tuple[str, str, str, Optional[str]]] = []  # 未落盘的增量操作
+        self._dirty_full_rebuild: bool = False  # rebuild 后 save 走覆盖语义
+        self._mem_lock = threading.RLock()  # 进程内内存状态锁（filelock 只串行化进程间写）
+        # 权衡：写路径全程持锁执行 _save（含文件锁等待+pickle+fsync，慢盘可达数秒），
+        # 会阻塞同进程 search/get_stats——换取状态一致性；daemon 查询延迟尖峰属已知取舍（#396 issue-6）
 
         # 加载已有索引
         self._load()
@@ -88,7 +99,10 @@ class BM25Index:
 
     def _load(self) -> bool:
         """
-        从磁盘加载索引
+        从磁盘加载索引（事务式）
+
+        全部加载与校验先在局部变量完成，成功才提交到实例；任何一步失败
+        self 保持不变（防止失败路径毒化实例后，后续 save 用空/旧状态覆盖磁盘）。
 
         Returns:
             是否成功加载
@@ -102,6 +116,9 @@ class BM25Index:
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
 
+            # 磁盘写入版本（乐观锁令牌）；旧格式无此字段视为 0
+            write_version = int(metadata.get("write_version") or 0)
+
             # 检查版本，支持从 v1 迁移到 v2
             version = metadata.get("version")
             if version not in (1, self.INDEX_VERSION):
@@ -112,64 +129,77 @@ class BM25Index:
             with open(self.index_path, "rb") as f:
                 index_data = pickle.load(f)
 
-            self.bm25 = index_data["bm25"]
-            self.documents = index_data["documents"]
-            self.doc_ids = index_data["doc_ids"]
-            self.doc_mapping = index_data["doc_mapping"]
+            bm25 = index_data["bm25"]
+            documents = index_data["documents"]
+            doc_ids = index_data["doc_ids"]
+            doc_mapping = index_data["doc_mapping"]
+
+            # pkl 内嵌写入版本（v1 起存在，与 metadata 中 write_version 同源）：
+            # 用于半提交自愈——pkl 先写、metadata 后写，若 metadata 替换失败，
+            # 磁盘上会出现「pkl 版本 > metadata 版本」的残留，以此检测并采纳新数据。
+            pkl_write_version = int(index_data.get("write_version") or 0)
 
             # v1/v2 索引若缺失 doc_types，需要全量重建来回填类型元数据
             loaded_doc_types = index_data.get("doc_types")
             needs_backfill = loaded_doc_types is None
             if needs_backfill:
-                self.doc_types = [None] * len(self.doc_ids)
+                doc_types: List[Optional[str]] = [None] * len(doc_ids)
             else:
                 # 校验 doc_types 必须是 list（支持 append 等可变操作）
                 if not isinstance(loaded_doc_types, list):
                     logger.error(f"BM25 index doc_types is not a list: {type(loaded_doc_types)}")
-                    self._reset()
                     return False
-                self.doc_types = loaded_doc_types
+                doc_types = loaded_doc_types
 
             # 校验核心数据结构长度一致且映射有效，防止持久化损坏导致错位
-            expected_len = len(self.doc_ids)
+            expected_len = len(doc_ids)
             if not (
-                len(self.documents) == expected_len
-                and len(self.doc_types) == expected_len
-                and len(self.doc_mapping) == expected_len
+                len(documents) == expected_len
+                and len(doc_types) == expected_len
+                and len(doc_mapping) == expected_len
             ):
                 logger.error(
                     "BM25 index data length mismatch: "
-                    f"documents={len(self.documents)}, doc_ids={expected_len}, "
-                    f"doc_types={len(self.doc_types)}, doc_mapping={len(self.doc_mapping)}"
+                    f"documents={len(documents)}, doc_ids={expected_len}, "
+                    f"doc_types={len(doc_types)}, doc_mapping={len(doc_mapping)}"
                 )
-                self._reset()
                 return False
 
             # 校验 doc_mapping 与 doc_ids 一一对应，且索引值在有效范围内
-            for idx, note_id in enumerate(self.doc_ids):
-                if self.doc_mapping.get(note_id) != idx:
+            for idx, note_id in enumerate(doc_ids):
+                if doc_mapping.get(note_id) != idx:
                     logger.error(
                         f"BM25 index mapping corrupted: note_id={note_id}, "
-                        f"expected_idx={idx}, got={self.doc_mapping.get(note_id)}"
+                        f"expected_idx={idx}, got={doc_mapping.get(note_id)}"
                     )
-                    self._reset()
                     return False
 
             # 校验 doc_types 元素类型
-            if not all(dt is None or isinstance(dt, str) for dt in self.doc_types):
+            if not all(dt is None or isinstance(dt, str) for dt in doc_types):
                 logger.error("BM25 index doc_types contains invalid element types")
-                self._reset()
                 return False
 
-            # 校验 bm25 实例有效；若损坏则重置并返回 False
-            if self.bm25 is None and expected_len > 0:
+            # 校验 bm25 实例有效
+            if bm25 is None and expected_len > 0:
                 logger.error("BM25 index corrupted: bm25 is None but documents exist")
-                self._reset()
                 return False
 
+            # 全部校验通过，一次性提交到实例
+            self.bm25 = bm25
+            self.documents = documents
+            self.doc_ids = doc_ids
+            self.doc_types = doc_types
+            self.doc_mapping = doc_mapping
+            # 以 pkl 与 metadata 中较新者为准：pkl 较新 = 上次写 metadata 的半提交残留，自愈采纳
+            if pkl_write_version > write_version:
+                logger.warning(
+                    f"BM25 半提交自愈：pkl 版本 {pkl_write_version} > metadata 版本 "
+                    f"{write_version}（上次写 metadata 失败），采纳 pkl 数据"
+                )
+            self._loaded_write_version = max(pkl_write_version, write_version)
             # 缺失 doc_types 或 metadata 标记需要重建的索引，触发全量重建回填类型元数据
-            if needs_backfill or metadata.get("needs_rebuild"):
-                self.needs_rebuild = True
+            self.needs_rebuild = needs_backfill or bool(metadata.get("needs_rebuild"))
+            if self.needs_rebuild:
                 logger.info("Loaded BM25 index needs rebuild to backfill doc_types")
 
             logger.info(f"Loaded BM25 index: {len(self.doc_ids)} documents")
@@ -177,12 +207,105 @@ class BM25Index:
 
         except Exception as e:
             logger.error(f"Failed to load BM25 index: {e}")
-            self._reset()
             return False
+
+    def _read_disk_write_version(self) -> int:
+        """读磁盘 metadata 的 write_version；损坏/缺失视为 0（异常留痕便于追踪）"""
+        try:
+            with open(self.metadata_path, "r", encoding="utf-8") as f:
+                return int(json.load(f).get("write_version") or 0)
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
+            logger.warning(f"Failed to read BM25 metadata write_version ({e}), treat as 0")
+            return 0
+
+    @property
+    def _metadata_tmp_path(self) -> Path:
+        return self.metadata_path.with_suffix(self.metadata_path.suffix + ".tmp")
+
+    def _disk_has_orphan_pkl(self) -> bool:
+        """检测半提交孤儿：pkl 已原子落盘、metadata 提交未完成。
+
+        写序设计为 metadata.tmp → pkl(replace) → metadata.tmp(replace)，
+        故「metadata.tmp 存在」= 上次写在 pkl 落盘后、metadata 提交前中断。
+        相比 mtime 启发式：精确、零成本、无假阳（旧格式文件不误判）/假阴（#396 issue-4）。
+        """
+        return self._metadata_tmp_path.exists()
+
+    def _atomic_write_bytes(self, path: Path, data: bytes) -> None:
+        """原子写：写临时文件 → fsync → os.replace，读端永远只能读到完整文件。
+
+        写后 fsync 保证断电/内核崩溃下数据块先于 rename 持久化；os.replace 撞上
+        Windows 读窗口的瞬时 sharing violation 时重试（读端短窗，毫秒级瞬态）。
+        """
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        try:
+            with open(tmp, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            self._replace_with_retry(tmp, path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+
+    def _atomic_write_text(self, path: Path, text: str) -> None:
+        """原子写文本（同 _atomic_write_bytes）"""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+            self._replace_with_retry(tmp, path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _replace_with_retry(tmp: Path, path: Path) -> None:
+        """os.replace 带重试：Windows 读端无锁短窗打开目标文件时 sharing violation 为瞬态。
+
+        重试预算 ~3.75s（0.25/0.5/1/2）：覆盖读端 unpickle 大索引（万级笔记）的打开窗口。
+        """
+        last_exc: Optional[BaseException] = None
+        delays = (0.25, 0.5, 1.0, 2.0)
+        for delay in delays:
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError as e:
+                last_exc = e
+                time.sleep(delay)
+        raise last_exc  # type: ignore[misc]
+
+    @staticmethod
+    def _fsync_dir(path: Path) -> None:
+        """对父目录 fsync：保证 os.replace 的目录项持久化（断电/内核崩溃）。
+
+        不支持目录 fsync 的平台（Windows）静默降级。
+        """
+        try:
+            fd = os.open(path, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
 
     def _save(self) -> bool:
         """
-        保存索引到磁盘
+        保存索引到磁盘（乐观并发控制版）
+
+        流程：拿文件锁 → 比对磁盘 write_version（含半提交孤儿 mtime 检测）→
+        磁盘较新则 reload+重放本地增量 → 原子写 pkl → 原子写 metadata（commit point）。
+        铁律：任何一步失败都不写盘，返回 False。
 
         Returns:
             是否成功保存
@@ -191,29 +314,88 @@ class BM25Index:
             # 确保目录存在
             self.index_dir.mkdir(parents=True, exist_ok=True)
 
-            # 保存元数据
-            metadata = {
-                "version": self.INDEX_VERSION,
-                "doc_count": len(self.doc_ids),
-                "needs_rebuild": self.needs_rebuild,
-            }
-            with open(self.metadata_path, "w", encoding="utf-8") as f:
-                json.dump(metadata, f, ensure_ascii=False, indent=2)
+            with FileLock(
+                str(self.index_dir / self.LOCK_FILENAME), timeout=30
+            ):  # 大索引 pickle+fsync 在慢盘上可达数秒，5s 会误伤合法慢写（#396 issue-8）
+                disk_version = self._read_disk_write_version()
+                orphan_pkl = self._disk_has_orphan_pkl()
+                stale = disk_version > self._loaded_write_version or (
+                    # 半提交孤儿：版本与本地相等，但 pkl 已先落盘、metadata 未提交，
+                    # 不检测则快路径用本地内存覆写孤儿数据（#396 issue-16）
+                    disk_version == self._loaded_write_version
+                    and orphan_pkl
+                )
+                if stale and not self._dirty_full_rebuild:
+                    if orphan_pkl and disk_version == self._loaded_write_version:
+                        logger.warning(
+                            "BM25 检测到半提交孤儿 pkl（metadata.tmp 残留），reload 采纳后合并写入"
+                        )
+                    if not self._load():
+                        if not self.index_path.exists() and not self.metadata_path.exists():
+                            # 磁盘已无索引（如 clear() 后）：tmp 是无数据残留，清理后继续写（自愈，
+                            # 否则 tmp 永久触发本分支 → _load 永远失败 → save 永久失败，#396 issue-9）
+                            logger.warning(
+                                "BM25 孤儿 tmp 残留但磁盘无索引，清理 tmp 后按内存状态写入"
+                            )
+                            self._metadata_tmp_path.unlink(missing_ok=True)
+                        else:
+                            logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
+                            return False
+                    else:
+                        self._replay_pending_ops()
+                elif disk_version > self._loaded_write_version and self._dirty_full_rebuild:
+                    # rebuild 覆盖语义：以本地快照为准，覆盖较新的磁盘状态（记录丢失风险）
+                    logger.warning(
+                        f"BM25 rebuild 覆盖：磁盘版本 {disk_version} 比本地 "
+                        f"{self._loaded_write_version} 新，按 rebuild 快照覆盖，"
+                        "其间其他进程的写入将丢失"
+                    )
+                elif disk_version < self._loaded_write_version:
+                    logger.warning(
+                        f"BM25 磁盘版本 {disk_version} 比本地 "
+                        f"{self._loaded_write_version} 旧，按本地覆盖"
+                    )
 
-            # 保存索引数据
-            index_data = {
-                "bm25": self.bm25,
-                "documents": self.documents,
-                "doc_ids": self.doc_ids,
-                "doc_types": self.doc_types,
-                "doc_mapping": self.doc_mapping,
-            }
-            with open(self.index_path, "wb") as f:
-                pickle.dump(index_data, f)
+                new_version = max(disk_version, self._loaded_write_version) + 1
+                prev_version = self._loaded_write_version
 
-            logger.info(f"Saved BM25 index: {len(self.doc_ids)} documents")
-            return True
+                # 写序：metadata.tmp（不 replace）→ pkl 原子替换 → metadata.tmp 替换。
+                # metadata.tmp 的存在即「pkl 已写、metadata 未提交」的孤儿信号（精确判定）。
+                # 版本号上涨一定意味着 pkl 已完整落盘（metadata 作 commit point）。
+                metadata = {
+                    "version": self.INDEX_VERSION,
+                    "doc_count": len(self.doc_ids),
+                    "needs_rebuild": self.needs_rebuild,
+                    "write_version": new_version,
+                }
+                with open(self._metadata_tmp_path, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+                    f.flush()
+                    os.fsync(f.fileno())
+                index_data = {
+                    "bm25": self.bm25,
+                    "documents": self.documents,
+                    "doc_ids": self.doc_ids,
+                    "doc_types": self.doc_types,
+                    "doc_mapping": self.doc_mapping,
+                    "write_version": new_version,
+                }
+                self._atomic_write_bytes(self.index_path, pickle.dumps(index_data))
+                self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
+                # issue-5：父目录 fsync，保证两次 rename 的目录项断电持久化
+                self._fsync_dir(self.index_dir)
 
+                self._loaded_write_version = new_version
+                self._pending_ops.clear()
+                self._dirty_full_rebuild = False
+                logger.info(
+                    f"Saved BM25 index: {len(self.doc_ids)} documents "
+                    f"(write_version={new_version}, prev={prev_version})"
+                )
+                return True
+        except Timeout:
+            logger.error("BM25 save: 获取索引文件锁超时（30s），放弃写入")
+            return False
         except Exception as e:
             logger.error(f"Failed to save BM25 index: {e}")
             return False
@@ -257,9 +439,60 @@ class BM25Index:
         logger.warning(f"Unexpected note_type type {type(note_type)}, converting to str")
         return str(note_type)
 
+    def _add_document_local(self, note_id: str, content: str, note_type: Optional[str]) -> bool:
+        """纯内存添加（不含索引重建/落盘/pending 记录）"""
+        if note_id in self.doc_mapping:
+            self._remove_document_local(note_id)
+        tokens = self._tokenize(content)
+        if not tokens:
+            return True
+        normalized_type = self._normalize_note_type(note_type)
+        idx = len(self.documents)
+        self.documents.append(tokens)
+        self.doc_ids.append(note_id)
+        self.doc_types.append(normalized_type)
+        self.doc_mapping[note_id] = idx
+        return True
+
+    def _remove_document_local(self, note_id: str) -> bool:
+        """纯内存移除"""
+        if note_id not in self.doc_mapping:
+            return True
+        idx = self.doc_mapping[note_id]
+        self.documents.pop(idx)
+        self.doc_ids.pop(idx)
+        self.doc_types.pop(idx)
+        del self.doc_mapping[note_id]
+        self.doc_mapping = {doc_id: i for i, doc_id in enumerate(self.doc_ids)}
+        return True
+
+    def _replay_pending_ops(self) -> None:
+        """重放本地未落盘的增量操作：同 id 合并（只留最后 op）后按序 apply。
+
+        注意 stale-replay 窗口（并发 CRUD 的 LWW 终局语义）：本进程若在 save 失败后
+        长期持有过期内存，其 pending 中记录的内容可能已陈旧于其他进程在此期间提交的
+        同 id 更新——重放会以陈旧内容覆盖较新磁盘数据。这是乐观并发下 last-writer-wins
+        的固有取舍（见 spec §8 风险段），非数据损坏。
+        """
+        if not self._pending_ops:
+            return
+        merged: Dict[str, Tuple[str, str, Optional[str]]] = {}
+        for op, nid, content, ntype in self._pending_ops:
+            merged[nid] = (op, content, ntype)
+        logger.warning(f"BM25 merge: 磁盘版本较新，重放 {len(merged)} 条本地操作后合并写入")
+        for nid, (op, content, ntype) in merged.items():
+            if op == "remove":
+                self._remove_document_local(nid)
+            else:
+                self._add_document_local(nid, content, ntype)
+        self._rebuild_index()
+
     def add_document(self, note_id: str, content: str, note_type: Optional[str] = None) -> bool:
         """
         添加文档到索引（增量更新）
+
+        失败语义：返回 False 表示「本次修改未落盘」——内存变更与 pending 记录保留，
+        待下次 save 重放兜底；成功返回 True 表示已落盘。
 
         Args:
             note_id: 笔记 ID
@@ -267,43 +500,34 @@ class BM25Index:
             note_type: 笔记类型（可选）
 
         Returns:
-            是否成功添加
+            是否成功添加（并落盘）
         """
-        try:
-            # 如果已存在，先移除
-            if note_id in self.doc_mapping:
-                self.remove_document(note_id)
+        with self._mem_lock:
+            try:
+                if not self._tokenize(content):
+                    # 空内容：不存在 id 静默成功；已存在 id 等价于移除（旧语义），
+                    # 透传 remove 的落盘结果（锁超时/写失败时调用方能感知）
+                    if note_id in self.doc_mapping:
+                        return self.remove_document(note_id)
+                    return True
+                self._add_document_local(note_id, content, note_type)
+                self._pending_ops.append(("add", note_id, content, note_type))
 
-            # 分词
-            tokens = self._tokenize(content)
-            if not tokens:
-                return True
+                # 重建索引
+                self._rebuild_index()
 
-            # 标准化笔记类型
-            normalized_type = self._normalize_note_type(note_type)
+                # 保存（透传结果：锁超时/写失败时调用方能感知索引未落盘）
+                return self._save()
 
-            # 添加到索引
-            idx = len(self.documents)
-            self.documents.append(tokens)
-            self.doc_ids.append(note_id)
-            self.doc_types.append(normalized_type)
-            self.doc_mapping[note_id] = idx
-
-            # 重建索引
-            self._rebuild_index()
-
-            # 保存
-            self._save()
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to add document {note_id}: {e}")
-            return False
+            except Exception as e:
+                logger.error(f"Failed to add document {note_id}: {e}")
+                return False
 
     def remove_document(self, note_id: str) -> bool:
         """
         从索引中移除文档
+
+        失败语义同 add_document：False 表示未落盘（内存变更与 pending 保留待重放）。
 
         Args:
             note_id: 笔记 ID
@@ -311,34 +535,23 @@ class BM25Index:
         Returns:
             是否成功移除
         """
-        try:
-            if note_id not in self.doc_mapping:
-                return True
+        with self._mem_lock:
+            try:
+                if note_id not in self.doc_mapping:
+                    return True
 
-            idx = self.doc_mapping[note_id]
+                self._remove_document_local(note_id)
+                self._pending_ops.append(("remove", note_id, "", None))
 
-            # 移除数据
-            self.documents.pop(idx)
-            self.doc_ids.pop(idx)
-            self.doc_types.pop(idx)
-            del self.doc_mapping[note_id]
+                # 重建索引
+                self._rebuild_index()
 
-            # 更新其他文档的索引
-            self.doc_mapping = {}
-            for i, doc_id in enumerate(self.doc_ids):
-                self.doc_mapping[doc_id] = i
+                # 保存（透传结果）
+                return self._save()
 
-            # 重建索引
-            self._rebuild_index()
-
-            # 保存
-            self._save()
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to remove document {note_id}: {e}")
-            return False
+            except Exception as e:
+                logger.error(f"Failed to remove document {note_id}: {e}")
+                return False
 
     def add_documents_batch(
         self,
@@ -350,6 +563,11 @@ class BM25Index:
         与逐条调用 add_document() 不同，此方法收集所有文档后只执行一次索引重建和保存。
         适用于批量导入场景。
 
+        失败语义与 add_document 不同：save 失败时**回滚**内存与 pending 到批次前快照
+        （批量操作的半成品对调用方无意义）；add/remove 单条路径则保留待重放。
+        极端 IO 失败下（pkl 已原子落盘、metadata 提交失败）磁盘可能残留孤儿 pkl，
+        由版本自愈（mtime 检测 + max 采纳）接住，见 _save 与 check_stale_and_reload。
+
         Args:
             documents: [(note_id, content), ...] 或 [(note_id, content, note_type), ...] 列表
 
@@ -359,70 +577,78 @@ class BM25Index:
         if not documents:
             return True
 
-        # 快照当前状态，失败时恢复
-        saved_docs = list(self.documents)
-        saved_ids = list(self.doc_ids)
-        saved_types = list(self.doc_types)
-        saved_mapping = dict(self.doc_mapping)
-        saved_bm25 = self.bm25
+        with self._mem_lock:
+            try:
+                # 快照当前状态，失败时恢复（回滚必须在锁内执行，防半回滚状态被并发读）
+                saved_docs = list(self.documents)
+                saved_ids = list(self.doc_ids)
+                saved_types = list(self.doc_types)
+                saved_mapping = dict(self.doc_mapping)
+                saved_bm25 = self.bm25
+                saved_pending_len = len(self._pending_ops)
+                saved_needs_rebuild = self.needs_rebuild
+                saved_loaded_version = self._loaded_write_version
 
-        try:
-            for doc in documents:
-                note_id = doc[0]
-                content = doc[1]
-                note_type = self._normalize_note_type(doc[2] if len(doc) >= 3 else None)
+                for doc in documents:
+                    note_id = doc[0]
+                    content = doc[1]
+                    note_type = self._normalize_note_type(doc[2] if len(doc) >= 3 else None)
 
-                # 如果已存在，先移除
-                if note_id in self.doc_mapping:
-                    # 内联移除逻辑，避免触发 rebuild/save
-                    idx = self.doc_mapping[note_id]
-                    self.documents.pop(idx)
-                    self.doc_ids.pop(idx)
-                    self.doc_types.pop(idx)
-                    del self.doc_mapping[note_id]
-                    # 更新后续索引
-                    self.doc_mapping = {}
-                    for i, doc_id in enumerate(self.doc_ids):
-                        self.doc_mapping[doc_id] = i
+                    # 如果已存在，先移除
+                    if note_id in self.doc_mapping:
+                        # 内联移除逻辑，避免触发 rebuild/save
+                        idx = self.doc_mapping[note_id]
+                        self.documents.pop(idx)
+                        self.doc_ids.pop(idx)
+                        self.doc_types.pop(idx)
+                        del self.doc_mapping[note_id]
+                        # 更新后续索引
+                        self.doc_mapping = {}
+                        for i, doc_id in enumerate(self.doc_ids):
+                            self.doc_mapping[doc_id] = i
 
-                # 分词并添加
-                tokens = self._tokenize(content)
-                if not tokens:
-                    continue  # 跳过分词结果为空的文档
-                idx = len(self.documents)
-                self.documents.append(tokens)
-                self.doc_ids.append(note_id)
-                self.doc_types.append(note_type)
-                self.doc_mapping[note_id] = idx
+                    # 分词并添加
+                    tokens = self._tokenize(content)
+                    if not tokens:
+                        # 已存在 id 的内联移除已发生：记 pending 保持重放一致性
+                        # （重放时 _add_document_local 对空 tokens 同样先移除后跳过）
+                        self._pending_ops.append(("add", note_id, content, note_type))
+                        continue  # 跳过分词结果为空的文档
+                    idx = len(self.documents)
+                    self.documents.append(tokens)
+                    self.doc_ids.append(note_id)
+                    self.doc_types.append(note_type)
+                    self.doc_mapping[note_id] = idx
+                    # 记录 pending（save 失败回滚时会截断）
+                    self._pending_ops.append(("add", note_id, content, note_type))
 
-            # 一次性重建索引
-            self._rebuild_index()
+                # 一次性重建索引
+                self._rebuild_index()
 
-            # 一次性保存，失败时回滚
-            if not self._save():
+                # 一次性保存，失败时回滚
+                if not self._save():
+                    raise RuntimeError("BM25 batch save failed")
+
+                logger.info(f"Batch added {len(documents)} documents to BM25 index")
+                return True
+
+            except Exception:
+                # 恢复到批次前的状态（锁内执行）
                 self.documents = saved_docs
                 self.doc_ids = saved_ids
                 self.doc_types = saved_types
                 self.doc_mapping = saved_mapping
                 self.bm25 = saved_bm25
-                logger.error("Failed to persist BM25 index after batch add, rolled back")
+                self.needs_rebuild = saved_needs_rebuild
+                # 乐观锁令牌一并回退：merge 分支的 _load 可能已把令牌推进到磁盘版本，
+                # 不回退则下次 save 走「磁盘==本地」快路径，用旧内存覆盖磁盘（#396 issue-1）
+                self._loaded_write_version = saved_loaded_version
+                del self._pending_ops[saved_pending_len:]
+                logger.error(
+                    f"Failed to batch add {len(documents)} documents to BM25 index",
+                    exc_info=True,
+                )
                 return False
-
-            logger.info(f"Batch added {len(documents)} documents to BM25 index")
-            return True
-
-        except Exception:
-            # 恢复到批次前的状态
-            self.documents = saved_docs
-            self.doc_ids = saved_ids
-            self.doc_types = saved_types
-            self.doc_mapping = saved_mapping
-            self.bm25 = saved_bm25
-            logger.error(
-                f"Failed to batch add {len(documents)} documents to BM25 index",
-                exc_info=True,
-            )
-            return False
 
     def search(self, query: str, top_k: int = 5, note_type: Optional[str] = None) -> List[Dict]:
         """
@@ -436,50 +662,51 @@ class BM25Index:
         Returns:
             搜索结果列表，每项包含 note_id 和 score
         """
-        if not self.bm25 or not self.documents:
-            return []
-
-        try:
-            # 分词
-            query_tokens = self._tokenize(query)
-            if not query_tokens:
+        with self._mem_lock:
+            if not self.bm25 or not self.documents:
                 return []
 
-            # 确定候选文档范围：若指定类型，先按类型过滤
-            candidate_indices = range(len(self.documents))
-            if note_type:
-                candidate_indices = [
-                    i for i, doc_type in enumerate(self.doc_types) if doc_type == note_type
-                ]
-                if not candidate_indices:
+            try:
+                # 分词
+                query_tokens = self._tokenize(query)
+                if not query_tokens:
                     return []
 
-            # BM25 搜索（仅在候选文档范围内）
-            scores = self.bm25.get_scores(query_tokens)
+                # 确定候选文档范围：若指定类型，先按类型过滤
+                candidate_indices = range(len(self.documents))
+                if note_type:
+                    candidate_indices = [
+                        i for i, doc_type in enumerate(self.doc_types) if doc_type == note_type
+                    ]
+                    if not candidate_indices:
+                        return []
 
-            # 获取 top_k 结果
-            top_indices = sorted(
-                candidate_indices,
-                key=lambda i: scores[i],
-                reverse=True,
-            )[:top_k]
+                # BM25 搜索（仅在候选文档范围内）
+                scores = self.bm25.get_scores(query_tokens)
 
-            results = []
-            for idx in top_indices:
-                # BM25 分数可能为负，只要大于最小值就返回
-                if scores[idx] > -10:  # 使用合理的阈值
-                    results.append(
-                        {
-                            "note_id": self.doc_ids[idx],
-                            "score": float(scores[idx]),
-                        }
-                    )
+                # 获取 top_k 结果
+                top_indices = sorted(
+                    candidate_indices,
+                    key=lambda i: scores[i],
+                    reverse=True,
+                )[:top_k]
 
-            return results
+                results = []
+                for idx in top_indices:
+                    # BM25 分数可能为负，只要大于最小值就返回
+                    if scores[idx] > -10:  # 使用合理的阈值
+                        results.append(
+                            {
+                                "note_id": self.doc_ids[idx],
+                                "score": float(scores[idx]),
+                            }
+                        )
 
-        except Exception as e:
-            logger.error(f"BM25 search failed: {e}")
-            return []
+                return results
+
+            except Exception as e:
+                logger.error(f"BM25 search failed: {e}")
+                return []
 
     def rebuild_from_notes(self, notes: List) -> bool:
         """
@@ -494,63 +721,93 @@ class BM25Index:
         Returns:
             是否成功重建
         """
-        # 快照当前状态，失败时恢复
-        saved_bm25 = self.bm25
-        saved_documents = list(self.documents)
-        saved_ids = list(self.doc_ids)
-        saved_types = list(self.doc_types)
-        saved_mapping = dict(self.doc_mapping)
-        saved_needs_rebuild = self.needs_rebuild
+        with self._mem_lock:
+            # 快照当前状态，失败时恢复（快照必须持锁读取，防与写路径交错）
+            saved_bm25 = self.bm25
+            saved_documents = list(self.documents)
+            saved_ids = list(self.doc_ids)
+            saved_types = list(self.doc_types)
+            saved_mapping = dict(self.doc_mapping)
+            saved_needs_rebuild = self.needs_rebuild
+            saved_dirty_full_rebuild = self._dirty_full_rebuild
+            saved_pending_ops = list(self._pending_ops)
+            saved_loaded_version = self._loaded_write_version
 
+            try:
+                # 在局部变量中构建新索引
+                new_documents: List[str] = []
+                new_ids: List[str] = []
+                new_types: List[Optional[str]] = []
+                new_mapping: Dict[str, int] = {}
+
+                for note in notes:
+                    # 组合标题和内容
+                    content = f"{note.title} {note.content}"
+                    tokens = self._tokenize(content)
+
+                    if tokens:
+                        idx = len(new_documents)
+                        new_documents.append(tokens)
+                        new_ids.append(note.id)
+                        new_types.append(self._normalize_note_type(note.type))
+                        new_mapping[note.id] = idx
+
+                # 原子替换当前状态
+                self.documents = new_documents
+                self.doc_ids = new_ids
+                self.doc_types = new_types
+                self.doc_mapping = new_mapping
+                if self.documents:
+                    self.bm25 = BM25Okapi(self.documents)
+                else:
+                    self.bm25 = None
+
+                # 重建成功，清除 needs_rebuild 标志后再保存
+                self.needs_rebuild = False
+
+                # rebuild 语义=以本次快照为准：save 时即便磁盘较新也直接覆盖，不做 merge
+                self._dirty_full_rebuild = True
+                self._pending_ops.clear()
+
+                # 保存，失败则回滚
+                if not self._save():
+                    raise RuntimeError("Failed to persist BM25 index after rebuild")
+
+                logger.info(f"Rebuilt BM25 index from {len(notes)} notes")
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to rebuild BM25 index: {e}")
+                # 恢复到重建前的状态（锁内执行）
+                self.bm25 = saved_bm25
+                self.documents = saved_documents
+                self.doc_ids = saved_ids
+                self.doc_types = saved_types
+                self.doc_mapping = saved_mapping
+                self.needs_rebuild = saved_needs_rebuild
+                self._dirty_full_rebuild = saved_dirty_full_rebuild
+                self._pending_ops = saved_pending_ops
+                self._loaded_write_version = saved_loaded_version
+                return False
+
+    def check_stale_and_reload(self) -> None:
+        """轻量 stale 检查：磁盘 write_version 比内存新就 reload。
+
+        用于长驻进程（daemon）的查询路径，避免搜索长期基于过期快照。
+        失败兜底（用内存快照继续服务），但不静默：留 warning 便于诊断
+        daemon 长驻进程里 stale 刷新长期失效的问题。
+        """
         try:
-            # 在局部变量中构建新索引
-            new_documents: List[str] = []
-            new_ids: List[str] = []
-            new_types: List[Optional[str]] = []
-            new_mapping: Dict[str, int] = {}
-
-            for note in notes:
-                # 组合标题和内容
-                content = f"{note.title} {note.content}"
-                tokens = self._tokenize(content)
-
-                if tokens:
-                    idx = len(new_documents)
-                    new_documents.append(tokens)
-                    new_ids.append(note.id)
-                    new_types.append(self._normalize_note_type(note.type))
-                    new_mapping[note.id] = idx
-
-            # 原子替换当前状态
-            self.documents = new_documents
-            self.doc_ids = new_ids
-            self.doc_types = new_types
-            self.doc_mapping = new_mapping
-            if self.documents:
-                self.bm25 = BM25Okapi(self.documents)
-            else:
-                self.bm25 = None
-
-            # 重建成功，清除 needs_rebuild 标志后再保存
-            self.needs_rebuild = False
-
-            # 保存，失败则回滚
-            if not self._save():
-                raise RuntimeError("Failed to persist BM25 index after rebuild")
-
-            logger.info(f"Rebuilt BM25 index from {len(notes)} notes")
-            return True
-
+            with self._mem_lock:
+                if (
+                    self._read_disk_write_version() > self._loaded_write_version
+                    or self._disk_has_orphan_pkl()
+                ):
+                    if self._load() and self._pending_ops:
+                        # reload 会整体替换内存：重放未落盘的本地增量，防止丢失
+                        self._replay_pending_ops()
         except Exception as e:
-            logger.error(f"Failed to rebuild BM25 index: {e}")
-            # 恢复到重建前的状态
-            self.bm25 = saved_bm25
-            self.documents = saved_documents
-            self.doc_ids = saved_ids
-            self.doc_types = saved_types
-            self.doc_mapping = saved_mapping
-            self.needs_rebuild = saved_needs_rebuild
-            return False
+            logger.warning(f"BM25 stale 检查失败（用内存快照兜底）: {e}")
 
     def get_stats(self) -> Dict:
         """
@@ -559,12 +816,13 @@ class BM25Index:
         Returns:
             统计信息字典
         """
-        return {
-            "indexed": len(self.doc_ids),
-            "version": self.INDEX_VERSION,
-            "index_path": str(self.index_path),
-            "index_exists": self.index_path.exists(),
-        }
+        with self._mem_lock:
+            return {
+                "indexed": len(self.doc_ids),
+                "version": self.INDEX_VERSION,
+                "index_path": str(self.index_path),
+                "index_exists": self.index_path.exists(),
+            }
 
     def clear(self) -> bool:
         """
@@ -575,8 +833,15 @@ class BM25Index:
         """
         try:
             self._reset()
+            # 并发状态字段一并重置：残留的高版本令牌会让后续 save 把别进程的新写入
+            # 判为「较旧」并按本地空快照覆盖（#396 issue-3）；pending 残留会把已清空
+            # 的文档在 stale reload 时重放回索引
+            self._loaded_write_version = 0
+            self._pending_ops.clear()
+            self._dirty_full_rebuild = False
 
-            # 删除文件
+            # 删除文件（含孤儿 tmp 残留：否则残留会让后续 save 永远走孤儿分支失败，#396 issue-9）
+            self._metadata_tmp_path.unlink(missing_ok=True)
             if self.index_path.exists():
                 self.index_path.unlink()
             if self.metadata_path.exists():

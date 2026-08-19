@@ -40,12 +40,22 @@ class HybridSearchEngine:
         初始化混合搜索引擎
 
         Args:
-            vector_store: 向量存储实例
-            bm25_index: BM25 索引实例
+            vector_store: 向量存储实例，None 时取全局单例
+            bm25_index: BM25 索引实例。仅当为 None（自取全局单例）时，构造器会做一次
+                stale 检查（磁盘较新则 reload，见 BM25Index.check_stale_and_reload）——
+                显式传入的实例归调用方所有，不产生隐式 reload 副作用；
+                stale 检查只在构造时执行一次，长驻进程需自行周期重建引擎或调用检查
             rrf_k: RRF 融合常数
         """
         self.vector_store = vector_store or get_vector_store()
-        self.bm25_index = bm25_index or get_bm25_index()
+        if bm25_index is None:
+            # 长驻进程（daemon）的查询路径：磁盘被别的进程写过时自动刷新单例，
+            # 避免 hybrid 搜索长期基于过期快照（#391）。
+            # 仅对自取单例做刷新：显式传入的实例归调用方所有，不产生隐式 reload 副作用（#396）
+            self.bm25_index = get_bm25_index()
+            self.bm25_index.check_stale_and_reload()
+        else:
+            self.bm25_index = bm25_index
         self.rrf_k = rrf_k
 
         # 若 BM25 索引是从 v1 迁移而来，需要全量重建以回填 doc_types

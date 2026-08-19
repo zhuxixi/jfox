@@ -872,6 +872,7 @@ source = { editable = "." }
 dependencies = [
     { name = "chromadb" },
     { name = "fastapi" },
+    { name = "filelock" },
     { name = "jinja2" },
     { name = "networkx", version = "3.4.2", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version < '3.11'" },
     { name = "networkx", version = "3.6.1", source = { registry = "https://mirrors.aliyun.com/pypi/simple" }, marker = "python_full_version >= '3.11'" },
@@ -901,6 +902,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0" },
     { name = "chromadb", specifier = ">=0.5.0" },
     { name = "fastapi", specifier = ">=0.110.0" },
+    { name = "filelock", specifier = ">=3.12" },
     { name = "jinja2", specifier = ">=3.0" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "pydantic", specifier = ">=2.0" },
