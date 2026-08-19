@@ -311,3 +311,15 @@ class TestCrPiRound2Fixes:
         daemon_view.check_stale_and_reload()
         assert daemon_view._loaded_write_version == 2
         assert "y" in daemon_view.doc_mapping
+
+    def test_orphan_tmp_self_heal_branch_direct(self, tmp_path):
+        """issue-11：自愈分支直接覆盖——loaded=0 实例 + tmp 残留 + 磁盘双文件缺失 → 清理 tmp 后按内存写入"""
+        # 构造磁盘状态：tmp 残留，index/metadata 均缺失（不经 clear()，直达自愈分支）
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
+        a = BM25Index(index_dir=tmp_path)  # loaded=0，内存空
+        # stale 判定：disk_version(0)==loaded(0) 且 orphan(tmp 存在) → 孤儿分支 →
+        # _load 失败（文件缺失）→ 自愈清理 tmp → 按内存写入
+        assert a.add_document("x", "hello x", "session") is True
+        assert (tmp_path / BM25Index.METADATA_FILENAME).exists()
+        assert "x" in _load_disk_ids(tmp_path)
+        assert not (tmp_path / "bm25_metadata.json.tmp").exists()  # tmp 已被自愈清理
