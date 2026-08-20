@@ -351,10 +351,14 @@ class BM25Index:
                         if disk_version > self._loaded_write_version
                         else ("旧" if disk_version < self._loaded_write_version else "持平")
                     )
+                    loss_note = (
+                        "，其间其他进程的写入将丢失"
+                        if relation == "新"
+                        else "（孤儿 tmp 消费后版本持平/更旧，无其他进程写入丢失）"
+                    )
                     logger.warning(
                         f"BM25 rebuild/clear 覆盖：磁盘版本 {disk_version} 比本地 "
-                        f"{self._loaded_write_version} {relation}，按本地快照覆盖，"
-                        "其间其他进程的写入将丢失"
+                        f"{self._loaded_write_version} {relation}，按本地快照覆盖{loss_note}"
                     )
                 elif disk_version < self._loaded_write_version:
                     logger.warning(
