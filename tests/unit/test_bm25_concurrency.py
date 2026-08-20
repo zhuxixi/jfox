@@ -314,8 +314,6 @@ class TestCrPiRound2Fixes:
 
     def test_orphan_tmp_self_heal_branch_direct(self, tmp_path, caplog):
         """issue-11：自愈分支直接覆盖——loaded=0 实例 + tmp 残留 + 磁盘双文件缺失 → 清理 tmp 后按内存写入"""
-        import logging
-
         # 构造磁盘状态：tmp 残留，index/metadata 均缺失（不经 clear()，直达自愈分支）
         (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
         a = BM25Index(index_dir=tmp_path)  # loaded=0，内存空
@@ -391,3 +389,53 @@ class TestIssue401Followup:
         # tmp 被读路径消费（replace 为正式 metadata），版本提交到 2
         assert not tmp_marker.exists()
         assert _disk_version(tmp_path) == 2
+
+    def test_orphan_tmp_valid_restores_data(self, tmp_path):
+        """#401 Note2：tmp 有效（完整 metadata）时单边态经 tmp 提升恢复全部数据，不丢弃"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        assert idx.add_document("y", "hello y", "session")  # v2
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta_v2_text = meta_path.read_text(encoding="utf-8")
+        # 单边态：tmp 里是完整 v2 metadata，正式 metadata 被删（模拟首次建索引崩溃）
+        (tmp_path / "bm25_metadata.json.tmp").write_text(meta_v2_text, encoding="utf-8")
+        meta_path.unlink()
+        fresh = BM25Index(index_dir=tmp_path)
+        # save：孤儿分支 → tmp 提升恢复 → merge 重放 pending
+        assert fresh.add_document("z", "hello z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" in ids  # 数据恢复，未丢弃
+        assert "y" in ids
+        assert "z" in ids
+
+    def test_orphan_tmp_invalid_discards_pkl(self, tmp_path):
+        """#401 Note2：tmp 无效时丢弃 pkl 单边数据（可 rebuild 恢复）——钉住丢弃语义"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        (tmp_path / BM25Index.METADATA_FILENAME).unlink()
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")  # 无效 tmp
+        fresh = BM25Index(index_dir=tmp_path)
+        assert fresh.add_document("y", "hello y", "session") is True
+        assert _load_disk_ids(tmp_path) == ["y"]  # x 被丢弃（tmp 无效无法恢复）
+
+    def test_clear_when_stale_overwrites_with_warning(self, tmp_path, caplog):
+        """#401 Note5：clear 时自身 stale（他进程已写更新版本）→ 覆盖分支 + warning"""
+        a = BM25Index(index_dir=tmp_path)  # loaded=0
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1（磁盘较新）
+        with caplog.at_level(logging.WARNING, logger="jfox.bm25_index"):
+            assert a.clear()  # a stale（disk v1 > loaded 0）+ dirty → 覆盖分支
+        assert any("rebuild 覆盖" in r.message for r in caplog.records)
+        assert _load_disk_ids(tmp_path) == []
+
+    def test_clear_failure_rolls_back_memory(self, tmp_path):
+        """#401 Note1/5：clear 的 save 失败回滚内存快照，不残留清空态"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        docs_before = list(idx.doc_ids)
+        with patch("jfox.bm25_index.FileLock") as mock_lock_cls:
+            mock_lock_cls.return_value.__enter__.side_effect = Timeout("bm25_index.lock")
+            assert idx.clear() is False
+        # 内存已回滚：文档还在、dirty 标志复位
+        assert idx.doc_ids == docs_before
+        assert idx._dirty_full_rebuild is False

@@ -318,13 +318,19 @@ class BM25Index:
                         )
                     if not self._load():
                         if not self.metadata_path.exists():
-                            # metadata 缺失（首次建索引崩溃单边态 / clear 中途）：tmp 是无权威
-                            # 数据残留，清理后按内存状态写入（自愈；pkl 单边数据放弃，BM25 是
-                            # 派生缓存可 rebuild 恢复）。放宽自「双文件皆无」否则永久僵死（#401 issue-24）
-                            logger.warning(
-                                "BM25 孤儿 tmp 残留且 metadata 缺失，清理 tmp 后按内存状态写入"
-                            )
-                            self._metadata_tmp_path.unlink(missing_ok=True)
+                            # metadata 缺失（首次建索引崩溃单边态）：先试恢复——tmp 里可能
+                            # 正是与 pkl 匹配的完整 metadata（写者中断在 tmp→metadata 前），
+                            # 持锁提升后可零成本恢复全部数据（#401 reviewer Note 2）；
+                            # tmp 无效或无 tmp 时才放弃 pkl 单边数据按内存写（可 rebuild 恢复）
+                            self._commit_orphan_tmp(_already_holding_lock=True)
+                            if self._load():
+                                logger.warning("BM25 单边态经 tmp 提升恢复，合并写入")
+                                self._replay_pending_ops()
+                            else:
+                                logger.warning(
+                                    "BM25 孤儿 tmp 残留且 metadata 缺失，清理 tmp 后按内存状态写入"
+                                )
+                                self._metadata_tmp_path.unlink(missing_ok=True)
                         else:
                             logger.error("BM25 磁盘版本较新但 reload 失败，放弃本次 save（不写盘）")
                             return False
@@ -777,15 +783,29 @@ class BM25Index:
                 self._loaded_write_version = saved_loaded_version
                 return False
 
-    def _commit_orphan_tmp(self) -> None:
+    def _commit_orphan_tmp(self, *, _already_holding_lock: bool = False) -> None:
         """只读路径消费孤儿 tmp：持 filelock 确认无在途写者后，把 tmp 提升为正式 metadata。
 
         写者的 commit 流程是 metadata.tmp → pkl(replace) → metadata.tmp(replace)，
         中断后 tmp 残留；读路径拿锁成功 = 无在途写者（否则锁被占用），可安全补完
-        最后一步提交。锁拿不到跳过（窗口期假阳，下次再试）——绝不在无锁时动 tmp。
+        最后一步提交。timeout=0 纯尝试（拿不到 = 在途写者活跃的窗口期假阳，跳过）——
+        不阻塞查询路径（#401 reviewer Note 3）。
+
+        _already_holding_lock=True：调用方（_save）已持锁，自己就是在途写者，
+        直接提交——注意同线程第二个 FileLock 实例永远拿不到锁（filelock 的可重入
+        仅限同一实例），不能在 _save 内走常规拿锁路径。
         """
+        if _already_holding_lock:
+            try:
+                if self._metadata_tmp_path.exists():
+                    self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
+                    self._fsync_dir(self.index_dir)
+                    logger.info("BM25 孤儿 tmp 已由写路径提交（消费）")
+            except OSError as e:
+                logger.warning(f"BM25 消费孤儿 tmp 失败: {e}")
+            return
         try:
-            with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=5):
+            with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=0):
                 if self._metadata_tmp_path.exists():
                     self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
                     self._fsync_dir(self.index_dir)
@@ -837,16 +857,42 @@ class BM25Index:
         相比删文件：其他进程后续 save 看到更高版本走 merge 采纳空索引，不会用
         旧内存复活已清空数据；无 unlink，无 Windows 占用导致的中间态。
         全程在 _mem_lock + _save 的 filelock 内执行（#401 issue-20）。
+        失败语义：save 失败时回滚内存快照（同 rebuild_from_notes），防「内存已清
+        + dirty 标志残留」导致后续 add 走覆盖分支静默抹掉他进程数据。
 
         Returns:
             是否成功清空
         """
         with self._mem_lock:
+            # 快照当前状态，失败时恢复
+            saved_bm25 = self.bm25
+            saved_documents = list(self.documents)
+            saved_ids = list(self.doc_ids)
+            saved_types = list(self.doc_types)
+            saved_mapping = dict(self.doc_mapping)
+            saved_pending_ops = list(self._pending_ops)
+            saved_dirty_full_rebuild = self._dirty_full_rebuild
+            saved_needs_rebuild = self.needs_rebuild
+            saved_loaded_version = self._loaded_write_version
+
             self._reset()
             self._pending_ops.clear()
             # 覆盖语义：clear 以本地空快照为准（stale 时直接覆盖并记 warning）
             self._dirty_full_rebuild = True
-            return self._save()
+            if self._save():
+                return True
+            # save 失败：回滚内存快照，防「内存已清+dirty 残留」的静默覆盖路径
+            self.bm25 = saved_bm25
+            self.documents = saved_documents
+            self.doc_ids = saved_ids
+            self.doc_types = saved_types
+            self.doc_mapping = saved_mapping
+            self._pending_ops = saved_pending_ops
+            self._dirty_full_rebuild = saved_dirty_full_rebuild
+            self.needs_rebuild = saved_needs_rebuild
+            self._loaded_write_version = saved_loaded_version
+            logger.error("BM25 clear: save 失败，已回滚内存快照")
+            return False
 
 
 # 全局索引实例
