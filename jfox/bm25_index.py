@@ -346,9 +346,14 @@ class BM25Index:
                     if orphan_pkl:
                         self._commit_orphan_tmp(_already_holding_lock=True)
                         disk_version = self._read_disk_write_version()
+                    relation = (
+                        "新"
+                        if disk_version > self._loaded_write_version
+                        else ("旧" if disk_version < self._loaded_write_version else "持平")
+                    )
                     logger.warning(
                         f"BM25 rebuild/clear 覆盖：磁盘版本 {disk_version} 比本地 "
-                        f"{self._loaded_write_version} 新，按本地快照覆盖，"
+                        f"{self._loaded_write_version} {relation}，按本地快照覆盖，"
                         "其间其他进程的写入将丢失"
                     )
                 elif disk_version < self._loaded_write_version:

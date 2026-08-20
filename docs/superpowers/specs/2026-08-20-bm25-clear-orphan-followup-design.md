@@ -85,6 +85,10 @@ check_stale_and_reload 在 reload 采纳后调用它。效果：真孤儿只触�
 
 删除 `_atomic_write_text`（全仓无调用方；`git grep` 验证）。
 
+> **注**：§2/§4 中的代码块与用例清单为设计时快照，实现经 pi-cr 多轮复审持续演进
+> （如 `_commit_orphan_tmp` 新增了 tmp 内容校验与 pkl 落盘检查两重防护、返回 bool、
+> warning 文案按实际比较关系生成等）。**实现细节以代码为准**，spec 保留设计意图。
+
 ## 3. 非目标
 
 - issue-6（写路径持锁阻塞查询）：已 acknowledged，不改。
