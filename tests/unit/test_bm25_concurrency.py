@@ -248,7 +248,7 @@ class TestCrRound1Fixes:
 
 
 class TestCrRound2Fixes:
-    """cc bot round-2 修复回归（#396）：孤儿 mtime 检测、空内容透传"""
+    """cc bot round-2 修复回归（#396）：孤儿 tmp 哨兵检测、空内容透传"""
 
     def test_orphan_pkl_detected_by_tmp_marker(self, tmp_path):
         """issue-4/16：pkl 已落盘、metadata 未提交的孤儿由 metadata.tmp 信号精确检测"""
@@ -296,7 +296,7 @@ class TestCrPiRound2Fixes:
         assert "y" in _load_disk_ids(tmp_path)
 
     def test_orphan_tmp_residue_self_heals_without_clear(self, tmp_path):
-        """issue-9：clear() 之外的孤儿 tmp 残留路径——reload 采纳 + tmp 被消费"""
+        """issue-9：clear() 之外的孤儿 tmp 残留路径——reload 采纳；tmp 由读路径持锁消费（#401）"""
         idx = BM25Index(index_dir=tmp_path)
         assert idx.add_document("x", "hello x", "session")  # v1
         assert idx.add_document("y", "hello y", "session")  # v2
@@ -312,14 +312,82 @@ class TestCrPiRound2Fixes:
         assert daemon_view._loaded_write_version == 2
         assert "y" in daemon_view.doc_mapping
 
-    def test_orphan_tmp_self_heal_branch_direct(self, tmp_path):
+    def test_orphan_tmp_self_heal_branch_direct(self, tmp_path, caplog):
         """issue-11：自愈分支直接覆盖——loaded=0 实例 + tmp 残留 + 磁盘双文件缺失 → 清理 tmp 后按内存写入"""
+        import logging
+
         # 构造磁盘状态：tmp 残留，index/metadata 均缺失（不经 clear()，直达自愈分支）
         (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
         a = BM25Index(index_dir=tmp_path)  # loaded=0，内存空
         # stale 判定：disk_version(0)==loaded(0) 且 orphan(tmp 存在) → 孤儿分支 →
         # _load 失败（文件缺失）→ 自愈清理 tmp → 按内存写入
-        assert a.add_document("x", "hello x", "session") is True
+        with caplog.at_level(logging.WARNING, logger="jfox.bm25_index"):
+            assert a.add_document("x", "hello x", "session") is True
+        # 判别力落在「自愈分支确实走过」（warning 日志），而非 tmp 消失的通用结果（#401 issue-25）
+        assert any(
+            "孤儿 tmp" in r.message and "按内存状态写入" in r.message for r in caplog.records
+        )
         assert (tmp_path / BM25Index.METADATA_FILENAME).exists()
         assert "x" in _load_disk_ids(tmp_path)
-        assert not (tmp_path / "bm25_metadata.json.tmp").exists()  # tmp 已被自愈清理
+
+
+class TestIssue401Followup:
+    """#401：cc round-4 遗留——clear 快照化 / 单边态自愈 / tmp 只读消费"""
+
+    def test_clear_writes_empty_snapshot(self, tmp_path):
+        """issue-20：clear() 写空快照（版本递增），文件保留"""
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        assert a.add_document("daemon-pending", "daemon 内容", "session") is True  # merge → v2
+        assert a.clear()
+        meta = json.loads((tmp_path / BM25Index.METADATA_FILENAME).read_text(encoding="utf-8"))
+        assert meta["doc_count"] == 0
+        assert meta["write_version"] == 3
+        assert _load_disk_ids(tmp_path) == []
+        assert (tmp_path / BM25Index.INDEX_FILENAME).exists()  # 不删文件
+
+    def test_clear_not_resurrected_by_other_process(self, tmp_path):
+        """issue-20(b)：clear 后他进程（持旧令牌）的 save 走 merge 采纳空索引，不复活旧数据"""
+        a = BM25Index(index_dir=tmp_path)
+        assert a.add_document("x", "hello x", "session")  # v1
+        b = BM25Index(index_dir=tmp_path)  # b load v1（含 x）
+        c = BM25Index(index_dir=tmp_path)
+        assert c.clear()  # v2 空快照
+        assert b.add_document("y", "hello y", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" not in ids
+        assert "y" in ids
+
+    def test_orphan_metadata_missing_pkl_present_self_heals(self, tmp_path):
+        """issue-24：pkl 存在、metadata 缺失、tmp 残留的单边态不再僵死"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        (tmp_path / BM25Index.METADATA_FILENAME).unlink()
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
+        fresh = BM25Index(index_dir=tmp_path)  # loaded=0 内存空（load 因 metadata 缺失返回 False）
+        assert fresh.add_document("y", "hello y", "session") is True
+        assert (tmp_path / BM25Index.METADATA_FILENAME).exists()
+        assert not (tmp_path / "bm25_metadata.json.tmp").exists()
+
+    def test_orphan_tmp_consumed_by_read_path(self, tmp_path):
+        """issue-21：check_stale_and_reload 采纳孤儿后持锁消费 tmp（补完 commit）"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        assert idx.add_document("y", "hello y", "session")  # v2
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta_v2_text = meta_path.read_text(encoding="utf-8")
+        # 孤儿：tmp 里是写者未提交的 v2 metadata，正式 metadata 被回滚到 v1
+        tmp_marker = tmp_path / "bm25_metadata.json.tmp"
+        tmp_marker.write_text(meta_v2_text, encoding="utf-8")
+        meta = json.loads(meta_v2_text)
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        daemon_view = BM25Index(index_dir=tmp_path)
+        daemon_view._loaded_write_version = 1
+        daemon_view.check_stale_and_reload()
+        assert daemon_view._loaded_write_version == 2
+        assert "y" in daemon_view.doc_mapping
+        # tmp 被读路径消费（replace 为正式 metadata），版本提交到 2
+        assert not tmp_marker.exists()
+        assert _disk_version(tmp_path) == 2

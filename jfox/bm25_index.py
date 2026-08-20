@@ -227,7 +227,9 @@ class BM25Index:
 
         写序设计为 metadata.tmp → pkl(replace) → metadata.tmp(replace)，
         故「metadata.tmp 存在」= 上次写在 pkl 落盘后、metadata 提交前中断。
-        相比 mtime 启发式：精确、零成本、无假阳（旧格式文件不误判）/假阴（#396 issue-4）。
+        相比 mtime 启发式：零成本、旧格式文件不误判。
+        注意并非绝对精确——tmp 写成功后、pkl 替换前中断同样残留 tmp（数据未落盘的
+        假阳），但触发动作是保守 reload（幂等），代价可接受。
         """
         return self._metadata_tmp_path.exists()
 
@@ -241,22 +243,6 @@ class BM25Index:
         try:
             with open(tmp, "wb") as f:
                 f.write(data)
-                f.flush()
-                os.fsync(f.fileno())
-            self._replace_with_retry(tmp, path)
-        finally:
-            if tmp.exists():
-                try:
-                    tmp.unlink()
-                except OSError:
-                    pass
-
-    def _atomic_write_text(self, path: Path, text: str) -> None:
-        """原子写文本（同 _atomic_write_bytes）"""
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        try:
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write(text)
                 f.flush()
                 os.fsync(f.fileno())
             self._replace_with_retry(tmp, path)
@@ -303,7 +289,7 @@ class BM25Index:
         """
         保存索引到磁盘（乐观并发控制版）
 
-        流程：拿文件锁 → 比对磁盘 write_version（含半提交孤儿 mtime 检测）→
+        流程：拿文件锁 → 比对磁盘 write_version（含半提交孤儿 tmp 哨兵检测）→
         磁盘较新则 reload+重放本地增量 → 原子写 pkl → 原子写 metadata（commit point）。
         铁律：任何一步失败都不写盘，返回 False。
 
@@ -331,11 +317,12 @@ class BM25Index:
                             "BM25 检测到半提交孤儿 pkl（metadata.tmp 残留），reload 采纳后合并写入"
                         )
                     if not self._load():
-                        if not self.index_path.exists() and not self.metadata_path.exists():
-                            # 磁盘已无索引（如 clear() 后）：tmp 是无数据残留，清理后继续写（自愈，
-                            # 否则 tmp 永久触发本分支 → _load 永远失败 → save 永久失败，#396 issue-9）
+                        if not self.metadata_path.exists():
+                            # metadata 缺失（首次建索引崩溃单边态 / clear 中途）：tmp 是无权威
+                            # 数据残留，清理后按内存状态写入（自愈；pkl 单边数据放弃，BM25 是
+                            # 派生缓存可 rebuild 恢复）。放宽自「双文件皆无」否则永久僵死（#401 issue-24）
                             logger.warning(
-                                "BM25 孤儿 tmp 残留但磁盘无索引，清理 tmp 后按内存状态写入"
+                                "BM25 孤儿 tmp 残留且 metadata 缺失，清理 tmp 后按内存状态写入"
                             )
                             self._metadata_tmp_path.unlink(missing_ok=True)
                         else:
@@ -566,7 +553,7 @@ class BM25Index:
         失败语义与 add_document 不同：save 失败时**回滚**内存与 pending 到批次前快照
         （批量操作的半成品对调用方无意义）；add/remove 单条路径则保留待重放。
         极端 IO 失败下（pkl 已原子落盘、metadata 提交失败）磁盘可能残留孤儿 pkl，
-        由版本自愈（mtime 检测 + max 采纳）接住，见 _save 与 check_stale_and_reload。
+        由版本自愈（tmp 哨兵检测 + max 采纳）接住，见 _save 与 check_stale_and_reload。
 
         Args:
             documents: [(note_id, content), ...] 或 [(note_id, content, note_type), ...] 列表
@@ -790,12 +777,30 @@ class BM25Index:
                 self._loaded_write_version = saved_loaded_version
                 return False
 
+    def _commit_orphan_tmp(self) -> None:
+        """只读路径消费孤儿 tmp：持 filelock 确认无在途写者后，把 tmp 提升为正式 metadata。
+
+        写者的 commit 流程是 metadata.tmp → pkl(replace) → metadata.tmp(replace)，
+        中断后 tmp 残留；读路径拿锁成功 = 无在途写者（否则锁被占用），可安全补完
+        最后一步提交。锁拿不到跳过（窗口期假阳，下次再试）——绝不在无锁时动 tmp。
+        """
+        try:
+            with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=5):
+                if self._metadata_tmp_path.exists():
+                    self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
+                    self._fsync_dir(self.index_dir)
+                    logger.info("BM25 孤儿 tmp 已由读路径提交（消费）")
+        except Timeout:
+            pass
+        except OSError as e:
+            logger.warning(f"BM25 消费孤儿 tmp 失败（下次重试）: {e}")
+
     def check_stale_and_reload(self) -> None:
-        """轻量 stale 检查：磁盘 write_version 比内存新就 reload。
+        """轻量 stale 检查：磁盘 write_version 比内存新（或存在孤儿 tmp）就 reload。
 
         用于长驻进程（daemon）的查询路径，避免搜索长期基于过期快照。
-        失败兜底（用内存快照继续服务），但不静默：留 warning 便于诊断
-        daemon 长驻进程里 stale 刷新长期失效的问题。
+        采纳孤儿 tmp 后会持 filelock 补完提交（消费 tmp），避免真孤儿期间每次检查
+        都重复全量 unpickle。失败兜底（用内存快照继续服务），留 warning 便于诊断。
         """
         try:
             with self._mem_lock:
@@ -806,6 +811,8 @@ class BM25Index:
                     if self._load() and self._pending_ops:
                         # reload 会整体替换内存：重放未落盘的本地增量，防止丢失
                         self._replay_pending_ops()
+                    # 消费孤儿 tmp（持锁补完 commit），否则真孤儿期间每次检查都全量 reload（#401 issue-21）
+                    self._commit_orphan_tmp()
         except Exception as e:
             logger.warning(f"BM25 stale 检查失败（用内存快照兜底）: {e}")
 
@@ -825,34 +832,21 @@ class BM25Index:
             }
 
     def clear(self) -> bool:
-        """
-        清空索引
+        """清空索引：写空快照并递增 write_version（纳入乐观锁体系）。
+
+        相比删文件：其他进程后续 save 看到更高版本走 merge 采纳空索引，不会用
+        旧内存复活已清空数据；无 unlink，无 Windows 占用导致的中间态。
+        全程在 _mem_lock + _save 的 filelock 内执行（#401 issue-20）。
 
         Returns:
             是否成功清空
         """
-        try:
+        with self._mem_lock:
             self._reset()
-            # 并发状态字段一并重置：残留的高版本令牌会让后续 save 把别进程的新写入
-            # 判为「较旧」并按本地空快照覆盖（#396 issue-3）；pending 残留会把已清空
-            # 的文档在 stale reload 时重放回索引
-            self._loaded_write_version = 0
             self._pending_ops.clear()
-            self._dirty_full_rebuild = False
-
-            # 删除文件（含孤儿 tmp 残留：否则残留会让后续 save 永远走孤儿分支失败，#396 issue-9）
-            self._metadata_tmp_path.unlink(missing_ok=True)
-            if self.index_path.exists():
-                self.index_path.unlink()
-            if self.metadata_path.exists():
-                self.metadata_path.unlink()
-
-            logger.info("Cleared BM25 index")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to clear BM25 index: {e}")
-            return False
+            # 覆盖语义：clear 以本地空快照为准（stale 时直接覆盖并记 warning）
+            self._dirty_full_rebuild = True
+            return self._save()
 
 
 # 全局索引实例
