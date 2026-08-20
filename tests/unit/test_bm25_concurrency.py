@@ -300,17 +300,22 @@ class TestCrPiRound2Fixes:
         idx = BM25Index(index_dir=tmp_path)
         assert idx.add_document("x", "hello x", "session")  # v1
         assert idx.add_document("y", "hello y", "session")  # v2
-        # 孤儿：metadata 回滚 v1 + tmp 残留
+        # 孤儿：metadata 回滚 v1 + tmp 残留（tmp 为完整 v2 metadata，写者中断在提交前）
         meta_path = tmp_path / BM25Index.METADATA_FILENAME
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta_v2_text = meta_path.read_text(encoding="utf-8")
+        meta = json.loads(meta_v2_text)
         meta["write_version"] = 1
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
-        (tmp_path / "bm25_metadata.json.tmp").write_text("{}", encoding="utf-8")
+        # 断言读路径消费后 metadata 有效（#402 pi-cr r1-C）
+        tmp_marker = tmp_path / "bm25_metadata.json.tmp"
+        tmp_marker.write_text(meta_v2_text, encoding="utf-8")
         daemon_view = BM25Index(index_dir=tmp_path)
         daemon_view._loaded_write_version = 1
         daemon_view.check_stale_and_reload()
         assert daemon_view._loaded_write_version == 2
         assert "y" in daemon_view.doc_mapping
+        assert not tmp_marker.exists()  # tmp 已被读路径持锁消费
+        assert _disk_version(tmp_path) == 2  # metadata 提升后版本有效
 
     def test_orphan_tmp_self_heal_branch_direct(self, tmp_path, caplog):
         """issue-11：自愈分支直接覆盖——loaded=0 实例 + tmp 残留 + 磁盘双文件缺失 → 清理 tmp 后按内存写入"""
@@ -425,7 +430,7 @@ class TestIssue401Followup:
         assert b.add_document("x", "hello x", "session")  # v1（磁盘较新）
         with caplog.at_level(logging.WARNING, logger="jfox.bm25_index"):
             assert a.clear()  # a stale（disk v1 > loaded 0）+ dirty → 覆盖分支
-        assert any("rebuild 覆盖" in r.message for r in caplog.records)
+        assert any("覆盖" in r.message and "rebuild/clear" in r.message for r in caplog.records)
         assert _load_disk_ids(tmp_path) == []
 
     def test_clear_failure_rolls_back_memory(self, tmp_path):
@@ -439,3 +444,82 @@ class TestIssue401Followup:
         # 内存已回滚：文档还在、dirty 标志复位
         assert idx.doc_ids == docs_before
         assert idx._dirty_full_rebuild is False
+
+    def test_clear_version_no_collision_with_orphan(self, tmp_path):
+        """#402 pi-cr r1-A：clear 覆盖孤儿 tmp 时版本不撞号，清空数据不被复活"""
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        assert b.add_document("y", "hello y", "session")  # v2
+        # 构造孤儿：metadata 回滚 v1 + 有效 v2 tmp 残留
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta_v2_text = meta_path.read_text(encoding="utf-8")
+        meta = json.loads(meta_v2_text)
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        (tmp_path / "bm25_metadata.json.tmp").write_text(meta_v2_text, encoding="utf-8")
+        # a（loaded=0）clear：dirty 覆盖分支先消费孤儿 tmp（提升后版本=2）再写 → new_version=3
+        assert a.clear()
+        assert _disk_version(tmp_path) == 3  # 严格高于孤儿未提交版本 2
+        # 已自愈加载孤儿（token=2、含 x/y）的进程后续 save 不复活
+        healed = BM25Index(index_dir=tmp_path)
+        healed._loaded_write_version = 2
+        assert healed.add_document("z", "hello z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" not in ids and "y" not in ids  # 清空不被复活
+        assert "z" in ids
+
+    def test_invalid_tmp_not_promoted_no_pollution(self, tmp_path):
+        """#402 pi-cr r1-B：无效 tmp 被丢弃而非提升，不污染有效 metadata"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        # 有效 metadata + 无效 tmp（截断垃圾）+ 磁盘版本较旧（触发 stale→孤儿分支）
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{invalid json", encoding="utf-8")
+        stale_view = BM25Index(index_dir=tmp_path)
+        stale_view._loaded_write_version = 0
+        # check_stale：磁盘版本相等(1>0 为真走 reload 成功)——改用直接调用 _commit 验证防护
+        assert stale_view._commit_orphan_tmp() is False  # 无效 tmp 不提升
+        meta = json.loads((tmp_path / BM25Index.METADATA_FILENAME).read_text(encoding="utf-8"))
+        assert meta["write_version"] == 1  # 有效 metadata 未被污染
+        assert meta.get("version") == BM25Index.INDEX_VERSION
+
+    def test_tmp_with_missing_pkl_not_promoted(self, tmp_path):
+        """#402 pi-cr r1-D：pkl 缺失时 tmp 不提升（防「metadata 在、pkl 缺」永久失败态）"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta_text = meta_path.read_text(encoding="utf-8")
+        # 构造：删 pkl 和 metadata，只留有效 tmp（写者崩在 pkl 替换前）
+        (tmp_path / BM25Index.INDEX_FILENAME).unlink()
+        meta_path.unlink()
+        (tmp_path / "bm25_metadata.json.tmp").write_text(meta_text, encoding="utf-8")
+        a = BM25Index(index_dir=tmp_path)  # load 失败（文件缺失），内存空
+        # 读路径不提升（pkl 缺失）
+        a.check_stale_and_reload()
+        assert not (tmp_path / BM25Index.METADATA_FILENAME).exists()  # 未被提升创建
+        # 写路径自愈：save 成功重建（tmp 被清理/消费）
+        assert a.add_document("y", "hello y", "session") is True
+        assert _load_disk_ids(tmp_path) == ["y"]
+
+    def test_clear_save_failure_with_residue_keeps_cleared_state(self, tmp_path):
+        """#402 pi-cr r1-E：clear 失败 + 半提交残留 → 保持清空态（下次覆盖重写），不回滚旧数据"""
+        idx = BM25Index(index_dir=tmp_path)
+        assert idx.add_document("x", "hello x", "session")  # v1
+        # 模拟 _save 在 pkl 替换后、metadata 提交前失败：mock metadata 的 replace 抛错
+        real_replace = BM25Index._replace_with_retry
+
+        def fail_on_metadata(tmp, path):
+            if path.name.endswith("bm25_metadata.json"):
+                raise OSError("simulated metadata commit failure")
+            return real_replace(tmp, path)
+
+        with patch.object(BM25Index, "_replace_with_retry", staticmethod(fail_on_metadata)):
+            assert idx.clear() is False
+        # 半提交残留（tmp 存在、pkl 已写空快照）→ 内存保持清空态而非回滚 [x]
+        assert idx.doc_ids == []
+        assert idx._dirty_full_rebuild is True
+        # 下一次 save 以覆盖语义重写：不复活 x
+        assert idx.add_document("z", "hello z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" not in ids
+        assert "z" in ids

@@ -336,11 +336,19 @@ class BM25Index:
                             return False
                     else:
                         self._replay_pending_ops()
-                elif disk_version > self._loaded_write_version and self._dirty_full_rebuild:
-                    # rebuild 覆盖语义：以本地快照为准，覆盖较新的磁盘状态（记录丢失风险）
+                elif self._dirty_full_rebuild and (
+                    orphan_pkl or disk_version > self._loaded_write_version
+                ):
+                    # rebuild/clear 覆盖语义：以本地快照为准，覆盖较新的磁盘状态。
+                    # 关键：覆盖前先消费孤儿 tmp 并重读磁盘版本——否则 new_version 按陈旧
+                    # metadata 算出 N+1，恰与孤儿 pkl 未提交版本 N+1 撞号，已自愈加载孤儿
+                    # 的进程会快路径写回旧数据（清空被复活，#402 pi-cr r1-A）
+                    if orphan_pkl:
+                        self._commit_orphan_tmp(_already_holding_lock=True)
+                        disk_version = self._read_disk_write_version()
                     logger.warning(
-                        f"BM25 rebuild 覆盖：磁盘版本 {disk_version} 比本地 "
-                        f"{self._loaded_write_version} 新，按 rebuild 快照覆盖，"
+                        f"BM25 rebuild/clear 覆盖：磁盘版本 {disk_version} 比本地 "
+                        f"{self._loaded_write_version} 新，按本地快照覆盖，"
                         "其间其他进程的写入将丢失"
                     )
                 elif disk_version < self._loaded_write_version:
@@ -783,7 +791,25 @@ class BM25Index:
                 self._loaded_write_version = saved_loaded_version
                 return False
 
-    def _commit_orphan_tmp(self, *, _already_holding_lock: bool = False) -> None:
+    def _validate_metadata_tmp(self) -> bool:
+        """校验孤儿 tmp 内容是否为可安全提升的完整 metadata。
+
+        防「读路径污染」：tmp 截断/垃圾（写者崩溃在 fsync 前、磁盘满）时提升会把
+        有效 metadata 覆盖为垃圾，导致索引不可读（#402 pi-cr r1-B）。
+        """
+        try:
+            with open(self._metadata_tmp_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            return (
+                isinstance(meta, dict)
+                and meta.get("version") in (1, self.INDEX_VERSION)
+                and isinstance(meta.get("write_version"), int)
+                and meta["write_version"] >= 0
+            )
+        except (OSError, json.JSONDecodeError, ValueError):
+            return False
+
+    def _commit_orphan_tmp(self, *, _already_holding_lock: bool = False) -> bool:
         """只读路径消费孤儿 tmp：持 filelock 确认无在途写者后，把 tmp 提升为正式 metadata。
 
         写者的 commit 流程是 metadata.tmp → pkl(replace) → metadata.tmp(replace)，
@@ -791,29 +817,53 @@ class BM25Index:
         最后一步提交。timeout=0 纯尝试（拿不到 = 在途写者活跃的窗口期假阳，跳过）——
         不阻塞查询路径（#401 reviewer Note 3）。
 
+        提升前两重防护（#402 pi-cr r1-B/D）：
+        - tmp 内容校验：无效/截断的 tmp unlink 而非 replace（防污染 metadata）；
+        - pkl 必须已落盘：写者崩在 pkl 替换前时提升会造成「metadata 在、pkl 缺」的
+          永久失败态——此时不提升，留给写路径自愈。
+
         _already_holding_lock=True：调用方（_save）已持锁，自己就是在途写者，
-        直接提交——注意同线程第二个 FileLock 实例永远拿不到锁（filelock 的可重入
-        仅限同一实例），不能在 _save 内走常规拿锁路径。
+        直接操作——同线程第二个 FileLock 实例永远拿不到锁（filelock 可重入仅限
+        同一实例），不能在 _save 内走常规拿锁路径。
+
+        Returns:
+            是否成功提升（供调用方决定后续重读版本）
         """
+        if not self._metadata_tmp_path.exists():
+            return False
+
+        def _promote_locked() -> bool:
+            if not self.index_path.exists():
+                # pkl 未落盘（写者崩在 pkl 替换前）：不提升，留给写路径自愈（#402 r1-D）
+                logger.warning("BM25 孤儿 tmp 伴随 pkl 缺失，不提升（留给写路径自愈）")
+                return False
+            if not self._validate_metadata_tmp():
+                # 无效 tmp：unlink 防读路径污染有效 metadata（#402 r1-B）
+                logger.warning("BM25 孤儿 tmp 内容无效，丢弃（unlink）")
+                try:
+                    self._metadata_tmp_path.unlink()
+                except OSError as e:
+                    logger.warning(f"BM25 丢弃无效 tmp 失败: {e}")
+                return False
+            self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
+            self._fsync_dir(self.index_dir)
+            logger.info("BM25 孤儿 tmp 已提升为正式 metadata（消费）")
+            return True
+
         if _already_holding_lock:
             try:
-                if self._metadata_tmp_path.exists():
-                    self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
-                    self._fsync_dir(self.index_dir)
-                    logger.info("BM25 孤儿 tmp 已由写路径提交（消费）")
+                return _promote_locked()
             except OSError as e:
                 logger.warning(f"BM25 消费孤儿 tmp 失败: {e}")
-            return
+                return False
         try:
             with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=0):
-                if self._metadata_tmp_path.exists():
-                    self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
-                    self._fsync_dir(self.index_dir)
-                    logger.info("BM25 孤儿 tmp 已由读路径提交（消费）")
+                return _promote_locked()
         except Timeout:
-            pass
+            return False
         except OSError as e:
             logger.warning(f"BM25 消费孤儿 tmp 失败（下次重试）: {e}")
+            return False
 
     def check_stale_and_reload(self) -> None:
         """轻量 stale 检查：磁盘 write_version 比内存新（或存在孤儿 tmp）就 reload。
@@ -881,7 +931,15 @@ class BM25Index:
             self._dirty_full_rebuild = True
             if self._save():
                 return True
-            # save 失败：回滚内存快照，防「内存已清+dirty 残留」的静默覆盖路径
+            if self._disk_has_orphan_pkl():
+                # save 半途而废但磁盘残留 clear 的半提交（空 pkl 高版本 + tmp）：
+                # 不回滚内存——旧数据内存下次 save 会被孤儿采纳逻辑复活到空索引上
+                # （实测复现，#402 pi-cr r1-E）；保持清空态 + dirty，下次 save 覆盖重写
+                logger.error(
+                    "BM25 clear: save 失败且磁盘残留半提交空快照，保持清空态待下次覆盖重写"
+                )
+                return False
+            # save 失败且无磁盘残留：回滚内存快照，防「内存已清+dirty 残留」的静默覆盖路径
             self.bm25 = saved_bm25
             self.documents = saved_documents
             self.doc_ids = saved_ids

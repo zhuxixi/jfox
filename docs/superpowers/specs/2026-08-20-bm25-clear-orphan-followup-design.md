@@ -60,7 +60,7 @@ def _commit_orphan_tmp(self) -> None:
     锁拿不到 = 在途写者活跃（窗口期假阳），跳过下次再试——绝不在无锁时删/replace tmp。
     """
     try:
-        with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=5):
+        with FileLock(str(self.index_dir / self.LOCK_FILENAME), timeout=0):
             if self._metadata_tmp_path.exists():
                 self._replace_with_retry(self._metadata_tmp_path, self.metadata_path)
                 self._fsync_dir(self.index_dir)
