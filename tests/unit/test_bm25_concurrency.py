@@ -40,6 +40,24 @@ def _disk_version(index_dir: Path) -> int:
 class TestWriteVersionAndLock:
     """write_version 元数据、原子写、文件锁"""
 
+    def test_load_status_distinguishes_missing_invalid_and_loaded(self, tmp_path):
+        missing = BM25Index(index_dir=tmp_path)
+        assert missing.load_status == "missing"
+        assert missing.load_error
+
+        missing.add_document("a", "hello world", "permanent")
+        (tmp_path / BM25Index.INDEX_FILENAME).write_bytes(b"corrupted")
+        invalid = BM25Index(index_dir=tmp_path)
+        assert invalid.load_status == "invalid"
+        assert invalid.load_error
+
+        loaded_dir = tmp_path / "loaded"
+        loaded = BM25Index(index_dir=loaded_dir)
+        loaded.add_document("b", "another document", "permanent")
+        loaded = BM25Index(index_dir=loaded_dir)
+        assert loaded.load_status == "loaded"
+        assert loaded.load_error is None
+
     def test_write_version_increments(self, tmp_path):
         idx = BM25Index(index_dir=tmp_path)
         assert idx.add_document("a", "hello world", "session")

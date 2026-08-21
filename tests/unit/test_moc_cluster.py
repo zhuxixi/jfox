@@ -342,12 +342,12 @@ def test_diagnose_includes_missing_vector_link_orphan_and_flags():
     assert orphan["p4"].link_orphan is True
 
 
-def test_diagnose_filesystem_failure_keeps_semantic_report_with_na_coverage():
+def test_diagnose_filesystem_failure_skips_unverified_semantic_clusters():
     config = ZKConfig(base_dir=Path("/tmp/moc-test"))
     vector_store = MagicMock()
     vector_store.get_all_embeddings.return_value = (
-        ["p0", "p1"],
-        [{"title": "P0"}, {"title": "P1"}],
+        ["archived", "ghost"],
+        [{"title": "Archived"}, {"title": "Ghost"}],
         np.array([[1.0, 0.0], [0.99, 0.01]], dtype=np.float32),
     )
     with (
@@ -358,10 +358,38 @@ def test_diagnose_filesystem_failure_keeps_semantic_report_with_na_coverage():
         report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
 
     assert report.coverage.filesystem is None
+    assert report.suggest is not None
+    assert report.suggest.clusters == []
+    assert report.threshold_sweep[0].cluster_count == 0
+    assert report.threshold_sweep[0].max_cluster_size == 0
+    assert report.threshold_sweep[0].orphan_count == 0
+    assert report.orphans.notes == []
+    assert any("permanent scope unavailable" in warning.lower() for warning in report.warnings)
+    assert any("semantic clustering was skipped" in warning.lower() for warning in report.warnings)
+
+
+def test_diagnose_corrupt_bm25_reports_na_coverage(tmp_path):
+    config = ZKConfig(base_dir=tmp_path)
+    config.zk_dir.mkdir(parents=True)
+    (config.zk_dir / "bm25_index.pkl").write_bytes(b"not a pickle")
+    (config.zk_dir / "bm25_metadata.json").write_text('{"version": 2}', encoding="utf-8")
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = [_permanent_meta("p0", "P0")]
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0"],
+        [None],
+        np.array([[1.0, 0.0]], dtype=np.float32),
+    )
+
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
     assert report.coverage.bm25 is None
     assert report.coverage.bm25_coverage_ratio is None
-    assert report.suggest is not None
-    assert any("Filesystem coverage unavailable" in warning for warning in report.warnings)
     assert any("BM25 coverage unavailable" in warning for warning in report.warnings)
 
 

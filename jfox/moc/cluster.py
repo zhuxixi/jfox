@@ -259,36 +259,32 @@ def diagnose_moc_density(
     if not vector_ids:
         raise MocDiagnoseError("No permanent-note embeddings found; run `jfox index rebuild` first")
 
-    # A filesystem failure still permits semantic diagnosis from permanent vector rows.
-    live_from_vectors = filesystem_count is None
-    if live_from_vectors:
-        warnings.append("Canonical frontmatter titles unavailable; using vector metadata")
     records = []
     seen_live_ids = set()
     orphan_count = 0
-    for index, note_id in enumerate(vector_ids):
-        metadata = vector_metadata[index]
-        if metadata is None:
-            metadata = {}
-        elif not isinstance(metadata, dict):
-            raise MocDiagnoseError(
-                f"Corrupt permanent vector metadata for {note_id}: expected an object"
-            )
-        if (not live_from_vectors and note_id not in live_meta) or note_id in seen_live_ids:
-            orphan_count += 1
-            continue
-        seen_live_ids.add(note_id)
-        title = (
-            live_meta[note_id].title
-            if note_id in live_meta
-            else str(metadata.get("title") or note_id)
+    if filesystem_count is None:
+        warnings.append("Permanent scope unavailable; semantic clustering was skipped")
+        warnings.append(
+            f"Vector index contains {len(vector_ids)} permanent row(s); orphan verification skipped"
         )
-        records.append((note_id, title, raw_embeddings[index]))
+    else:
+        for index, note_id in enumerate(vector_ids):
+            metadata = vector_metadata[index]
+            if metadata is None:
+                metadata = {}
+            elif not isinstance(metadata, dict):
+                raise MocDiagnoseError(
+                    f"Corrupt permanent vector metadata for {note_id}: expected an object"
+                )
+            if note_id not in live_meta or note_id in seen_live_ids:
+                orphan_count += 1
+                continue
+            seen_live_ids.add(note_id)
+            records.append((note_id, live_meta[note_id].title, raw_embeddings[index]))
     records.sort(key=lambda record: record[0])
     live_ids = [record[0] for record in records]
     live_titles = [record[1] for record in records]
-    title_by_id = {record[0]: record[1] for record in records}
-    title_by_id.update({note_id: meta.title for note_id, meta in live_meta.items()})
+    title_by_id = {note_id: meta.title for note_id, meta in live_meta.items()}
     live_embeddings = [record[2] for record in records]
     coverage.vector_orphans = orphan_count
 
@@ -297,30 +293,38 @@ def diagnose_moc_density(
     )
     similarity = compute_similarity(embeddings)
 
-    try:
-        bm25_index = BM25Index(index_dir=config.zk_dir)
-        if not bm25_index.index_path.exists() or not bm25_index.metadata_path.exists():
-            raise OSError("BM25 index files are missing")
-        bm25_ids = list(bm25_index.doc_ids)
-        bm25_types = list(bm25_index.doc_types)
-        if len(bm25_ids) != len(bm25_types):
-            raise ValueError("BM25 document IDs and types have different lengths")
-        bm25_live_ids = set(live_meta) if live_meta else set(live_ids)
-        live_bm25_ids = {
-            note_id
-            for note_id, note_type in zip(bm25_ids, bm25_types)
-            if note_type == NoteType.PERMANENT.value and note_id in bm25_live_ids
-        }
-        coverage.bm25 = len(live_bm25_ids)
-        coverage.bm25_coverage_ratio = (
-            coverage.bm25 / coverage.filesystem if coverage.filesystem else None
-        )
-        if coverage.bm25_coverage_ratio is not None and coverage.bm25_coverage_ratio < 0.9:
-            warnings.append(f"BM25 permanent coverage {coverage.bm25_coverage_ratio:.0%} < 90%")
-    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+    if filesystem_count is None:
         coverage.bm25 = None
         coverage.bm25_coverage_ratio = None
-        warnings.append(f"BM25 coverage unavailable: {exc}")
+        warnings.append("BM25 coverage unavailable: permanent scope unavailable")
+    else:
+        try:
+            bm25_index = BM25Index(index_dir=config.zk_dir)
+            load_status = getattr(bm25_index, "load_status", "loaded")
+            load_error = getattr(bm25_index, "load_error", None)
+            if load_status in {"missing", "invalid"}:
+                raise OSError(load_error or f"BM25 index load status is {load_status}")
+            if getattr(bm25_index, "needs_rebuild", False) is True:
+                raise OSError("BM25 index needs rebuild")
+            bm25_ids = list(bm25_index.doc_ids)
+            bm25_types = list(bm25_index.doc_types)
+            if len(bm25_ids) != len(bm25_types):
+                raise ValueError("BM25 document IDs and types have different lengths")
+            live_bm25_ids = {
+                note_id
+                for note_id, note_type in zip(bm25_ids, bm25_types)
+                if note_type == NoteType.PERMANENT.value and note_id in live_meta
+            }
+            coverage.bm25 = len(live_bm25_ids)
+            coverage.bm25_coverage_ratio = (
+                coverage.bm25 / coverage.filesystem if coverage.filesystem else None
+            )
+            if coverage.bm25_coverage_ratio is not None and coverage.bm25_coverage_ratio < 0.9:
+                warnings.append(f"BM25 permanent coverage {coverage.bm25_coverage_ratio:.0%} < 90%")
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            coverage.bm25 = None
+            coverage.bm25_coverage_ratio = None
+            warnings.append(f"BM25 coverage unavailable: {exc}")
     if coverage.vector_orphans:
         warnings.append(f"Vector index contains {coverage.vector_orphans} permanent orphan(s)")
     coverage.warnings = list(warnings)
