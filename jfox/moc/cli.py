@@ -11,6 +11,8 @@ from rich.console import Console
 from rich.table import Table
 
 from ..config import ZKConfig, config, use_kb
+from ..models import Note
+from ..note_index import get_note_index
 from . import MocDiagnoseError
 
 if TYPE_CHECKING:
@@ -22,6 +24,13 @@ def diagnose_moc_density(*args: Any, **kwargs: Any) -> Any:
     from .cluster import diagnose_moc_density as diagnose
 
     return diagnose(*args, **kwargs)
+
+
+def write_moc(*args: Any, **kwargs: Any) -> Any:
+    """按需加载写盘逻辑，避免根命令启动时引入重依赖。"""
+    from .generate import write_moc as _write_moc
+
+    return _write_moc(*args, **kwargs)
 
 
 moc_app = typer.Typer(name="moc", help="诊断和维护 MOC 结构层", no_args_is_help=True)
@@ -181,6 +190,130 @@ def _render_table(report: MocDiagnoseReport, top: int) -> None:
     for warning in report.warnings:
         if warning not in report.coverage.warnings:
             _console.print(f"Warning: {warning}")
+
+
+def draft_to_dict(
+    threshold: float,
+    cluster: Any,
+    draft: Any,
+    created: Optional[dict] = None,
+) -> dict[str, Any]:
+    """把创建结果转成稳定的 JSON 契约。"""
+    return {
+        "success": True,
+        "threshold": threshold,
+        "cluster": {
+            "size": cluster.size,
+            "hub": _member_to_dict(cluster.hub) if cluster.hub else None,
+        },
+        "draft": {
+            "title": draft.title,
+            "groups": [
+                {"name": group.name, "members": [_member_to_dict(m) for m in group.members]}
+                for group in draft.groups
+            ],
+            "orphan_bucket": [_member_to_dict(o) for o in draft.orphan_bucket],
+            "total_members": draft.total_members,
+        },
+        "created": created,
+        "warnings": [],
+    }
+
+
+def _render_draft(draft: Any, cluster: Any) -> None:
+    """table 格式的草稿预览。"""
+    hub_title = cluster.hub.title if cluster and cluster.hub else "N/A"
+    _console.print(f"Cluster size {cluster.size}; hub: {hub_title}")
+    _console.print(f"MOC title: {draft.title}")
+    for group in draft.groups:
+        _console.print(f"## {group.name} ({len(group.members)})")
+        for member in group.members:
+            _console.print(f"- [[{member.title}]] — {member.link_degree} links")
+    if draft.orphan_bucket:
+        _console.print(f"## 待归类 ({len(draft.orphan_bucket)})")
+        for orphan in draft.orphan_bucket:
+            _console.print(f"- [[{orphan.title}]] — {orphan.link_degree} links")
+
+
+def _create_impl(
+    active_config: ZKConfig,
+    threshold: float,
+    cluster_index: int,
+    max_size: int,
+    title: Optional[str],
+    include_orphans: bool,
+    write: bool,
+) -> tuple[dict[str, Any], Optional[Note], Any, Any]:
+    """create 核心逻辑：诊断 → 选簇 → 草稿 → 可选落盘。
+
+    返回 (payload, moc, draft, cluster) 四元组，供 create_cmd 渲染 table 或 JSON。
+    """
+    # 延迟导入：draft.py → cluster.py → networkx/numpy，不能在模块顶层加载
+    from .draft import build_moc_draft
+
+    report = diagnose_moc_density(
+        active_config,
+        thresholds=[threshold],
+        min_size=2,
+        suggest_threshold=threshold,
+        top=cluster_index + 1,
+    )
+    suggest = report.suggest
+    if suggest is None or cluster_index >= len(suggest.clusters):
+        raise MocDiagnoseError(
+            f"No cluster at index {cluster_index}; run `jfox moc diagnose` to see clusters"
+        )
+    cluster = suggest.clusters[cluster_index]
+    note_index = get_note_index(active_config)
+    tags_by_id = {meta.id: list(meta.tags) for meta in note_index.get_all_meta()}
+    orphans = report.orphans.notes if include_orphans else None
+    draft = build_moc_draft(cluster, tags_by_id, max_size, orphans=orphans, title=title)
+    created: Optional[dict[str, str]] = None
+    moc: Optional[Note] = None
+    if write:
+        moc = write_moc(draft)
+        created = {"id": moc.id, "filepath": str(moc.filepath)}
+    payload = draft_to_dict(threshold, cluster, draft, created)
+    return payload, moc, draft, cluster
+
+
+@moc_app.command(
+    "create",
+    help="从诊断主题簇生成 MOC 笔记草稿（dry-run 默认，--yes 落盘）。",
+)
+def create_cmd(
+    threshold: float = typer.Option(0.65, "--threshold"),
+    cluster_index: int = typer.Option(0, "--cluster"),
+    max_size: int = typer.Option(50, "--max-size"),
+    title: Optional[str] = typer.Option(None, "--title"),
+    include_orphans: bool = typer.Option(False, "--include-orphans"),
+    yes: bool = typer.Option(False, "--yes"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+) -> None:
+    """从诊断主题簇生成 MOC 笔记草稿。"""
+    if output_format not in {"table", "json"}:
+        _fail("format must be table or json", output_format)
+    if not 0 < threshold < 1:
+        _fail("threshold must be strictly between 0 and 1", output_format)
+    if cluster_index < 0:
+        _fail("cluster index must be >= 0", output_format)
+    if max_size < 1:
+        _fail("max_size must be at least 1", output_format)
+
+    try:
+        with use_kb(kb):
+            active_config = ZKConfig.for_kb(config.base_dir)
+            payload, moc, draft, cluster = _create_impl(
+                active_config, threshold, cluster_index, max_size, title, include_orphans, yes
+            )
+    except (MocDiagnoseError, ValueError, OSError) as exc:
+        _fail(str(exc), output_format)
+
+    if output_format == "json":
+        _json_console.print(json.dumps(payload, ensure_ascii=False, indent=2), soft_wrap=True)
+    else:
+        _render_draft(draft, cluster)
 
 
 @moc_app.command(
