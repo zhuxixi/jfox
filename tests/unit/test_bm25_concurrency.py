@@ -541,12 +541,14 @@ class TestIssue403VersionCollision:
         meta["write_version"] = 1
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
         (tmp_path / "bm25_metadata.json.tmp").write_text("{invalid", encoding="utf-8")
+        # 已自愈进程在 clear 前构造：真实加载孤儿（内存持 x/y），令牌对齐 pkl 内嵌 2
+        healed = BM25Index(index_dir=tmp_path)
+        healed._loaded_write_version = 2
+        assert "x" in healed.doc_mapping and "y" in healed.doc_mapping  # 真持旧数据
         # a（loaded=0）clear：覆盖分支 → tmp 无效被丢弃 → 版本基数须含孤儿 pkl 内嵌 2
         assert a.clear()
         assert _disk_version(tmp_path) == 3  # 严格高于孤儿内嵌版本 2，不撞号
-        # 已自愈加载孤儿（token=2、内存含 x/y）的进程后续 save 不复活旧数据
-        healed = BM25Index(index_dir=tmp_path)
-        healed._loaded_write_version = 2
+        # healed（内存持 x/y、token=2）save：disk(3) > loaded(2) → merge 采纳空索引
         assert healed.add_document("z", "hello z", "session") is True
         ids = _load_disk_ids(tmp_path)
         assert "x" not in ids and "y" not in ids  # 清空不被复活
@@ -563,10 +565,11 @@ class TestIssue403VersionCollision:
         meta["write_version"] = 1
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
         (tmp_path / "bm25_metadata.json.tmp").write_text("{invalid", encoding="utf-8")
+        healed = BM25Index(index_dir=tmp_path)  # clear 前构造，真实持孤儿数据
+        healed._loaded_write_version = 2
+        assert "x" in healed.doc_mapping and "y" in healed.doc_mapping
         assert a.rebuild_from_notes([_note("n1")])  # loaded=0，覆盖分支
         assert _disk_version(tmp_path) == 3
-        healed = BM25Index(index_dir=tmp_path)
-        healed._loaded_write_version = 2
         assert healed.add_document("z", "hello z", "session") is True
         ids = _load_disk_ids(tmp_path)
         assert "x" not in ids and "y" not in ids
