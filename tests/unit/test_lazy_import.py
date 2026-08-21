@@ -3,8 +3,6 @@
 import subprocess
 import sys
 
-import pytest
-
 
 class TestLazyImport:
     """验证 CLI 模块的延迟导入行为
@@ -17,11 +15,11 @@ class TestLazyImport:
 
     def test_note_module_no_chromadb_at_import(self):
         """导入 note 模块不应触发 chromadb 导入"""
-        script = '''
+        script = """
 import sys
 import jfox.note  # noqa: F401
 print("chromadb" in sys.modules)
-'''
+"""
         result = subprocess.run(
             [sys.executable, "-c", script], check=True, capture_output=True, text=True
         )
@@ -29,11 +27,11 @@ print("chromadb" in sys.modules)
 
     def test_cli_module_no_heavy_deps_at_import(self):
         """导入 cli 模块不应触发 chromadb/networkx/watchdog 导入"""
-        script = '''
+        script = """
 import sys
 import jfox.cli  # noqa: F401
 print("chromadb" in sys.modules, "networkx" in sys.modules, "watchdog" in sys.modules)
-'''
+"""
         result = subprocess.run(
             [sys.executable, "-c", script], check=True, capture_output=True, text=True
         )
