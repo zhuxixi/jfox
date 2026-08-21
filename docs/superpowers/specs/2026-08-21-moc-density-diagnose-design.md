@@ -182,5 +182,5 @@ CLI (moc/cli.py)
 - `jfox moc create <topic>`：按诊断结果生成 MOC 笔记（新 note type `structure`，骨架只链 permanent，#376 评论已确认 search 链路兼容）
 - MOC 笔记「近期动态」区段：查询时聚合链到成员的近期 session（不写死链接，session 归档自然滑出时间窗口）
 - `jfox moc list` / `refresh`：MOC 清单与更新
-- 诊断规模到 10 万条级时：全量矩阵 → HNSW top-k 稀疏图（复用 ChromaDB 索引），而非 GPU
+- 当前稠密 N×N 算法最多处理 5000 条活跃 permanent，超过上限会明确失败且不会截断建议；未来改为 HNSW top-k 稀疏图或分块算法（复用 ChromaDB 索引），而非 GPU
 - 簇代表词自动提取（标题分词高频词），当前 MVP 用 hub 标题代替

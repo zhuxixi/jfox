@@ -1,24 +1,35 @@
-"""CLI for diagnosing permanent-note MOC density."""
+"""永久笔记 MOC 密度诊断命令。"""
 
 from __future__ import annotations
 
 import json
 import math
-from typing import Any, NoReturn, Optional
+from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
-import typer
+import typer  # type: ignore[import-not-found]
 from rich.console import Console
 from rich.table import Table
 
 from ..config import ZKConfig, config, use_kb
-from .cluster import MocDiagnoseError, MocDiagnoseReport, diagnose_moc_density
+from . import MocDiagnoseError
+
+if TYPE_CHECKING:
+    from .cluster import MocDiagnoseReport
+
+
+def diagnose_moc_density(*args: Any, **kwargs: Any) -> Any:
+    """按需加载聚类服务，避免根命令启动时引入重依赖。"""
+    from .cluster import diagnose_moc_density as diagnose
+
+    return diagnose(*args, **kwargs)
+
 
 moc_app = typer.Typer(name="moc", help="诊断和维护 MOC 结构层", no_args_is_help=True)
 
 
 @moc_app.callback()
 def _moc_callback() -> None:
-    """MOC command group callback."""
+    """MOC 命令组回调。"""
 
 
 _json_console = Console(
@@ -31,6 +42,7 @@ _console = Console(legacy_windows=False, no_color=True)
 
 
 def _member_to_dict(member: Any) -> dict[str, Any]:
+    """将聚类成员转换为稳定的 JSON 字段。"""
     result = {
         "id": member.id,
         "title": member.title,
@@ -43,8 +55,8 @@ def _member_to_dict(member: Any) -> dict[str, Any]:
     return result
 
 
-def report_to_dict(report: MocDiagnoseReport, kb: Optional[str] = None) -> dict[str, Any]:
-    """Convert a diagnostic report to the stable JSON response contract."""
+def report_to_dict(report: "MocDiagnoseReport", kb: Optional[str] = None) -> dict[str, Any]:
+    """将诊断报告转换为稳定的 JSON 响应契约。"""
     coverage = report.coverage
     suggested = report.suggest
     suggest_data = None
@@ -91,6 +103,7 @@ def report_to_dict(report: MocDiagnoseReport, kb: Optional[str] = None) -> dict[
 
 
 def _parse_thresholds(raw: str) -> list[float]:
+    """解析并校验逗号分隔的相似度阈值。"""
     values = raw.split(",")
     thresholds: list[float] = []
     for value in values:
@@ -110,6 +123,7 @@ def _parse_thresholds(raw: str) -> list[float]:
 
 
 def _fail(message: str, output_format: str) -> NoReturn:
+    """按请求格式输出错误并以状态码 1 退出。"""
     if output_format == "json":
         _json_console.print(
             json.dumps({"success": False, "error": message}, ensure_ascii=False),
@@ -121,7 +135,7 @@ def _fail(message: str, output_format: str) -> NoReturn:
 
 
 def _render_table(report: MocDiagnoseReport, top: int) -> None:
-    """Render the report as four readable sections."""
+    """将报告渲染为四个易读区段。"""
     _console.print("Permanent coverage")
     coverage_table = Table(show_header=True, box=None)
     coverage_table.add_column("filesystem")

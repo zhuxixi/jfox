@@ -7,18 +7,21 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import chromadb
+import chromadb  # type: ignore[import-not-found]
 import numpy as np
-from chromadb.config import Settings
+from chromadb.config import Settings  # type: ignore[import-not-found]
 
 from .config import config
 from .models import Note
 
 logger = logging.getLogger(__name__)
 
+# 活跃数据库快照只做有限次尝试，避免写入持续进行时长时间阻塞命令。
+_READ_ONLY_SNAPSHOT_ATTEMPTS = 3
+
 
 class VectorStoreReadError(RuntimeError):
-    """Raised when an existing vector collection cannot be read."""
+    """读取现有向量集合失败。"""
 
 
 class VectorStore:
@@ -29,9 +32,10 @@ class VectorStore:
             persist_directory = config.chroma_dir
 
         self.persist_directory = persist_directory
-        self.client = None
-        self.collection = None
-        self._read_only_tempdir = None
+        self.client: Any = None
+        self.collection: Any = None
+        self._read_only_tempdir: Optional[tempfile.TemporaryDirectory[str]] = None
+        self._read_only_snapshot: Optional[Path] = None
 
     def init(self):
         """初始化 ChromaDB"""
@@ -73,7 +77,9 @@ class VectorStore:
             embedding = backend.encode_single(document).tolist()
 
             # 添加到 ChromaDB
-            self.collection.add(
+            collection = self.collection
+            assert collection is not None
+            collection.add(
                 ids=[note.id],
                 documents=[document],
                 embeddings=[embedding],
@@ -148,7 +154,9 @@ class VectorStore:
                     where = tag_clauses[0]
 
             # 搜索
-            results = self.collection.query(
+            collection = self.collection
+            assert collection is not None
+            results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=top_k,
                 where=where if where else None,
@@ -180,7 +188,9 @@ class VectorStore:
             self.init()
 
         try:
-            self.collection.delete(ids=[note_id])
+            collection = self.collection
+            assert collection is not None
+            collection.delete(ids=[note_id])
             logger.debug(f"Deleted note {note_id} from vector store")
             return True
         except Exception as e:
@@ -191,7 +201,9 @@ class VectorStore:
         """添加或更新笔记（如果已存在则更新）"""
         # 先尝试删除旧的（如果存在）
         try:
-            self.collection.delete(ids=[note.id])
+            collection = self.collection
+            assert collection is not None
+            collection.delete(ids=[note.id])
         except Exception:
             pass  # 可能不存在，忽略错误
 
@@ -205,14 +217,64 @@ class VectorStore:
 
         try:
             # 获取所有数据
-            result = self.collection.get(include=[])
+            collection = self.collection
+            assert collection is not None
+            result = collection.get(include=[])
             return result.get("ids", [])
         except Exception as e:
             logger.error(f"Failed to get all IDs: {e}")
             return []
 
+    def _recursive_file_manifest(self) -> Tuple[Tuple[str, int, int], ...]:
+        """读取数据库目录的递归文件清单，用于检测复制期间的变化。"""
+        entries = []
+        for path in self.persist_directory.rglob("*"):
+            if not path.is_file():
+                continue
+            stat = path.stat()
+            entries.append(
+                (
+                    path.relative_to(self.persist_directory).as_posix(),
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                )
+            )
+        return tuple(sorted(entries))
+
+    def _discard_read_only_snapshot(self) -> None:
+        """清理未完成或不可用的只读快照。"""
+        self._read_only_snapshot = None
+        if self._read_only_tempdir is not None:
+            self._read_only_tempdir.cleanup()
+            self._read_only_tempdir = None
+
+    def _create_consistent_snapshot(self) -> Path:
+        """在复制前后清单稳定时返回只读快照，否则有限重试。"""
+        last_error: Optional[BaseException] = None
+        for _attempt in range(_READ_ONLY_SNAPSHOT_ATTEMPTS):
+            self._discard_read_only_snapshot()
+            self._read_only_tempdir = tempfile.TemporaryDirectory(prefix="jfox-moc-chroma-")
+            snapshot = Path(self._read_only_tempdir.name) / "chroma_db"
+            try:
+                manifest_before = self._recursive_file_manifest()
+                shutil.copytree(self.persist_directory, snapshot)
+                manifest_after = self._recursive_file_manifest()
+                if manifest_before != manifest_after:
+                    last_error = RuntimeError("数据库文件清单在复制期间发生变化")
+                    continue
+                self._read_only_snapshot = snapshot
+                return snapshot
+            except (OSError, RuntimeError) as exc:
+                last_error = exc
+
+        self._discard_read_only_snapshot()
+        raise VectorStoreReadError(
+            f"无法为 {self.persist_directory} 创建一致的向量库只读快照：{last_error}。"
+            "可能有 daemon/indexer 正在写入，请稍后重试。"
+        ) from last_error
+
     def _get_existing_collection(self):
-        """Open the existing Chroma collection without creating filesystem state."""
+        """通过只读快照打开现有 Chroma 集合，不创建或修改原始数据库。"""
         if self.collection is not None:
             return self.collection
         database_path = self.persist_directory / "chroma.sqlite3"
@@ -220,18 +282,20 @@ class VectorStore:
             raise VectorStoreReadError(f"Vector database does not exist: {database_path}")
         try:
             if self.client is None:
-                # Chroma opens SQLite in write mode even for get_collection(). Read a
-                # snapshot instead so diagnostics cannot update the live database mtime.
-                self._read_only_tempdir = tempfile.TemporaryDirectory(prefix="jfox-moc-chroma-")
-                snapshot = Path(self._read_only_tempdir.name) / "chroma_db"
-                shutil.copytree(self.persist_directory, snapshot)
+                # Chroma 即使只读集合也会写 SQLite，因此只打开清单稳定的快照。
+                snapshot = self._create_consistent_snapshot()
                 self.client = chromadb.PersistentClient(
                     path=str(snapshot),
                     settings=Settings(anonymized_telemetry=False, allow_reset=True),
                 )
             self.collection = self.client.get_collection(name="notes")
             return self.collection
+        except VectorStoreReadError:
+            raise
         except Exception as exc:
+            self.client = None
+            self.collection = None
+            self._discard_read_only_snapshot()
             raise VectorStoreReadError(
                 f"Unable to read vector collection at {self.persist_directory}: {exc}"
             ) from exc
@@ -239,7 +303,7 @@ class VectorStore:
     def get_all_embeddings(
         self, note_type: Optional[str] = None
     ) -> Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]:
-        """Return stored embeddings through a strictly non-creating read path."""
+        """通过严格不创建数据的读取路径返回已存向量。"""
         collection = self._get_existing_collection()
         kwargs: Dict[str, Any] = {"include": ["embeddings", "metadatas"]}
         if note_type is not None:

@@ -1,4 +1,4 @@
-"""Pure helpers and result models for MOC density diagnostics."""
+"""MOC 密度诊断的纯逻辑辅助函数与结果模型。"""
 
 from __future__ import annotations
 
@@ -14,11 +14,15 @@ from ..graph import KnowledgeGraph
 from ..models import NoteType
 from ..note_index import get_note_index
 from ..vector_store import VectorStore, VectorStoreReadError
+from . import MocDiagnoseError
+
+# 当前算法会构造 N×N 稠密矩阵，限制规模以避免内存无界增长。
+MAX_DENSE_CLUSTER_NOTES = 5000
 
 
 @dataclass
 class ClusterMember:
-    """A note participating in a semantic cluster."""
+    """参与语义聚类的笔记。"""
 
     id: str
     title: str
@@ -28,7 +32,7 @@ class ClusterMember:
 
 @dataclass
 class ClusterSummary:
-    """A suggested MOC cluster and its representative member."""
+    """建议建立 MOC 的聚类及其代表成员。"""
 
     size: int
     members: List[ClusterMember] = field(default_factory=list)
@@ -37,7 +41,7 @@ class ClusterSummary:
 
 @dataclass
 class ThresholdSummary:
-    """Cluster distribution at one similarity threshold."""
+    """单个相似度阈值下的聚类分布。"""
 
     threshold: float
     cluster_count: int
@@ -48,7 +52,7 @@ class ThresholdSummary:
 
 @dataclass
 class CoverageReport:
-    """Permanent-note counts across the filesystem and indexes."""
+    """文件系统及各索引中的永久笔记数量。"""
 
     filesystem: Optional[int] = 0
     vector: Optional[int] = 0
@@ -60,7 +64,7 @@ class CoverageReport:
 
 @dataclass
 class OrphanNote:
-    """A live permanent note with explicit orphan-source flags."""
+    """带有明确孤立来源标记的活跃永久笔记。"""
 
     id: str
     title: str
@@ -72,7 +76,7 @@ class OrphanNote:
 
 @dataclass
 class OrphanSummary:
-    """Notes that are not connected semantically or by explicit links."""
+    """在语义或显式链接上未形成连接的笔记。"""
 
     count: int = 0
     notes: List[OrphanNote] = field(default_factory=list)
@@ -80,7 +84,7 @@ class OrphanSummary:
 
 @dataclass
 class SuggestedReport:
-    """Detailed clusters selected at the suggested threshold."""
+    """建议阈值下选出的聚类详情。"""
 
     threshold: float
     clusters: List[ClusterSummary] = field(default_factory=list)
@@ -88,7 +92,7 @@ class SuggestedReport:
 
 @dataclass
 class MocDiagnoseReport:
-    """Complete report returned by the MOC density diagnostic service."""
+    """MOC 密度诊断服务返回的完整报告。"""
 
     coverage: CoverageReport
     threshold_sweep: List[ThresholdSummary] = field(default_factory=list)
@@ -97,15 +101,10 @@ class MocDiagnoseReport:
     warnings: List[str] = field(default_factory=list)
 
 
-class MocDiagnoseError(RuntimeError):
-    """Raised when the permanent-note vector data cannot be diagnosed."""
-
-
 def compute_similarity(embeddings: np.ndarray) -> np.ndarray:
-    """Compute a cosine-similarity matrix for stored embedding rows.
+    """计算已存向量行的余弦相似度矩阵。
 
-    Rows with zero norm remain zero instead of producing NaN values.  The
-    diagonal is cleared because a note is not its own semantic neighbour.
+    零范数行保持为零，避免产生 NaN；对角线清零，因为笔记不应成为自己的语义邻居。
     """
     matrix = np.asarray(embeddings, dtype=np.float32)
     if matrix.ndim != 2:
@@ -123,11 +122,10 @@ def compute_similarity(embeddings: np.ndarray) -> np.ndarray:
 def find_clusters_at_threshold(
     similarity: np.ndarray, threshold: float, min_size: int
 ) -> List[List[int]]:
-    """Find connected semantic clusters using a strict similarity threshold.
+    """用严格相似度阈值查找相连的语义聚类。
 
-    Similarity edges are created only when ``similarity > threshold``.  A
-    connected component is reported only when it has at least ``min_size``
-    members; singleton components therefore become semantic orphans.
+    仅当 ``similarity > threshold`` 时建立边。连通分量成员数至少达到
+    ``min_size`` 才会报告，因此单节点分量会成为语义孤立点。
     """
     if min_size < 2:
         raise ValueError("min_size must be at least 2")
@@ -147,7 +145,7 @@ def find_clusters_at_threshold(
 
 
 def semantic_orphan_indices(node_count: int, clusters: Sequence[Sequence[int]]) -> List[int]:
-    """Return sorted node indices absent from all qualifying clusters."""
+    """返回未出现在任何合格聚类中的已排序节点索引。"""
     if node_count < 0:
         raise ValueError("node_count must not be negative")
 
@@ -158,7 +156,7 @@ def semantic_orphan_indices(node_count: int, clusters: Sequence[Sequence[int]]) 
 def build_threshold_summary(
     similarity: np.ndarray, threshold: float, min_size: int
 ) -> ThresholdSummary:
-    """Build the compact distribution summary for one threshold."""
+    """构建单个阈值的精简分布摘要。"""
     matrix = np.asarray(similarity)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
         raise ValueError("similarity must be a square matrix")
@@ -175,7 +173,7 @@ def build_threshold_summary(
 
 
 def _mean_similarity(similarity: np.ndarray, indices: Sequence[int], index: int) -> float:
-    """Return a member's mean similarity to the other members of its cluster."""
+    """返回成员与同簇其他成员的平均相似度。"""
     peers = [peer for peer in indices if peer != index]
     if not peers:
         return 0.0
@@ -190,7 +188,7 @@ def _cluster_members(
     link_degrees: Dict[str, int],
     graph_available: bool,
 ) -> ClusterSummary:
-    """Build a detailed cluster and choose its hub deterministically."""
+    """构建聚类详情并以确定性规则选择中心笔记。"""
     members = [
         ClusterMember(
             id=ids[index],
@@ -214,10 +212,9 @@ def diagnose_moc_density(
     suggest_threshold: float,
     top: int,
 ) -> MocDiagnoseReport:
-    """Diagnose semantic density among live permanent notes.
+    """诊断活跃永久笔记之间的语义密度。
 
-    This function only reads note metadata, indexes, and stored embeddings. It
-    never calls the embedding backend and never mutates any index or note.
+    此函数只读取笔记元数据、索引和已存向量，不调用向量后端，也不修改索引或笔记。
     """
     if min_size < 2:
         raise ValueError("min_size must be at least 2")
@@ -286,6 +283,14 @@ def diagnose_moc_density(
     title_by_id = {note_id: meta.title for note_id, meta in live_meta.items()}
     live_embeddings = [record[2] for record in records]
     coverage.vector_orphans = orphan_count
+
+    live_note_count = len(live_embeddings)
+    if live_note_count > MAX_DENSE_CLUSTER_NOTES:
+        raise MocDiagnoseError(
+            f"当前稠密聚类算法最多支持 {MAX_DENSE_CLUSTER_NOTES} 条活跃永久笔记，"
+            f"本次共有 {live_note_count} 条；未生成不完整建议。"
+            "未来需改用稀疏图或分块算法，请缩小知识库范围后重试。"
+        )
 
     embeddings = np.asarray(live_embeddings, dtype=np.float32).reshape(
         (len(live_embeddings), raw_embeddings.shape[1])

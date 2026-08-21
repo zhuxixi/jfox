@@ -1,12 +1,14 @@
-"""Fast tests for the MOC density diagnostic command."""
+"""MOC 密度诊断命令的快速测试。"""
 
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from typer.testing import CliRunner
+from typer.testing import CliRunner  # type: ignore[import-not-found]
 
 from jfox.cli import app
 from jfox.moc.cli import moc_app, report_to_dict
@@ -56,6 +58,38 @@ def test_moc_registered_on_root_app():
     result = root_runner.invoke(app, ["moc", "--help"])
     assert result.exit_code == 0
     assert "diagnose" in result.output
+
+
+def test_import_root_cli_keeps_moc_registered_without_heavy_dependencies():
+    script = """
+import json
+import sys
+import jfox.cli as cli
+print(json.dumps({
+    "groups": [group.name for group in cli.app.registered_groups],
+    "chromadb_loaded": "chromadb" in sys.modules,
+    "networkx_loaded": "networkx" in sys.modules,
+}))
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+
+    assert "moc" in payload["groups"]
+    assert payload["chromadb_loaded"] is False
+    assert payload["networkx_loaded"] is False
+
+
+def test_root_version_still_works_with_moc_registered():
+    result = root_runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.output.startswith("jfox ")
 
 
 def test_diagnose_json_contract():

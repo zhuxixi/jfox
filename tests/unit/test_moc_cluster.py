@@ -1,4 +1,4 @@
-"""Tests for pure semantic clustering helpers."""
+"""纯语义聚类辅助函数的测试。"""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -456,6 +456,50 @@ def test_diagnose_rejects_vector_length_mismatch():
     ):
         with pytest.raises(MocDiagnoseError, match="embeddings_shape"):
             diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+
+def _run_diagnose_with_vector_count(note_count: int, dense_limit: int):
+    config = ZKConfig(base_dir=Path("/tmp/moc-limit-test"))
+    metas = [_permanent_meta(f"p{i}", f"P{i}") for i in range(note_count)]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        [meta.id for meta in metas],
+        [None] * note_count,
+        np.ones((note_count, 2), dtype=np.float32),
+    )
+    bm25 = MagicMock(doc_ids=[], doc_types=[])
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.return_value = 0
+    graph.graph.out_degree.return_value = 0
+
+    with (
+        patch("jfox.moc.cluster.MAX_DENSE_CLUSTER_NOTES", dense_limit),
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch("jfox.moc.cluster.BM25Index", return_value=bm25),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+    ):
+        return diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+
+def test_diagnose_dense_limit_includes_exact_boundary():
+    report = _run_diagnose_with_vector_count(note_count=2, dense_limit=2)
+
+    assert report.coverage.filesystem == 2
+    assert report.threshold_sweep[0].cluster_count == 1
+
+
+def test_diagnose_dense_limit_rejects_above_boundary_without_truncation():
+    with pytest.raises(MocDiagnoseError) as error:
+        _run_diagnose_with_vector_count(note_count=3, dense_limit=2)
+
+    message = str(error.value)
+    assert "2" in message
+    assert "稀疏" in message
+    assert "分块" in message
 
 
 def test_diagnose_empty_vectors_raises_rebuild_hint():
