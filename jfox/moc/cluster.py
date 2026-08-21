@@ -247,8 +247,7 @@ def diagnose_moc_density(
         raise MocDiagnoseError(str(exc)) from exc
     if len(vector_ids) != len(vector_metadata):
         raise MocDiagnoseError(
-            f"Corrupt permanent vector data: ids={len(vector_ids)}, "
-            f"metadata={len(vector_metadata)}"
+            f"Corrupt permanent vector data: ids={len(vector_ids)}, metadata={len(vector_metadata)}"
         )
     if raw_embeddings.ndim != 2 or raw_embeddings.shape[0] != len(vector_ids):
         raise MocDiagnoseError(
@@ -350,7 +349,7 @@ def diagnose_moc_density(
         link_degrees = {
             note_id: knowledge_graph.graph.in_degree(note_id)
             + knowledge_graph.graph.out_degree(note_id)
-            for note_id in live_ids
+            for note_id in live_meta
         }
     except Exception as exc:
         warnings.append(f"Knowledge graph unavailable: {exc}")

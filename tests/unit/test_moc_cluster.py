@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from jfox.bm25_index import BM25Index
 from jfox.config import ZKConfig
 from jfox.moc.cluster import (
     MocDiagnoseError,
@@ -342,6 +343,47 @@ def test_diagnose_includes_missing_vector_link_orphan_and_flags():
     assert orphan["p4"].link_orphan is True
 
 
+def test_diagnose_graph_degree_covers_missing_vector_notes():
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    metas = [
+        _permanent_meta("p0", "P0"),
+        _permanent_meta("p1", "P1"),
+        _permanent_meta("linked-no-vector", "Linked without vector"),
+        _permanent_meta("orphan-no-vector", "Orphan without vector"),
+    ]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0", "p1"],
+        [None, None],
+        np.array([[1.0, 0.0], [0.99, 0.01]], dtype=np.float32),
+    )
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.side_effect = lambda note_id: {
+        "p0": 1,
+        "p1": 1,
+        "linked-no-vector": 1,
+    }.get(note_id, 0)
+    graph.graph.out_degree.return_value = 0
+    bm25 = MagicMock(index_path=Path("x"), metadata_path=Path("y"), doc_ids=[], doc_types=[])
+
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch("jfox.moc.cluster.BM25Index", return_value=bm25),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    orphan = {note.id: note for note in report.orphans.notes}
+    assert "linked-no-vector" not in orphan
+    assert orphan["orphan-no-vector"].link_orphan is True
+    assert orphan["orphan-no-vector"].semantic_orphan is False
+    assert orphan["orphan-no-vector"].link_degree == 0
+
+
 def test_diagnose_filesystem_failure_skips_unverified_semantic_clusters():
     config = ZKConfig(base_dir=Path("/tmp/moc-test"))
     vector_store = MagicMock()
@@ -368,11 +410,16 @@ def test_diagnose_filesystem_failure_skips_unverified_semantic_clusters():
     assert any("semantic clustering was skipped" in warning.lower() for warning in report.warnings)
 
 
-def test_diagnose_corrupt_bm25_reports_na_coverage(tmp_path):
+def test_diagnose_malformed_bm25_metadata_reports_invalid_and_na_coverage(tmp_path):
     config = ZKConfig(base_dir=tmp_path)
-    config.zk_dir.mkdir(parents=True)
-    (config.zk_dir / "bm25_index.pkl").write_bytes(b"not a pickle")
-    (config.zk_dir / "bm25_metadata.json").write_text('{"version": 2}', encoding="utf-8")
+    bm25 = BM25Index(index_dir=config.zk_dir)
+    assert bm25.add_document("p0", "indexed content", "permanent")
+    (config.zk_dir / BM25Index.METADATA_FILENAME).write_text("{malformed", encoding="utf-8")
+
+    invalid = BM25Index(index_dir=config.zk_dir)
+    assert invalid.load_status == "invalid"
+    assert invalid.load_error
+
     note_index = MagicMock()
     note_index.get_all_meta.return_value = [_permanent_meta("p0", "P0")]
     vector_store = MagicMock()
