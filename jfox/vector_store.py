@@ -3,9 +3,10 @@
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import chromadb
+import numpy as np
 from chromadb.config import Settings
 
 from .config import config
@@ -202,6 +203,25 @@ class VectorStore:
         except Exception as e:
             logger.error(f"Failed to get all IDs: {e}")
             return []
+
+    def get_all_embeddings(
+        self, note_type: Optional[str] = None
+    ) -> Tuple[List[str], List[Dict[str, Any]], np.ndarray]:
+        """Return indexed IDs, metadata, and stored embeddings without re-encoding text."""
+        if self.collection is None:
+            self.init()
+
+        kwargs: Dict[str, Any] = {"include": ["embeddings", "metadatas"]}
+        if note_type is not None:
+            kwargs["where"] = {"type": note_type}
+
+        result = self.collection.get(**kwargs)
+        ids = list(result.get("ids") or [])
+        metadatas = list(result.get("metadatas") or [])
+        raw_embeddings = result.get("embeddings")
+        if raw_embeddings is None or len(raw_embeddings) == 0:
+            return ids, metadatas, np.empty((0, 0), dtype=np.float32)
+        return ids, metadatas, np.asarray(raw_embeddings, dtype=np.float32)
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
