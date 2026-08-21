@@ -19,6 +19,28 @@ logger = logging.getLogger(__name__)
 MOC_TAG = "moc"
 
 
+def verify_members_on_disk(member_ids: Sequence[str]) -> tuple[set[str], list[str]]:
+    """逐个验证成员笔记在磁盘上存在。
+
+    返回 (existing_ids, missing_warnings)：
+    - existing_ids：load_note_by_id 非空且 filepath.exists() 的成员 id 集合
+    - missing_warnings：每条缺失成员一行，格式 "skipped ghost member <id> (<title>)"
+    注意 #391：note index 可能 stale，这里以磁盘文件为准。
+    """
+    from ..note import load_note_by_id
+
+    existing: set[str] = set()
+    warnings: list[str] = []
+    for mid in member_ids:
+        note = load_note_by_id(mid)
+        if note is not None and note.filepath.exists():
+            existing.add(mid)
+        else:
+            title = note.title if note is not None else mid
+            warnings.append(f"skipped ghost member {mid} ({title})")
+    return existing, warnings
+
+
 def write_moc(draft: MocCreateDraft) -> Note:
     """创建 structure 类型的 MOC 笔记并回填成员 backlinks。"""
     from ..note import create_note, save_note

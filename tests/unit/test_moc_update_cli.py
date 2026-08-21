@@ -98,7 +98,10 @@ def test_update_dry_run_shows_diff_json():
         with patch("jfox.moc.cli.list_notes", return_value=[_moc_note()]):
             with patch("jfox.moc.cli.get_note_index") as mock_index:
                 mock_index.return_value.get_all_meta.return_value = _mock_meta()
-                result = runner.invoke(app, ["moc", "update", "--format", "json"])
+                with patch(
+                    "jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2", "3"}, [])
+                ):
+                    result = runner.invoke(app, ["moc", "update", "--format", "json"])
 
     assert result.exit_code == 0
     payload = json.loads(_strip_ansi(result.output))
@@ -120,7 +123,10 @@ def test_update_dry_run_table():
         with patch("jfox.moc.cli.list_notes", return_value=[_moc_note()]):
             with patch("jfox.moc.cli.get_note_index") as mock_index:
                 mock_index.return_value.get_all_meta.return_value = _mock_meta()
-                result = runner.invoke(app, ["moc", "update", "--format", "table"])
+                with patch(
+                    "jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2", "3"}, [])
+                ):
+                    result = runner.invoke(app, ["moc", "update", "--format", "table"])
 
     assert result.exit_code == 0
     output = _strip_ansi(result.output)
@@ -156,7 +162,8 @@ def test_update_skips_moc_with_no_matching_cluster():
         with patch("jfox.moc.cli.list_notes", return_value=[moc]):
             with patch("jfox.moc.cli.get_note_index") as mock_index:
                 mock_index.return_value.get_all_meta.return_value = _mock_meta()
-                result = runner.invoke(app, ["moc", "update", "--format", "json"])
+                with patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1"}, [])):
+                    result = runner.invoke(app, ["moc", "update", "--format", "json"])
 
     assert result.exit_code == 0
     payload = json.loads(_strip_ansi(result.output))
@@ -180,7 +187,8 @@ def test_update_yes_applies_changes():
         ):
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
             mock_update.return_value = True
-            result = runner.invoke(app, ["moc", "update", "--yes", "--format", "json"])
+            with patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2", "3"}, [])):
+                result = runner.invoke(app, ["moc", "update", "--yes", "--format", "json"])
 
     assert result.exit_code == 0
     payload = json.loads(_strip_ansi(result.output))
@@ -208,7 +216,8 @@ def test_update_yes_skips_backfill_when_update_fails():
             patch("jfox.moc.cli.remove_moc_backlinks") as mock_remove,
         ):
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
-            result = runner.invoke(app, ["moc", "update", "--yes", "--format", "json"])
+            with patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2", "3"}, [])):
+                result = runner.invoke(app, ["moc", "update", "--yes", "--format", "json"])
 
     assert result.exit_code == 0
     payload = json.loads(_strip_ansi(result.output))
@@ -217,3 +226,23 @@ def test_update_yes_skips_backfill_when_update_fails():
     assert "update failed" in first["warning"]
     mock_backfill.assert_not_called()
     mock_remove.assert_not_called()
+
+
+def test_update_removes_dead_link_missing_from_disk():
+    """current link id 在磁盘上不存在（不在 existing_ids）→ 出现在 remove。"""
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with patch("jfox.moc.cli.list_notes", return_value=[_moc_note()]):
+            with patch("jfox.moc.cli.get_note_index") as mock_index:
+                mock_index.return_value.get_all_meta.return_value = _mock_meta()
+                # 99 在磁盘上不存在 → existing_ids 不含 99 → remove 含 99
+                with patch(
+                    "jfox.moc.cli.verify_members_on_disk",
+                    return_value=({"1", "2", "3"}, ["skipped ghost member 99 (...)"]),
+                ):
+                    result = runner.invoke(app, ["moc", "update", "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(_strip_ansi(result.output))
+    first = payload["updates"][0]
+    assert "99" in first["remove"]
+    assert [m["id"] for m in first["add"]] == ["3"]

@@ -90,7 +90,7 @@ def test_update_diff_adds_new_and_removes_dead_links():
     diff = build_update_diff(
         current_links=["1", "2", "99"],  # 99 已死
         cluster_members=cluster.members,
-        live_note_ids={"1", "2", "3", "4", "5"},
+        existing_ids={"1", "2", "3", "4", "5"},
     )
     assert [m.id for m in diff.add] == ["3", "4", "5"]
     assert diff.remove == ["99"]
@@ -103,10 +103,22 @@ def test_update_diff_keeps_live_non_permanent_links():
     diff = build_update_diff(
         current_links=["1", "2", "88"],  # 88 是 live 的 structure 笔记
         cluster_members=cluster.members,
-        live_note_ids={"1", "2", "3", "4", "5", "88"},  # 88 在 live 集合
+        existing_ids={"1", "2", "3", "4", "5", "88"},  # 88 在 existing 集合
     )
     assert diff.remove == []  # 88 不是死链，不摘除
     assert diff.kept == 2
+
+
+def test_update_diff_excludes_ghost_members_from_add():
+    """簇成员不在 existing_ids（ghost，磁盘不存在）时不加入 add。"""
+    cluster = _cluster()
+    diff = build_update_diff(
+        current_links=["1"],  # 只链了 1
+        cluster_members=cluster.members,
+        existing_ids={"1", "2", "3"},  # 4、5 磁盘不存在（ghost）
+    )
+    assert [m.id for m in diff.add] == ["2", "3"]  # 4、5 被排除
+    assert diff.kept == 1
 
 
 def test_filter_live_members_removes_ghost_members():

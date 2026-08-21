@@ -82,7 +82,8 @@ def test_create_dry_run_prints_draft_without_writing():
     with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
         with patch("jfox.moc.cli.get_note_index") as mock_index:
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
-            result = runner.invoke(app, ["moc", "create", "--format", "table"])
+            with patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2"}, [])):
+                result = runner.invoke(app, ["moc", "create", "--format", "table"])
 
     assert result.exit_code == 0
     output = _strip_ansi(result.output)
@@ -98,6 +99,7 @@ def test_create_yes_writes_moc():
         with (
             patch("jfox.moc.cli.get_note_index") as mock_index,
             patch("jfox.moc.cli.write_moc") as mock_write,
+            patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2"}, [])),
         ):
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
             fake_moc = Note(
@@ -124,6 +126,7 @@ def test_create_yes_table_shows_confirmation():
         with (
             patch("jfox.moc.cli.get_note_index") as mock_index,
             patch("jfox.moc.cli.write_moc") as mock_write,
+            patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2"}, [])),
         ):
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
             fake_moc = Note(
@@ -148,9 +151,44 @@ def test_create_rejects_oversized_cluster():
     with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
         with patch("jfox.moc.cli.get_note_index") as mock_index:
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
-            result = runner.invoke(app, ["moc", "create", "--max-size", "1", "--format", "json"])
+            with patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2"}, [])):
+                result = runner.invoke(
+                    app, ["moc", "create", "--max-size", "1", "--format", "json"]
+                )
 
     assert result.exit_code == 1
     payload = json.loads(_strip_ansi(result.output))
     assert payload["success"] is False
     assert "exceeds --max-size" in payload["error"]
+
+
+def test_create_dry_run_shows_ghost_warnings_in_table():
+    """table 模式下 ghost 成员的 warning 行可见。"""
+    ghost_warning = "skipped ghost member 2 (Zima CR Flow)"
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with patch("jfox.moc.cli.get_note_index") as mock_index:
+            mock_index.return_value.get_all_meta.return_value = _mock_meta()
+            with patch(
+                "jfox.moc.cli.verify_members_on_disk", return_value=({"1"}, [ghost_warning])
+            ):
+                result = runner.invoke(app, ["moc", "create", "--format", "table"])
+
+    assert result.exit_code == 0
+    output = _strip_ansi(result.output)
+    assert f"Warning: {ghost_warning}" in output
+
+
+def test_create_dry_run_shows_ghost_warnings_in_json():
+    """JSON 模式下 ghost 成员的 warning 进 payload.warnings。"""
+    ghost_warning = "skipped ghost member 2 (Zima CR Flow)"
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with patch("jfox.moc.cli.get_note_index") as mock_index:
+            mock_index.return_value.get_all_meta.return_value = _mock_meta()
+            with patch(
+                "jfox.moc.cli.verify_members_on_disk", return_value=({"1"}, [ghost_warning])
+            ):
+                result = runner.invoke(app, ["moc", "create", "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(_strip_ansi(result.output))
+    assert ghost_warning in payload["warnings"]

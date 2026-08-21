@@ -68,6 +68,13 @@ def remove_moc_backlinks(*args: Any, **kwargs: Any) -> Any:
     return _remove(*args, **kwargs)
 
 
+def verify_members_on_disk(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 generate.verify_members_on_disk。"""
+    from .generate import verify_members_on_disk as _verify
+
+    return _verify(*args, **kwargs)
+
+
 moc_app = typer.Typer(name="moc", help="诊断和维护 MOC 结构层", no_args_is_help=True)
 
 
@@ -303,14 +310,22 @@ def _create_impl(
     note_index = get_note_index(active_config)
     all_meta = note_index.get_all_meta()
     tags_by_id = {meta.id: list(meta.tags) for meta in all_meta}
-    # live permanent ids：用于落盘前过滤 ghost 成员（spec D6）
+    # live permanent ids：粗滤——index 口径（spec D6）
     live_ids = {
         meta.id for meta in all_meta if meta.type == NoteType.PERMANENT and not meta.archived
     }
     orphans = report.orphans.notes if include_orphans else None
     draft = build_moc_draft(cluster, tags_by_id, max_size, orphans=orphans, title=title)
-    # 落盘前过滤 ghost 成员（spec D6：已归档/不存在的成员跳过并计入 warning）
+    # 粗滤：index 口径过滤 ghost 成员
     draft, ghost_warnings = filter_live_members(draft, live_ids)
+    # 精滤：磁盘存在性校验——#391 已知 index 会 stale，以磁盘文件为准
+    candidate_ids = [m.id for g in draft.groups for m in g.members] + [
+        o.id for o in draft.orphan_bucket
+    ]
+    existing_ids, disk_warnings = verify_members_on_disk(candidate_ids)
+    if disk_warnings:
+        draft, _index_warnings = filter_live_members(draft, existing_ids)
+        ghost_warnings = ghost_warnings + disk_warnings
     created: Optional[dict[str, str]] = None
     moc: Optional[Note] = None
     if write:
@@ -359,6 +374,8 @@ def create_cmd(
         _render_draft(draft, cluster)
         if moc is not None:
             _console.print(f"Created MOC {moc.id} at {moc.filepath}")
+        for warning in payload.get("warnings", []):
+            _console.print(f"Warning: {warning}")
 
 
 def _update_impl(
@@ -396,9 +413,8 @@ def _update_impl(
     clusters = report.suggest.clusters if report.suggest is not None else []
 
     note_index = get_note_index(active_config)
-    # live_note_ids 覆盖任意笔记类型（不限 permanent）：
-    # 死链判定按「已归档/不存在」，live 但非 permanent 的链接不摘除（spec D7）
-    live_note_ids = {meta.id for meta in note_index.get_all_meta() if not meta.archived}
+    # live_note_ids 覆盖任意笔记类型（不限 permanent）的粗滤（index 口径）
+    _live_note_ids = {meta.id for meta in note_index.get_all_meta() if not meta.archived}
 
     payloads: list[dict[str, Any]] = []
     changed: list[Note] = []
@@ -425,7 +441,10 @@ def _update_impl(
             )
             continue
 
-        diff = build_update_diff(moc.links, best.members, live_note_ids)
+        # 精滤：磁盘存在性校验——candidate_ids 只含当前 MOC 的候选集（小集合）
+        candidate_ids = set(moc.links) | {m.id for m in best.members}
+        existing_ids, disk_warnings = verify_members_on_disk(candidate_ids)
+        diff = build_update_diff(moc.links, best.members, existing_ids)
         payload: dict[str, Any] = {
             "moc_id": moc.id,
             "moc_title": moc.title,
@@ -433,6 +452,8 @@ def _update_impl(
             "remove": list(diff.remove),
             "kept": diff.kept,
         }
+        if disk_warnings:
+            payload["warnings"] = disk_warnings
 
         if apply and (diff.add or diff.remove):
             add_ids = [m.id for m in diff.add]
@@ -488,6 +509,8 @@ def update_cmd(
                 _console.print("  (no changes)")
             if payload.get("warning"):
                 _console.print(f"  Warning: {payload['warning']}")
+            for warning in payload.get("warnings", []):
+                _console.print(f"  Warning: {warning}")
 
 
 @moc_app.command(

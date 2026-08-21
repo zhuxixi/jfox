@@ -172,19 +172,22 @@ def filter_live_members(
 def build_update_diff(
     current_links: Sequence[str],
     cluster_members: Sequence[ClusterMember],
-    live_note_ids: Set[str],
+    existing_ids: Set[str],
 ) -> MocUpdateDiff:
     """对比 MOC 现有 links 与当前簇成员。
 
-    - add：簇内但不在 links 中的 live 成员。
-    - remove：links 中已不在 live_note_ids 的死链（已归档/已删除/不存在）。
-      live_note_ids 覆盖任意笔记类型（不限于 permanent），避免误摘 live 的
-      structure/literature 等非 permanent 链接（spec D7）。
+    existing_ids：磁盘上实际存在的笔记 id 集合（调用方做磁盘存在性校验后传入，
+    覆盖任意笔记类型——#391 已知 note index 会 stale，以磁盘文件为准）。
+
+    - add：簇内但不在 links 中的成员，且其 id 在 existing_ids 中（ghost 成员跳过）。
+    - remove：links 中已不在 existing_ids 的死链（已归档/已删除/磁盘不存在）。
+      覆盖任意笔记类型（不限 permanent），避免误摘 live 的 structure/literature
+      等非 permanent 链接（spec D7）。
     - kept：links 与簇成员的交集数。语义漂移不自动摘除（人工判断）。
     """
     member_ids = {m.id for m in cluster_members}
     current = set(current_links)
-    remove = sorted(mid for mid in current if mid not in live_note_ids)
-    add = [m for m in cluster_members if m.id not in current]
+    remove = sorted(mid for mid in current if mid not in existing_ids)
+    add = [m for m in cluster_members if m.id not in current and m.id in existing_ids]
     kept = len(current & member_ids)
     return MocUpdateDiff(add=add, remove=remove, kept=kept)

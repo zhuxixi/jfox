@@ -7,7 +7,7 @@ import pytest
 
 from jfox.moc.cluster import ClusterMember, ClusterSummary
 from jfox.moc.draft import build_moc_draft
-from jfox.moc.generate import MOC_TAG, remove_moc_backlinks, write_moc
+from jfox.moc.generate import MOC_TAG, remove_moc_backlinks, verify_members_on_disk, write_moc
 from jfox.models import NoteType
 from jfox.note import list_notes, load_note_by_id
 
@@ -134,3 +134,25 @@ def test_write_moc_raises_when_save_fails(seeded_kb, monkeypatch):
     # 确认没有回填 backlinks（成员 backlinks 不含 MOC id）
     structure_notes = list_notes(note_type=NoteType.STRUCTURE, cfg=seeded_kb)
     assert len(structure_notes) == 0
+
+
+def test_verify_members_on_disk_returns_existing_and_missing_warnings(seeded_kb):
+    """存在的成员进 existing_ids；不存在的成员进 missing_warnings。"""
+    ids = ["20260820000001", "20260820000002", "99999999999999"]
+    existing, warnings = verify_members_on_disk(ids)
+
+    assert existing == {"20260820000001", "20260820000002"}
+    assert len(warnings) == 1
+    assert "skipped ghost member 99999999999999" in warnings[0]
+
+
+def test_verify_members_on_disk_treats_deleted_file_as_missing(seeded_kb, monkeypatch):
+    """文件已被删除但 index 残留：load_note_by_id 可能返回 note 但 filepath 不存在 → missing。"""
+    import os
+
+    member_file = seeded_kb.notes_dir / "permanent" / "20260820000001-zima-one.md"
+    os.unlink(member_file)
+
+    existing, warnings = verify_members_on_disk(["20260820000001"])
+    assert "20260820000001" not in existing
+    assert any("20260820000001" in w for w in warnings)
