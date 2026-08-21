@@ -85,6 +85,42 @@ def test_suggest_threshold_must_be_in_sweep():
     assert "must be one of" in result.output
 
 
+def test_diagnose_json_preserves_long_multi_word_error_without_ansi():
+    message = (
+        "The permanent note vector index is unavailable; rebuild the index before running "
+        "MOC density diagnosis for this knowledge base"
+    )
+    with patch(
+        "jfox.moc.cli.diagnose_moc_density",
+        side_effect=MocDiagnoseError(message),
+    ):
+        result = runner.invoke(moc_app, ["diagnose", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["error"] == message
+    assert "\x1b" not in result.output
+
+
+def test_diagnose_table_has_four_sections_and_permanent_only_coverage():
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        result = runner.invoke(moc_app, ["diagnose"])
+
+    assert result.exit_code == 0, result.output
+    for heading in (
+        "Permanent coverage",
+        "Threshold sensitivity",
+        "Suggested MOC clusters",
+        "Permanent orphans",
+    ):
+        assert result.output.count(heading) == 1
+    coverage_output = result.output.split("Permanent coverage", 1)[1].split(
+        "Threshold sensitivity", 1
+    )[0]
+    for note_type in ("candidate", "session", "fleeting"):
+        assert note_type not in coverage_output.lower()
+
+
 @pytest.mark.parametrize(
     "thresholds, message",
     [

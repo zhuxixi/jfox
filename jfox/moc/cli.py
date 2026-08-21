@@ -107,7 +107,10 @@ def _parse_thresholds(raw: str) -> list[float]:
 
 def _fail(message: str, output_format: str) -> NoReturn:
     if output_format == "json":
-        _json_console.print(json.dumps({"success": False, "error": message}, ensure_ascii=False))
+        _json_console.print(
+            json.dumps({"success": False, "error": message}, ensure_ascii=False),
+            soft_wrap=True,
+        )
     else:
         _console.print(message)
     raise typer.Exit(code=1)
