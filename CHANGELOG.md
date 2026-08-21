@@ -2,6 +2,20 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.8.0] - 2026-08-22
+
+### Features
+- add MOC density diagnose command (#410)
+
+### Fixes
+- **index**: verify 以 frontmatter 真实 ID 对账向量库，修复 legacy 文件名误报 orphan (#407) (#408)
+
+### Changes
+- 项目级 .pi-lens.json 关闭自动格式化，与 CI black 对齐 (#409)
+- **claude.md**: 记 BM25 并发写乐观并发控制与引擎 stale 检查语义（#391/#396） (#400)
+
+[1.8.0]: https://github.com/zhuxixi/jfox/compare/v1.7.2...v1.8.0
+
 ## [1.7.2] - 2026-08-21
 
 ### Fixes
