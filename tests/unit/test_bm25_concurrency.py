@@ -523,3 +523,54 @@ class TestIssue401Followup:
         ids = _load_disk_ids(tmp_path)
         assert "x" not in ids
         assert "z" in ids
+
+
+class TestIssue403VersionCollision:
+    """#403：孤儿 tmp 无效时覆盖分支 new_version 撞号，clear 数据被复活"""
+
+    def test_clear_with_invalid_tmp_no_version_collision(self, tmp_path):
+        """复现 reviewer 场景：有效孤儿 pkl（内嵌 N+1）+ 无效 tmp + metadata@N
+        → clear → 已自愈进程（token=N+1）add → 旧数据不复活"""
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        assert b.add_document("y", "hello y", "session")  # v2（pkl 内嵌 v2）
+        # 构造：metadata 回滚 v1 + 无效 tmp（孤儿 pkl 的提交链断裂）
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{invalid", encoding="utf-8")
+        # 已自愈进程在 clear 前构造：真实加载孤儿（内存持 x/y），令牌对齐 pkl 内嵌 2
+        healed = BM25Index(index_dir=tmp_path)
+        healed._loaded_write_version = 2
+        assert "x" in healed.doc_mapping and "y" in healed.doc_mapping  # 真持旧数据
+        # a（loaded=0）clear：覆盖分支 → tmp 无效被丢弃 → 版本基数须含孤儿 pkl 内嵌 2
+        assert a.clear()
+        assert _disk_version(tmp_path) == 3  # 严格高于孤儿内嵌版本 2，不撞号
+        # healed（内存持 x/y、token=2）save：disk(3) > loaded(2) → merge 采纳空索引
+        assert healed.add_document("z", "hello z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" not in ids and "y" not in ids  # 清空不被复活
+        assert "z" in ids
+
+    def test_rebuild_with_invalid_tmp_no_version_collision(self, tmp_path):
+        """同场景的 rebuild 路径：孤儿 pkl + 无效 tmp → rebuild 版本不撞号"""
+        a = BM25Index(index_dir=tmp_path)
+        b = BM25Index(index_dir=tmp_path)
+        assert b.add_document("x", "hello x", "session")  # v1
+        assert b.add_document("y", "hello y", "session")  # v2
+        meta_path = tmp_path / BM25Index.METADATA_FILENAME
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["write_version"] = 1
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        (tmp_path / "bm25_metadata.json.tmp").write_text("{invalid", encoding="utf-8")
+        healed = BM25Index(index_dir=tmp_path)  # clear 前构造，真实持孤儿数据
+        healed._loaded_write_version = 2
+        assert "x" in healed.doc_mapping and "y" in healed.doc_mapping
+        assert a.rebuild_from_notes([_note("n1")])  # loaded=0，覆盖分支
+        assert _disk_version(tmp_path) == 3
+        assert healed.add_document("z", "hello z", "session") is True
+        ids = _load_disk_ids(tmp_path)
+        assert "x" not in ids and "y" not in ids
+        assert "z" in ids
