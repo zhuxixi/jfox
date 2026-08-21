@@ -2430,21 +2430,46 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             if output_format == "json":
                 print(output_json(result))
             else:
+                if verification.get("error"):
+                    console.print(f"[red]✗[/red] {verification['error']}")
+                    raise typer.Exit(1)
+
+                console.print(
+                    "[bold]Vector Store Verification[/bold] "
+                    "[dim](BM25 not covered — see `jfox index bm25-status`)[/dim]"
+                )
                 if verification["healthy"]:
-                    console.print("[green]✓[/green] Index is healthy")
+                    console.print("[green]✓[/green] Vector index is healthy")
                 else:
-                    console.print("[yellow]⚠[/yellow] Index has issues")
+                    console.print("[yellow]⚠[/yellow] Vector index has issues")
 
                 console.print(f"  Files: {verification['total_files']}")
+                console.print(f"  Valid IDs: {verification['unique_ids']}")
                 console.print(f"  Indexed: {verification['total_indexed']}")
+
+                if verification["unreadable_files"]:
+                    console.print(
+                        f"\n[yellow]Unreadable files "
+                        f"({len(verification['unreadable_files'])}):[/yellow]"
+                    )
+                    for p in verification["unreadable_files"][:5]:
+                        console.print(f"  - {p}")
+
+                if verification["duplicate_ids"]:
+                    console.print(
+                        f"\n[yellow]Duplicate IDs "
+                        f"({len(verification['duplicate_ids'])}):[/yellow]"
+                    )
+                    for d in verification["duplicate_ids"][:5]:
+                        console.print(f"  - {d['id']}")
 
                 if verification["missing_from_index"]:
                     console.print(
                         f"\n[yellow]Missing from index "
                         f"({len(verification['missing_from_index'])}):[/yellow]"
                     )
-                for nid in verification["missing_from_index"][:5]:
-                    console.print(f"  - {nid}")
+                    for nid in verification["missing_from_index"][:5]:
+                        console.print(f"  - {nid}")
 
                 if verification["orphaned_in_index"]:
                     console.print(
