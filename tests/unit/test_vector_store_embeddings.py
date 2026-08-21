@@ -80,6 +80,7 @@ def _owned_snapshot_store(tmp_path, result):
     store.collection = MagicMock()
     store.collection.get.return_value = result
     store.client = MagicMock()
+    store._owns_read_only_client = True
     store._read_only_snapshot = tmp_path / "snapshot"
     store._read_only_tempdir = MagicMock()
     return store
@@ -191,6 +192,122 @@ def test_primary_read_and_cleanup_failure_returns_actionable_typed_error(tmp_pat
     assert store.collection is None
     assert store._read_only_tempdir is None
     assert store._read_only_snapshot is None
+
+
+def test_snapshot_cleanup_close_failure_is_actionable_and_clears_fields(tmp_path):
+    store = _owned_snapshot_store(tmp_path, {})
+    store.client.close.side_effect = RuntimeError("close failed")
+
+    with pytest.raises(VectorStoreReadError) as error:
+        store._discard_read_only_snapshot()
+
+    message = str(error.value)
+    assert "close failed" in message
+    assert "daemon/indexer" in message
+    assert "稍后重试" in message
+    assert store.client is None
+    assert store.collection is None
+    assert store._read_only_tempdir is None
+    assert store._read_only_snapshot is None
+
+
+def test_snapshot_cleanup_close_and_tempdir_failures_preserve_both_errors(tmp_path):
+    store = _owned_snapshot_store(tmp_path, {})
+    store.client.close.side_effect = RuntimeError("close failed")
+    store._read_only_tempdir.cleanup.side_effect = PermissionError("cleanup failed")
+
+    with pytest.raises(VectorStoreReadError) as error:
+        store._discard_read_only_snapshot()
+
+    message = str(error.value)
+    assert "close failed" in message
+    assert "cleanup failed" in message
+    assert "daemon/indexer" in message
+    assert "稍后重试" in message
+    assert store.client is None
+    assert store.collection is None
+    assert store._read_only_tempdir is None
+    assert store._read_only_snapshot is None
+
+
+def test_snapshot_cleanup_unexpected_exception_is_typed_and_actionable(tmp_path):
+    store = _owned_snapshot_store(tmp_path, {})
+    store._read_only_tempdir.cleanup.side_effect = ValueError("unexpected cleanup failure")
+
+    with pytest.raises(VectorStoreReadError) as error:
+        store._discard_read_only_snapshot()
+
+    message = str(error.value)
+    assert "unexpected cleanup failure" in message
+    assert "daemon/indexer" in message
+    assert "稍后重试" in message
+    assert store.client is None
+    assert store.collection is None
+    assert store._read_only_tempdir is None
+    assert store._read_only_snapshot is None
+
+
+def test_snapshot_cleanup_does_not_swallow_base_exception(tmp_path):
+    store = _owned_snapshot_store(tmp_path, {})
+    client = store.client
+    store._read_only_tempdir.cleanup.side_effect = KeyboardInterrupt()
+
+    with pytest.raises(KeyboardInterrupt):
+        store._discard_read_only_snapshot()
+
+    client.close.assert_called_once_with()
+    assert store.client is None
+    assert store.collection is None
+    assert store._read_only_tempdir is None
+    assert store._read_only_snapshot is None
+
+
+def test_external_client_collection_failure_does_not_close_or_clear_client(tmp_path):
+    database = tmp_path / "chroma_db"
+    database.mkdir()
+    (database / "chroma.sqlite3").touch()
+    client = MagicMock()
+    client.get_collection.side_effect = RuntimeError("external collection failure")
+    store = VectorStore(persist_directory=database)
+    store.client = client
+
+    with pytest.raises(VectorStoreReadError, match="external collection failure"):
+        store.get_all_embeddings()
+
+    client.close.assert_not_called()
+    assert store.client is client
+    assert store.collection is None
+    assert store._read_only_tempdir is None
+    assert store._read_only_snapshot is None
+
+
+def test_created_snapshot_client_is_closed_after_successful_read(tmp_path):
+    database = _database_with_wal(tmp_path)
+    client = MagicMock()
+    collection = MagicMock()
+    client.get_collection.return_value = collection
+    collection.get.return_value = {"ids": [], "metadatas": [], "embeddings": []}
+
+    with patch("jfox.vector_store.chromadb.PersistentClient", return_value=client):
+        store = VectorStore(persist_directory=database)
+        store.get_all_embeddings()
+
+    client.close.assert_called_once_with()
+    assert store.client is None
+
+
+def test_created_snapshot_client_is_closed_after_collection_failure(tmp_path):
+    database = _database_with_wal(tmp_path)
+    client = MagicMock()
+    client.get_collection.side_effect = RuntimeError("snapshot collection failure")
+
+    with patch("jfox.vector_store.chromadb.PersistentClient", return_value=client):
+        store = VectorStore(persist_directory=database)
+        with pytest.raises(VectorStoreReadError, match="snapshot collection failure"):
+            store.get_all_embeddings()
+
+    client.close.assert_called_once_with()
+    assert store.client is None
 
 
 def test_real_chroma_snapshot_close_allows_directory_removal(tmp_path):

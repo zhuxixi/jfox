@@ -38,6 +38,7 @@ class VectorStore:
         self.collection: Any = None
         self._read_only_tempdir: Optional[tempfile.TemporaryDirectory[str]] = None
         self._read_only_snapshot: Optional[Path] = None
+        self._owns_read_only_client = False
 
     def init(self):
         """初始化 ChromaDB"""
@@ -244,20 +245,26 @@ class VectorStore:
         return tuple(sorted(entries))
 
     def _discard_read_only_snapshot(self) -> None:
-        """关闭只读快照的客户端并有限重试删除临时目录。"""
+        """关闭自有只读快照客户端并有限重试删除临时目录。"""
         client = self.client
         tempdir = self._read_only_tempdir
+        owns_client = self._owns_read_only_client
         self.collection = None
 
         close_error: Optional[BaseException] = None
-        close = getattr(client, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception as exc:
-                close_error = exc
+        base_exception: Optional[BaseException] = None
+        if owns_client:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:
+                    close_error = exc
+                except BaseException as exc:
+                    base_exception = exc
 
-        self.client = None
+        self.client = None if owns_client else client
+        self._owns_read_only_client = False
         self._read_only_snapshot = None
         self._read_only_tempdir = None
 
@@ -270,13 +277,29 @@ class VectorStore:
                     break
                 except (OSError, RuntimeError) as exc:
                     cleanup_error = exc
+                except Exception as exc:
+                    cleanup_error = exc
+                    break
+                except BaseException as exc:
+                    base_exception = exc
+                    break
 
-        cleanup_error = cleanup_error or close_error
-        if cleanup_error is not None:
-            raise VectorStoreReadError(
+        if base_exception is not None:
+            raise base_exception
+
+        if close_error is not None or cleanup_error is not None:
+            errors = []
+            if close_error is not None:
+                errors.append(f"client.close() 失败：{close_error}")
+            if cleanup_error is not None:
+                errors.append(f"临时目录清理失败：{cleanup_error}")
+            message = (
                 "无法释放向量库只读快照资源（可能有 daemon/indexer 持有文件），"
-                f"请稍后重试：{cleanup_error}"
-            ) from cleanup_error
+                f"请稍后重试：{'; '.join(errors)}"
+            )
+            error = close_error if close_error is not None else cleanup_error
+            assert error is not None
+            raise VectorStoreReadError(message) from error
 
     def _create_consistent_snapshot(self) -> Path:
         """在复制前后清单稳定时返回只读快照，否则有限重试。"""
@@ -318,6 +341,7 @@ class VectorStore:
                     path=str(snapshot),
                     settings=Settings(anonymized_telemetry=False, allow_reset=True),
                 )
+                self._owns_read_only_client = True
             self.collection = self.client.get_collection(name="notes")
             return self.collection
         except VectorStoreReadError:
@@ -326,10 +350,13 @@ class VectorStore:
             read_error = VectorStoreReadError(
                 f"Unable to read vector collection at {self.persist_directory}: {exc}"
             )
-            try:
-                self._discard_read_only_snapshot()
-            except VectorStoreReadError as cleanup_error:
-                raise VectorStoreReadError(f"{read_error}; {cleanup_error}") from read_error
+            if self._owns_read_only_client or self._read_only_tempdir is not None:
+                try:
+                    self._discard_read_only_snapshot()
+                except VectorStoreReadError as cleanup_error:
+                    raise VectorStoreReadError(f"{read_error}; {cleanup_error}") from read_error
+            else:
+                self.collection = None
             raise read_error from exc
 
     def get_all_embeddings(
@@ -337,7 +364,7 @@ class VectorStore:
     ) -> Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]:
         """通过严格不创建数据的读取路径返回已存向量。"""
         collection = self._get_existing_collection()
-        owns_snapshot = self._read_only_tempdir is not None
+        owns_snapshot = self._owns_read_only_client
         kwargs: Dict[str, Any] = {"include": ["embeddings", "metadatas"]}
         if note_type is not None:
             kwargs["where"] = {"type": note_type}
