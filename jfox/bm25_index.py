@@ -330,7 +330,8 @@ class BM25Index:
                     # metadata 版本相等或较旧时快路径都会用本地内存覆写孤儿数据
                     # （#396 issue-16；「较旧」分支的复活窗口见 #404 CR issue-1）
                     # → 强制 reload 采纳较新 pkl 并重放 pending，良性等价情形结果不变
-                    disk_version <= self._loaded_write_version and orphan_pkl
+                    disk_version <= self._loaded_write_version
+                    and orphan_pkl
                 )
                 if stale and not self._dirty_full_rebuild:
                     if orphan_pkl and disk_version == self._loaded_write_version:

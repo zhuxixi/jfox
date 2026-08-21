@@ -80,9 +80,9 @@ def test_knowledge_graph(isolated_config):
     # 验证
     assert len(graph.graph) == 2, f"Expected 2 nodes, got {len(graph.graph)}"
     # note2.links=[note1.id] 产生一条有向边 note2→note1
-    assert graph.graph.number_of_edges() == 1, (
-        f"Expected 1 edge (note2→note1), got {graph.graph.number_of_edges()}"
-    )
+    assert (
+        graph.graph.number_of_edges() == 1
+    ), f"Expected 1 edge (note2→note1), got {graph.graph.number_of_edges()}"
 
     # 测试 get_neighbors
     neighbors = graph.get_neighbors(note1.id)
