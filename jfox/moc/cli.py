@@ -31,12 +31,16 @@ _console = Console(legacy_windows=False, no_color=True)
 
 
 def _member_to_dict(member: Any) -> dict[str, Any]:
-    return {
+    result = {
         "id": member.id,
         "title": member.title,
         "link_degree": member.link_degree,
         "mean_similarity": member.mean_similarity,
     }
+    for flag in ("link_orphan", "semantic_orphan"):
+        if hasattr(member, flag):
+            result[flag] = bool(getattr(member, flag))
+    return result
 
 
 def report_to_dict(report: MocDiagnoseReport, kb: Optional[str] = None) -> dict[str, Any]:
@@ -116,7 +120,7 @@ def _fail(message: str, output_format: str) -> NoReturn:
     raise typer.Exit(code=1)
 
 
-def _render_table(report: MocDiagnoseReport) -> None:
+def _render_table(report: MocDiagnoseReport, top: int) -> None:
     """Render the report as four readable sections."""
     _console.print("Permanent coverage")
     coverage_table = Table(show_header=True, box=None)
@@ -124,9 +128,9 @@ def _render_table(report: MocDiagnoseReport) -> None:
     coverage_table.add_column("vector")
     coverage_table.add_column("bm25")
     coverage_table.add_row(
-        str(report.coverage.filesystem),
-        str(report.coverage.vector),
-        str(report.coverage.bm25),
+        str(report.coverage.filesystem) if report.coverage.filesystem is not None else "N/A",
+        str(report.coverage.vector) if report.coverage.vector is not None else "N/A",
+        str(report.coverage.bm25) if report.coverage.bm25 is not None else "N/A",
     )
     _console.print(coverage_table)
     for warning in report.coverage.warnings:
@@ -145,7 +149,8 @@ def _render_table(report: MocDiagnoseReport) -> None:
         )
     _console.print(threshold_table)
 
-    _console.print("Suggested MOC clusters")
+    threshold = report.suggest.threshold if report.suggest is not None else "N/A"
+    _console.print(f"Suggested MOC clusters (threshold={threshold}, top={top})")
     if report.suggest is None or not report.suggest.clusters:
         _console.print("(none)")
     else:
@@ -210,4 +215,4 @@ def diagnose_cmd(
     if output_format == "json":
         _json_console.print(json.dumps(payload, ensure_ascii=False, indent=2), soft_wrap=True)
     else:
-        _render_table(report)
+        _render_table(report, top)

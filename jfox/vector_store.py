@@ -2,6 +2,8 @@
 
 import logging
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -15,6 +17,10 @@ from .models import Note
 logger = logging.getLogger(__name__)
 
 
+class VectorStoreReadError(RuntimeError):
+    """Raised when an existing vector collection cannot be read."""
+
+
 class VectorStore:
     """向量存储封装"""
 
@@ -25,6 +31,7 @@ class VectorStore:
         self.persist_directory = persist_directory
         self.client = None
         self.collection = None
+        self._read_only_tempdir = None
 
     def init(self):
         """初始化 ChromaDB"""
@@ -204,24 +211,54 @@ class VectorStore:
             logger.error(f"Failed to get all IDs: {e}")
             return []
 
+    def _get_existing_collection(self):
+        """Open the existing Chroma collection without creating filesystem state."""
+        if self.collection is not None:
+            return self.collection
+        database_path = self.persist_directory / "chroma.sqlite3"
+        if not database_path.is_file():
+            raise VectorStoreReadError(f"Vector database does not exist: {database_path}")
+        try:
+            if self.client is None:
+                # Chroma opens SQLite in write mode even for get_collection(). Read a
+                # snapshot instead so diagnostics cannot update the live database mtime.
+                self._read_only_tempdir = tempfile.TemporaryDirectory(prefix="jfox-moc-chroma-")
+                snapshot = Path(self._read_only_tempdir.name) / "chroma_db"
+                shutil.copytree(self.persist_directory, snapshot)
+                self.client = chromadb.PersistentClient(
+                    path=str(snapshot),
+                    settings=Settings(anonymized_telemetry=False, allow_reset=True),
+                )
+            self.collection = self.client.get_collection(name="notes")
+            return self.collection
+        except Exception as exc:
+            raise VectorStoreReadError(
+                f"Unable to read vector collection at {self.persist_directory}: {exc}"
+            ) from exc
+
     def get_all_embeddings(
         self, note_type: Optional[str] = None
-    ) -> Tuple[List[str], List[Dict[str, Any]], np.ndarray]:
-        """Return indexed IDs, metadata, and stored embeddings without re-encoding text."""
-        if self.collection is None:
-            self.init()
-
+    ) -> Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]:
+        """Return stored embeddings through a strictly non-creating read path."""
+        collection = self._get_existing_collection()
         kwargs: Dict[str, Any] = {"include": ["embeddings", "metadatas"]}
         if note_type is not None:
             kwargs["where"] = {"type": note_type}
 
-        result = self.collection.get(**kwargs)
+        try:
+            result = collection.get(**kwargs)
+        except Exception as exc:
+            raise VectorStoreReadError(f"Unable to read vector embeddings: {exc}") from exc
         ids = list(result.get("ids") or [])
         metadatas = list(result.get("metadatas") or [])
         raw_embeddings = result.get("embeddings")
         if raw_embeddings is None or len(raw_embeddings) == 0:
             return ids, metadatas, np.empty((0, 0), dtype=np.float32)
-        return ids, metadatas, np.asarray(raw_embeddings, dtype=np.float32)
+        try:
+            embeddings = np.asarray(raw_embeddings, dtype=np.float32)
+        except (TypeError, ValueError) as exc:
+            raise VectorStoreReadError(f"Invalid vector embeddings: {exc}") from exc
+        return ids, metadatas, embeddings
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -229,7 +266,9 @@ class VectorStore:
             self.init()
 
         try:
-            count = self.collection.count()
+            collection = self.collection
+            assert collection is not None
+            count = collection.count()
             return {
                 "total_notes": count,
                 "persist_directory": str(self.persist_directory),
@@ -251,10 +290,12 @@ class VectorStore:
             self.init()
 
         try:
-            result = self.collection.get(include=[])
+            collection = self.collection
+            assert collection is not None
+            result = collection.get(include=[])
             ids = result.get("ids", [])
             if ids:
-                self.collection.delete(ids=ids)
+                collection.delete(ids=ids)
             logger.info(f"Cleared vector store ({len(ids)} notes removed)")
             return True
         except Exception as e:
@@ -276,14 +317,18 @@ class VectorStore:
             self.init()
 
         try:
-            self.client.delete_collection("notes")
+            client = self.client
+            assert client is not None
+            client.delete_collection("notes")
             logger.info("Deleted old collection 'notes'")
         except ValueError:
             # ChromaDB 对不存在的 collection 抛 ValueError，这是正常情况
             logger.debug("Collection 'notes' did not exist, skipping delete")
 
         try:
-            self.collection = self.client.get_or_create_collection(
+            client = self.client
+            assert client is not None
+            self.collection = client.get_or_create_collection(
                 name="notes", metadata={"hnsw:space": "cosine"}
             )
             logger.info("Recreated collection 'notes'")

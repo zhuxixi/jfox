@@ -13,7 +13,7 @@ from ..config import ZKConfig
 from ..graph import KnowledgeGraph
 from ..models import NoteType
 from ..note_index import get_note_index
-from ..vector_store import VectorStore
+from ..vector_store import VectorStore, VectorStoreReadError
 
 
 @dataclass
@@ -50,12 +50,24 @@ class ThresholdSummary:
 class CoverageReport:
     """Permanent-note counts across the filesystem and indexes."""
 
-    filesystem: int = 0
-    vector: int = 0
+    filesystem: Optional[int] = 0
+    vector: Optional[int] = 0
     vector_orphans: int = 0
-    bm25: int = 0
+    bm25: Optional[int] = 0
     bm25_coverage_ratio: Optional[float] = None
     warnings: List[str] = field(default_factory=list)
+
+
+@dataclass
+class OrphanNote:
+    """A live permanent note with explicit orphan-source flags."""
+
+    id: str
+    title: str
+    link_orphan: bool
+    semantic_orphan: bool
+    link_degree: int = 0
+    mean_similarity: float = 0.0
 
 
 @dataclass
@@ -63,7 +75,7 @@ class OrphanSummary:
     """Notes that are not connected semantically or by explicit links."""
 
     count: int = 0
-    notes: List[ClusterMember] = field(default_factory=list)
+    notes: List[OrphanNote] = field(default_factory=list)
 
 
 @dataclass
@@ -212,60 +224,106 @@ def diagnose_moc_density(
     if top < 1:
         raise ValueError("top must be at least 1")
 
-    note_index = get_note_index(config)
-    live_meta = {
-        meta.id: meta
-        for meta in note_index.get_all_meta()
-        if meta.type == NoteType.PERMANENT and not meta.archived
-    }
-    coverage = CoverageReport(filesystem=len(live_meta))
+    warnings: List[str] = []
+    try:
+        note_index = get_note_index(config)
+        live_meta = {
+            meta.id: meta
+            for meta in note_index.get_all_meta()
+            if meta.type == NoteType.PERMANENT and not meta.archived
+        }
+        filesystem_count: Optional[int] = len(live_meta)
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        live_meta = {}
+        filesystem_count = None
+        warnings.append(f"Filesystem coverage unavailable: {exc}")
+
+    coverage = CoverageReport(filesystem=filesystem_count, warnings=[])
 
     vector_store = VectorStore(persist_directory=config.chroma_dir)
-    vector_ids, vector_metadata, raw_embeddings = vector_store.get_all_embeddings("permanent")
+    try:
+        vector_ids, vector_metadata, raw_embeddings = vector_store.get_all_embeddings("permanent")
+    except VectorStoreReadError as exc:
+        raise MocDiagnoseError(str(exc)) from exc
+    if len(vector_ids) != len(vector_metadata):
+        raise MocDiagnoseError(
+            f"Corrupt permanent vector data: ids={len(vector_ids)}, "
+            f"metadata={len(vector_metadata)}"
+        )
+    if raw_embeddings.ndim != 2 or raw_embeddings.shape[0] != len(vector_ids):
+        raise MocDiagnoseError(
+            f"Corrupt permanent vector data: ids={len(vector_ids)}, "
+            f"embeddings_shape={raw_embeddings.shape}"
+        )
     coverage.vector = len(vector_ids)
+    if not vector_ids:
+        raise MocDiagnoseError("No permanent-note embeddings found; run `jfox index rebuild` first")
 
-    live_ids: List[str] = []
-    live_titles: List[str] = []
-    live_embeddings: List[np.ndarray] = []
+    # A filesystem failure still permits semantic diagnosis from permanent vector rows.
+    live_from_vectors = filesystem_count is None
+    if live_from_vectors:
+        warnings.append("Canonical frontmatter titles unavailable; using vector metadata")
+    records = []
     seen_live_ids = set()
     orphan_count = 0
     for index, note_id in enumerate(vector_ids):
-        if note_id not in live_meta or note_id in seen_live_ids:
+        metadata = vector_metadata[index]
+        if metadata is None:
+            metadata = {}
+        elif not isinstance(metadata, dict):
+            raise MocDiagnoseError(
+                f"Corrupt permanent vector metadata for {note_id}: expected an object"
+            )
+        if (not live_from_vectors and note_id not in live_meta) or note_id in seen_live_ids:
             orphan_count += 1
             continue
         seen_live_ids.add(note_id)
-        live_ids.append(note_id)
-        metadata = vector_metadata[index] if index < len(vector_metadata) else {}
-        live_titles.append(str(metadata.get("title") or live_meta[note_id].title))
-        live_embeddings.append(raw_embeddings[index])
+        title = (
+            live_meta[note_id].title
+            if note_id in live_meta
+            else str(metadata.get("title") or note_id)
+        )
+        records.append((note_id, title, raw_embeddings[index]))
+    records.sort(key=lambda record: record[0])
+    live_ids = [record[0] for record in records]
+    live_titles = [record[1] for record in records]
+    title_by_id = {record[0]: record[1] for record in records}
+    title_by_id.update({note_id: meta.title for note_id, meta in live_meta.items()})
+    live_embeddings = [record[2] for record in records]
     coverage.vector_orphans = orphan_count
 
-    if not live_embeddings:
-        raise MocDiagnoseError(
-            "No live permanent-note embeddings found; run `jfox index rebuild` first"
-        )
-
-    embeddings = np.asarray(live_embeddings, dtype=np.float32)
+    embeddings = np.asarray(live_embeddings, dtype=np.float32).reshape(
+        (len(live_embeddings), raw_embeddings.shape[1])
+    )
     similarity = compute_similarity(embeddings)
 
-    bm25_index = BM25Index(index_dir=config.zk_dir)
-    live_bm25_ids = {
-        note_id
-        for note_id, note_type in zip(bm25_index.doc_ids, bm25_index.doc_types)
-        if note_type == NoteType.PERMANENT.value and note_id in live_meta
-    }
-    coverage.bm25 = len(live_bm25_ids)
-    coverage.bm25_coverage_ratio = (
-        coverage.bm25 / coverage.filesystem if coverage.filesystem else None
-    )
-    if coverage.bm25_coverage_ratio is not None and coverage.bm25_coverage_ratio < 0.9:
-        coverage.warnings.append(
-            f"BM25 permanent coverage {coverage.bm25_coverage_ratio:.0%} < 90%"
+    try:
+        bm25_index = BM25Index(index_dir=config.zk_dir)
+        if not bm25_index.index_path.exists() or not bm25_index.metadata_path.exists():
+            raise OSError("BM25 index files are missing")
+        bm25_ids = list(bm25_index.doc_ids)
+        bm25_types = list(bm25_index.doc_types)
+        if len(bm25_ids) != len(bm25_types):
+            raise ValueError("BM25 document IDs and types have different lengths")
+        bm25_live_ids = set(live_meta) if live_meta else set(live_ids)
+        live_bm25_ids = {
+            note_id
+            for note_id, note_type in zip(bm25_ids, bm25_types)
+            if note_type == NoteType.PERMANENT.value and note_id in bm25_live_ids
+        }
+        coverage.bm25 = len(live_bm25_ids)
+        coverage.bm25_coverage_ratio = (
+            coverage.bm25 / coverage.filesystem if coverage.filesystem else None
         )
+        if coverage.bm25_coverage_ratio is not None and coverage.bm25_coverage_ratio < 0.9:
+            warnings.append(f"BM25 permanent coverage {coverage.bm25_coverage_ratio:.0%} < 90%")
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        coverage.bm25 = None
+        coverage.bm25_coverage_ratio = None
+        warnings.append(f"BM25 coverage unavailable: {exc}")
     if coverage.vector_orphans:
-        coverage.warnings.append(
-            f"Vector index contains {coverage.vector_orphans} permanent orphan(s)"
-        )
+        warnings.append(f"Vector index contains {coverage.vector_orphans} permanent orphan(s)")
+    coverage.warnings = list(warnings)
 
     threshold_sweep = [
         build_threshold_summary(similarity, threshold, min_size) for threshold in thresholds
@@ -316,22 +374,29 @@ def diagnose_moc_density(
         clusters=detailed_clusters[:top],
     )
 
-    semantic_orphans = set(semantic_orphan_indices(len(live_ids), suggested_summary.clusters))
-    graph_orphans = {
-        index
-        for index, note_id in enumerate(live_ids)
-        if graph_available and link_degrees[note_id] == 0
+    semantic_orphan_indices_set = set(
+        semantic_orphan_indices(len(live_ids), suggested_summary.clusters)
+    )
+    semantic_orphan_ids = {live_ids[index] for index in semantic_orphan_indices_set}
+    graph_orphan_ids = {
+        note_id for note_id in live_meta if graph_available and link_degrees.get(note_id, 0) == 0
     }
-    orphan_indices = sorted(semantic_orphans | graph_orphans)
-    orphan_notes = [
-        ClusterMember(
-            id=live_ids[index],
-            title=live_titles[index],
-            link_degree=link_degrees.get(live_ids[index], 0),
-            mean_similarity=float(np.mean(similarity[index])),
+    orphan_ids = sorted(semantic_orphan_ids | graph_orphan_ids)
+    vector_index_by_id = {note_id: index for index, note_id in enumerate(live_ids)}
+    orphan_notes = []
+    for note_id in orphan_ids:
+        index = vector_index_by_id.get(note_id)
+        mean_similarity = float(np.mean(similarity[index])) if index is not None else 0.0
+        orphan_notes.append(
+            OrphanNote(
+                id=note_id,
+                title=title_by_id.get(note_id, note_id),
+                link_orphan=note_id in graph_orphan_ids,
+                semantic_orphan=note_id in semantic_orphan_ids,
+                link_degree=link_degrees.get(note_id, 0),
+                mean_similarity=mean_similarity,
+            )
         )
-        for index in orphan_indices
-    ]
 
     return MocDiagnoseReport(
         coverage=coverage,

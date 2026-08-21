@@ -131,6 +131,39 @@ def _permanent_meta(note_id: str, title: str, *, archived: bool = False) -> Note
     )
 
 
+def test_diagnose_sorting_is_independent_of_vector_store_order():
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    metas = [_permanent_meta("p0", "P0"), _permanent_meta("p1", "P1")]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.return_value = 0
+    graph.graph.out_degree.return_value = 0
+    bm25 = MagicMock(index_path=Path("x"), metadata_path=Path("y"), doc_ids=[], doc_types=[])
+
+    def run(ids):
+        vectors = {"p0": [1.0, 0.0], "p1": [0.99, 0.01]}
+        store = MagicMock()
+        store.get_all_embeddings.return_value = (
+            ids,
+            [None for _ in ids],
+            np.array([vectors[note_id] for note_id in ids], dtype=np.float32),
+        )
+        with (
+            patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+            patch("jfox.moc.cluster.VectorStore", return_value=store),
+            patch("jfox.moc.cluster.BM25Index", return_value=bm25),
+            patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+        ):
+            report = diagnose_moc_density(config, [0.9], 2, 0.9, 10)
+        from jfox.moc.cli import report_to_dict
+
+        return report_to_dict(report, kb="test")
+
+    assert run(["p0", "p1"]) == run(["p1", "p0"])
+
+
 def test_diagnose_filters_archived_and_orphan_vectors_and_enriches_graph():
     config = ZKConfig(base_dir=Path("/tmp/moc-test"))
     live_meta = [_permanent_meta(f"p{i}", f"Permanent {i}") for i in range(5)]
@@ -242,6 +275,112 @@ def test_diagnose_graph_failure_falls_back_to_mean_similarity():
         member.mean_similarity for member in report.suggest.clusters[0].members
     )
     assert report.suggest.clusters[0].hub.mean_similarity > 0.9
+
+
+def test_diagnose_all_orphan_vectors_returns_empty_clusters():
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    metas = [_permanent_meta("p0", "P0", archived=True)]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0", "ghost"],
+        [None, {"title": "Ghost"}],
+        np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+    )
+    graph = MagicMock()
+    graph.build.return_value = graph
+
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch(
+            "jfox.moc.cluster.BM25Index",
+            return_value=MagicMock(index_path=Path("x"), metadata_path=Path("y")),
+        ),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    assert report.coverage.vector_orphans == 2
+    assert report.suggest is not None
+    assert report.suggest.clusters == []
+    assert report.threshold_sweep[0].orphan_count == 0
+
+
+def test_diagnose_includes_missing_vector_link_orphan_and_flags():
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    metas = [_permanent_meta(f"p{i}", f"P{i}") for i in range(5)]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0", "p1", "p2", "p4"],
+        [None, None, None, None],
+        np.array([[1.0, 0.0], [0.99, 0.01], [0.0, 1.0], [0.0, 0.0]], dtype=np.float32),
+    )
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.side_effect = lambda note_id: {"p0": 1, "p1": 1, "p2": 1}.get(note_id, 0)
+    graph.graph.out_degree.return_value = 0
+    bm25 = MagicMock(index_path=Path("x"), metadata_path=Path("y"), doc_ids=[], doc_types=[])
+
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch("jfox.moc.cluster.BM25Index", return_value=bm25),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    orphan = {note.id: note for note in report.orphans.notes}
+    assert orphan["p2"].semantic_orphan is True
+    assert orphan["p2"].link_orphan is False
+    assert orphan["p3"].semantic_orphan is False
+    assert orphan["p3"].link_orphan is True
+    assert orphan["p4"].semantic_orphan is True
+    assert orphan["p4"].link_orphan is True
+
+
+def test_diagnose_filesystem_failure_keeps_semantic_report_with_na_coverage():
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0", "p1"],
+        [{"title": "P0"}, {"title": "P1"}],
+        np.array([[1.0, 0.0], [0.99, 0.01]], dtype=np.float32),
+    )
+    with (
+        patch("jfox.moc.cluster.get_note_index", side_effect=OSError("notes unreadable")),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch("jfox.moc.cluster.BM25Index", side_effect=OSError("bm25 unreadable")),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    assert report.coverage.filesystem is None
+    assert report.coverage.bm25 is None
+    assert report.coverage.bm25_coverage_ratio is None
+    assert report.suggest is not None
+    assert any("Filesystem coverage unavailable" in warning for warning in report.warnings)
+    assert any("BM25 coverage unavailable" in warning for warning in report.warnings)
+
+
+def test_diagnose_rejects_vector_length_mismatch():
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = [_permanent_meta("p0", "P0")]
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0"],
+        [None],
+        np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+    )
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+    ):
+        with pytest.raises(MocDiagnoseError, match="embeddings_shape"):
+            diagnose_moc_density(config, [0.65], 2, 0.65, 10)
 
 
 def test_diagnose_empty_vectors_raises_rebuild_hint():

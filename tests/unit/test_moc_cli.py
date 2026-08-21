@@ -9,13 +9,14 @@ import pytest
 from typer.testing import CliRunner
 
 from jfox.cli import app
-from jfox.moc.cli import moc_app
+from jfox.moc.cli import moc_app, report_to_dict
 from jfox.moc.cluster import (
     ClusterMember,
     ClusterSummary,
     CoverageReport,
     MocDiagnoseError,
     MocDiagnoseReport,
+    OrphanNote,
     OrphanSummary,
     SuggestedReport,
     ThresholdSummary,
@@ -46,7 +47,7 @@ def _report() -> MocDiagnoseReport:
             threshold=0.65,
             clusters=[ClusterSummary(size=1, members=[member], hub=member)],
         ),
-        orphans=OrphanSummary(count=2, notes=[member]),
+        orphans=OrphanSummary(count=2, notes=[OrphanNote("1", "Alpha", True, True)]),
         warnings=["diagnostic warning"],
     )
 
@@ -100,6 +101,51 @@ def test_diagnose_json_preserves_long_multi_word_error_without_ansi():
     payload = json.loads(result.output)
     assert payload["error"] == message
     assert "\x1b" not in result.output
+
+
+def test_report_json_includes_orphan_source_flags_and_null_coverage():
+    report = _report()
+    report.coverage.filesystem = None
+    report.coverage.bm25 = None
+    report.orphans = OrphanSummary(
+        count=3,
+        notes=[
+            OrphanNote("both", "Both", True, True),
+            OrphanNote("link", "Link", True, False),
+            OrphanNote("semantic", "Semantic", False, True),
+        ],
+    )
+
+    payload = report_to_dict(report)
+
+    assert payload["coverage"]["filesystem"] is None
+    assert payload["coverage"]["bm25"] is None
+    assert payload["orphans"]["notes"] == [
+        {
+            "id": "both",
+            "title": "Both",
+            "link_degree": 0,
+            "mean_similarity": 0.0,
+            "link_orphan": True,
+            "semantic_orphan": True,
+        },
+        {
+            "id": "link",
+            "title": "Link",
+            "link_degree": 0,
+            "mean_similarity": 0.0,
+            "link_orphan": True,
+            "semantic_orphan": False,
+        },
+        {
+            "id": "semantic",
+            "title": "Semantic",
+            "link_degree": 0,
+            "mean_similarity": 0.0,
+            "link_orphan": False,
+            "semantic_orphan": True,
+        },
+    ]
 
 
 def test_diagnose_table_has_four_sections_and_permanent_only_coverage():
