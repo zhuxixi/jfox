@@ -67,13 +67,14 @@ def test_moc_create_help_registers_exact_contract():
     assert "--include-orphans" in " ".join(lines)
 
 
-def test_moc_group_help_lists_create():
-    """moc --help 列出 create 命令（update 在 Task 5 添加后补验）。"""
+def test_moc_group_help_lists_create_and_update():
+    """moc --help 同时列出 create 和 update 命令。"""
     result = runner.invoke(app, ["moc", "--help"])
 
     assert result.exit_code == 0
     lines = _help_lines(result.output)
     assert "│ create 从诊断主题簇生成 MOC 笔记草稿（dry-run 默认，--yes 落盘）。 │" in lines
+    assert "│ update 重扫主题簇，diff 现有 MOC 成员（增补新笔记、摘除死链）。 │" in lines
 
 
 def test_create_dry_run_prints_draft_without_writing():

@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ..config import ZKConfig, config, use_kb
-from ..models import Note
+from ..models import Note, NoteType
 from ..note_index import get_note_index
 from . import MocDiagnoseError
 
@@ -31,6 +31,41 @@ def write_moc(*args: Any, **kwargs: Any) -> Any:
     from .generate import write_moc as _write_moc
 
     return _write_moc(*args, **kwargs)
+
+
+def list_notes(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 note.list_notes，避免根命令启动时引入重依赖。"""
+    from ..note import list_notes as _list_notes
+
+    return _list_notes(*args, **kwargs)
+
+
+def load_note_by_id(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 note.load_note_by_id。"""
+    from ..note import load_note_by_id as _load
+
+    return _load(*args, **kwargs)
+
+
+def update_note(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 note.update_note。"""
+    from ..note import update_note as _update_note
+
+    return _update_note(*args, **kwargs)
+
+
+def backfill_moc_backlinks(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 generate.backfill_moc_backlinks。"""
+    from .generate import backfill_moc_backlinks as _backfill
+
+    return _backfill(*args, **kwargs)
+
+
+def remove_moc_backlinks(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 generate.remove_moc_backlinks。"""
+    from .generate import remove_moc_backlinks as _remove
+
+    return _remove(*args, **kwargs)
 
 
 moc_app = typer.Typer(name="moc", help="诊断和维护 MOC 结构层", no_args_is_help=True)
@@ -314,6 +349,133 @@ def create_cmd(
         _json_console.print(json.dumps(payload, ensure_ascii=False, indent=2), soft_wrap=True)
     else:
         _render_draft(draft, cluster)
+
+
+def _update_impl(
+    active_config: ZKConfig,
+    moc_id: Optional[str],
+    threshold: float,
+    apply: bool,
+) -> tuple[list[dict[str, Any]], list[Note]]:
+    """update 核心逻辑：诊断一次 → 每个 structure 笔记匹配簇 → diff → 可选应用。
+
+    返回 (payloads, changed)：payloads 是每个 MOC 的 diff；changed 是实际更新的 Note 列表。
+    """
+    # 延迟导入：draft.py → cluster.py → networkx/numpy，不能在模块顶层加载
+    from .draft import build_update_diff
+
+    if moc_id is not None:
+        moc = load_note_by_id(moc_id)
+        if moc is None:
+            raise MocDiagnoseError(f"MOC note not found: {moc_id}")
+        if moc.type != NoteType.STRUCTURE:
+            raise MocDiagnoseError(f"Note {moc_id} is not a structure note (type={moc.type.value})")
+        moc_notes = [moc]
+    else:
+        moc_notes = list_notes(note_type=NoteType.STRUCTURE, cfg=active_config)
+    if not moc_notes:
+        raise MocDiagnoseError("No structure notes found; run `jfox moc create` first")
+
+    report = diagnose_moc_density(
+        active_config,
+        thresholds=[threshold],
+        min_size=2,
+        suggest_threshold=threshold,
+        top=100,
+    )
+    clusters = report.suggest.clusters if report.suggest is not None else []
+
+    note_index = get_note_index(active_config)
+    live_permanent_ids = {
+        meta.id
+        for meta in note_index.get_all_meta()
+        if meta.type == NoteType.PERMANENT and not meta.archived
+    }
+
+    payloads: list[dict[str, Any]] = []
+    changed: list[Note] = []
+    for moc in moc_notes:
+        current = set(moc.links)
+        # 匹配：与 links 交集最大的簇
+        best: Optional[Any] = None
+        best_overlap = -1
+        for cluster in clusters:
+            overlap = len(current & {m.id for m in cluster.members})
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best = cluster
+        if best is None or best_overlap == 0:
+            payloads.append(
+                {
+                    "moc_id": moc.id,
+                    "moc_title": moc.title,
+                    "add": [],
+                    "remove": [],
+                    "kept": 0,
+                    "warning": "no matching cluster; skipped",
+                }
+            )
+            continue
+
+        diff = build_update_diff(moc.links, best.members, live_permanent_ids)
+        payload: dict[str, Any] = {
+            "moc_id": moc.id,
+            "moc_title": moc.title,
+            "add": [_member_to_dict(m) for m in diff.add],
+            "remove": list(diff.remove),
+            "kept": diff.kept,
+        }
+        payloads.append(payload)
+
+        if apply and (diff.add or diff.remove):
+            add_ids = [m.id for m in diff.add]
+            moc.links = sorted(set(moc.links + add_ids) - set(diff.remove))
+            update_note(moc)
+            backfill_moc_backlinks(moc, add_ids)
+            remove_moc_backlinks(moc.id, diff.remove)
+            changed.append(moc)
+
+    return payloads, changed
+
+
+@moc_app.command(
+    "update",
+    help="重扫主题簇，diff 现有 MOC 成员（增补新笔记、摘除死链）。",
+)
+def update_cmd(
+    moc_id: Optional[str] = typer.Option(None, "--id", help="MOC 笔记 id（缺省=全部 structure）"),
+    threshold: float = typer.Option(0.65, "--threshold"),
+    yes: bool = typer.Option(False, "--yes"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+) -> None:
+    """重扫主题簇，diff 现有 MOC 成员。"""
+    if output_format not in {"table", "json"}:
+        _fail("format must be table or json", output_format)
+    if not 0 < threshold < 1:
+        _fail("threshold must be strictly between 0 and 1", output_format)
+
+    try:
+        with use_kb(kb):
+            active_config = ZKConfig.for_kb(config.base_dir)
+            payloads, changed = _update_impl(active_config, moc_id, threshold, yes)
+    except (MocDiagnoseError, ValueError, OSError) as exc:
+        _fail(str(exc), output_format)
+
+    wrapper = {"success": True, "updates": payloads, "applied": len(changed) > 0}
+    if output_format == "json":
+        _json_console.print(json.dumps(wrapper, ensure_ascii=False, indent=2), soft_wrap=True)
+    else:
+        for payload in payloads:
+            _console.print(f"[{payload['moc_id']}] {payload['moc_title']}")
+            for member in payload["add"]:
+                _console.print(f"  + [[{member['title']}]] ({member['id']})")
+            for rid in payload["remove"]:
+                _console.print(f"  - {rid} (dead link)")
+            if not payload["add"] and not payload["remove"]:
+                _console.print("  (no changes)")
+            if payload.get("warning"):
+                _console.print(f"  Warning: {payload['warning']}")
 
 
 @moc_app.command(
