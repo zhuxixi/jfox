@@ -120,3 +120,17 @@ def test_remove_moc_backlinks_strips_moc_id(seeded_kb):
     for mid in MEMBER_IDS:
         member = load_note_by_id(mid)
         assert moc.id not in member.backlinks
+
+
+def test_write_moc_raises_when_save_fails(seeded_kb, monkeypatch):
+    """save_note 写盘失败时 write_moc 应 raise，不回填 backlinks。"""
+    # save_note 在 write_moc 函数内部 lazy import（from ..note import save_note），
+    # 因此 patch jfox.note.save_note 才能拦截。
+    draft = _draft(seeded_kb)
+    monkeypatch.setattr("jfox.note.save_note", lambda note: False)
+    with pytest.raises(OSError, match="Failed to save MOC note"):
+        write_moc(draft)
+
+    # 确认没有回填 backlinks（成员 backlinks 不含 MOC id）
+    structure_notes = list_notes(note_type=NoteType.STRUCTURE, cfg=seeded_kb)
+    assert len(structure_notes) == 0

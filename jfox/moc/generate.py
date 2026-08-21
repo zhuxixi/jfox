@@ -34,7 +34,9 @@ def write_moc(draft: MocCreateDraft) -> Note:
         links=member_ids,
     )
     # create_note 只构造对象不落盘；save_note 才写文件 + 进索引（与 CLI add 一致）。
-    save_note(moc)
+    # 检查返回值：写盘失败时不继续回填 backlinks，避免成员笔记指向不存在的 MOC（#413 final review）。
+    if not save_note(moc):
+        raise OSError(f"Failed to save MOC note {moc.id}")
     # save_note 不更新 NoteIndex；补一次 update_note_meta 让 list_notes 能发现新 MOC。
     get_note_index().update_note_meta(moc)
     backfill_moc_backlinks(moc, member_ids)
