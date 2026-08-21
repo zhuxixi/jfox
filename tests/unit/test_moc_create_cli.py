@@ -143,7 +143,9 @@ def test_create_yes_table_shows_confirmation():
 
     assert result.exit_code == 0
     output = _strip_ansi(result.output)
-    assert "Created MOC 20260822000001 at /tmp/fake-moc.md" in output
+    # 路径断言不做分隔符假设（Windows 为反斜杠），只断言确认行与 id/路径出现
+    assert "Created MOC 20260822000001 at" in output
+    assert str(fake_moc.filepath) in output
 
 
 def test_create_rejects_oversized_cluster():
