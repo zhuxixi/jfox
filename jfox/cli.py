@@ -37,6 +37,7 @@ from rich.tree import Tree
 from . import __version__, note
 from .config import config
 from .kb_manager import get_kb_manager
+from .moc.cli import moc_app
 from .models import NoteType
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
 from .template_cli import template_app
@@ -93,6 +94,7 @@ def _main(
 
 # 添加子命令
 app.add_typer(template_app, name="template", help="Manage note templates")
+app.add_typer(moc_app, name="moc", help="诊断和维护 MOC 结构层")
 
 # Model 下载子命令
 model_app = typer.Typer(name="model", help="模型管理")
