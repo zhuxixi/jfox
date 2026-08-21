@@ -232,6 +232,7 @@ def draft_to_dict(
     cluster: Any,
     draft: Any,
     created: Optional[dict] = None,
+    warnings: Optional[list[str]] = None,
 ) -> dict[str, Any]:
     """把创建结果转成稳定的 JSON 契约。"""
     return {
@@ -251,7 +252,7 @@ def draft_to_dict(
             "total_members": draft.total_members,
         },
         "created": created,
-        "warnings": [],
+        "warnings": list(warnings or []),
     }
 
 
@@ -284,7 +285,7 @@ def _create_impl(
     返回 (payload, moc, draft, cluster) 四元组，供 create_cmd 渲染 table 或 JSON。
     """
     # 延迟导入：draft.py → cluster.py → networkx/numpy，不能在模块顶层加载
-    from .draft import build_moc_draft
+    from .draft import build_moc_draft, filter_live_members
 
     report = diagnose_moc_density(
         active_config,
@@ -300,15 +301,22 @@ def _create_impl(
         )
     cluster = suggest.clusters[cluster_index]
     note_index = get_note_index(active_config)
-    tags_by_id = {meta.id: list(meta.tags) for meta in note_index.get_all_meta()}
+    all_meta = note_index.get_all_meta()
+    tags_by_id = {meta.id: list(meta.tags) for meta in all_meta}
+    # live permanent ids：用于落盘前过滤 ghost 成员（spec D6）
+    live_ids = {
+        meta.id for meta in all_meta if meta.type == NoteType.PERMANENT and not meta.archived
+    }
     orphans = report.orphans.notes if include_orphans else None
     draft = build_moc_draft(cluster, tags_by_id, max_size, orphans=orphans, title=title)
+    # 落盘前过滤 ghost 成员（spec D6：已归档/不存在的成员跳过并计入 warning）
+    draft, ghost_warnings = filter_live_members(draft, live_ids)
     created: Optional[dict[str, str]] = None
     moc: Optional[Note] = None
     if write:
         moc = write_moc(draft)
         created = {"id": moc.id, "filepath": str(moc.filepath)}
-    payload = draft_to_dict(threshold, cluster, draft, created)
+    payload = draft_to_dict(threshold, cluster, draft, created, warnings=ghost_warnings)
     return payload, moc, draft, cluster
 
 
@@ -349,6 +357,8 @@ def create_cmd(
         _json_console.print(json.dumps(payload, ensure_ascii=False, indent=2), soft_wrap=True)
     else:
         _render_draft(draft, cluster)
+        if moc is not None:
+            _console.print(f"Created MOC {moc.id} at {moc.filepath}")
 
 
 def _update_impl(
@@ -386,11 +396,9 @@ def _update_impl(
     clusters = report.suggest.clusters if report.suggest is not None else []
 
     note_index = get_note_index(active_config)
-    live_permanent_ids = {
-        meta.id
-        for meta in note_index.get_all_meta()
-        if meta.type == NoteType.PERMANENT and not meta.archived
-    }
+    # live_note_ids 覆盖任意笔记类型（不限 permanent）：
+    # 死链判定按「已归档/不存在」，live 但非 permanent 的链接不摘除（spec D7）
+    live_note_ids = {meta.id for meta in note_index.get_all_meta() if not meta.archived}
 
     payloads: list[dict[str, Any]] = []
     changed: list[Note] = []
@@ -417,7 +425,7 @@ def _update_impl(
             )
             continue
 
-        diff = build_update_diff(moc.links, best.members, live_permanent_ids)
+        diff = build_update_diff(moc.links, best.members, live_note_ids)
         payload: dict[str, Any] = {
             "moc_id": moc.id,
             "moc_title": moc.title,
@@ -425,15 +433,19 @@ def _update_impl(
             "remove": list(diff.remove),
             "kept": diff.kept,
         }
-        payloads.append(payload)
 
         if apply and (diff.add or diff.remove):
             add_ids = [m.id for m in diff.add]
             moc.links = sorted(set(moc.links + add_ids) - set(diff.remove))
-            update_note(moc)
+            # 检查 update_note 返回值：写盘失败时不回填/摘除 backlinks（与 write_moc 对齐，#413 CR issue-1）
+            if not update_note(moc):
+                payload["warning"] = "update failed; backlinks untouched"
+                payloads.append(payload)
+                continue
             backfill_moc_backlinks(moc, add_ids)
             remove_moc_backlinks(moc.id, diff.remove)
             changed.append(moc)
+        payloads.append(payload)
 
     return payloads, changed
 

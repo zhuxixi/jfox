@@ -25,7 +25,11 @@ def write_moc(draft: MocCreateDraft) -> Note:
     from ..note_index import get_note_index
 
     content = render_moc_content(draft)
-    member_ids = sorted({m.id for group in draft.groups for m in group.members})
+    # 成员 + 孤儿均进 links 并回填 backlinks（孤儿 wiki 链接与 links 语义一致，#413 CR issue-4）
+    member_ids = sorted(
+        {m.id for group in draft.groups for m in group.members}
+        | {o.id for o in draft.orphan_bucket}
+    )
     moc = create_note(
         content,
         title=draft.title,

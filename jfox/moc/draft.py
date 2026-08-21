@@ -129,20 +129,62 @@ class MocUpdateDiff:
     kept: int = 0
 
 
+def filter_live_members(
+    draft: MocCreateDraft,
+    live_ids: Set[str],
+) -> tuple[MocCreateDraft, list[str]]:
+    """过滤掉已归档/不存在的 ghost 成员，返回 (过滤后的 draft, 跳过成员的 warning 列表)。
+
+    - 从每个 group 中移除 id 不在 live_ids 的成员；空 group 丢弃。
+    - orphan_bucket 同样过滤。
+    - warnings 格式："skipped ghost member <id> (<title>)"。
+    - total_members 重算为剩余成员数。
+    """
+    warnings: list[str] = []
+    filtered_groups: list[DraftGroup] = []
+    for group in draft.groups:
+        kept_members = []
+        for member in group.members:
+            if member.id in live_ids:
+                kept_members.append(member)
+            else:
+                warnings.append(f"skipped ghost member {member.id} ({member.title})")
+        if kept_members:
+            filtered_groups.append(DraftGroup(name=group.name, members=kept_members))
+
+    filtered_orphans: list[OrphanNote] = []
+    for orphan in draft.orphan_bucket:
+        if orphan.id in live_ids:
+            filtered_orphans.append(orphan)
+        else:
+            warnings.append(f"skipped ghost member {orphan.id} ({orphan.title})")
+
+    total = len({m.id for g in filtered_groups for m in g.members})
+    filtered = MocCreateDraft(
+        title=draft.title,
+        groups=filtered_groups,
+        orphan_bucket=filtered_orphans,
+        total_members=total,
+    )
+    return filtered, warnings
+
+
 def build_update_diff(
     current_links: Sequence[str],
     cluster_members: Sequence[ClusterMember],
-    live_permanent_ids: Set[str],
+    live_note_ids: Set[str],
 ) -> MocUpdateDiff:
     """对比 MOC 现有 links 与当前簇成员。
 
     - add：簇内但不在 links 中的 live 成员。
-    - remove：links 中已不在 live_permanent_ids 的死链（已归档/已删除）。
+    - remove：links 中已不在 live_note_ids 的死链（已归档/已删除/不存在）。
+      live_note_ids 覆盖任意笔记类型（不限于 permanent），避免误摘 live 的
+      structure/literature 等非 permanent 链接（spec D7）。
     - kept：links 与簇成员的交集数。语义漂移不自动摘除（人工判断）。
     """
     member_ids = {m.id for m in cluster_members}
     current = set(current_links)
-    remove = sorted(mid for mid in current if mid not in live_permanent_ids)
+    remove = sorted(mid for mid in current if mid not in live_note_ids)
     add = [m for m in cluster_members if m.id not in current]
     kept = len(current & member_ids)
     return MocUpdateDiff(add=add, remove=remove, kept=kept)

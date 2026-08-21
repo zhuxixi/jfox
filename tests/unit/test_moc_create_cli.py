@@ -118,6 +118,31 @@ def test_create_yes_writes_moc():
     assert mock_write.call_count == 1
 
 
+def test_create_yes_table_shows_confirmation():
+    """table 模式 --yes 落盘后输出 Created MOC 确认行。"""
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with (
+            patch("jfox.moc.cli.get_note_index") as mock_index,
+            patch("jfox.moc.cli.write_moc") as mock_write,
+        ):
+            mock_index.return_value.get_all_meta.return_value = _mock_meta()
+            fake_moc = Note(
+                id="20260822000001",
+                title="Zima Hub MOC",
+                content="",
+                type=NoteType.STRUCTURE,
+                created=dt(2026, 8, 22),
+                updated=dt(2026, 8, 22),
+            )
+            fake_moc.set_filepath(__import__("pathlib").Path("/tmp/fake-moc.md"))
+            mock_write.return_value = fake_moc
+            result = runner.invoke(app, ["moc", "create", "--yes", "--format", "table"])
+
+    assert result.exit_code == 0
+    output = _strip_ansi(result.output)
+    assert "Created MOC 20260822000001 at /tmp/fake-moc.md" in output
+
+
 def test_create_rejects_oversized_cluster():
     """簇 size 超过 --max-size 时拒绝生成，输出错误。"""
     with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):

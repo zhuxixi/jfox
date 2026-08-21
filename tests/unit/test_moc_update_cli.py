@@ -179,6 +179,7 @@ def test_update_yes_applies_changes():
             patch("jfox.moc.cli.remove_moc_backlinks") as mock_remove,
         ):
             mock_index.return_value.get_all_meta.return_value = _mock_meta()
+            mock_update.return_value = True
             result = runner.invoke(app, ["moc", "update", "--yes", "--format", "json"])
 
     assert result.exit_code == 0
@@ -194,3 +195,25 @@ def test_update_yes_applies_changes():
     mock_remove.assert_called_once()
     remove_args = mock_remove.call_args[0]
     assert "99" in remove_args[1]
+
+
+def test_update_yes_skips_backfill_when_update_fails():
+    """update_note 返回 False 时不回填/摘除 backlinks，payload 含 warning。"""
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with (
+            patch("jfox.moc.cli.list_notes", return_value=[_moc_note()]),
+            patch("jfox.moc.cli.get_note_index") as mock_index,
+            patch("jfox.moc.cli.update_note", return_value=False),
+            patch("jfox.moc.cli.backfill_moc_backlinks") as mock_backfill,
+            patch("jfox.moc.cli.remove_moc_backlinks") as mock_remove,
+        ):
+            mock_index.return_value.get_all_meta.return_value = _mock_meta()
+            result = runner.invoke(app, ["moc", "update", "--yes", "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(_strip_ansi(result.output))
+    assert payload["applied"] is False
+    first = payload["updates"][0]
+    assert "update failed" in first["warning"]
+    mock_backfill.assert_not_called()
+    mock_remove.assert_not_called()
