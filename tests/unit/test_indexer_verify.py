@@ -73,9 +73,7 @@ class TestLegacyFilenameReconciliation:
         write_note(notes_dir, "permanent/202604120150293323-some-slug.md", "202604120150293323")
         write_note(notes_dir, "fleeting/20260412-0150293323.md", "202604120150293323")
         write_note(notes_dir, "session/202604120150293399-session-a.md", "202604120150293399")
-        indexer.vector_store = FakeVectorStore(
-            ["202604120150293323", "202604120150293399"]
-        )
+        indexer.vector_store = FakeVectorStore(["202604120150293323", "202604120150293399"])
 
         result = indexer.verify_index()
         assert result["healthy"] is True
