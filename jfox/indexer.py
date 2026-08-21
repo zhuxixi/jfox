@@ -8,13 +8,12 @@ Provides:
 - Index status and statistics
 """
 
-import re
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -25,31 +24,6 @@ from .config import ZKConfig
 from .vector_store import VectorStore
 
 console = Console()
-
-
-def _extract_note_id_from_filename(filename_stem: str) -> Optional[str]:
-    """
-    从文件名 stem 提取笔记 ID（18位纯数字时间戳）。
-
-    支持的文件名格式：
-    - Fleeting:     YYYYMMDD-HHMMSSNNNN  → 去掉连字符
-    - 其他类型:     YYYYMMDDHHMMSSNNNN-slug → 取前18位
-    - 纯 ID（无 slug）: YYYYMMDDHHMMSSNNNN → 直接返回
-
-    Args:
-        filename_stem: 文件名去掉 .md 扩展名的部分
-
-    Returns:
-        18 位纯数字 ID，或 None（不匹配任何已知格式时）
-    """
-    # Fleeting: YYYYMMDD-HHMMSSNNNN（8位日期-10位时间+随机数）
-    if re.match(r"^\d{8}-\d{10}$", filename_stem):
-        return filename_stem.replace("-", "")
-    # Literature/Permanent: 18位ID 后跟可选的 -slug
-    match = re.match(r"^(\d{18})(?:-.*)?$", filename_stem)
-    if match:
-        return match.group(1)
-    return None
 
 
 @dataclass
@@ -312,38 +286,56 @@ class Indexer:
 
         return False
 
-    def verify_index(self) -> Dict[str, any]:
+    def verify_index(self) -> Dict[str, Any]:
         """
-        Verify the index integrity.
+        Verify the vector store against note files, reconciling by frontmatter
+        note IDs. Filename format is irrelevant — legacy `14位时间戳-6位微秒-slug`
+        files reconcile correctly as long as their frontmatter `id` matches.
 
         Returns:
-            Dict with verification results
+            Dict with verification results (see unit tests for the contract).
         """
+        from .note_index import _parse_frontmatter_only
 
         notes_dir = Path(self.config.notes_dir)
         if not notes_dir.exists():
             return {"error": "Notes directory not found"}
 
-        # Get all note files
+        # 按 frontmatter 真实 id 收集文件（文件名格式无关）
+        # 解析失败的文件计入 unreadable，不参与对账
         note_files = list(notes_dir.rglob("*.md"))
-        file_ids = set()
+        id_to_files: Dict[str, List[str]] = {}
+        unreadable_files: List[str] = []
         for f in note_files:
-            note_id = _extract_note_id_from_filename(f.stem)
-            if note_id:
-                file_ids.add(note_id)
+            fm = _parse_frontmatter_only(f)
+            if fm is None or not fm.get("id"):
+                unreadable_files.append(str(f))
+                continue
+            note_id = str(fm["id"])
+            id_to_files.setdefault(note_id, []).append(str(f))
 
-        # Get all indexed notes
+        duplicate_ids = [
+            {"id": nid, "files": paths}
+            for nid, paths in sorted(id_to_files.items())
+            if len(paths) > 1
+        ]
+        file_ids = set(id_to_files)
+
         indexed_ids = set(self.vector_store.get_all_ids())
-
-        missing_from_index = file_ids - indexed_ids
-        orphaned_in_index = indexed_ids - file_ids
+        missing_from_index = sorted(file_ids - indexed_ids)
+        orphaned_in_index = sorted(indexed_ids - file_ids)
 
         return {
-            "total_files": len(file_ids),
+            "total_files": len(note_files),
+            "valid_files": sum(len(v) for v in id_to_files.values()),
+            "unique_ids": len(file_ids),
             "total_indexed": len(indexed_ids),
-            "missing_from_index": list(missing_from_index),
-            "orphaned_in_index": list(orphaned_in_index),
-            "healthy": len(missing_from_index) == 0 and len(orphaned_in_index) == 0,
+            "unreadable_files": unreadable_files,
+            "duplicate_ids": duplicate_ids,
+            "missing_from_index": missing_from_index,
+            "orphaned_in_index": orphaned_in_index,
+            "healthy": not missing_from_index and not orphaned_in_index,
+            "checked": "vector_store",
         }
 
 

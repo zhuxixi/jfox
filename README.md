@@ -297,7 +297,7 @@ jfox query "Luhmann's methodology" --depth 2
 |---------|-------------|
 | `jfox index status` | Show index health |
 | `jfox index rebuild` | Rebuild vector + BM25 indexes |
-| `jfox index verify` | Cross-check files vs indexed entries |
+| `jfox index verify` | Cross-check note files vs vector store entries by frontmatter IDs |
 
 ### Templates
 

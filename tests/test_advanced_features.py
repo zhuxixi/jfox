@@ -133,6 +133,9 @@ def test_indexer(isolated_config, mock_embedding_backend_for_vs):
     # 测试 verify_index
     verification = indexer.verify_index()
     assert verification["total_files"] == 1
+    assert verification["unique_ids"] == 1
+    assert verification["checked"] == "vector_store"
+    assert verification["healthy"] is True
 
 
 def test_note_manager(isolated_config):
@@ -220,6 +223,8 @@ def test_verify_index_matches_filenames_to_ids(isolated_config, mock_embedding_b
     )
     assert result["missing_from_index"] == []
     assert result["orphaned_in_index"] == []
+    assert result["unreadable_files"] == []
+    assert result["checked"] == "vector_store"
     assert result["total_files"] == 2
     assert result["total_indexed"] == 2
 
