@@ -1,17 +1,29 @@
 """ChromaDB 向量存储封装"""
 
+import copy
 import logging
 import re
+import shutil
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import chromadb
+import numpy as np
 from chromadb.config import Settings
 
 from .config import config
 from .models import Note
 
 logger = logging.getLogger(__name__)
+
+# 活跃数据库快照只做有限次尝试，避免写入持续进行时长时间阻塞命令。
+_READ_ONLY_SNAPSHOT_ATTEMPTS = 3
+_READ_ONLY_CLEANUP_ATTEMPTS = 3
+
+
+class VectorStoreReadError(RuntimeError):
+    """读取现有向量集合失败。"""
 
 
 class VectorStore:
@@ -22,8 +34,11 @@ class VectorStore:
             persist_directory = config.chroma_dir
 
         self.persist_directory = persist_directory
-        self.client = None
-        self.collection = None
+        self.client: Any = None
+        self.collection: Any = None
+        self._read_only_tempdir: Optional[tempfile.TemporaryDirectory[str]] = None
+        self._read_only_snapshot: Optional[Path] = None
+        self._owns_read_only_client = False
 
     def init(self):
         """初始化 ChromaDB"""
@@ -65,7 +80,9 @@ class VectorStore:
             embedding = backend.encode_single(document).tolist()
 
             # 添加到 ChromaDB
-            self.collection.add(
+            collection = self.collection
+            assert collection is not None
+            collection.add(
                 ids=[note.id],
                 documents=[document],
                 embeddings=[embedding],
@@ -140,7 +157,9 @@ class VectorStore:
                     where = tag_clauses[0]
 
             # 搜索
-            results = self.collection.query(
+            collection = self.collection
+            assert collection is not None
+            results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=top_k,
                 where=where if where else None,
@@ -172,7 +191,9 @@ class VectorStore:
             self.init()
 
         try:
-            self.collection.delete(ids=[note_id])
+            collection = self.collection
+            assert collection is not None
+            collection.delete(ids=[note_id])
             logger.debug(f"Deleted note {note_id} from vector store")
             return True
         except Exception as e:
@@ -183,7 +204,9 @@ class VectorStore:
         """添加或更新笔记（如果已存在则更新）"""
         # 先尝试删除旧的（如果存在）
         try:
-            self.collection.delete(ids=[note.id])
+            collection = self.collection
+            assert collection is not None
+            collection.delete(ids=[note.id])
         except Exception:
             pass  # 可能不存在，忽略错误
 
@@ -197,11 +220,191 @@ class VectorStore:
 
         try:
             # 获取所有数据
-            result = self.collection.get(include=[])
+            collection = self.collection
+            assert collection is not None
+            result = collection.get(include=[])
             return result.get("ids", [])
         except Exception as e:
             logger.error(f"Failed to get all IDs: {e}")
             return []
+
+    def _recursive_file_manifest(self) -> Tuple[Tuple[str, int, int], ...]:
+        """读取数据库目录的递归文件清单，用于检测复制期间的变化。"""
+        entries = []
+        for path in self.persist_directory.rglob("*"):
+            if not path.is_file():
+                continue
+            stat = path.stat()
+            entries.append(
+                (
+                    path.relative_to(self.persist_directory).as_posix(),
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                )
+            )
+        return tuple(sorted(entries))
+
+    def _discard_read_only_snapshot(self) -> None:
+        """关闭自有只读快照客户端并有限重试删除临时目录。"""
+        client = self.client
+        tempdir = self._read_only_tempdir
+        owns_client = self._owns_read_only_client
+        self.collection = None
+
+        close_error: Optional[BaseException] = None
+        base_exception: Optional[BaseException] = None
+        if owns_client:
+            close = getattr(client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:
+                    close_error = exc
+                except BaseException as exc:
+                    base_exception = exc
+
+        self.client = None if owns_client else client
+        self._owns_read_only_client = False
+        self._read_only_snapshot = None
+        self._read_only_tempdir = None
+
+        cleanup_error: Optional[BaseException] = None
+        if tempdir is not None:
+            for _attempt in range(_READ_ONLY_CLEANUP_ATTEMPTS):
+                try:
+                    tempdir.cleanup()
+                    cleanup_error = None
+                    break
+                except (OSError, RuntimeError) as exc:
+                    cleanup_error = exc
+                except Exception as exc:
+                    cleanup_error = exc
+                    break
+                except BaseException as exc:
+                    base_exception = exc
+                    break
+
+        if base_exception is not None:
+            raise base_exception
+
+        if close_error is not None or cleanup_error is not None:
+            errors = []
+            if close_error is not None:
+                errors.append(f"client.close() 失败：{close_error}")
+            if cleanup_error is not None:
+                errors.append(f"临时目录清理失败：{cleanup_error}")
+            message = (
+                "无法释放向量库只读快照资源（可能有 daemon/indexer 持有文件），"
+                f"请稍后重试：{'; '.join(errors)}"
+            )
+            error = close_error if close_error is not None else cleanup_error
+            assert error is not None
+            raise VectorStoreReadError(message) from error
+
+    def _create_consistent_snapshot(self) -> Path:
+        """在复制前后清单稳定时返回只读快照，否则有限重试。"""
+        last_error: Optional[BaseException] = None
+        for _attempt in range(_READ_ONLY_SNAPSHOT_ATTEMPTS):
+            self._discard_read_only_snapshot()
+            self._read_only_tempdir = tempfile.TemporaryDirectory(prefix="jfox-moc-chroma-")
+            snapshot = Path(self._read_only_tempdir.name) / "chroma_db"
+            try:
+                manifest_before = self._recursive_file_manifest()
+                shutil.copytree(self.persist_directory, snapshot)
+                manifest_after = self._recursive_file_manifest()
+                if manifest_before != manifest_after:
+                    last_error = RuntimeError("数据库文件清单在复制期间发生变化")
+                    continue
+                self._read_only_snapshot = snapshot
+                return snapshot
+            except (OSError, RuntimeError) as exc:
+                last_error = exc
+
+        self._discard_read_only_snapshot()
+        raise VectorStoreReadError(
+            f"无法为 {self.persist_directory} 创建一致的向量库只读快照：{last_error}。"
+            "可能有 daemon/indexer 正在写入，请稍后重试。"
+        ) from last_error
+
+    def _get_existing_collection(self):
+        """通过只读快照打开现有 Chroma 集合，不创建或修改原始数据库。"""
+        if self.collection is not None:
+            return self.collection
+        database_path = self.persist_directory / "chroma.sqlite3"
+        if not database_path.is_file():
+            raise VectorStoreReadError(f"Vector database does not exist: {database_path}")
+        try:
+            if self.client is None:
+                # Chroma 即使只读集合也会写 SQLite，因此只打开清单稳定的快照。
+                snapshot = self._create_consistent_snapshot()
+                self.client = chromadb.PersistentClient(
+                    path=str(snapshot),
+                    settings=Settings(anonymized_telemetry=False, allow_reset=True),
+                )
+                self._owns_read_only_client = True
+            self.collection = self.client.get_collection(name="notes")
+            return self.collection
+        except VectorStoreReadError:
+            raise
+        except Exception as exc:
+            read_error = VectorStoreReadError(
+                f"Unable to read vector collection at {self.persist_directory}: {exc}"
+            )
+            if self._owns_read_only_client or self._read_only_tempdir is not None:
+                try:
+                    self._discard_read_only_snapshot()
+                except VectorStoreReadError as cleanup_error:
+                    raise VectorStoreReadError(f"{read_error}; {cleanup_error}") from read_error
+            else:
+                self.collection = None
+            raise read_error from exc
+
+    def get_all_embeddings(
+        self, note_type: Optional[str] = None
+    ) -> Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]:
+        """通过严格不创建数据的读取路径返回已存向量。"""
+        collection = self._get_existing_collection()
+        owns_snapshot = self._owns_read_only_client
+        kwargs: Dict[str, Any] = {"include": ["embeddings", "metadatas"]}
+        if note_type is not None:
+            kwargs["where"] = {"type": note_type}
+
+        primary_error: Optional[VectorStoreReadError] = None
+        cleanup_error: Optional[VectorStoreReadError] = None
+        values: Optional[Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]] = None
+        try:
+            try:
+                result = collection.get(**kwargs)
+                ids = copy.deepcopy(list(result.get("ids") or []))
+                metadatas = copy.deepcopy(list(result.get("metadatas") or []))
+                raw_embeddings = result.get("embeddings")
+                if raw_embeddings is None or len(raw_embeddings) == 0:
+                    embeddings = np.empty((0, 0), dtype=np.float32)
+                else:
+                    try:
+                        embeddings = np.array(raw_embeddings, dtype=np.float32, copy=True)
+                    except (TypeError, ValueError) as exc:
+                        raise VectorStoreReadError(f"Invalid vector embeddings: {exc}") from exc
+                values = (ids, metadatas, embeddings)
+            except VectorStoreReadError as exc:
+                primary_error = exc
+            except Exception as exc:
+                primary_error = VectorStoreReadError(f"Unable to read vector embeddings: {exc}")
+        finally:
+            if owns_snapshot:
+                try:
+                    self._discard_read_only_snapshot()
+                except VectorStoreReadError as exc:
+                    cleanup_error = exc
+
+        if cleanup_error is not None:
+            if primary_error is not None:
+                raise VectorStoreReadError(f"{primary_error}; {cleanup_error}") from primary_error
+            raise cleanup_error
+        if primary_error is not None:
+            raise primary_error
+        assert values is not None
+        return values
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -209,7 +412,9 @@ class VectorStore:
             self.init()
 
         try:
-            count = self.collection.count()
+            collection = self.collection
+            assert collection is not None
+            count = collection.count()
             return {
                 "total_notes": count,
                 "persist_directory": str(self.persist_directory),
@@ -231,10 +436,12 @@ class VectorStore:
             self.init()
 
         try:
-            result = self.collection.get(include=[])
+            collection = self.collection
+            assert collection is not None
+            result = collection.get(include=[])
             ids = result.get("ids", [])
             if ids:
-                self.collection.delete(ids=ids)
+                collection.delete(ids=ids)
             logger.info(f"Cleared vector store ({len(ids)} notes removed)")
             return True
         except Exception as e:
@@ -256,14 +463,18 @@ class VectorStore:
             self.init()
 
         try:
-            self.client.delete_collection("notes")
+            client = self.client
+            assert client is not None
+            client.delete_collection("notes")
             logger.info("Deleted old collection 'notes'")
         except ValueError:
             # ChromaDB 对不存在的 collection 抛 ValueError，这是正常情况
             logger.debug("Collection 'notes' did not exist, skipping delete")
 
         try:
-            self.collection = self.client.get_or_create_collection(
+            client = self.client
+            assert client is not None
+            self.collection = client.get_or_create_collection(
                 name="notes", metadata={"hnsw:space": "cosine"}
             )
             logger.info("Recreated collection 'notes'")

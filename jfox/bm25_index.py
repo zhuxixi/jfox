@@ -56,6 +56,8 @@ class BM25Index:
         self._loaded_write_version: int = 0  # load 时记录的磁盘写入版本（乐观锁令牌）
         self._pending_ops: List[Tuple[str, str, str, Optional[str]]] = []  # 未落盘的增量操作
         self._dirty_full_rebuild: bool = False  # rebuild 后 save 走覆盖语义
+        self.load_status: str = "missing"
+        self.load_error: Optional[str] = None
         self._mem_lock = threading.RLock()  # 进程内内存状态锁（filelock 只串行化进程间写）
         # 权衡：写路径全程持锁执行 _save（含文件锁等待+pickle+fsync，慢盘可达数秒），
         # 会阻塞同进程 search/get_stats——换取状态一致性；daemon 查询延迟尖峰属已知取舍（#396 issue-6）
@@ -97,6 +99,11 @@ class BM25Index:
 
         return tokens
 
+    def _set_load_status(self, status: str, error: Optional[str] = None) -> None:
+        """Record the last disk-load outcome for read-only diagnostics."""
+        self.load_status = status
+        self.load_error = error
+
     def _load(self) -> bool:
         """
         从磁盘加载索引（事务式）
@@ -108,7 +115,12 @@ class BM25Index:
             是否成功加载
         """
         try:
-            if not self.index_path.exists() or not self.metadata_path.exists():
+            index_exists = self.index_path.exists()
+            metadata_exists = self.metadata_path.exists()
+            if not index_exists or not metadata_exists:
+                status = "missing"
+                error = "BM25 index files are missing"
+                self._set_load_status(status, error)
                 logger.info("BM25 index not found, will create new index")
                 return False
 
@@ -122,7 +134,9 @@ class BM25Index:
             # 检查版本，支持从 v1 迁移到 v2
             version = metadata.get("version")
             if version not in (1, self.INDEX_VERSION):
-                logger.warning(f"BM25 index version mismatch: {version} != {self.INDEX_VERSION}")
+                error = f"BM25 index version mismatch: {version} != {self.INDEX_VERSION}"
+                self._set_load_status("invalid", error)
+                logger.warning(error)
                 return False
 
             # 加载索引
@@ -147,7 +161,9 @@ class BM25Index:
             else:
                 # 校验 doc_types 必须是 list（支持 append 等可变操作）
                 if not isinstance(loaded_doc_types, list):
-                    logger.error(f"BM25 index doc_types is not a list: {type(loaded_doc_types)}")
+                    error = f"BM25 index doc_types is not a list: {type(loaded_doc_types)}"
+                    self._set_load_status("invalid", error)
+                    logger.error(error)
                     return False
                 doc_types = loaded_doc_types
 
@@ -158,30 +174,38 @@ class BM25Index:
                 and len(doc_types) == expected_len
                 and len(doc_mapping) == expected_len
             ):
-                logger.error(
+                error = (
                     "BM25 index data length mismatch: "
                     f"documents={len(documents)}, doc_ids={expected_len}, "
                     f"doc_types={len(doc_types)}, doc_mapping={len(doc_mapping)}"
                 )
+                self._set_load_status("invalid", error)
+                logger.error(error)
                 return False
 
             # 校验 doc_mapping 与 doc_ids 一一对应，且索引值在有效范围内
             for idx, note_id in enumerate(doc_ids):
                 if doc_mapping.get(note_id) != idx:
-                    logger.error(
+                    error = (
                         f"BM25 index mapping corrupted: note_id={note_id}, "
                         f"expected_idx={idx}, got={doc_mapping.get(note_id)}"
                     )
+                    self._set_load_status("invalid", error)
+                    logger.error(error)
                     return False
 
             # 校验 doc_types 元素类型
             if not all(dt is None or isinstance(dt, str) for dt in doc_types):
-                logger.error("BM25 index doc_types contains invalid element types")
+                error = "BM25 index doc_types contains invalid element types"
+                self._set_load_status("invalid", error)
+                logger.error(error)
                 return False
 
             # 校验 bm25 实例有效
             if bm25 is None and expected_len > 0:
-                logger.error("BM25 index corrupted: bm25 is None but documents exist")
+                error = "BM25 index corrupted: bm25 is None but documents exist"
+                self._set_load_status("invalid", error)
+                logger.error(error)
                 return False
 
             # 全部校验通过，一次性提交到实例
@@ -202,10 +226,13 @@ class BM25Index:
             if self.needs_rebuild:
                 logger.info("Loaded BM25 index needs rebuild to backfill doc_types")
 
+            self._set_load_status("loaded")
             logger.info(f"Loaded BM25 index: {len(self.doc_ids)} documents")
             return True
 
         except Exception as e:
+            error = f"{type(e).__name__}: {e}"
+            self._set_load_status("invalid", error)
             logger.error(f"Failed to load BM25 index: {e}")
             return False
 

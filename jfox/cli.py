@@ -128,6 +128,11 @@ from .bookshelf.cli import bookshelf_app  # noqa: E402
 
 app.add_typer(bookshelf_app, name="bookshelf", help="管理好书书架：PDF + 抽取 bundle + 元数据")
 
+# MOC 子命令组（只在命令注册区加载，避免引入向量和图谱重依赖）
+from .moc.cli import moc_app  # noqa: E402
+
+app.add_typer(moc_app, name="moc", help="诊断和维护 MOC 结构层")
+
 console = Console(legacy_windows=False)
 
 
@@ -873,7 +878,7 @@ def _warn_dimension_change(new_model: str):
     if new_model == "auto":
         return  # auto 模式不需要警告
     try:
-        import chromadb
+        import chromadb  # type: ignore[import-not-found]
 
         chroma_path = config.chroma_dir
         if not chroma_path.exists():
@@ -909,7 +914,7 @@ def _config_set_impl(key: str, value: str):
 
     # 类型转换
     if key == "batch_size":
-        value = int(value)
+        value = int(value)  # type: ignore[assignment]
 
     # 写入配置
     data[key] = value
@@ -2016,7 +2021,7 @@ def _graph_impl(
         if output_format == "json":
             print(output_json(result))
         else:
-            tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")
+            tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")  # type: ignore[union-attr]
 
             for depth_key, note_ids in related.items():
                 depth_num = depth_key.split("_")[1]
@@ -3748,7 +3753,7 @@ def _update_impl() -> dict:
         command_str = None
 
     try:
-        upgrade_result = _run_upgrade(command)
+        upgrade_result = _run_upgrade(command)  # type: ignore[arg-type]
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
