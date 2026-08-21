@@ -249,17 +249,23 @@ def diagnose_moc_density(
     similarity = compute_similarity(embeddings)
 
     bm25_index = BM25Index(index_dir=config.zk_dir)
-    bm25_count = sum(1 for note_type in bm25_index.doc_types if note_type == NoteType.PERMANENT.value)
-    coverage.bm25 = bm25_count
+    live_bm25_ids = {
+        note_id
+        for note_id, note_type in zip(bm25_index.doc_ids, bm25_index.doc_types)
+        if note_type == NoteType.PERMANENT.value and note_id in live_meta
+    }
+    coverage.bm25 = len(live_bm25_ids)
     coverage.bm25_coverage_ratio = (
-        bm25_count / coverage.filesystem if coverage.filesystem else None
+        coverage.bm25 / coverage.filesystem if coverage.filesystem else None
     )
     if coverage.bm25_coverage_ratio is not None and coverage.bm25_coverage_ratio < 0.9:
         coverage.warnings.append(
             f"BM25 permanent coverage {coverage.bm25_coverage_ratio:.0%} < 90%"
         )
     if coverage.vector_orphans:
-        coverage.warnings.append(f"Vector index contains {coverage.vector_orphans} permanent orphan(s)")
+        coverage.warnings.append(
+            f"Vector index contains {coverage.vector_orphans} permanent orphan(s)"
+        )
 
     threshold_sweep = [
         build_threshold_summary(similarity, threshold, min_size) for threshold in thresholds
@@ -312,7 +318,9 @@ def diagnose_moc_density(
 
     semantic_orphans = set(semantic_orphan_indices(len(live_ids), suggested_summary.clusters))
     graph_orphans = {
-        index for index, note_id in enumerate(live_ids) if graph_available and link_degrees[note_id] == 0
+        index
+        for index, note_id in enumerate(live_ids)
+        if graph_available and link_degrees[note_id] == 0
     }
     orphan_indices = sorted(semantic_orphans | graph_orphans)
     orphan_notes = [
@@ -320,7 +328,7 @@ def diagnose_moc_density(
             id=live_ids[index],
             title=live_titles[index],
             link_degree=link_degrees.get(live_ids[index], 0),
-            mean_similarity=0.0,
+            mean_similarity=float(np.mean(similarity[index])),
         )
         for index in orphan_indices
     ]

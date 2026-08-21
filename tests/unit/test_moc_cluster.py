@@ -154,7 +154,19 @@ def test_diagnose_filters_archived_and_orphan_vectors_and_enriches_graph():
     graph.graph.in_degree.side_effect = lambda note_id: {"p0": 4, "p1": 1}.get(note_id, 0)
     graph.graph.out_degree.side_effect = lambda note_id: 0
 
-    bm25 = MagicMock(doc_ids=["p0", "p1", "p2", "p3"], doc_types=["permanent"] * 4)
+    bm25 = MagicMock(
+        doc_ids=["p0", "p1", "p2", "p3", "p3", "archived", "ghost", "p4"],
+        doc_types=[
+            "permanent",
+            "permanent",
+            "permanent",
+            "permanent",
+            "permanent",
+            "permanent",
+            "permanent",
+            "session",
+        ],
+    )
     note_index = MagicMock()
     note_index.get_all_meta.return_value = live_meta + [archived]
     vector_store = MagicMock()
@@ -190,6 +202,9 @@ def test_diagnose_filters_archived_and_orphan_vectors_and_enriches_graph():
         report.suggest.clusters[0].hub.link_degree
         >= report.suggest.clusters[0].members[-1].link_degree
     )
+    p2_orphan = next(note for note in report.orphans.notes if note.id == "p2")
+    assert p2_orphan.mean_similarity > 0.0
+
 
 def test_diagnose_graph_failure_falls_back_to_mean_similarity():
     config = ZKConfig(base_dir=Path("/tmp/moc-test"))
