@@ -19,7 +19,7 @@ from jfox.moc.cluster import (
     ThresholdSummary,
 )
 from jfox.models import Note, NoteType
-from jfox.note import _atomic_write, list_notes, update_note
+from jfox.note import _atomic_write, list_notes, load_note_by_id, update_note
 from jfox.note_index import get_note_index
 
 
@@ -118,6 +118,11 @@ def test_create_then_update_end_to_end(seeded_kb):
     assert sorted(moc.links) == ["20260820000001", "20260820000002"]
     assert len(list_notes(note_type=NoteType.STRUCTURE, cfg=seeded_kb)) == 1
 
+    # D8: create 落盘后回填成员 backlinks（MOC id 进每个成员 backlinks）
+    for mid in ["20260820000001", "20260820000002"]:
+        member = load_note_by_id(mid)
+        assert moc.id in member.backlinks
+
     # --- 新增第三条 permanent + 注入一条死链 ---
     third = Note(
         id="20260820000003",
@@ -148,3 +153,7 @@ def test_create_then_update_end_to_end(seeded_kb):
     updated_moc = list_notes(note_type=NoteType.STRUCTURE, cfg=seeded_kb)[0]
     assert "20260820000003" in updated_moc.links
     assert "20260820999999" not in updated_moc.links
+
+    # D8: update apply 后新成员回填 backlinks（MOC id 进第 3 条 backlinks）
+    third_member = load_note_by_id("20260820000003")
+    assert updated_moc.id in third_member.backlinks
