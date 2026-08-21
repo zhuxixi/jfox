@@ -2,6 +2,21 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.7.2] - 2026-08-21
+
+### Fixes
+- **bm25**: 孤儿 tmp 无效时覆盖分支版本撞号，clear 数据复活（#403） (#404)
+- **bm25**: PR #396 cc round-4 遗留修复——clear 快照化/单边态自愈/tmp 消费闭环（#401） (#402)
+- **bm25**: 索引并发写乐观并发控制，根治 daemon 旧快照覆盖回滚（#391） (#396)
+- **update**: 升级期间显示进度提示，stdin 指向 DEVNULL 防挂住 (#394) (#395)
+
+### Changes
+- style(bm25): collapse multi-line condition to single line (pi-lens format)
+- **claude.md**: 记 delete_note backlinks 增量清理语义 (#388) (#397)
+- **claude.md**: 记 CI paths 触发限制（#382） (#384)
+
+[1.7.2]: https://github.com/zhuxixi/jfox/compare/v1.7.1...v1.7.2
+
 ## [1.7.1] - 2026-08-16
 
 ### Fixes
