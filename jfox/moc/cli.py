@@ -38,7 +38,7 @@ _json_console = Console(
     markup=False,
     no_color=True,
 )
-_console = Console(legacy_windows=False, no_color=True)
+_console = Console(legacy_windows=False, no_color=True, highlight=False)
 
 
 def _member_to_dict(member: Any) -> dict[str, Any]:

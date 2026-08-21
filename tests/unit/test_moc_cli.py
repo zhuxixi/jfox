@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from unittest.mock import MagicMock, patch
@@ -55,8 +56,16 @@ def _report() -> MocDiagnoseReport:
     )
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    """移除 rich/typer 在彩色终端下输出的 ANSI 转义码（如 CI 的 PY_COLORS=1）。"""
+    return _ANSI_RE.sub("", text)
+
+
 def _help_lines(output: str) -> list[str]:
-    return [" ".join(line.split()) for line in output.splitlines() if line.strip()]
+    return [" ".join(_strip_ansi(line).split()) for line in output.splitlines() if line.strip()]
 
 
 def test_root_help_registers_exact_moc_contract():
@@ -142,7 +151,7 @@ def test_suggest_threshold_must_be_in_sweep():
         ["diagnose", "--thresholds", "0.6,0.7", "--suggest-threshold", "0.65"],
     )
     assert result.exit_code == 1
-    assert "must be one of" in result.output
+    assert "must be one of" in _strip_ansi(result.output)
 
 
 def test_diagnose_json_preserves_long_multi_word_error_without_ansi():
@@ -239,7 +248,7 @@ def test_diagnose_table_has_four_sections_and_permanent_only_coverage():
 def test_threshold_validation(thresholds, message):
     result = runner.invoke(moc_app, ["diagnose", "--thresholds", thresholds])
     assert result.exit_code == 1
-    assert message in result.output
+    assert message in _strip_ansi(result.output)
 
 
 @pytest.mark.parametrize(
@@ -253,7 +262,7 @@ def test_threshold_validation(thresholds, message):
 def test_option_validation(args, message):
     result = runner.invoke(moc_app, ["diagnose", *args])
     assert result.exit_code == 1
-    assert message in result.output
+    assert message in _strip_ansi(result.output)
 
 
 def test_kb_is_propagated_and_active_config_is_used():
@@ -286,4 +295,4 @@ def test_moc_diagnose_error_is_reported(output_args):
             "error": "run index rebuild first",
         }
     else:
-        assert "run index rebuild first" in result.output
+        assert "run index rebuild first" in _strip_ansi(result.output)
