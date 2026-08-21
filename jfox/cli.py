@@ -2457,8 +2457,7 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
 
                 if verification["duplicate_ids"]:
                     console.print(
-                        f"\n[yellow]Duplicate IDs "
-                        f"({len(verification['duplicate_ids'])}):[/yellow]"
+                        f"\n[yellow]Duplicate IDs ({len(verification['duplicate_ids'])}):[/yellow]"
                     )
                     for d in verification["duplicate_ids"][:5]:
                         console.print(f"  - {d['id']}")
