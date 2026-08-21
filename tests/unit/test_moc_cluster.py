@@ -9,6 +9,7 @@ import pytest
 from jfox.bm25_index import BM25Index
 from jfox.config import ZKConfig
 from jfox.moc.cluster import (
+    MAX_DENSE_CLUSTER_NOTES,
     MocDiagnoseError,
     build_threshold_summary,
     compute_similarity,
@@ -18,6 +19,9 @@ from jfox.moc.cluster import (
 )
 from jfox.models import NoteType
 from jfox.note_index import NoteMeta
+
+assert MAX_DENSE_CLUSTER_NOTES == 5000
+
 
 VECTORS = np.array(
     [
@@ -500,6 +504,43 @@ def test_diagnose_dense_limit_rejects_above_boundary_without_truncation():
     assert "2" in message
     assert "稀疏" in message
     assert "分块" in message
+
+
+def test_diagnose_dense_limit_counts_only_verified_unique_live_rows():
+    config = ZKConfig(base_dir=Path("/tmp/moc-filtered-limit-test"))
+    live = [_permanent_meta("p0", "P0"), _permanent_meta("p1", "P1")]
+    archived = _permanent_meta("archived", "Archived", archived=True)
+    vector_ids = ["p0", "p1", "p1"] + ["archived"] * 4 + [f"ghost-{i}" for i in range(5)]
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        vector_ids,
+        [None] * len(vector_ids),
+        np.ones((len(vector_ids), 2), dtype=np.float32),
+    )
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = live + [archived]
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.return_value = 0
+    graph.graph.out_degree.return_value = 0
+
+    with (
+        patch("jfox.moc.cluster.MAX_DENSE_CLUSTER_NOTES", 2),
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch(
+            "jfox.moc.cluster.BM25Index",
+            return_value=MagicMock(doc_ids=[], doc_types=[]),
+        ),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+        patch("jfox.moc.cluster.compute_similarity", wraps=compute_similarity) as compute,
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    assert report.coverage.vector == len(vector_ids)
+    assert report.coverage.vector_orphans == len(vector_ids) - 2
+    assert compute.call_args.args[0].shape == (2, 2)
+    assert report.threshold_sweep[0].cluster_count == 1
 
 
 def test_diagnose_empty_vectors_raises_rebuild_hint():

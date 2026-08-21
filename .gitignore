@@ -48,6 +48,7 @@ cache/
 .pi/
 
 # Temporary analysis files
+/.superpowers/*.md
 analysis_report.md
 kimi-export-*.md
 review_body*.md

@@ -1,5 +1,6 @@
 """ChromaDB 向量存储封装"""
 
+import copy
 import logging
 import re
 import shutil
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # 活跃数据库快照只做有限次尝试，避免写入持续进行时长时间阻塞命令。
 _READ_ONLY_SNAPSHOT_ATTEMPTS = 3
+_READ_ONLY_CLEANUP_ATTEMPTS = 3
 
 
 class VectorStoreReadError(RuntimeError):
@@ -242,11 +244,39 @@ class VectorStore:
         return tuple(sorted(entries))
 
     def _discard_read_only_snapshot(self) -> None:
-        """清理未完成或不可用的只读快照。"""
+        """关闭只读快照的客户端并有限重试删除临时目录。"""
+        client = self.client
+        tempdir = self._read_only_tempdir
+        self.collection = None
+
+        close_error: Optional[BaseException] = None
+        close = getattr(client, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception as exc:
+                close_error = exc
+
+        self.client = None
         self._read_only_snapshot = None
-        if self._read_only_tempdir is not None:
-            self._read_only_tempdir.cleanup()
-            self._read_only_tempdir = None
+        self._read_only_tempdir = None
+
+        cleanup_error: Optional[BaseException] = None
+        if tempdir is not None:
+            for _attempt in range(_READ_ONLY_CLEANUP_ATTEMPTS):
+                try:
+                    tempdir.cleanup()
+                    cleanup_error = None
+                    break
+                except (OSError, RuntimeError) as exc:
+                    cleanup_error = exc
+
+        cleanup_error = cleanup_error or close_error
+        if cleanup_error is not None:
+            raise VectorStoreReadError(
+                "无法释放向量库只读快照资源（可能有 daemon/indexer 持有文件），"
+                f"请稍后重试：{cleanup_error}"
+            ) from cleanup_error
 
     def _create_consistent_snapshot(self) -> Path:
         """在复制前后清单稳定时返回只读快照，否则有限重试。"""
@@ -293,36 +323,61 @@ class VectorStore:
         except VectorStoreReadError:
             raise
         except Exception as exc:
-            self.client = None
-            self.collection = None
-            self._discard_read_only_snapshot()
-            raise VectorStoreReadError(
+            read_error = VectorStoreReadError(
                 f"Unable to read vector collection at {self.persist_directory}: {exc}"
-            ) from exc
+            )
+            try:
+                self._discard_read_only_snapshot()
+            except VectorStoreReadError as cleanup_error:
+                raise VectorStoreReadError(f"{read_error}; {cleanup_error}") from read_error
+            raise read_error from exc
 
     def get_all_embeddings(
         self, note_type: Optional[str] = None
     ) -> Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]:
         """通过严格不创建数据的读取路径返回已存向量。"""
         collection = self._get_existing_collection()
+        owns_snapshot = self._read_only_tempdir is not None
         kwargs: Dict[str, Any] = {"include": ["embeddings", "metadatas"]}
         if note_type is not None:
             kwargs["where"] = {"type": note_type}
 
+        primary_error: Optional[VectorStoreReadError] = None
+        cleanup_error: Optional[VectorStoreReadError] = None
+        values: Optional[Tuple[List[str], List[Optional[Dict[str, Any]]], np.ndarray]] = None
         try:
-            result = collection.get(**kwargs)
-        except Exception as exc:
-            raise VectorStoreReadError(f"Unable to read vector embeddings: {exc}") from exc
-        ids = list(result.get("ids") or [])
-        metadatas = list(result.get("metadatas") or [])
-        raw_embeddings = result.get("embeddings")
-        if raw_embeddings is None or len(raw_embeddings) == 0:
-            return ids, metadatas, np.empty((0, 0), dtype=np.float32)
-        try:
-            embeddings = np.asarray(raw_embeddings, dtype=np.float32)
-        except (TypeError, ValueError) as exc:
-            raise VectorStoreReadError(f"Invalid vector embeddings: {exc}") from exc
-        return ids, metadatas, embeddings
+            try:
+                result = collection.get(**kwargs)
+                ids = copy.deepcopy(list(result.get("ids") or []))
+                metadatas = copy.deepcopy(list(result.get("metadatas") or []))
+                raw_embeddings = result.get("embeddings")
+                if raw_embeddings is None or len(raw_embeddings) == 0:
+                    embeddings = np.empty((0, 0), dtype=np.float32)
+                else:
+                    try:
+                        embeddings = np.array(raw_embeddings, dtype=np.float32, copy=True)
+                    except (TypeError, ValueError) as exc:
+                        raise VectorStoreReadError(f"Invalid vector embeddings: {exc}") from exc
+                values = (ids, metadatas, embeddings)
+            except VectorStoreReadError as exc:
+                primary_error = exc
+            except Exception as exc:
+                primary_error = VectorStoreReadError(f"Unable to read vector embeddings: {exc}")
+        finally:
+            if owns_snapshot:
+                try:
+                    self._discard_read_only_snapshot()
+                except VectorStoreReadError as exc:
+                    cleanup_error = exc
+
+        if cleanup_error is not None:
+            if primary_error is not None:
+                raise VectorStoreReadError(f"{primary_error}; {cleanup_error}") from primary_error
+            raise cleanup_error
+        if primary_error is not None:
+            raise primary_error
+        assert values is not None
+        return values
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner  # type: ignore[import-not-found]
 
+from jfox import __version__
 from jfox.cli import app
 from jfox.moc.cli import moc_app, report_to_dict
 from jfox.moc.cluster import (
@@ -54,10 +55,32 @@ def _report() -> MocDiagnoseReport:
     )
 
 
-def test_moc_registered_on_root_app():
-    result = root_runner.invoke(app, ["moc", "--help"])
+def _help_lines(output: str) -> list[str]:
+    return [" ".join(line.split()) for line in output.splitlines() if line.strip()]
+
+
+def test_root_help_registers_exact_moc_contract():
+    result = root_runner.invoke(app, ["--help"])
+
     assert result.exit_code == 0
-    assert "diagnose" in result.output
+    assert "│ moc 诊断和维护 MOC 结构层 │" in _help_lines(result.output)
+
+
+def test_moc_help_registers_exact_diagnose_contract():
+    result = root_runner.invoke(app, ["moc", "--help"])
+
+    assert result.exit_code == 0
+    assert "Usage: jfox moc [OPTIONS] COMMAND [ARGS]..." in _help_lines(result.output)
+    assert "│ diagnose 诊断永久笔记的语义密度和 MOC 聚类建议。 │" in _help_lines(result.output)
+
+
+def test_moc_diagnose_help_preserves_exact_baseline_contract():
+    result = root_runner.invoke(app, ["moc", "diagnose", "--help"])
+
+    assert result.exit_code == 0
+    lines = _help_lines(result.output)
+    assert "Usage: jfox moc diagnose [OPTIONS]" in lines
+    assert lines.count("诊断永久笔记的语义密度和 MOC 聚类建议。") == 1
 
 
 def test_import_root_cli_keeps_moc_registered_without_heavy_dependencies():
@@ -69,6 +92,7 @@ print(json.dumps({
     "groups": [group.name for group in cli.app.registered_groups],
     "chromadb_loaded": "chromadb" in sys.modules,
     "networkx_loaded": "networkx" in sys.modules,
+    "numpy_loaded": "numpy" in sys.modules,
 }))
 """
 
@@ -80,16 +104,17 @@ print(json.dumps({
     )
     payload = json.loads(result.stdout)
 
-    assert "moc" in payload["groups"]
+    assert payload["groups"].count("moc") == 1
     assert payload["chromadb_loaded"] is False
     assert payload["networkx_loaded"] is False
+    assert payload["numpy_loaded"] is False
 
 
 def test_root_version_still_works_with_moc_registered():
     result = root_runner.invoke(app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.output.startswith("jfox ")
+    assert result.output == f"jfox {__version__}\n"
 
 
 def test_diagnose_json_contract():

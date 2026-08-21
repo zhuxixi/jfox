@@ -183,7 +183,10 @@ def _render_table(report: MocDiagnoseReport, top: int) -> None:
             _console.print(f"Warning: {warning}")
 
 
-@moc_app.command("diagnose")
+@moc_app.command(
+    "diagnose",
+    help="诊断永久笔记的语义密度和 MOC 聚类建议。",
+)
 def diagnose_cmd(
     thresholds: str = typer.Option("0.55,0.6,0.65,0.7", "--thresholds"),
     min_size: int = typer.Option(3, "--min-size"),
