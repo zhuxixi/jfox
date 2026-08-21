@@ -218,6 +218,19 @@ class BM25Index:
             logger.warning(f"Failed to read BM25 metadata write_version ({e}), treat as 0")
             return 0
 
+    def _read_pkl_write_version(self) -> int:
+        """读 pkl 内嵌 write_version；失败视为 0。
+
+        仅异常态使用（孤儿 tmp 无效时覆盖分支规避撞号），全量 unpickle 成本
+        在罕见异常路径下可接受。不采纳数据，只取版本号（#403）。
+        """
+        try:
+            with open(self.index_path, "rb") as f:
+                return int(pickle.load(f).get("write_version") or 0)
+        except Exception as e:
+            logger.warning(f"Failed to read BM25 pkl write_version: {e}")
+            return 0
+
     @property
     def _metadata_tmp_path(self) -> Path:
         return self.metadata_path.with_suffix(self.metadata_path.suffix + ".tmp")
@@ -344,8 +357,14 @@ class BM25Index:
                     # metadata 算出 N+1，恰与孤儿 pkl 未提交版本 N+1 撞号，已自愈加载孤儿
                     # 的进程会快路径写回旧数据（清空被复活，#402 pi-cr r1-A）
                     if orphan_pkl:
-                        self._commit_orphan_tmp(_already_holding_lock=True)
+                        promoted = self._commit_orphan_tmp(_already_holding_lock=True)
                         disk_version = self._read_disk_write_version()
+                        if not promoted:
+                            # tmp 无效被丢弃（或 pkl 缺失不提升）：孤儿 pkl 内嵌版本
+                            # 未纳入 metadata，new_version 会与其撞号（清空被复活，
+                            # #403）→ 读 pkl 内嵌版本垫高基数，不采纳其数据
+                            pkl_version = self._read_pkl_write_version()
+                            disk_version = max(disk_version, pkl_version)
                     relation = (
                         "新"
                         if disk_version > self._loaded_write_version
