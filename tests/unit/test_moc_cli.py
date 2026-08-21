@@ -8,7 +8,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from typer.testing import CliRunner  # type: ignore[import-not-found]
+from typer.testing import CliRunner
 
 from jfox import __version__
 from jfox.cli import app

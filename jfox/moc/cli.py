@@ -6,7 +6,7 @@ import json
 import math
 from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
-import typer  # type: ignore[import-not-found]
+import typer
 from rich.console import Console
 from rich.table import Table
 

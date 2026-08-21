@@ -28,7 +28,7 @@ warnings.filterwarnings(
     "ignore", category=RuntimeWarning, message="networkx backend defined more than once"
 )
 
-import typer  # type: ignore[import-not-found]
+import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table

@@ -8,9 +8,9 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import chromadb  # type: ignore[import-not-found]
+import chromadb
 import numpy as np
-from chromadb.config import Settings  # type: ignore[import-not-found]
+from chromadb.config import Settings
 
 from .config import config
 from .models import Note
