@@ -290,6 +290,9 @@ jfox query "Luhmann's methodology" --depth 2
 | `jfox graph --stats` | Graph statistics |
 | `jfox graph --orphans` | Find isolated notes |
 | `jfox graph --note NOTE_ID --depth 2` | Subgraph around a note |
+| `jfox moc diagnose` | Diagnose permanent-note semantic density and MOC cluster suggestions |
+| `jfox moc create --yes` | Create a structure (MOC) note from a diagnosed cluster (dry-run by default) |
+| `jfox moc update` | Re-scan clusters and diff existing MOC members (add new, prune dead links) |
 
 ### Index Management
 
