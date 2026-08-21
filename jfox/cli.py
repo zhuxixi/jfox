@@ -41,6 +41,10 @@ from .models import NoteType
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
 from .template_cli import template_app
 
+# 笔记类型动态文案（枚举驱动，新增类型自动覆盖错误消息与 help 文本）
+_NOTE_TYPE_VALUES = ", ".join(t.value for t in NoteType)
+_NOTE_TYPE_SLASH = "/".join(t.value for t in NoteType)
+
 # 配置日志
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -496,9 +500,7 @@ def _add_note_impl(
     try:
         nt = NoteType(note_type.lower())
     except ValueError:
-        raise ValueError(
-            f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
-        )
+        raise ValueError(f"Invalid note type: {note_type}. Use: {_NOTE_TYPE_VALUES}")
 
     # session 类型必须提供 --topic
     if nt == NoteType.SESSION and not topic:
@@ -675,9 +677,7 @@ def _add_note_impl(
 def add(
     content: Optional[str] = typer.Argument(None, help="笔记内容（支持 [[笔记标题]] 格式链接）"),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="笔记标题"),
-    note_type: str = typer.Option(
-        "fleeting", "--type", help="笔记类型 (fleeting/literature/permanent/session)"
-    ),
+    note_type: str = typer.Option("fleeting", "--type", help=f"笔记类型 ({_NOTE_TYPE_SLASH})"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="标签（可多次使用）"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="来源（文献笔记）"),
     template: Optional[str] = typer.Option(
@@ -1064,9 +1064,7 @@ def _list_impl(
         try:
             nt = NoteType(note_type.lower())
         except ValueError:
-            raise ValueError(
-                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
-            )
+            raise ValueError(f"Invalid note type: {note_type}. Use: {_NOTE_TYPE_VALUES}")
 
     notes = note.list_notes(
         note_type=nt,
@@ -1696,9 +1694,7 @@ def _edit_impl(
         try:
             new_type = NoteType(note_type.lower())
         except ValueError:
-            raise ValueError(
-                f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
-            )
+            raise ValueError(f"Invalid note type: {note_type}. Use: {_NOTE_TYPE_VALUES}")
         n.type = new_type
         # 改为 session 类型时，笔记必须已有 topic 或通过 --topic 设置
         if new_type == NoteType.SESSION and not n.topic and not topic:
@@ -1801,9 +1797,7 @@ def edit(
     ),
     title: Optional[str] = typer.Option(None, "--title", "-t", help="新标题"),
     tags: Optional[List[str]] = typer.Option(None, "--tag", help="新标签（替换全部）"),
-    note_type: Optional[str] = typer.Option(
-        None, "--type", help="新类型 (fleeting/literature/permanent/session)"
-    ),
+    note_type: Optional[str] = typer.Option(None, "--type", help=f"新类型 ({_NOTE_TYPE_SLASH})"),
     source: Optional[str] = typer.Option(None, "--source", "-s", help="新来源"),
     topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型）"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),

@@ -45,6 +45,7 @@ class NoteType(Enum):
     PERMANENT = "permanent"  # 永久笔记
     SESSION = "session"  # AI Agent 会话记录
     CANDIDATE = "candidate"  # AI 合成的候选知识宝石（破损级，待 L5 审阅）
+    STRUCTURE = "structure"  # 地图型笔记（MOC），导航/组织层
 
 
 class GemLevel(str, Enum):
