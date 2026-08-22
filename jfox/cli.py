@@ -1291,7 +1291,7 @@ def _refs_impl(
             console.print(f"[red]Note not found: {note_id}[/red]")
             raise typer.Exit(1)
 
-        # 获取链接到的笔记
+        # 获取链接到的笔记（悬空 id 不再静默过滤，标记 dangling 可见化，#392 B2）
         forward_links = []
         for link_id in n.links:
             link_note = note.load_note_by_id(link_id)
@@ -1299,14 +1299,32 @@ def _refs_impl(
                 forward_links.append(
                     {"id": link_id, "title": link_note.title, "type": link_note.type.value}
                 )
+            else:
+                forward_links.append(
+                    {
+                        "id": link_id,
+                        "title": "（已删除/悬空）",
+                        "type": "dangling",
+                        "dangling": True,
+                    }
+                )
 
-        # 获取反向链接
+        # 获取反向链接（同上，悬空可见化）
         backward_links = []
         for back_id in n.backlinks:
             back_note = note.load_note_by_id(back_id)
             if back_note:
                 backward_links.append(
                     {"id": back_id, "title": back_note.title, "type": back_note.type.value}
+                )
+            else:
+                backward_links.append(
+                    {
+                        "id": back_id,
+                        "title": "（已删除/悬空）",
+                        "type": "dangling",
+                        "dangling": True,
+                    }
                 )
 
         result = {
@@ -1327,13 +1345,19 @@ def _refs_impl(
             if forward_links:
                 console.print("[cyan]→ Links to:[/cyan]")
                 for link in forward_links:
-                    console.print(f"  - [{link['type']}] {link['title']}")
+                    if link.get("dangling"):
+                        console.print(f"  - [dim red]（已删除/悬空）[/dim red] {link['id']}")
+                    else:
+                        console.print(f"  - [{link['type']}] {link['title']}")
                 console.print()
 
             if backward_links:
                 console.print("[green]← Linked by:[/green]")
                 for link in backward_links:
-                    console.print(f"  - [{link['type']}] {link['title']}")
+                    if link.get("dangling"):
+                        console.print(f"  - [dim red]（已删除/悬空）[/dim red] {link['id']}")
+                    else:
+                        console.print(f"  - [{link['type']}] {link['title']}")
                 console.print()
 
             if not forward_links and not backward_links:
