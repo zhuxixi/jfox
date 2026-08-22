@@ -1,6 +1,12 @@
 {
   // jfox Markdown 风格约定（issue #411）。markdownlint-cli2 配置，
   // 默认规则集为基线，以下禁用/override 均有明确理由，勿随意改动。
+  // 尊重 .gitignore（.venv/、.worktrees/ 等本地产物不参与 lint）；
+  // 注意：不开启时 cli2 会扫进虚拟环境和 worktree 残留目录（#418 后续修复）。
+  // 注意：gitignore 按模式匹配、不感知 git 跟踪状态——被跟踪但路径命中
+  // .gitignore 模式的 md 会被静默移出 lint；改 .gitignore 时用
+  // `git ls-files '*.md' | git check-ignore --stdin` 确认无已跟踪 md 被命中
+  "gitignore": true,
   "config": {
     // 行宽：表格长行与长 URL 无法折行，README 现状即超宽
     "MD013": false,

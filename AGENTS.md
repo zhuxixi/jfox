@@ -262,7 +262,7 @@ topic: null                    # 会话主题（仅 session 类型）
 - **本地命令**:
   - 检查：`npx --yes markdownlint-cli2`
   - 自动修复：`npx --yes markdownlint-cli2 --fix`
-- **CI 门禁**: lint job 含 markdownlint 步骤，所有 git 跟踪的 md 文件必须通过（含 docs/、skills-recommend/）
+- **CI 门禁**: lint job 含 markdownlint 步骤，所有 git 跟踪的 md 文件必须通过（含 docs/、skills-recommend/）。注意：lint 尊重 .gitignore（模式匹配，不感知 tracked 状态），修改 .gitignore 时须 `git ls-files '*.md' | git check-ignore --stdin` 确认不命中已跟踪 md
 - **AI 生成文档**（docs/superpowers/plans、specs）同样受此约束，生成后需 lint 通过才能合入
 
 ## 测试策略
