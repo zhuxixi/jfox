@@ -5,7 +5,7 @@
 
 ## 目标
 
-消除 `jfox/bm25_index.py` 的类型类 blocking 诊断（18 → ≤9，实测修后仅剩 2 条 import 环境误报）。
+消除 `jfox/bm25_index.py` 的类型类 blocking 诊断（issue 基线：pi-lens 18 条；pyright 实测 13 条 → 修后仅剩 2 条 import 环境误报）。
 
 ## 决策表
 
