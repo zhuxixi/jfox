@@ -127,6 +127,12 @@ jfox graph --stats --json
 
 展示整理前后的指标变化。
 
+### 密度交接（MOC 触发点）
+
+图谱优化发现某主题笔记数量多（靠搜索/双链找不全）或孤儿笔记密集时，说明该主题已达建 MOC 阈值——移交 `/skill:jfox-moc`（moc diagnose → create）。
+
+职责边界：organize 管单条笔记加链接；jfox-moc 管主题簇地图。
+
 ## 直接创建笔记
 
 在整理过程中，用户可能想直接创建或编辑一条笔记。命令完整语法详见 `/skill:jfox-common` §4。本技能的工作流约束：
