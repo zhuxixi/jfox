@@ -31,6 +31,7 @@ uv run pytest tests/ --cov=jfox --cov-report=html      # With coverage
 # Format and lint
 uv run black jfox/ tests/
 uv run ruff check jfox/ tests/
+npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#node_modules" "#.venv"  # Markdown lint（配置 .markdownlint-cli2.jsonc，#418）
 
 # Build
 uv build
@@ -76,6 +77,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重，命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补进已有草稿，#309；permanent 仍跳过）；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
 | `auto_summary/` | 自动总结子系统：daemon 内扫描 `~/.claude/projects/` 已结束的 Claude Code session，经 `claude -p` 生成摘要写入 `session` 笔记；CLI `jfox auto-summary run/scan/status/enable/disable`，ledger 去重 + schedule time window |
 | `backup/` | KB 滚动备份/恢复：`manager.py` BackupManager（tar.gz+sha256 清单+滚动轮转+可逆 restore）+ daemon `loop.py` 定时备份（镜像 auto-summary，quiesce 标志让 gem_synth/auto_summary 跳过写 tick）+ `jfox backup run/enable/disable/status/list/verify/restore`；默认关，opt-in |
+| `moc/` | MOC 结构层：`cluster.py` 密度诊断（永久笔记向量余弦相似度多阈值聚类 + 链接/语义孤儿检测，N×N 稠密矩阵上限 5000，#410）+ `draft.py`/`generate.py` create/update（从诊断簇生成并维护 structure 笔记，落盘带 backlinks 回填与成员磁盘存在性校验，#413）；CLI `jfox moc diagnose/create/update`；重依赖经 `__init__.py` 的 `__getattr__` 按需加载 |
 | `vector_store.py` | ChromaDB vector store for semantic search |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
@@ -86,6 +88,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - `fleeting` — Quick capture, filename: `YYYYMMDD-HHMMSS.md`
 - `literature` — Reading notes, filename: `YYYYMMDDHHMMSS-{slug}.md`
 - `permanent` — Processed knowledge, filename: `YYYYMMDDHHMMSS-{slug}.md`
+- `structure` — Map of Content (MOC) 导航笔记，由 `jfox moc create/update` 生成维护（#413）
 
 ### Multi-Knowledge Base
 
@@ -133,7 +136,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
 
-**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 只含 `jfox/**`/`tests/**`/`pyproject.toml`/自身——`packages/`（cc/kimi-plugin 发版 bump）、`docs/`、`.claude/` 改动**不触发 CI**。后果：`packages/` 下版本 bump 不跑测试，release-helper 测试须按当前版本动态算「下一版」（勿硬编码），否则只在后续触达 `tests/` 的 PR 才暴露（#382 踩过）。
+**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint）；`packages/` 下非 md 文件（cc/kimi-plugin 发版 bump 的 json 等）改动仍**不触发 CI**。后果：`packages/` 下版本 bump 不跑测试，release-helper 测试须按当前版本动态算「下一版」（勿硬编码），否则只在后续触达 `tests/` 的 PR 才暴露（#382 踩过）。
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
@@ -170,6 +173,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 
 **Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.0.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
+**Non-Claude-Code platforms**: `skills-recommend/`（`pi/` + `kimi-cli/`）是 pi / Kimi CLI 适配版 SKILL.md 集（如 `pi/jfox-moc`，#419）——CLI 语义或命令面变更时须与 cc-plugin skills 同步更新。
 
 ## Branch Rules
 
@@ -181,5 +185,5 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - Test directory migration mostly complete; root-level `test_config_unit.py` and `test_config_set_unit.py` remain but test different things from `tests/unit/`
 - 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `gem_synth/lifecycle.py`
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
-- `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：单 target 写盘失败仅 warning 不中断；悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
+- `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：写盘前按真实磁盘路径 re-read-and-merge——重读 fresh 再合并写回，文件名发散不产生同 id 双文件、与常驻 daemon 并发写不丢更新（#392/#422）；单 target 写盘失败仅 warning 不中断，悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
