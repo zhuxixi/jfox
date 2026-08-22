@@ -80,7 +80,7 @@ JFox 笔记分 fleeting / literature / permanent 三类（另有 session / candi
 
 ## 公共约定（一句话）
 
-所有 jfox 命令支持 `--kb <name>` 指定知识库、`--json`（等价于 `--format json`）输出 JSON、`--content-file <path>` 从文件读取长内容。完整约定见 **jfox-common** skill §4.1。
+大部分 jfox 命令支持 `--kb <name>` 指定知识库、`--json`（等价于 `--format json`）输出 JSON、`--content-file <path>` 从文件读取长内容；注意 `jfox moc create/update` 仅支持 `--format json`（无 `--json` 简写，仅 diagnose 有）。完整约定见 **jfox-common** skill §4.1。
 
 ## 本 skill 不做
 

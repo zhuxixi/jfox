@@ -22,10 +22,12 @@
 ### Task 1: 新增 skills-recommend/pi/jfox-moc/SKILL.md
 
 **Files:**
+
 - Create: `skills-recommend/pi/jfox-moc/SKILL.md`
 
 **Interfaces:**
-- Consumes: jfox CLI v1.9.0 `moc` 命令组（diagnose/create/update）；jfox-common §4.1 共享约定（`--kb` / `--json`）
+
+- Consumes: jfox CLI v1.9.0 `moc` 命令组（diagnose/create/update）；jfox-common §4.1 共享约定（`--kb` / `--format json`）
 - Produces: 独立 skill `jfox-moc`，供 jfox-overview 路由（Task 3）与 jfox-organize 交接（Task 2）引用
 
 - [ ] **Step 1: 创建 SKILL.md 完整内容**
@@ -48,7 +50,7 @@ description: |
 
 **半自动原则：机器出草稿、人确认落盘**——所有生成/更新先 dry-run 展示 diff，人工确认后才 `--yes` 落盘，绝不静默创建。
 
-> 复用 `/skill:jfox-common` §4.1 共享约定（`--kb` / `--json` / `--format json`）。
+> 复用 `/skill:jfox-common` §4.1 共享约定（`--kb` / `--format json`）。注意：moc 命令组中 `diagnose` 支持 `--json` 简写，`create` / `update` 需用 `--format json`。
 
 ## 何时用
 
@@ -78,7 +80,7 @@ jfox moc diagnose --json --top 10
 选定簇后 dry-run 生成草稿（默认不落盘）：
 
 ```bash
-jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --json
+jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --format json
 ```
 
 - `--cluster`：簇序号（从 0 起，对应 diagnose 输出顺序）
@@ -104,8 +106,8 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --yes
 新笔记加入主题后 MOC 会过时，定期 diff 维护：
 
 ```bash
-jfox moc update --json              # 全部 structure note 与最新簇 diff（dry-run 默认）
-jfox moc update --id <moc_id> --json  # 单条 MOC
+jfox moc update --format json                # 全部 structure note 与最新簇 diff（dry-run 默认）
+jfox moc update --id <moc_id> --format json  # 单条 MOC
 ```
 
 - diff 语义：`add` 新增成员、`remove` 死链（仅以磁盘存在性判定，防 stale index）、`kept` 保留
@@ -132,6 +134,7 @@ jfox moc update --id <moc_id> --json  # 单条 MOC
 - organize 管单条笔记加链接（inbox 提炼 + 图谱补链）
 - jfox-moc 管主题簇地图（诊断 → 生成 → 维护）
 - 组织中发现密度信号 → 移交本 skill；本 skill 发现孤儿太多 → 移交 organize
+
 ```
 
 - [ ] **Step 2: 验证命令契约与 CLI 实测一致**
@@ -141,15 +144,18 @@ Run:
 jfox moc --help
 jfox moc diagnose --top 3 --json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(sorted(d.keys())); print(sorted(d['coverage'].keys()))"
 ```
+
 Expected: 三命令 create/update/diagnose 存在；JSON 顶层键含 `coverage, orphans, suggest, threshold_sweep`；`coverage` 键含 `filesystem, vector, bm25, vector_orphans, warnings`。
 
 - [ ] **Step 3: 触发词自检（与全部 pi skill 无冲突）**
 
 Run:
+
 ```bash
 WT=/home/elling/git-repo/github/jfox/.pi/worktrees/issue-417-jfox-moc-skill
 for f in $WT/skills-recommend/pi/*/SKILL.md; do echo "== $f"; grep -o '"[^"]*"' "$f" | head -30; done | sort | uniq -d
 ```
+
 Expected: 新增触发词「MOC」「知识地图」「structure note」「主题簇」等与现有 skill 触发词无重复行输出（`uniq -d` 为空或仅通用词）。
 
 - [ ] **Step 4: Commit**
@@ -164,9 +170,11 @@ git -C $WT commit -m "feat(skill): add jfox-moc skill for MOC map layer (#417)"
 ### Task 2: jfox-organize 密度交接（唯一改动点）
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-organize/SKILL.md`（Step 3「确认改善」表格之后、「## 直接创建笔记」之前插入）
 
 **Interfaces:**
+
 - Consumes: 无（引用 Task 1 产出的 skill 名 `jfox-moc`）
 - Produces: organize Step 3 末尾的「密度交接」小节，形成 organize → moc 接力点
 
@@ -200,9 +208,11 @@ git -C $WT commit -m "feat(skill): organize Step 3 adds density handoff to jfox-
 ### Task 3: jfox-overview 路由更新
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-overview/SKILL.md`（4 处）
 
 **Interfaces:**
+
 - Consumes: Task 1 产出的 skill 名 `jfox-moc` 及其职责描述
 - Produces: 路由表 + 计数 + 笔记模型 + 工作流四处同步，保证 overview 与新 skill 一致
 
@@ -248,20 +258,24 @@ git -C $WT commit -m "feat(skill): overview routes to jfox-moc, sync counts and 
 ### Task 4: 端到端验证（真实 KB 不落盘）
 
 **Files:**
+
 - 无文件改动（验证 + 修问题如有）
 
 **Interfaces:**
+
 - Consumes: Task 1–3 的产物
 - Produces: 验证报告；如有问题修复并 commit
 
 - [ ] **Step 1: diagnose → create dry-run → update dry-run 全链路**
 
 Run:
+
 ```bash
 jfox moc diagnose --top 3 --json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print('clusters:', [(c['size'], c['hub']['title'][:20]) for c in d['suggest']['clusters'][:3]] if d['suggest'] else 'none')"
-jfox moc create --cluster 0 --json 2>/dev/null | head -40
-jfox moc update --json 2>/dev/null | head -20
+jfox moc create --cluster 0 --format json 2>/dev/null | head -40
+jfox moc update --format json 2>/dev/null | head -20
 ```
+
 Expected: 三步均成功输出 JSON（create/update 保持 dry-run 不落盘）；无 structure note 时 update 输出「No structure notes found」错误也算通过（skill 错误处理已覆盖该场景）。
 
 - [ ] **Step 2: skill 文件内容终检**
@@ -280,4 +294,5 @@ Expected: 4 个文件（1 spec + 1 plan + 3 skill 文件），无意外文件混
 git -C $WT status --short
 git -C $WT log --oneline main..HEAD
 ```
+
 Expected: 3 个 skill commit + spec commit，working tree 干净。
