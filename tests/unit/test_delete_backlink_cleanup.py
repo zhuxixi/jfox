@@ -633,3 +633,136 @@ class TestDeleteCleansBacklinks:
                 # 零写入：B 文件 mtime 不变
                 with use_kb(kb_name):
                     assert b_path.stat().st_mtime_ns == b_mtime, "纯脏 list 零写入，不应重写 B 文件"
+
+    def test_delete_cleans_backlink_when_disk_filename_diverges(self, mock_embedding_backend):
+        """target 磁盘文件名与计算路径发散时，delete 写回真实路径，不产生同 id 双文件（#392 A2）"""
+        import os
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                b_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 磁盘改名：文件名与按标题重算的路径发散（手改标题未同步改文件名的等价场景）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    b_path = note_module.load_note_by_id(b_id).filepath
+                    diverged = b_path.with_name(f"{b_id}-renamed.md")
+                    os.rename(b_path, diverged)
+
+                del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # 无同 id 双文件：真实路径上的 backlinks 已清
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    matches = list(diverged.parent.glob(f"{b_id}*.md"))
+                    assert len(matches) == 1, "不应产生同 id 双文件"
+                    b_note = note_module.load_note(diverged)
+                    assert a_id not in b_note.backlinks, "真实路径上的 backlinks 应已清"
+
+    def test_delete_preserves_concurrent_update(self, mock_embedding_backend):
+        """并发写模拟：delete 读盘后外部 writer 修改 target，re-read-and-merge 不丢对方更新（#392 A3）"""
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                b_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    original_load_note = note_module.load_note
+                    original_atomic_write = note_module._atomic_write
+                    calls = {"n": 0}
+
+                    def racing_load_note(filepath):
+                        note = original_load_note(filepath)
+                        if note and note.id == b_id:
+                            calls["n"] += 1
+                            if calls["n"] == 1:
+                                # 模拟外部 writer：delete 首次读盘后、重读前修改 B 并落盘
+                                concurrent = original_load_note(filepath)
+                                concurrent.tags = ["concurrent-tag"]
+                                original_atomic_write(filepath, concurrent.to_markdown())
+                        return note
+
+                    with patch.object(note_module, "load_note", side_effect=racing_load_note):
+                        del_result = runner.invoke(
+                            app, ["delete", a_id, "--force", "--kb", kb_name]
+                        )
+                    assert del_result.exit_code == 0, del_result.output
+
+                # 并发方的更新保留 + backlink 已清
+                show_b = runner.invoke(app, ["show", b_id, "--kb", kb_name, "--json"])
+                assert show_b.exit_code == 0, show_b.output
+                data_b = json.loads(show_b.output)
+                assert a_id not in data_b["backlinks"], "backlink 应已清"
+                assert "concurrent-tag" in data_b["tags"], "并发方的更新不应被覆盖丢失"
