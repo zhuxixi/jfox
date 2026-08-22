@@ -246,6 +246,29 @@ class TestCLIFormat:
         assert "forward_links" in data
         assert "backward_links" in data
 
+    def test_refs_note_shows_dangling_backlink(self, cli, sample_notes):
+        """悬空 backlink 不再静默过滤：JSON 带 dangling 标记，table 显示「已删除/悬空」（#392 B2）"""
+        note_id = sample_notes[0]["id"]
+        dangling_id = "99999999999999"
+
+        # 手工注入悬空 backlink：直接改 frontmatter
+        note_files = list((cli.kb_path / "notes" / "permanent").glob(f"{note_id}*.md"))
+        assert len(note_files) == 1
+        text = note_files[0].read_text(encoding="utf-8")
+        text = text.replace("backlinks: []", f"backlinks: ['{dangling_id}']")
+        note_files[0].write_text(text, encoding="utf-8")
+
+        result = cli.run("refs", "--note", note_id, "--format", "json")
+        assert result.success
+        data = json.loads(result.stdout)
+        dangling = [b for b in data["backward_links"] if b.get("dangling")]
+        assert len(dangling) == 1
+        assert dangling[0]["id"] == dangling_id
+
+        result_table = cli.run("refs", "--note", note_id, "--format", "table")
+        assert result_table.success
+        assert "已删除/悬空" in result_table.stdout
+
     # ==========================================================================
     # Graph 命令测试
     # ==========================================================================

@@ -351,20 +351,29 @@ def delete_note(note_id: str) -> bool:
                 )
                 if bad_types:
                     logger.warning(
-                        f"Cleaning backlinks from target {tid}: backlinks 元素类型异常 "
-                        f"({', '.join(bad_types)})，仅清理 str 引用"
+                        f"target {tid} 的 backlinks 含非 str 元素 ({', '.join(bad_types)})，"
+                        f"仅清理 str 引用（如存在）"
                     )
                 if note_id in t.backlinks:
-                    t.updated = now
-                    t.backlinks = [bid for bid in t.backlinks if bid != note_id]
-                    # 已知限制：t.filepath 是按 type/标题 slug 重算的路径，非 load 命中的
-                    # 磁盘路径；文件名发散时可能另写同 id 双文件（与 promote 回填同病），
-                    # 残留由 `jfox index rebuild --backlinks` / `jfox check` 兜底。
-                    # 已知限制：本循环无锁 read-modify-write，与常驻 daemon 并发写同一
-                    # target 时 last-writer-wins（与 promote 回填 / update_note 同构，全库
-                    # 无文件锁，暂不在本 PR 收敛）。
-                    _atomic_write(t.filepath, t.to_markdown())
-                    get_note_index().update_note_meta(t)
+                    # A2+A3（#392）：写盘前从真实磁盘路径重读 fresh，在 fresh 上移除再写回。
+                    # 修复：1) 文件名发散时不再另写同 id 双文件（写回 load 命中的真实路径）；
+                    # 2) 与常驻 daemon 并发写同一 target 时不丢对方更新（re-read-and-merge）。
+                    actual_path = find_note_file(config, tid)
+                    if not actual_path:
+                        logger.warning(
+                            f"Failed to clean backlinks from target {tid}: 磁盘文件未找到"
+                        )
+                        continue
+                    fresh = load_note(actual_path)
+                    if not fresh:
+                        logger.warning(f"Failed to clean backlinks from target {tid}: 重新读取失败")
+                        continue
+                    if note_id not in fresh.backlinks:
+                        continue  # 并发方已移除本 id，无需写盘
+                    fresh.updated = now
+                    fresh.backlinks = [bid for bid in fresh.backlinks if bid != note_id]
+                    _atomic_write(actual_path, fresh.to_markdown())
+                    get_note_index().update_note_meta(fresh)
             except Exception as e:
                 logger.warning(f"Failed to clean backlinks from target {tid}: {e}")
 
@@ -519,11 +528,23 @@ def promote_note(note_id: str) -> bool:
     for tid in target_ids:
         t = load_note_by_id(tid)
         if t and n.id not in t.backlinks:
-            t.updated = now
-            t.backlinks = sorted(set(t.backlinks + [n.id]))
+            # A2+A3（#392）：写盘前从真实磁盘路径重读 fresh，在 fresh 上追加再写回。
+            # 修复：1) 文件名发散时不再另写同 id 双文件；2) 并发写不丢对方更新。
             try:
-                _atomic_write(t.filepath, t.to_markdown())
-                get_note_index().update_note_meta(t)
+                actual_path = find_note_file(config, tid)
+                if not actual_path:
+                    logger.warning(f"Failed to backfill backlinks for target {tid}: 磁盘文件未找到")
+                    continue
+                fresh = load_note(actual_path)
+                if not fresh:
+                    logger.warning(f"Failed to backfill backlinks for target {tid}: 重新读取失败")
+                    continue
+                if n.id in fresh.backlinks:
+                    continue  # 并发方已回填本 id，无需写盘
+                fresh.updated = now
+                fresh.backlinks = sorted(set(fresh.backlinks + [n.id]))
+                _atomic_write(actual_path, fresh.to_markdown())
+                get_note_index().update_note_meta(fresh)
             except Exception as e:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
     # 广播 post_promote：gem_synth 订阅把 dedup 表 note_type 改 permanent。

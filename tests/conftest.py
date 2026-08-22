@@ -81,6 +81,10 @@ def mock_embedding_backend():
             """批量编码"""
             return self.encode(texts)
 
+        def encode_single(self, text: str):
+            """单条编码（vector_store.add_note 调用）"""
+            return self.encode([text])[0]
+
         def _resolve_device(self):
             return "cpu"
 
