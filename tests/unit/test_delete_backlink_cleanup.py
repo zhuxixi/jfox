@@ -565,3 +565,71 @@ class TestDeleteCleansBacklinks:
                 backlinks_b = json.loads(show_b.output)["backlinks"]
                 assert a_id not in backlinks_b, "混合数据下 str 悬空引用应被清理"
                 assert 123456 in backlinks_b, "非 str 脏元素应原样透传，不被写坏"
+
+    def test_delete_pure_dirty_backlinks_warns_neutral_text(self, mock_embedding_backend, caplog):
+        """纯脏 list（不含本 id）时 warning 用中性表述「如存在」，不断言未发生的清理（#392 A1）"""
+        import logging
+        import re
+
+        from jfox.config import use_kb
+
+        with temp_kb_registered() as kb_name:
+            with patch("jfox.embedding_backend.get_backend", return_value=mock_embedding_backend):
+                b_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "B body",
+                        "--title",
+                        "笔记B",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert b_result.exit_code == 0, b_result.output
+                b_id = json.loads(b_result.output)["note"]["id"]
+
+                a_result = runner.invoke(
+                    app,
+                    [
+                        "add",
+                        "A 引用 [[笔记B]]。",
+                        "--title",
+                        "笔记A",
+                        "--type",
+                        "permanent",
+                        "--kb",
+                        kb_name,
+                        "--json",
+                    ],
+                )
+                assert a_result.exit_code == 0, a_result.output
+                a_id = json.loads(a_result.output)["note"]["id"]
+
+                # 手工编辑 B frontmatter：backlinks 改成纯脏 list（不含 a_id）
+                with use_kb(kb_name):
+                    import jfox.note as note_module
+
+                    b_path = note_module.load_note_by_id(b_id).filepath
+                    text = b_path.read_text(encoding="utf-8")
+                    text = re.sub(
+                        r"backlinks:.*(?:\n[ \t]*-[ \t]+.*)*",
+                        "backlinks: [123456]",
+                        text,
+                        count=1,
+                    )
+                    b_path.write_text(text, encoding="utf-8")
+                    b_mtime = b_path.stat().st_mtime_ns
+
+                with caplog.at_level(logging.WARNING):
+                    del_result = runner.invoke(app, ["delete", a_id, "--force", "--kb", kb_name])
+                assert del_result.exit_code == 0, del_result.output
+
+                # 中性表述：不断言「清理了」，只提示「如存在」
+                assert "如存在" in caplog.text
+                # 零写入：B 文件 mtime 不变
+                with use_kb(kb_name):
+                    assert b_path.stat().st_mtime_ns == b_mtime, "纯脏 list 零写入，不应重写 B 文件"

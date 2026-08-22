@@ -351,8 +351,8 @@ def delete_note(note_id: str) -> bool:
                 )
                 if bad_types:
                     logger.warning(
-                        f"Cleaning backlinks from target {tid}: backlinks 元素类型异常 "
-                        f"({', '.join(bad_types)})，仅清理 str 引用"
+                        f"target {tid} 的 backlinks 含非 str 元素 ({', '.join(bad_types)})，"
+                        f"仅清理 str 引用（如存在）"
                     )
                 if note_id in t.backlinks:
                     t.updated = now
