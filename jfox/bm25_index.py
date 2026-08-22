@@ -643,17 +643,17 @@ class BM25Index:
             return True
 
         with self._mem_lock:
-            try:
-                # 快照当前状态，失败时恢复（回滚必须在锁内执行，防半回滚状态被并发读）
-                saved_docs = list(self.documents)
-                saved_ids = list(self.doc_ids)
-                saved_types = list(self.doc_types)
-                saved_mapping = dict(self.doc_mapping)
-                saved_bm25 = self.bm25
-                saved_pending_len = len(self._pending_ops)
-                saved_needs_rebuild = self.needs_rebuild
-                saved_loaded_version = self._loaded_write_version
+            # 快照当前状态，失败时恢复（回滚必须在锁内执行，防半回滚状态被并发读）
+            saved_docs = list(self.documents)
+            saved_ids = list(self.doc_ids)
+            saved_types = list(self.doc_types)
+            saved_mapping = dict(self.doc_mapping)
+            saved_bm25 = self.bm25
+            saved_pending_len = len(self._pending_ops)
+            saved_needs_rebuild = self.needs_rebuild
+            saved_loaded_version = self._loaded_write_version
 
+            try:
                 for doc in documents:
                     note_id = doc[0]
                     content = doc[1]
