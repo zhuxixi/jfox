@@ -528,11 +528,23 @@ def promote_note(note_id: str) -> bool:
     for tid in target_ids:
         t = load_note_by_id(tid)
         if t and n.id not in t.backlinks:
-            t.updated = now
-            t.backlinks = sorted(set(t.backlinks + [n.id]))
+            # A2+A3（#392）：写盘前从真实磁盘路径重读 fresh，在 fresh 上追加再写回。
+            # 修复：1) 文件名发散时不再另写同 id 双文件；2) 并发写不丢对方更新。
             try:
-                _atomic_write(t.filepath, t.to_markdown())
-                get_note_index().update_note_meta(t)
+                actual_path = find_note_file(config, tid)
+                if not actual_path:
+                    logger.warning(f"Failed to backfill backlinks for target {tid}: 磁盘文件未找到")
+                    continue
+                fresh = load_note(actual_path)
+                if not fresh:
+                    logger.warning(f"Failed to backfill backlinks for target {tid}: 重新读取失败")
+                    continue
+                if n.id in fresh.backlinks:
+                    continue  # 并发方已回填本 id，无需写盘
+                fresh.updated = now
+                fresh.backlinks = sorted(set(fresh.backlinks + [n.id]))
+                _atomic_write(actual_path, fresh.to_markdown())
+                get_note_index().update_note_meta(fresh)
             except Exception as e:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
     # 广播 post_promote：gem_synth 订阅把 dedup 表 note_type 改 permanent。

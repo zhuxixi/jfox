@@ -5,7 +5,7 @@ from utils.temp_kb import temp_kb_registered
 
 from jfox.config import use_kb
 from jfox.models import Note, NoteType
-from jfox.note import create_note, load_note_by_id, promote_note, reject_note, save_note
+from jfox.note import create_note, load_note, load_note_by_id, promote_note, reject_note, save_note
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
@@ -258,3 +258,64 @@ def test_promote_handles_dirty_grounded_by():
             c = _make_candidate("候选", "内容", grounded_by=["有效但不存在", None, "", 123, True])
             promote_note(c.id)  # 非 str/空被过滤；"有效但不存在" 警告跳过；不崩
             assert load_note_by_id(c.id).type == NoteType.PERMANENT
+
+
+def test_promote_backfill_writes_to_actual_disk_path():
+    """target 磁盘文件名与计算路径发散时，回填写回真实路径，不产生同 id 双文件（#392 A2）"""
+    import os
+
+    from jfox.config import config
+    from jfox.note import find_note_file
+
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note("目标内容", title="目标笔记", note_type=NoteType.PERMANENT)
+            save_note(target, add_to_index=False)
+            c = _make_candidate("引用目标", "讲讲 [[目标笔记]] 的事")
+
+            # 磁盘改名：文件名与按标题重算的路径发散
+            actual = find_note_file(config, target.id)
+            diverged = actual.with_name(f"{target.id}-renamed.md")
+            os.rename(actual, diverged)
+
+            assert promote_note(c.id) is True
+
+            matches = list(diverged.parent.glob(f"{target.id}*.md"))
+            assert len(matches) == 1, "不应产生同 id 双文件"
+            t = load_note(diverged)
+            assert c.id in t.backlinks, "真实路径上的 backlinks 应已回填"
+
+
+def test_promote_backfill_preserves_concurrent_update():
+    """并发写模拟：promote 回填读盘后外部 writer 修改 target，re-read-and-merge 不丢对方更新（#392 A3）"""
+    from unittest.mock import patch
+
+    import jfox.note as note_module
+
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note("目标内容", title="目标笔记", note_type=NoteType.PERMANENT)
+            save_note(target, add_to_index=False)
+            c = _make_candidate("引用目标", "讲讲 [[目标笔记]] 的事")
+
+            original_load_note = note_module.load_note
+            original_atomic_write = note_module._atomic_write
+            calls = {"n": 0}
+
+            def racing_load_note(filepath):
+                note = original_load_note(filepath)
+                if note and note.id == target.id:
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        # 模拟外部 writer：promote 首次读盘后、重读前修改 target 并落盘
+                        concurrent = original_load_note(filepath)
+                        concurrent.tags = ["concurrent-tag"]
+                        original_atomic_write(filepath, concurrent.to_markdown())
+                return note
+
+            with patch.object(note_module, "load_note", side_effect=racing_load_note):
+                assert promote_note(c.id) is True
+
+            t = load_note_by_id(target.id)
+            assert c.id in t.backlinks, "promote 回填应完成"
+            assert "concurrent-tag" in t.tags, "并发方的更新不应被回填覆盖丢失"
