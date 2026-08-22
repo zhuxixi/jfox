@@ -70,7 +70,7 @@ jobs:
         node-version: '22'
 
     - name: Run markdownlint
-      run: npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#node_modules"
+      run: npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#node_modules" "#.venv"
 
   # ============ 快速测试（PR 和 push 触发）============
   test-fast:
