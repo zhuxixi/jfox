@@ -13,6 +13,7 @@
 ### Task 1: Failing unit tests for `_extract_note_id_from_filename`
 
 **Files:**
+
 - Create: `tests/unit/test_indexer_verify.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -85,6 +86,7 @@ Expected: FAIL — `ImportError: cannot import name '_extract_note_id_from_filen
 ### Task 2: Implement `_extract_note_id_from_filename`
 
 **Files:**
+
 - Modify: `jfox/indexer.py` (add import + new function)
 
 - [ ] **Step 1: Add `re` import to `indexer.py`**
@@ -146,6 +148,7 @@ note types and edge cases. Refs #103."
 ### Task 3: Fix `verify_index()` to use `_extract_note_id_from_filename`
 
 **Files:**
+
 - Modify: `jfox/indexer.py:298-306` (the `verify_index` method)
 
 - [ ] **Step 1: Write a failing integration test**
@@ -205,12 +208,14 @@ Expected: FAIL — `assert result["healthy"] is True` because `verify_index` sti
 Replace lines 299-300 in `jfox/indexer.py`:
 
 Old code (lines 299-300):
+
 ```python
         note_files = list(notes_dir.rglob("*.md"))
         file_ids = {f.stem for f in note_files}
 ```
 
 New code:
+
 ```python
         note_files = list(notes_dir.rglob("*.md"))
         file_ids = set()
@@ -268,6 +273,7 @@ User should verify that both `test_indexer` and `test_verify_index_matches_filen
 ## Self-Review
 
 **Spec coverage:** All requirements from issue #103 covered:
+
 - Root cause fix (ID extraction from filenames) → Task 2 + Task 3
 - Fleeting dash format handling → Task 2 regex `\d{8}-\d{10}`
 - Permanent/Literature slug format → Task 2 regex `^\d{18}(?:-.*)?$`

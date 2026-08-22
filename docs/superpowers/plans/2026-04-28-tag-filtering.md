@@ -29,6 +29,7 @@
 ### Task 1: Add `tags` parameter to `vector_store.py`
 
 **Files:**
+
 - Modify: `jfox/vector_store.py:108-152` (the `search()` method)
 
 - [ ] **Step 1: Add `tags` parameter and build where clause**
@@ -99,6 +100,7 @@ git commit -m "feat(vector_store): add tags parameter to search() for ChromaDB f
 ### Task 2: Add `tags` parameter to `search_engine.py`
 
 **Files:**
+
 - Modify: `jfox/search_engine.py:51-75` (the `search()` method)
 - Modify: `jfox/search_engine.py:77-92` (`_semantic_search`)
 - Modify: `jfox/search_engine.py:94-127` (`_keyword_search`)
@@ -369,6 +371,7 @@ git commit -m "feat(search_engine): add tags parameter to search() with BM25 pos
 ### Task 3: Add `tags` parameter to `note.py`
 
 **Files:**
+
 - Modify: `jfox/note.py:141-178` (`list_notes()`)
 - Modify: `jfox/note.py:318-348` (`search_notes()`)
 
@@ -500,6 +503,7 @@ git commit -m "feat(note): add tags parameter to list_notes() and search_notes()
 ### Task 4: Add `--tag` to CLI commands
 
 **Files:**
+
 - Modify: `jfox/cli.py:530-578` (`search` command and `_search_impl`)
 - Modify: `jfox/cli.py:759-855` (`_list_impl` and `list` command)
 
@@ -701,6 +705,7 @@ git commit -m "feat(cli): add --tag option to list and search commands"
 ### Task 5: Unit tests for `list_notes(tags=...)`
 
 **Files:**
+
 - Create: `tests/unit/test_tag_filter.py`
 
 - [ ] **Step 1: Write the test file**
@@ -830,6 +835,7 @@ git commit -m "test: add unit tests for list_notes tags filtering"
 ### Task 6: Update `ZKCLI` test wrapper and write CLI integration tests
 
 **Files:**
+
 - Modify: `tests/utils/jfox_cli.py:210-226` (the `list()` and `search()` methods)
 - Create: `tests/integration/test_tag_filter_cli.py`
 
@@ -1015,6 +1021,7 @@ git commit -m "test: add CLI integration tests for --tag filtering on list and s
 ### Task 7: Update `_list_impl` table output to show tags
 
 **Files:**
+
 - Modify: `jfox/cli.py` (the table rendering in `_list_impl`, around lines 786-796)
 
 - [ ] **Step 1: Add Tags column to the list table output**

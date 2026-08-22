@@ -3,6 +3,7 @@
 ## 背景
 
 现有的 5 个 jfox skill（init、insert、organize、search、health）存在以下问题：
+
 1. 冗余：insert 和 organize 之间有大量重复的命令参考
 2. 缺失：没有覆盖从 GitHub 仓库批量导入 git log / PR / Issues 的流程
 3. 不足：organize 缺少从 fleeting 提炼 permanent 时自动生成 `[[wiki links]]` 的能力
@@ -92,6 +93,7 @@ skills-recommend/claude-code/
 #### 笔记格式
 
 每条导入的 fleeting 笔记包含：
+
 - title: commit message 首行 / PR 标题 / Issue 标题
 - content: 详细信息（body、comments、关联文件等）
 - tags: `source:<repo-name>`, `source:git-log` / `source:pr` / `source:issue`, 以及内容相关的 topic tags
@@ -121,6 +123,7 @@ skills-recommend/claude-code/
 ```
 
 建议列表格式：
+
 ```
 收件箱: N 条 fleeting 笔记
 
@@ -134,6 +137,7 @@ skills-recommend/claude-code/
 **Step 2：提炼（fleeting → permanent）**
 
 对用户确认的每条建议：
+
 1. 分析内容，提炼核心知识点
 2. `jfox suggest-links "<content>" --format json` 找到现有笔记中的关联
 3. 生成 permanent 笔记，嵌入 `[[wiki links]]` 到相关笔记
@@ -212,6 +216,7 @@ jfox status --format json                        # 状态
 沿用现有 jfox-health 的全部能力：
 
 **6 项指标采集**：
+
 1. `jfox status --format json`
 2. `jfox graph --stats --json`
 3. `jfox graph --orphans --json`

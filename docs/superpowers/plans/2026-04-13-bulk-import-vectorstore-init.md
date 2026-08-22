@@ -13,6 +13,7 @@
 ## Task 1: 修复 bulk_import_notes 中 VectorStore 未初始化的 bug
 
 **Files:**
+
 - Modify: `jfox/performance.py:266`
 - Test: `tests/unit/test_bm25_batch.py`
 
@@ -147,6 +148,7 @@ Closes #126 (修复 1/2)"
 ## Task 2: 让 index rebuild 同时重建 BM25 索引
 
 **Files:**
+
 - Modify: `jfox/cli.py:1701-1713`
 - Test: `tests/unit/test_index_kb_param.py`（在已有文件中添加测试）
 

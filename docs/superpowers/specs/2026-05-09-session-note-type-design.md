@@ -108,6 +108,7 @@ tags:
 ### 8. `jfox-session-summary` skill
 
 两个版本（claude-code / kimi-cli）的 SKILL.md 更新：
+
 - 默认 `--type session`
 - 新增 `--topic` 参数传递
 - 类型选择步骤中新增 session 选项并推荐为默认

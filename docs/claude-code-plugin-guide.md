@@ -800,6 +800,7 @@ jfox/                                  # 仓库根目录
 ```
 
 **当前状态**（2026-05-12，response to #216）：
+
 - 插件版本：`0.1.2`（建议下次发版 bump 至 `0.2.0` 反映破坏性 rename）
 - Python 包版本：`0.8.0`
 - Skills 通过 auto-discovery（无 skills 字段）

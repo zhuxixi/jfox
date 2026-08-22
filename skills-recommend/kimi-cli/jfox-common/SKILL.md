@@ -13,9 +13,11 @@ Manage the full lifecycle of knowledge bases: create, switch, inspect status, an
 ## Prerequisites
 
 Confirm jfox is installed:
+
 ```bash
 jfox --version
 ```
+
 If not installed: `uv tool install jfox-cli`
 
 ## Knowledge Base Path Convention
@@ -43,16 +45,19 @@ If knowledge bases exist, inform the user and ask whether to use an existing one
 ### Create Knowledge Base
 
 **Default (first-time use):**
+
 ```bash
 jfox init
 ```
 
 **Named knowledge base:**
+
 ```bash
 jfox init --name <name> --desc "<description>"
 ```
 
 Examples:
+
 ```bash
 jfox init --name work --desc "Work notes"
 jfox init --name research --desc "Research notes"
@@ -60,6 +65,7 @@ jfox init --name personal --desc "Personal knowledge base"
 ```
 
 **Custom path (must be under ~/.zettelkasten/):**
+
 ```bash
 jfox init --name <name> --path ~/.zettelkasten/<custom-path>
 ```
@@ -106,6 +112,7 @@ jfox add --template meeting --title "Weekly Meeting Notes"
 ```
 
 Note types:
+
 - `fleeting` (default) — quick capture, refine later
 - `literature` — reading notes
 - `permanent` — distilled knowledge
@@ -185,26 +192,31 @@ jfox inbox --json --limit 100 [--kb <name>]
 Analyze metrics to detect 5 decay patterns:
 
 **1. Knowledge islands (high orphan ratio)**
+
 - Signal: > 40% notes have no links
 - Cause: Notes recorded but not connected to existing knowledge
 - Fix: Use `jfox-organize` skill to find and add links
 
 **2. Inbox backlog (too many unprocessed)**
+
 - Signal: > 30 fleeting notes
 - Cause: Capturing ideas without reflection
 - Fix: Use `jfox-organize` skill to process inbox
 
 **3. Low connectivity (avg degree too low)**
+
 - Signal: Avg links per note < 1.0
 - Cause: Not using `[[links]]` syntax when adding notes
 - Fix: Use `jfox suggest-links` to find connections
 
 **4. Index stale (out of sync)**
+
 - Signal: `jfox index verify` reports mismatches
 - Cause: Files modified outside jfox CLI
 - Fix: `jfox index rebuild`
 
 **5. Hub dependency (fragile structure)**
+
 - Signal: Top 3 hubs hold > 50% of all edges
 - Cause: Over-reliance on few hub notes
 - Fix: Create intermediate notes to distribute connections

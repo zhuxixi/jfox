@@ -40,11 +40,13 @@
 ### Task 1: dedup_check 返回 DedupHit（行为保持重构）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/dedup.py`（`DedupStore.all_embeddings` + `dedup_check`）
 - Modify: `jfox/gem_synth/synthesizer.py:191-204`（dedup 分支 unpack `hit.note_id`）
 - Test: `tests/unit/test_gem_synth_dedup.py`、`tests/unit/test_synthesizer_dedup.py`
 
 **Interfaces:**
+
 - Produces: `DedupHit` dataclass（`note_id: str`, `note_type: str`, `score: float`）；`dedup_check(kb, content, threshold=0.88) -> Optional[DedupHit]`
 
 > 行为保持：此 Task 不引入合并逻辑，只改返回类型 + 让 synthesizer 解包 `hit.note_id`。所有现有测试调整 mock 后应仍绿。
@@ -52,10 +54,13 @@
 - [ ] **Step 1: 写失败测试（dedup_check 返回 DedupHit）**
 
 在 `tests/unit/test_gem_synth_dedup.py` 顶部 import 加 `DedupHit`：
+
 ```python
 from jfox.gem_synth.dedup import DedupHit, DedupStore
 ```
+
 改 `test_dedup_check_hits_existing_dup`：
+
 ```python
 def test_dedup_check_hits_existing_dup(setup):
     dedup.upsert_dedup("default", "cand-1", "candidate", "Zima 双 Bot babysit 标签循环")
@@ -65,7 +70,9 @@ def test_dedup_check_hits_existing_dup(setup):
     assert hit.note_type == "candidate"
     assert hit.score >= 0.5
 ```
+
 新增（permanent 也带 type）：
+
 ```python
 def test_dedup_check_returns_permanent_type(setup):
     dedup.upsert_dedup("default", "perm-1", "permanent", "某永久知识结论")
@@ -73,11 +80,15 @@ def test_dedup_check_returns_permanent_type(setup):
     assert isinstance(hit, DedupHit)
     assert hit.note_type == "permanent"
 ```
+
 在 `tests/unit/test_synthesizer_dedup.py` 顶部 import：
+
 ```python
 from jfox.gem_synth.dedup import DedupHit
 ```
+
 改 `test_duplicate_hit_skips_save_and_marks_duplicate` 的 dedup_check mock（score 用 0.99，留待 Task 6 后仍走 skip 路径）：
+
 ```python
         patch(
             "jfox.gem_synth.synthesizer.dedup_check",
@@ -93,6 +104,7 @@ Expected: FAIL（`DedupHit` 未定义 / `hit == "cand-1"` 比较 dataclass 失�
 - [ ] **Step 3: 实现 DedupHit + dedup_check 改返回**
 
 `jfox/gem_synth/dedup.py`，在 import 区下、`_SCHEMA` 前加：
+
 ```python
 from dataclasses import dataclass
 
@@ -108,7 +120,9 @@ class DedupHit:
     note_type: str
     score: float
 ```
+
 `DedupStore.all_embeddings` 改为多 select `note_type`：
+
 ```python
     def all_embeddings(self, kb: str, note_types: Tuple[str, ...]) -> List[Tuple[str, str, np.ndarray]]:
         """返回 [(note_id, note_type, emb)]。note_type 供合成侧分流的富返回。"""
@@ -123,7 +137,9 @@ class DedupHit:
             ).fetchall()
         return [(r["note_id"], r["note_type"], np.frombuffer(r["emb"], dtype=np.float32)) for r in rows]
 ```
+
 `dedup_check` 改返回 `Optional[DedupHit]`（更新 docstring + 把 `rows[best][0]` 换成构造 DedupHit；`rows[best][1]` 是 note_type、`sims[best]` 是 score）：
+
 ```python
 def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[DedupHit]:
     """返回与已有 candidate/permanent 最相似的 DedupHit；无重复或降级时返回 None。
@@ -152,11 +168,13 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[Dedu
         return None
     return None
 ```
+
 `__all__` 加 `"DedupHit"`。
 
 - [ ] **Step 4: 实现 synthesizer 解包 hit.note_id**
 
 `jfox/gem_synth/synthesizer.py:196-204`，把：
+
 ```python
         dup_of = dedup_check(
             kb_name,
@@ -168,7 +186,9 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[Dedu
             log.mark_duplicate(anchor["fragment_id"], dup_of)
             return None
 ```
+
 改为：
+
 ```python
         hit = dedup_check(
             kb_name,
@@ -208,15 +228,18 @@ git commit -m "refactor(gem-synth): dedup_check 返回 DedupHit(note_id+type+sco
 ### Task 2: SynthesisLog.mark_merged
 
 **Files:**
+
 - Modify: `jfox/gem_synth/store.py`（加 `mark_merged`）
 - Test: `tests/unit/test_gem_synth_store.py`
 
 **Interfaces:**
+
 - Produces: `SynthesisLog.mark_merged(anchor_fragment_id: int, target_note_id: str) -> None`；写入 `status='merged'` + `candidate_note_id=target_note_id`，`is_processed` 仍 True。
 
 - [ ] **Step 1: 写失败测试**
 
 `tests/unit/test_gem_synth_store.py` 加：
+
 ```python
 def test_mark_merged_writes_status_and_target(tmp_path):
     from jfox.gem_synth.store import SynthesisLog
@@ -249,6 +272,7 @@ Expected: FAIL（`AttributeError: mark_merged`）
 - [ ] **Step 3: 实现 mark_merged**
 
 `jfox/gem_synth/store.py`，`mark_duplicate` 方法后加：
+
 ```python
     def mark_merged(self, anchor_fragment_id: int, target_note_id: str) -> None:
         """合并记账：status='merged' + candidate_note_id=被补入的目标 candidate。
@@ -285,20 +309,25 @@ git commit -m "feat(gem-synth): SynthesisLog.mark_merged 记合并状态
 ### Task 3: extract_delta_with_llm
 
 **Files:**
+
 - Modify: `jfox/gem_synth/llm.py`（加 `DELTA_SYSTEM_PROMPT` + `extract_delta_with_llm` + `__all__`）
 - Test: `tests/unit/test_gem_synth_llm.py`
 
 **Interfaces:**
+
 - Consumes: `_invoke_claude(prompt, cfg, stop_event)`、`_parse_json_lenient(inner)`
 - Produces: `extract_delta_with_llm(new_content: str, existing_content: str, cfg: GemSynthesisConfig, stop_event: Optional[threading.Event]=None) -> Optional[Dict]`；返回 `{has_delta: bool, delta: str, conflict: Optional[str]}` 或 None
 
 - [ ] **Step 1: 写失败测试**
 
 `tests/unit/test_gem_synth_llm.py` 顶部 import 改：
+
 ```python
 from jfox.gem_synth.llm import _build_prompt, extract_delta_with_llm, synthesize_with_llm
 ```
+
 加：
+
 ```python
 def test_extract_delta_parses_has_delta_true():
     """有增量：LLM 返回 has_delta=true + delta 正文，解析为 dict。"""
@@ -359,6 +388,7 @@ Expected: FAIL（`ImportError: cannot import name 'extract_delta_with_llm'`）
 - [ ] **Step 3: 实现 extract_delta_with_llm**
 
 `jfox/gem_synth/llm.py`，`SYSTEM_PROMPT` 定义后加第二个 system prompt：
+
 ```python
 DELTA_SYSTEM_PROMPT = """你是知识增量提取器。给定一条已有笔记 X 和一条新候选 Y（两者讲同一件事），
 提取 Y 相对 X 的**有效增量**——新角度、补充事实、或差异。严格输出 JSON：
@@ -369,7 +399,9 @@ DELTA_SYSTEM_PROMPT = """你是知识增量提取器。给定一条已有笔记 
 }
 只比较知识本身，忽略格式差异。不要重复 X 已有的内容。直接输出 JSON 对象本身，不要用 markdown 代码围栏包裹。"""
 ```
+
 文件末尾（`synthesize_with_llm` 之后、`__all__` 之前）加：
+
 ```python
 def _build_delta_prompt(new_content: str, existing_content: str) -> str:
     """组装增量提取 prompt：已有笔记 + 新候选。"""
@@ -408,6 +440,7 @@ def extract_delta_with_llm(
         logger.exception("delta LLM 提取失败: %s", e)
         return None
 ```
+
 `_invoke_claude` 需要能接 `DELTA_SYSTEM_PROMPT`——当前 `_invoke_claude` 硬编码 `SYSTEM_PROMPT` 到 `--append-system-prompt`。改为参数化：把 `_invoke_claude` 签名加 `system_prompt: str = SYSTEM_PROMPT`，cmd 里 `SYSTEM_PROMPT` 换成 `system_prompt`。`synthesize_with_llm` 调用处不动（用默认）；`extract_delta_with_llm` 调 `_invoke_claude(prompt, cfg, stop_event, system_prompt=DELTA_SYSTEM_PROMPT)`。
 
 > 改 `_invoke_claude` 签名：在 `def _invoke_claude(prompt, cfg, stop_event=None):` 后加默认参 `system_prompt: str = SYSTEM_PROMPT`，函数体 `--append-system-prompt` 后的 `SYSTEM_PROMPT` 改 `system_prompt`。既有 `synthesize_with_llm` / 既有测试不传该参 → 用默认，行为不变。
@@ -437,15 +470,18 @@ git commit -m "feat(gem-synth): extract_delta_with_llm 提取候选相对已有�
 ### Task 4: GemSynthesisConfig.dedup_merge_enabled
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（`GemSynthesisConfig` 字段 + `from_dict`）
 - Test: `tests/unit/test_gem_synth_config_dedup.py`
 
 **Interfaces:**
+
 - Produces: `GemSynthesisConfig.dedup_merge_enabled: bool`（默认 True）
 
 - [ ] **Step 1: 写失败测试**
 
 `tests/unit/test_gem_synth_config_dedup.py` 加：
+
 ```python
 def test_dedup_merge_enabled_defaults_true():
     assert GemSynthesisConfig().dedup_merge_enabled is True
@@ -469,10 +505,13 @@ Expected: FAIL（`AttributeError: dedup_merge_enabled`）
 - [ ] **Step 3: 实现**
 
 `jfox/global_config.py`，`GemSynthesisConfig` 字段区 `dedup_threshold` 那行后加：
+
 ```python
     dedup_merge_enabled: bool = True  # 命中 candidate 时提取增量补入（#309）；False 回 #308 二值跳过
 ```
+
 `from_dict` 的 return 里，`dedup_threshold=...` 之后加：
+
 ```python
             dedup_merge_enabled=bool(data.get("dedup_merge_enabled", True)),
 ```
@@ -499,16 +538,19 @@ dedup_merge_enabled=False 则命中仍走 #308 二值跳过。"
 ### Task 5: _merge_delta_into_candidate
 
 **Files:**
+
 - Modify: `jfox/gem_synth/synthesizer.py`（加 `_merge_delta_into_candidate` + import `update_note`/`load_note_by_id`）
 - Test: `tests/unit/test_synthesizer_dedup.py`
 
 **Interfaces:**
+
 - Consumes: `Note`（models）、`update_note(note, add_to_index=False)`、`upsert_dedup(kb, note_id, note_type, content)`
 - Produces: `_merge_delta_into_candidate(existing_note: Note, delta: Dict, anchor: Dict, kb: str) -> bool`；追加 `## 补充` 段 + `update_note` + 重算 embedding；失败返回 False
 
 - [ ] **Step 1: 写失败测试**
 
 `tests/unit/test_synthesizer_dedup.py` 加：
+
 ```python
 def test_merge_appends_delta_section_and_recomputes_embedding():
     """有增量时：追加 ## 补充 段、update_note 落盘、upsert_dedup 用合并后内容重算。"""
@@ -605,10 +647,13 @@ Expected: FAIL（`AttributeError: _merge_delta_into_candidate`）
 - [ ] **Step 3: 实现**
 
 `jfox/gem_synth/synthesizer.py` 顶部 import 改（`from ..note import save_note` → 加 `update_note`；`from .dedup import _resolve_kb_name, dedup_check, upsert_dedup` 已有 `upsert_dedup`）：
+
 ```python
 from ..note import load_note_by_id, save_note, update_note
 ```
+
 在 `_save_candidate_note` 之前（或 `_persist_note` 之后）加：
+
 ```python
 def _merge_delta_into_candidate(
     existing_note: Note, delta: Dict[str, Any], anchor: Dict[str, Any], kb: str
@@ -658,15 +703,18 @@ git commit -m "feat(gem-synth): _merge_delta_into_candidate 增量补入 candida
 ### Task 6: synthesize_anchor dedup 分支重写（接入合并）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/synthesizer.py:191-204`（dedup 分支决策树）+ 模块常量 + import
 - Test: `tests/unit/test_synthesizer_dedup.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 `DedupHit`/`dedup_check`、Task 3 `extract_delta_with_llm`、Task 4 `cfg.dedup_merge_enabled`、Task 5 `_merge_delta_into_candidate`、`load_note_by_id`、`_clean_candidate_content`
 
 - [ ] **Step 1: 写失败测试**
 
 `tests/unit/test_synthesizer_dedup.py` 加（复用文件既有 `_anchor()` + patch 风格）：
+
 ```python
 def test_candidate_merge_band_triggers_merge_and_mark_merged():
     """candidate + 0.88–0.96 合并带 + merge 开 + 有增量 → 调 extract_delta、
@@ -952,7 +1000,9 @@ def test_delta_load_race_degrades_to_skip():
     assert ("dup", 77, "cand-gone") in fake_log.calls
     mdelta.assert_not_called()  # load 失败就不调 delta LLM
 ```
+
 新增测试顶部需加 import + 一个构造已有 candidate 的小工具（`_try_merge_delta` 会读 `existing.type/.archived/.content`，必须用真 `Note`，不能 `object()`——否则 `.type` AttributeError 被吞 → 误降级 mark_duplicate）：
+
 ```python
 from datetime import datetime
 
@@ -974,6 +1024,7 @@ def _existing_candidate():
         status="pending",
     )
 ```
+
 > 文件内既有 `from jfox.gem_synth.dedup import DedupHit`（Task 1 加）与函数内 `from jfox.global_config import GemSynthesisConfig`——顶部统一加后，把函数内那两处冗余 import 删掉。
 
 - [ ] **Step 2: 跑红**
@@ -984,19 +1035,24 @@ Expected: 新增 7 例 FAIL（synthesizer 还未接合并逻辑：candidate 0.91
 - [ ] **Step 3: 实现决策树**
 
 `jfox/gem_synth/synthesizer.py` 顶部 import 加：
+
 ```python
 from .dedup import DedupHit, _clean_candidate_content, _resolve_kb_name, dedup_check, upsert_dedup
 from .llm import extract_delta_with_llm, synthesize_with_llm
 ```
+
 （替换原 `from .dedup import _resolve_kb_name, dedup_check, upsert_dedup` 与 `from .llm import synthesize_with_llm`；`_clean_candidate_content` 用于喂 delta LLM 比对口径）
 
 模块常量（`_strip_leading_h1` 附近）加：
+
 ```python
 # 近逐字阈值：cosine ≥ 此值视为近乎逐字重复，跳过 delta LLM 省成本（backlog 大量逐字 dup）。
 # 0.88–0.96 才进入「提取增量」合并带。v1 不暴露配置（YAGNI）。
 _NEAR_VERBATIM_THRESHOLD = 0.96
 ```
+
 把 Task 1 写的 dedup 段（从 `hit = dedup_check(...)` 到 `if hit:` 块末尾 `return None`）整段替换为：
+
 ```python
         hit = dedup_check(
             kb_name,
@@ -1032,7 +1088,9 @@ _NEAR_VERBATIM_THRESHOLD = 0.96
                 )
             return None
 ```
+
 在 `_merge_delta_into_candidate` 之前加辅助 `_try_merge_delta`（封装 load→extract→merge，任一失败返回 False）：
+
 ```python
 def _try_merge_delta(
     hit: DedupHit,
@@ -1063,6 +1121,7 @@ def _try_merge_delta(
         logger.exception("增量合并流程异常，降级跳过: %s", e)
         return False
 ```
+
 > `synthesize_anchor` 签名已有 `stop_event`；`NoteType` 已在文件顶部 import（`from ..models import GemLevel, Note, NoteType`）。
 
 - [ ] **Step 4: 跑绿**
@@ -1089,15 +1148,18 @@ load 已有 → extract_delta_with_llm → 有增量则 _merge_delta_into_candid
 ### Task 7: gem-synth status 显示 merged
 
 **Files:**
+
 - Modify: `jfox/gem_synth/cli.py`（`gem_synth_status` table + JSON + pending 计算）
 - Test: `tests/unit/test_gem_synth_cli.py`
 
 **Interfaces:**
+
 - Consumes: Task 2 `mark_merged`（`status_counts()` 已自动 GROUP 出 merged）
 
 - [ ] **Step 1: 写失败测试**
 
 镜像既有 `test_gem_synth_status_shows_counts`（env var 隔离 DB + 真 FragmentStore/SynthesisLog），`tests/unit/test_gem_synth_cli.py` 加：
+
 ```python
 def test_gem_synth_status_shows_merged(tmp_path, monkeypatch):
     """status 显示 merged 计数，并从 pending 扣除 merged。"""
@@ -1136,14 +1198,19 @@ Expected: FAIL（JSON 无 `merged` 键 / pending 未扣 merged）
 - [ ] **Step 3: 实现**
 
 `jfox/gem_synth/cli.py` `gem_synth_status` 里，`counts = log.status_counts()` 之后取 merged：
+
 ```python
         merged = counts.get("merged", 0)
 ```
+
 pending 计算改（在原 `pending = max(0, total - success - failed - duplicate)` 处）：
+
 ```python
         pending = max(0, total - success - failed - duplicate - merged)
 ```
+
 JSON 输出 dict 加 `"merged": merged,`。table 分支加一行（`console.print(f"  重复跳过（duplicate）：...")` 之后）：
+
 ```python
             console.print(f"  合并补入（merged）：  {merged}")
 ```
@@ -1170,15 +1237,18 @@ git commit -m "feat(gem-synth): status 显示 merged 计数并从 pending 扣除
 ### Task 8: 文档同步
 
 **Files:**
+
 - Modify: `CLAUDE.md`（`gem_synth/` 模块说明）
 - Grep: cc-plugin / kimi-plugin skill 文档有无 dedup 行为描述
 
 - [ ] **Step 1: CLAUDE.md gem_synth 行**
 
 `grep -n "gem_synth/" CLAUDE.md` 找到模块表里 `gem_synth/` 那行，补 dedup 增量合并描述。例如把
+
 ```
 | `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
 ```
+
 更新为追加「命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补入，#309）」。
 
 - [ ] **Step 2: grep skill 文档**
@@ -1186,6 +1256,7 @@ git commit -m "feat(gem-synth): status 显示 merged 计数并从 pending 扣除
 ```bash
 grep -rn "dedup\|去重\|重复跳过\|0.88" packages/cc-plugin/skills packages/kimi-plugin .claude/skills 2>/dev/null
 ```
+
 若命中描述 dedup「跳过/丢弃」语义处，改为体现「命中 candidate 时增量合并（可关）」。无命中则跳过。
 
 - [ ] **Step 3: commit**
@@ -1203,9 +1274,11 @@ CLAUDE.md gem_synth 模块表 + skill 文档里 dedup 语义由「整条跳过�
 ## 完成验证（PR 前自跑）
 
 - [ ] 全部 unit 测试绿（不跑 embedding/slow）：
+
   ```bash
   uv run pytest tests/unit/test_gem_synth_dedup.py tests/unit/test_gem_synth_store.py tests/unit/test_gem_synth_llm.py tests/unit/test_gem_synth_config_dedup.py tests/unit/test_synthesizer_dedup.py tests/unit/test_gem_synth_cli.py tests/unit/test_note_dedup_sync.py tests/unit/test_gem_synth_lifecycle.py tests/unit/test_gem_synth_backfill.py -v
   ```
+
 - [ ] lint 双过：`uv run ruff check jfox/ tests/` + `uv run --with black==26.3.1 black --check jfox/ tests/`
 - [ ] 把 spec 文件 `docs/superpowers/specs/2026-07-25-gem-synth-dedup-incremental-merge-design.md` 与本 plan 一并 commit 进 PR 分支（worktree 首个 commit 或独立 docs commit）
 

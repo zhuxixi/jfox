@@ -35,10 +35,12 @@
 4. 用户手动指定 `device: "cpu"/"cuda"` 时跳过自动检测
 
 **模型选择优先级**：
+
 - `config.embedding_model` 设为具体值 → 使用该模型，不论 device
 - `config.embedding_model = "auto"` → 根据 device 自动选默认模型
 
 **日志示例**：
+
 ```
 INFO  检测到 CUDA 可用 (NVIDIA RTX 4000 SFF Ada), 使用 GPU
 INFO  模型已加载: BAAI/bge-m3 (device=cuda, dimension=1024)
@@ -156,6 +158,7 @@ _backend = EmbeddingBackend(device=config.device, model_name=model_name)
 ```
 
 启动日志报告 device：
+
 ```
 INFO  Daemon: 模型已加载 BAAI/bge-m3 (device=cuda, dimension=1024)
 ```

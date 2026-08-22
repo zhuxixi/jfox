@@ -15,6 +15,7 @@
 ### Task 1: 添加测试验证第三方库日志被抑制
 
 **Files:**
+
 - Create: `tests/unit/test_logging_config.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -66,6 +67,7 @@ Expected: FAIL — 第三方库 logger 级别仍为 NOTSET/DEBUG
 ### Task 2: 实现第三方库日志级别抑制
 
 **Files:**
+
 - Modify: `jfox/cli.py:36-40`
 
 - [ ] **Step 1: 在 `logging.basicConfig()` 之后添加第三方库日志抑制**

@@ -9,6 +9,7 @@
 ## 0. 目标
 
 给 L3 gem_synth 循环加三个东西，使其能**安全、可观测地**消化碎片积压：
+
 1. **时间预算限流** —— 每个 tick（= `interval_minutes` 窗口）串行处理锚点直到时间用完，自适应、429 零风险
 2. **合成 ledger** —— `synthesis_log` 升级为带 status（success/failed）+ fail_reason 的记账表
 3. **失败 = 标记跳过（不重试）** + **`jfox gem-synth status`** 看进度 + 捞失败
@@ -20,12 +21,14 @@
 **用户决策**：不用计数上限（`max_per_tick`），改用**时间预算**。每个 tick 串行处理锚点，一直跑到 `interval_minutes`（窗口）用完或无锚点。
 
 **理由**（用户）：
+
 - 每次合成 ~5min（模型推理 + 整理），30min 窗口自然 ~5-6 个（30÷5），无需硬计数
 - 自适应：合成快就多跑、慢就少跑，填满窗口不浪费
 - 积压时连续跑：tick 跑满 30min → 下个 tick 立即接上（back-to-back）→ 一直跑到清完（过夜连续 ~11h 清 ~107 个）；清完后 tick 空转、30min 巡一次
 - 429 零风险（串行 ~5min/次，~12 次/h）
 
 **实现**（`gem_synth/loop.py _tick_once`）：
+
 ```python
 def _tick_once(stop_event):
     cfg = reload + get_gem_synthesis_config()
@@ -55,6 +58,7 @@ def _tick_once(stop_event):
 ## 2. synthesis_log → 合成 ledger（扩展现有表）
 
 当前 schema（仅去重）：
+
 ```sql
 CREATE TABLE synthesis_log (
     anchor_fragment_id  INTEGER PRIMARY KEY,
@@ -64,6 +68,7 @@ CREATE TABLE synthesis_log (
 ```
 
 **扩展**为带 status + fail_reason：
+
 ```sql
 CREATE TABLE synthesis_log (
     anchor_fragment_id  INTEGER PRIMARY KEY,
@@ -77,6 +82,7 @@ CREATE TABLE synthesis_log (
 **Migration**：建表 SQL 加新列；对已存在的表用 `ALTER TABLE ADD COLUMN`（status 默认 'success'，fail_reason NULL）。`SynthesisLog.__init__` 建表时 `CREATE TABLE IF NOT EXISTS` 不触发改列 —— 需要 schema 版本检测 + ALTER 升级（见 §5）。
 
 **`SynthesisLog` 方法变更**：
+
 - `mark_processed(anchor_id, candidate_note_id)` → 保持（记 success）
 - 新增 `mark_failed(anchor_id, fail_reason)` → 记 status='failed' + fail_reason，candidate_note_id=NULL
 - `is_processed(anchor_id)` → 保持（任意 status 行 = 已处理，不重试）
@@ -144,6 +150,7 @@ def _maybe_migrate(self):
 ## 6. 范围
 
 **本 issue 做：**
+
 - `_tick_once` 时间预算循环（去掉隐式 limit=100，改 limit=1 + 时间检查）
 - `synthesis_log` 加 status + fail_reason 列 + migration
 - `SynthesisLog.mark_failed` / `status_counts` / `list_failed`
@@ -151,6 +158,7 @@ def _maybe_migrate(self):
 - `jfox gem-synth status`（含 `--failed`、`--format json`）
 
 **不做：**
+
 - `retry-failed` 命令（YAGNI，用户暂手动捞）
 - max_per_tick 计数（用时间预算替代）
 - 429 退避（失败即标 failed 跳过，不做退避重试）

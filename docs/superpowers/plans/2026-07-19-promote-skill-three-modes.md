@@ -9,6 +9,7 @@
 **Tech Stack:** Markdown（skill 文档）+ 少量 python（模式1 临时脚本、cleaning regex 验证，跑完不入库或入 docs）。
 
 ## Global Constraints（来自 spec + CLAUDE.md）
+
 - **main 受保护**：所有改动在 worktree（从 origin/main 建），新分支 + PR，禁直接动 main
 - **基线 origin/main HEAD = `e97e749`**（工作 clone `<jfox-repo>` 已同步 origin/main、工作树干净，可直接建 worktree）
 - **路径为作者本地示例**：文中绝对路径（`/home/elling/...`、`~/.claude/...`）按实际仓库/工作树位置调整
@@ -19,6 +20,7 @@
 - 模式1 临时脚本依赖 embedding daemon（`jfox daemon` 不可用→降级只做 L1 content_hash）
 
 ## File Structure
+
 - **Create:** `docs/superpowers/specs/2026-07-19-promote-skill-three-modes-design.md`（spec 落地，内容来自 `<issue-research-dir>/issue-319/spec-draft.md`）
 - **Create:** `docs/superpowers/plans/2026-07-19-promote-skill-three-modes.md`（本 plan 落地）
 - **Modify:** `packages/cc-plugin/skills/promote/SKILL.md`（精简版 → 三模式完整版）
@@ -61,6 +63,7 @@ Run: `cat packages/cc-plugin/skills/promote/SKILL.md` + `cat packages/kimi-plugi
 ### Task 2: 落地 spec doc
 
 **Files:**
+
 - Create: `docs/superpowers/specs/2026-07-19-promote-skill-three-modes-design.md`
 
 - [ ] **Step 1: 复制 spec 草稿到项目**
@@ -69,6 +72,7 @@ Run: `cat packages/cc-plugin/skills/promote/SKILL.md` + `cat packages/kimi-plugi
 cp <issue-research-dir>/issue-319/spec-draft.md \
    docs/superpowers/specs/2026-07-19-promote-skill-three-modes-design.md
 ```
+
 （若 specs 目录不存在先 `mkdir -p docs/superpowers/specs`）
 
 - [ ] **Step 2: 校对开头（草稿 banner 删除）**
@@ -87,6 +91,7 @@ git commit -m "docs(spec): promote skill 三模式过审设计 (#319)"
 ### Task 3: 重写 cc 版 SKILL.md
 
 **Files:**
+
 - Modify: `packages/cc-plugin/skills/promote/SKILL.md`
 
 **新结构（章节顺序 + 每节要点）：**
@@ -179,9 +184,11 @@ git commit -m "feat(cc-plugin): promote skill 重写为三模式过审 (#319)"
 ### Task 4: 重写 kimi 版 SKILL.md
 
 **Files:**
+
 - Modify: `packages/kimi-plugin/skills/jfox-promote/SKILL.md`
 
 **结构 = cc 版（Task 3）+ 额外保留 kimi 现有章节：**
+
 - 保留前置条件（`jfox --version` / `kb current`）
 - 保留「监控 L3 合成」章节（`gem-synth status` / `fragments list/show`）——放在三模式之前（过审前先看合成状态）
 - 三模式（1/2/3）+ 冗余 verdict + 机械清理 + 已知坑 + 输出格式 ——与 cc 版**逐节同步**
@@ -218,6 +225,7 @@ git commit -m "feat(kimi-plugin): jfox-promote skill 重写为三模式过审 (#
 - [ ] **Step 1: cleaning regex 覆盖验证**
 
 Run（在 worktree 跑临时 python，不入库）:
+
 ```bash
 cd <jfox-worktree>
 uv run python -c "
@@ -232,17 +240,20 @@ assert not META_RE.search('\n## 核心原则\n'), '误匹配正文标题'
 print('正文标题不误删 OK')
 "
 ```
+
 Expected: `6 样本（3 标准 marker + 3 变体）全覆盖 OK` + `正文标题不误删 OK`。若失败，修 SKILL.md 里 META_RE（Task 3/4）。
 
 - [ ] **Step 2: 模式1 脚本 dry-run（真实 KB，不 apply）**（提取 SKILL.md §1 的 python 代码块存临时文件跑；或直接用 `$CLAUDE_JOB_DIR/tmp/dedup_scan.py` 已验证副本——内容与 SKILL §1 直读版一致）
 
 Run:
+
 ```bash
 cd <jfox-worktree>
 # 把 SKILL.md §1 脚本存成临时文件跑 dry-run
 jfox daemon status  # 确认 daemon（影响 L2/L3）
 uv run python /tmp/dedup_scan.py --threshold 0.95  # L2 dry-run
 ```
+
 Expected: 输出 L1 精确重复簇数 + L2 cosine 簇报告，无报错。若 daemon 挂→确认降级 L1。若脚本报错→修 SKILL.md §1 脚本（Task 3/4）后重跑。
 
 - [ ] **Step 3: 若修了脚本，amend/补 commit**
@@ -282,12 +293,14 @@ gh issue comment 319 --repo zhuxixi/jfox --body '## Follow-up 登记（本 PR �
 ### Task 7: plugin 版本 bump（待确认）
 
 **Files:**
+
 - Modify: `packages/cc-plugin/.claude-plugin/plugin.json`
 - Modify: `.claude-plugin/marketplace.json`
 
 - [ ] **Step 1: 确认是否 bump**
 
 决策点：纯 skill 文档重写是否 bump cc-plugin 版本（现 0.5.1）。
+
 - 若 bump → Step 2
 - 若不 bump（skill 内容变更不算 plugin 发版）→ 跳过本 task
 
@@ -318,6 +331,7 @@ git commit -m "chore(cc-plugin): bump version 0.5.1 → 0.5.2 for promote skill 
 ### Task 8: 落地 plan doc + 终检
 
 **Files:**
+
 - Create: `docs/superpowers/plans/2026-07-19-promote-skill-three-modes.md`
 
 - [ ] **Step 1: 落地 plan doc**
@@ -326,6 +340,7 @@ git commit -m "chore(cc-plugin): bump version 0.5.1 → 0.5.2 for promote skill 
 cp <issue-research-dir>/issue-319/plan-draft.md \
    docs/superpowers/plans/2026-07-19-promote-skill-three-modes.md
 ```
+
 （删首行调研 banner）
 
 - [ ] **Step 2: Commit plan**

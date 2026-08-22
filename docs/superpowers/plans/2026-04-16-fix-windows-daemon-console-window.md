@@ -13,6 +13,7 @@
 ### Task 1: Add `_get_pythonw_executable` helper and test
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py:1-22` (add helper after imports)
 - Create: `tests/unit/test_daemon_process.py`
 
@@ -110,6 +111,7 @@ git commit -m "feat(daemon): add _get_pythonw_executable helper for Windows"
 ### Task 2: Use `_get_pythonw_executable` in `start_daemon`
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py:111` (change cmd construction)
 - Modify: `tests/unit/test_daemon_process.py` (add test)
 

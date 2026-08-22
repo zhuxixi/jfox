@@ -87,17 +87,20 @@ crontab -l | grep nightly_test
 
 - **原因**：#338 备份未在今天 08:00 成功跑过（`state.json` 的 `last_ok != true` 或 `last_run[:10] != 今天`）。
 - **处置**：
+
   ```bash
   jfox backup status                      # 看 last_run / last_ok
   jfox backup run                         # 手工补跑一次今天的备份
   cat ~/.jfox-backup/state.json           # 确认 last_ok=true 且 last_run 是今天
   ```
+
 - 若从未启用备份：`jfox backup enable`。
 
 ### 现象：`WARN: gh 缺失` / `WARN: gh 未认证`
 
 - **原因**：`gh` CLI 未装或未 `gh auth login`。脚本仍会跑完测试，只是失败时**降级**写本地告警文件（`$LOG_DIR/issue-body-<ts>.md`），不提 GitHub issue。
 - **处置**：
+
   ```bash
   which gh || sudo apt install gh         # 或见 https://cli.github.com/
   gh auth status                          # 看认证状态
@@ -118,21 +121,25 @@ crontab -l | grep nightly_test
 
 - **原因**：真实 HF 缓存或 uv 缓存路径被删/移动，或 `REAL_HOME` 判定错（脚本以启动时 `$HOME` 为 `REAL_HOME`）。脚本会在日志打 `WARN: HF cache ... 不存在`（HF 侧），但 uv 侧静默重下。
 - **处置**：
+
   ```bash
   ls -d ~/.cache/huggingface ~/.cache/uv ~/.local/share/uv/python   # 确认缓存目录存在
   df -h ~/.cache                                                      # 确认没满
   ```
+
   若是首次启用、缓存还没建：手工跑一次 `jfox init` 或 `uv sync --extra dev` 把缓存预热好，再让 cron 接管。
 
 ### 现象：worktree 残留 / 沙箱 home 没删
 
 - **原因**：脚本异常退出（如 kill -9）未触发 `trap cleanup EXIT`。
 - **处置**：
+
   ```bash
   ls ~/.jfox-nightly-test/                                # 看残留的 worktree-* / home-XXXXXX
   git -C /home/elling/git-repo/github/jfox worktree prune # 清理 worktree 元数据
   rm -rf ~/.jfox-nightly-test/worktree-* ~/.jfox-nightly-test/home-*
   ```
+
   调试时可加 `--keep-worktree` 保留 worktree 以便排查。
 
 ## 验收清单

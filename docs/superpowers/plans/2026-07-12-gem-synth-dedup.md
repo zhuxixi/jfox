@@ -38,10 +38,12 @@
 ## Task 1: dedup.py — DedupStore + 模块函数
 
 **Files:**
+
 - Create: `jfox/gem_synth/dedup.py`
 - Test: `tests/unit/test_gem_synth_dedup.py`
 
 **Interfaces:**
+
 - Consumes: `jfox.embedding_backend.get_backend() -> EmbeddingBackend`（`.encode_single(text)->np.ndarray`）；`jfox.gem_synth.paths.default_synthesis_db_path()`
 - Produces:
   - `dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[str]` — 返回重复 note_id 或 None
@@ -390,10 +392,12 @@ git commit -m "feat(gem-synth): dedup 模块——DedupStore + 余弦查重 + �
 ## Task 2: store.py — mark_duplicate + dup_of 列迁移
 
 **Files:**
+
 - Modify: `jfox/gem_synth/store.py`（`_maybe_migrate` 加 dup_of 列；加 `mark_duplicate` 方法）
 - Test: `tests/unit/test_gem_synth_store_duplicate.py`
 
 **Interfaces:**
+
 - Produces: `SynthesisLog.mark_duplicate(anchor_fragment_id: int, dup_of: str) -> None`；`status_counts()` 返回的 dict 现含 `'duplicate'` 键；synthesis_log 表新增列 `dup_of TEXT`
 
 - [ ] **Step 1: 写失败测试**
@@ -480,10 +484,12 @@ git commit -m "feat(gem-synth): synthesis_log 加 duplicate 状态 + dup_of 列"
 ## Task 3: synthesizer.py — hook dedup + 存盘后 upsert
 
 **Files:**
+
 - Modify: `jfox/gem_synth/synthesizer.py:108-162`（`synthesize_anchor`）
 - Test: `tests/unit/test_synthesizer_dedup.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `dedup_check`/`upsert_dedup`；Task 2 的 `log.mark_duplicate`；`cfg.dedup_enabled`/`cfg.dedup_threshold`（Task 5，本任务先用 `getattr(cfg, 'dedup_enabled', True)` 兜底）；`cfg.target_kb`
 
 - [ ] **Step 1: 写失败测试（mock dedup_check + _save_candidate_note）**
@@ -596,6 +602,7 @@ Expected: FAIL（`dedup_check` 未在 synthesizer 命名空间 / 未调用）
 Modify `jfox/gem_synth/synthesizer.py`：
 
 顶部 import 区加：
+
 ```python
 from .dedup import dedup_check, upsert_dedup
 ```
@@ -652,9 +659,11 @@ git commit -m "feat(gem-synth): synthesize_anchor 存盘前 dedup hook + 存盘�
 ## Task 4: note.py — promote/reject/archive 同步 dedup 表
 
 **Files:**
+
 - Modify: `jfox/note.py:286-309`（archive_note）、`jfox/note.py:339-411`（promote_note 末尾）、`jfox/note.py:413-432`（reject_note）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `update_dedup_type`/`delete_dedup`；`n.filepath` 推导 kb
 - Produces: promote/reject/archive 副作用保持 dedup_embeddings 表与笔记状态一致
 
@@ -731,6 +740,7 @@ Expected: FAIL（promote/reject/archive 未调 dedup）
 Modify `jfox/note.py`：
 
 顶部加（文件已 import logging；dedup 按需 import 避免循环）：
+
 ```python
 def _kb_name_from_path(filepath) -> str:
     """从笔记路径推 kb 名：<kb_root>/<kb_name>/notes/<type>/<file> → kb_name。"""
@@ -741,6 +751,7 @@ def _kb_name_from_path(filepath) -> str:
 ```
 
 在 `promote_note` 的 `return True` 之前（增量回填循环之后、函数返回前）加：
+
 ```python
     # dedup 同步：candidate→permanent，表内 note_type 改 permanent（仍占位防重复合成）
     try:
@@ -752,6 +763,7 @@ def _kb_name_from_path(filepath) -> str:
 ```
 
 在 `reject_note` 的 `return update_note(n)` 之前加：
+
 ```python
     # dedup 同步：reject 的 candidate 从表删除，让该事实可被未来重新合成
     try:
@@ -763,6 +775,7 @@ def _kb_name_from_path(filepath) -> str:
 ```
 
 在 `archive_note` 的两个 `return update_note(n)` 之前各加（归档即从 dedup 移除）：
+
 ```python
     try:
         from .gem_synth.dedup import delete_dedup
@@ -771,6 +784,7 @@ def _kb_name_from_path(filepath) -> str:
     except Exception:
         pass  # 归档是通用路径，dedup 失败不影响归档语义
 ```
+
 （`archive_note` 有早返回路径——`if n.archived: return update_note(n)`，该路径幂等，不必删 dedup；只在主路径 `n.archived = True` 之后加删除。）
 
 - [ ] **Step 4: 跑测试验证通过**
@@ -792,9 +806,11 @@ git commit -m "feat(gem-synth): promote/reject/archive 同步 dedup 表"
 ## Task 5: global_config.py — dedup_enabled / dedup_threshold 配置
 
 **Files:**
+
 - Modify: `jfox/global_config.py:237-283`（`GemSynthesisConfig` dataclass + `from_dict`）
 
 **Interfaces:**
+
 - Produces: `GemSynthesisConfig.dedup_enabled: bool = True`、`GemSynthesisConfig.dedup_threshold: float = 0.88`
 
 - [ ] **Step 1: 写失败测试**
@@ -833,16 +849,19 @@ Expected: FAIL（字段不存在）
 - [ ] **Step 3: 实现配置字段**
 
 Modify `jfox/global_config.py` 的 `GemSynthesisConfig` dataclass：在 `claude_timeout_seconds` 字段后加：
+
 ```python
     dedup_enabled: bool = True  # 存盘前用正文 embedding 余弦查重
     dedup_threshold: float = 0.88  # 同事实重复阈值（高）；link-suggest 0.6 是"相关"，dedup 要"同一"
 ```
 
 在 `from_dict` 类方法里（解析字段那段，参考 `grounding_top_k=_safe_int(...)` 模式）加：
+
 ```python
             dedup_enabled=bool(data.get("dedup_enabled", True)),
             dedup_threshold=_safe_float(data.get("dedup_threshold"), 0.88),
 ```
+
 （若 `_safe_float` 不存在，参考现有 `_safe_int` 写一个等价的 float 版，或用 `float(data.get(...) or 0.88)`。先 grep 确认。）
 
 - [ ] **Step 4: 跑测试验证通过**
@@ -864,9 +883,11 @@ git commit -m "feat(gem-synth): GemSynthesisConfig 加 dedup_enabled/dedup_thres
 ## Task 6: cli.py — dedup-backfill 命令 + status 展示 duplicate
 
 **Files:**
+
 - Modify: `jfox/gem_synth/cli.py`（status 输出加 duplicate；新增 dedup-backfill 子命令）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `upsert_dedup`/`_clean_candidate_content`；`jfox.note` 遍历笔记；`get_backend()`
 
 - [ ] **Step 1: 写失败测试（backfill 逻辑用 temp_kb + mock backend）**
@@ -912,6 +933,7 @@ Expected: FAIL（`_dedup_backfill_impl` 不存在）
 Modify `jfox/gem_synth/cli.py`：
 
 加 import 与实现函数（放在现有 status 命令附近）。`NoteMeta` 不含正文，需 `load_note_by_id` 取 `.content`；遍历用 `get_all_meta()`；`type` 是 `NoteType` 枚举：
+
 ```python
 def _dedup_backfill_impl(kb: str):
     """扫 kb 的 candidate(非 archived)+permanent，灌 dedup 表。返回 (n_cand, n_perm)。"""
@@ -939,6 +961,7 @@ def _dedup_backfill_impl(kb: str):
 ```
 
 加 Typer 命令（参考现有 status 子命令组装饰器模式，文件内 grep `@.*command(` 看装饰器名，大概率是 `@gem_synth_app.command(...)` 或挂在 status 子命令组上）：
+
 ```python
 @gem_synth_app.command("dedup-backfill")
 def dedup_backfill_cmd(kb: Optional[str] = None):
@@ -952,10 +975,13 @@ def dedup_backfill_cmd(kb: Optional[str] = None):
 ```
 
 status 输出加 duplicate：`gem_synth/cli.py` 的 status 命令在 ~272-274 行已有 `counts = log.status_counts(); success = counts.get("success",0); failed = counts.get("failed",0)`。在 failed 行后加：
+
 ```python
         duplicate = counts.get("duplicate", 0)
 ```
+
 并在渲染 success/failed 的输出处（紧随其后）追加一行，沿用其现有输出风格（`console.print` / `typer.echo`，按该处一致）：
+
 ```python
         # 例（按现有风格调整）：
         console.print(f"  重复跳过（duplicate）：[bold]{duplicate}[/bold]")
@@ -986,11 +1012,13 @@ uv run pytest tests/unit/test_gem_synth_dedup.py tests/unit/test_synthesizer_ded
   tests/unit/test_note_dedup_sync.py tests/unit/test_gem_synth_config_dedup.py \
   tests/unit/test_gem_synth_backfill.py tests/unit/test_gem_synth_store_duplicate.py -v
 ```
+
 Expected: 全 PASS
 
 - [ ] **Step 2: 跑 fast CI 子集（排除 embedding/slow）确认没破坏现有**
 
 让用户跑（含真模型，不自主）：
+
 ```bash
 uv run pytest tests/ -m "not embedding and not slow" -q
 ```

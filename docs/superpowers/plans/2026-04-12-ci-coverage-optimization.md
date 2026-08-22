@@ -19,6 +19,7 @@
 | `.github/workflows/integration-test.yml` | Modify | 唯一需要修改的文件，所有改动集中于此 |
 
 改动集中在两个 job：
+
 - **test-fast** (line 64-107): 增加 coverage 生成和 artifact 上传
 - **coverage** (line 243-310): 简化为下载 artifact + 解析评论
 
@@ -27,6 +28,7 @@
 ### Task 1: test-fast job 增加 coverage 生成和上传
 
 **Files:**
+
 - Modify: `.github/workflows/integration-test.yml:90-107`
 
 这一步让 ubuntu 的 test-fast 直接生成 coverage.xml 并上传。
@@ -86,6 +88,7 @@ git commit -m "ci: generate coverage in test-fast ubuntu and upload artifact"
 ### Task 2: 简化 coverage job
 
 **Files:**
+
 - Modify: `.github/workflows/integration-test.yml:243-310`
 
 删除 coverage job 中重跑测试的步骤，改为下载 artifact + 解析评论。
@@ -153,6 +156,7 @@ git commit -m "ci: generate coverage in test-fast ubuntu and upload artifact"
 ```
 
 改动要点：
+
 1. 新增 `permissions: pull-requests: write` — 修复 PR 评论权限
 2. 删除 `Set up Python`、`setup-uv`、`Install dependencies`、`Run coverage` 四个步骤 — 不再重跑测试
 3. 新增 `Download coverage data` — 下载 test-fast 上传的 coverage.xml
@@ -205,6 +209,7 @@ EOF
 - [ ] **Step 2: 观察 CI 运行**
 
 在 PR 页面确认：
+
 1. test-fast (ubuntu) 步骤日志中有 `--cov=jfox --cov-report=xml` 参数
 2. "Upload coverage data" step 成功上传 coverage-data artifact
 3. coverage job 只有 3 个 step（Checkout, Download, Post comment），无 pytest 运行
@@ -215,6 +220,7 @@ EOF
 - [ ] **Step 3: 合入后回归验证**
 
 合并到 main 后：
+
 1. push 触发的 CI 正常运行
 2. workflow_dispatch 手动触发时 coverage job 仍正确处理（非 PR 不评论）
 

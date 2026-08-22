@@ -17,6 +17,7 @@
 ## 文件结构
 
 新增：
+
 - `jfox/fragment/__init__.py` — 包入口，导出公开 API
 - `jfox/fragment/detector.py` — 纯逻辑：事件 → (fragment_type, content)
 - `jfox/fragment/store.py` — `FragmentStore`：SQLite 读写（建表/insert/query/counts）
@@ -31,6 +32,7 @@
 - `tests/integration/test_fragment_capture_flow.py` — 端到端 smoke（用户跑）
 
 改动：
+
 - `jfox/global_config.py` — 加 `FragmentCaptureConfig` + 挂进 `GlobalConfig` + manager 方法
 - `jfox/daemon/server.py` — 加 `POST /api/fragment`、`GET /api/fragments`，lifespan 初始化 store
 - `jfox/cli.py` — 挂载 `fragments_app`
@@ -62,6 +64,7 @@ Expected: `feat/261-fragment-capture`
 依赖：无（叶子配置，detector/service 会用它）。
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（在 `AutoSummaryConfig` 之后、`GlobalConfig` 之前插入新 dataclass；改 `GlobalConfig` 三处）
 - Test: `tests/unit/test_fragment_config.py`
 
@@ -239,6 +242,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：Task 1（`FragmentCaptureConfig` 提供关键词）。
 
 **Files:**
+
 - Create: `jfox/fragment/detector.py`
 - Test: `tests/unit/test_fragment_detector.py`
 
@@ -392,6 +396,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：无（独立存储层）。
 
 **Files:**
+
 - Create: `jfox/fragment/store.py`
 - Test: `tests/unit/test_fragment_store.py`
 
@@ -617,6 +622,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：Task 1（config）、Task 2（detector）、Task 3（store）。
 
 **Files:**
+
 - Create: `jfox/fragment/service.py`
 - Test: `tests/unit/test_fragment_service.py`
 
@@ -819,6 +825,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：Task 3（store）、Task 4（service）。
 
 **Files:**
+
 - Modify: `jfox/daemon/server.py`（lifespan 加 store 初始化；加两个端点）
 
 说明：端点是 3 行壳，逻辑由 Task 4 单测覆盖；端点本身在 Task 8 集成验证（**用户手动跑**）。
@@ -931,6 +938,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：Task 3（store）。
 
 **Files:**
+
 - Create: `jfox/fragment/cli.py`
 - Modify: `jfox/cli.py`（挂载子命令组，约第 102/104 行附近）
 - Test: `tests/unit/test_fragment_cli.py`
@@ -1120,6 +1128,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：Task 5（daemon 端点就绪）。
 
 **Files:**
+
 - Create: `packages/cc-plugin/hooks/hooks.json`
 - Create: `packages/cc-plugin/hooks/fragment-capture.sh`
 - Modify: `packages/cc-plugin/.claude-plugin/plugin.json`
@@ -1220,10 +1229,12 @@ Expected: 无输出
 - [ ] **Step 5: 校验 JSON 合法 + 脚本 bash 语法**
 
 Run:
+
 ```bash
 python3 -c "import json; json.load(open('packages/cc-plugin/hooks/hooks.json')); json.load(open('packages/cc-plugin/.claude-plugin/plugin.json')); print('json ok')"
 bash -n packages/cc-plugin/hooks/fragment-capture.sh && echo "bash syntax ok"
 ```
+
 Expected: `json ok` 和 `bash syntax ok`
 
 - [ ] **Step 6: 提交**
@@ -1242,6 +1253,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 依赖：Task 5、7。涉及真实 daemon + 模型加载，**按 CLAUDE.md 由用户手动执行**。
 
 **Files:**
+
 - Create: `tests/integration/test_fragment_capture_flow.py`
 
 - [ ] **Step 1: 写集成测试 `tests/integration/test_fragment_capture_flow.py`**
@@ -1341,6 +1353,7 @@ uv run pytest tests/integration/test_fragment_capture_flow.py -v -m integration
 # 3.（可选）真实 CC 验证：装好插件后，在 CC 里发一句"不对，应该..."
 #    然后看：uv run jfox fragments list --limit 5
 ```
+
 Expected（用户反馈）: 3 个集成测试通过；`jfox fragments list` 能看到刚采集的碎片。
 
 ---
@@ -1362,10 +1375,12 @@ Expected: PASS（确认没破坏既有单测）
 - [ ] **Step 3: lint/format**
 
 Run:
+
 ```bash
 uv run black jfox/fragment/ jfox/daemon/server.py jfox/global_config.py jfox/cli.py tests/unit/test_fragment_*.py tests/integration/test_fragment_capture_flow.py
 uv run ruff check jfox/fragment/ jfox/daemon/server.py jfox/global_config.py jfox/cli.py tests/unit/test_fragment_*.py tests/integration/test_fragment_capture_flow.py
 ```
+
 Expected: black 无改动 / ruff 无报错
 
 - [ ] **Step 4: 更新 CLAUDE.md 模块表（可选但推荐）**
@@ -1391,6 +1406,7 @@ Expected: PR 创建成功
 ## Self-Review 结果
 
 **1. Spec 覆盖**（对照设计 spec §2 模块表）：
+
 - `FragmentCaptureConfig` → Task 1 ✅
 - `detector.py`（classify）→ Task 2 ✅
 - `store.py`（FragmentStore）→ Task 3 ✅
@@ -1404,6 +1420,7 @@ Expected: PR 创建成功
 **2. 占位符扫描**：无 TBD/TODO；每步都有完整代码与命令。
 
 **3. 类型/签名一致性**：
+
 - `classify(event, config) -> (str, Optional[str])` Task2 定义，Task4 `ingest_event` 调用一致 ✅
 - `FragmentStore(db_path=None)` + `insert(session_id, fragment_type, source_event, content, metadata)` / `get(fid)` / `query(session_id, fragment_type, limit)` / `counts_by_type(session_id)` —— Task3 定义，Task4/5/6 调用参数名一致 ✅
 - `ingest_event(event, store=None, config=None) -> dict` + `set_default_store(store)` —— Task4 定义，Task5 端点调用一致 ✅

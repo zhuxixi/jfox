@@ -56,21 +56,21 @@ pi 版写死默认知识库（不带 `--kb`，呼应原 #365）。**CC/Kimi 不�
 
 ### 同步入口文件（4 处）
 
-3. **`packages/cc-plugin/skills/using-jfox/SKILL.md`**
+1. **`packages/cc-plugin/skills/using-jfox/SKILL.md`**
    - 路由表「我该用哪个 skill」加一行：会话提炼永久笔记 → `session-to-permanent`
    - 职责列表（当前 5 条）加一条 session-to-permanent 一句话职责（5 → 6）
    - 复合工作流「会话沉淀」改为按需分流（summary 存档 / session-to-permanent 提炼）
 
-4. **`packages/kimi-plugin/README.md`**
+2. **`packages/kimi-plugin/README.md`**
    - 功能表（9 行）加 `jfox-session-to-permanent` 行；标题「9 个核心 skill」→「10 个」
    - 文件结构树加 `jfox-session-to-permanent/` 目录
    - 「与 Claude Code 插件的差异」表核心技能清单两端各加 session-to-permanent
 
-5. **`packages/kimi-plugin/skills/using-jfox/SKILL.md`**
+3. **`packages/kimi-plugin/skills/using-jfox/SKILL.md`**
    - 术语映射表加一行：会话提炼永久笔记 → `/skill:jfox-session-to-permanent`
    - 跨 skill 引用语法列表加 `/skill:jfox-session-to-permanent`
 
-6. **`CLAUDE.md`**（项目根，cc-plugin skill 清单）
+4. **`CLAUDE.md`**（项目根，cc-plugin skill 清单）
    - cc-plugin skill 清单「8 skills」→「9 skills」，在 `session-summary` 后补 `session-to-permanent`（kimi-plugin 无对应枚举清单，不需改）
 
 ### 不改

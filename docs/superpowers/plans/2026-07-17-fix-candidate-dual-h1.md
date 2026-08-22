@@ -31,10 +31,12 @@
 ## Task 1: `_strip_leading_h1` 纯函数（TDD）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/synthesizer.py`（在 `_coerce_grounded_by` 之后、`_save_candidate_note` 之前插入常量 + 函数）
 - Test: `tests/unit/test_gem_synth_synthesizer.py`（追加测试）
 
 **Interfaces:**
+
 - Produces: `_strip_leading_h1(content: str) -> str` —— 剥掉入参开头首个冗余 H1 行（含前导空白、紧随换行）；剥后若为空则回退原值（防空正文）。Task 2 的 `_save_candidate_note` 依赖此函数名。
 
 - [ ] **Step 1: 写失败测试**
@@ -129,10 +131,12 @@ git commit -m "fix(gem-synth): 新增 _strip_leading_h1，剥 candidate content 
 ## Task 2: 接入 `_save_candidate_note` + 集成测试（TDD）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/synthesizer.py:58`（`_save_candidate_note` 内，取 content 之后接入 strip）
 - Test: `tests/unit/test_gem_synth_synthesizer.py`（追加集成测试）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `_strip_leading_h1`
 - Produces: candidate 笔记落盘时 `Note.content` 不含开头冗余 H1（`to_markdown` 只产出一个 `# title`）
 
@@ -176,7 +180,7 @@ def test_save_candidate_note_strips_leading_h1_from_content():
 - [ ] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/unit/test_gem_synth_synthesizer.py::test_save_candidate_note_strips_leading_h1_from_content -v`
-Expected: FAIL —— `AssertionError: assert True is False`（content 仍以 `# ` 开头，strip 尚未接入）
+Expected: FAIL —— `AssertionError: assert True is False`（content 仍以 `#` 开头，strip 尚未接入）
 
 - [ ] **Step 3: 接入 strip（一行）**
 
@@ -231,9 +235,11 @@ Expected: 全 PASS（含既有 `test_synthesize_anchor_produces_candidate_note` 
 - [ ] **Step 2: 静态确认 dedup 路径用原始 content（人工核对，无需跑）**
 
 确认 `synthesize_anchor`（synthesizer.py:153-176）的 dedup_check / upsert_dedup 仍直接用 `llm_result.get("content")`，**不经过** `_strip_leading_h1`：
+
 ```bash
 grep -n 'llm_result.get("content")\|_strip_leading_h1' jfox/gem_synth/synthesizer.py
 ```
+
 Expected: 看到 3 处 `llm_result.get("content")`（dedup_check / upsert_dedup / _save_candidate_note 内部经 strip）+ 1 处 `_strip_leading_h1` 调用。dedup 两处不经 strip = 隔离正确。
 
 - [ ] **Step 3: 最终 lint 全量**
@@ -247,7 +253,7 @@ Expected: 无报错
 
 ## Self-Review（写计划后自检）
 
-1. **Spec 覆盖**：issue 要求「方案 1：strip content 开头 `# ` 行，不动 to_markdown」→ Task 1（纯函数）+ Task 2（接入）覆盖；「存量归 #319」→ Global Constraints 明确不做 backfill，边界对齐。✅
+1. **Spec 覆盖**：issue 要求「方案 1：strip content 开头 `#` 行，不动 to_markdown」→ Task 1（纯函数）+ Task 2（接入）覆盖；「存量归 #319」→ Global Constraints 明确不做 backfill，边界对齐。✅
 2. **占位符扫描**：所有 step 含完整代码/命令/expected，无 TBD。✅
 3. **类型一致**：Task 1 定义 `_strip_leading_h1(content: str) -> str`，Task 2 接入调用同名同签名；`_LEADING_H1_RE` 仅 Task 1 定义一次。✅
 4. **回归面**：dedup 用原始 content 的隔离由 Task 3 Step 2 显式验证；既有编排测试 mock 了 `_save_candidate_note` 故不受 Task 2 内部改动影响（Task 3 Step 1 再确认）。✅

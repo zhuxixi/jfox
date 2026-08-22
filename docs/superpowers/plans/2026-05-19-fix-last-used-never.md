@@ -13,6 +13,7 @@
 ### Task 1: Add throttling to `update_last_used()`
 
 **Files:**
+
 - Modify: `jfox/global_config.py:315-324`
 - Test: `tests/unit/test_global_config.py`
 
@@ -106,6 +107,7 @@ git commit -m "fix: add 5-minute throttle to update_last_used()"
 ### Task 2: Call `update_last_used()` in `use_kb()` Path A (default KB)
 
 **Files:**
+
 - Modify: `jfox/config.py:174-176`
 - Test: `tests/unit/test_use_kb_env_var.py`
 
@@ -189,6 +191,7 @@ git commit -m "fix: update last_used when using default KB (use_kb Path A)"
 ### Task 3: Call `update_last_used()` in `use_kb()` Path B (explicit --kb / JFOX_KB)
 
 **Files:**
+
 - Modify: `jfox/config.py:199-200` (the line after `config.chroma_dir` assignment)
 - Test: `tests/unit/test_use_kb_env_var.py`
 

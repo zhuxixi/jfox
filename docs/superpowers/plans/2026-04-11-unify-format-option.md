@@ -24,6 +24,7 @@
 ### Task 1: Migrate `add` command
 
 **Files:**
+
 - Modify: `jfox/cli.py:223-338` (`_add_note_impl`), `jfox/cli.py:341-371` (`add` CLI function)
 - Test: `tests/unit/test_format_unify.py`
 
@@ -278,6 +279,7 @@ git commit -m "refactor(cli): migrate add command from --json to --format with c
 ### Task 2: Migrate `delete` command
 
 **Files:**
+
 - Modify: `jfox/cli.py:824-861` (`_delete_impl`), `jfox/cli.py:864-890` (`delete` CLI function)
 - Test: `tests/unit/test_format_unify.py` (append tests)
 
@@ -481,6 +483,7 @@ git commit -m "refactor(cli): migrate delete command from --json to --format"
 ### Task 3: Migrate `edit` command
 
 **Files:**
+
 - Modify: `jfox/cli.py:893-997` (`_edit_impl`), `jfox/cli.py:1000-1031` (`edit` CLI function)
 - Modify: `tests/unit/test_edit.py` (update `json_output=True` → `output_format="json"`)
 - Test: `tests/unit/test_format_unify.py` (append tests)
@@ -706,6 +709,7 @@ git commit -m "refactor(cli): migrate edit command from --json to --format"
 ### Task 4: Migrate `init` command
 
 **Files:**
+
 - Modify: `jfox/cli.py:87-187` (`init` CLI function — no `_xxx_impl`)
 - Test: `tests/unit/test_format_unify.py` (append tests)
 
@@ -836,6 +840,7 @@ git commit -m "refactor(cli): migrate init command from --json to --format"
 ### Task 5: Add integration tests for all 4 commands
 
 **Files:**
+
 - Modify: `tests/test_cli_format.py` (append tests)
 
 - [ ] **Step 1: Write integration tests**

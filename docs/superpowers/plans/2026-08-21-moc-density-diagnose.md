@@ -38,10 +38,12 @@
 ### Task 1: Typed bulk embedding read boundary
 
 **Files:**
+
 - Modify: `jfox/vector_store.py:1-204`
 - Create: `tests/unit/test_vector_store_embeddings.py`
 
 **Interfaces:**
+
 - Produces: `VectorStore.get_all_embeddings(note_type: Optional[str] = None) -> tuple[list[str], list[dict[str, Any]], np.ndarray]`
 - The returned array is `float32` with shape `(N, D)`; an empty result is `np.empty((0, 0), dtype=np.float32)`.
 - `note_type` becomes a Chroma `where={"type": note_type}` filter; `None` performs no metadata filtering.
@@ -138,11 +140,13 @@ git commit -m "feat(moc): expose stored embeddings for diagnostics"
 ### Task 2: Pure semantic clustering kernel
 
 **Files:**
+
 - Create: `jfox/moc/__init__.py`
 - Create: `jfox/moc/cluster.py`
 - Create: `tests/unit/test_moc_cluster.py`
 
 **Interfaces:**
+
 - Produces: `ClusterMember`, `ClusterSummary`, `ThresholdSummary`, `CoverageReport`, `OrphanSummary`, and `MocDiagnoseReport` dataclasses.
 - Produces: `compute_similarity(embeddings: np.ndarray) -> np.ndarray`.
 - Produces: `find_clusters_at_threshold(similarity: np.ndarray, threshold: float, min_size: int) -> list[list[int]]`.
@@ -241,10 +245,12 @@ git commit -m "feat(moc): add semantic clustering kernel"
 ### Task 3: Permanent-note coverage, orphan filtering, and graph enrichment
 
 **Files:**
+
 - Modify: `jfox/moc/cluster.py`
 - Modify: `tests/unit/test_moc_cluster.py`
 
 **Interfaces:**
+
 - Consumes: `VectorStore.get_all_embeddings("permanent")` from Task 1.
 - Consumes: `get_note_index(config).get_all_meta()` and keeps `meta.type == NoteType.PERMANENT and not meta.archived`.
 - Consumes: `BM25Index(index_dir=config.zk_dir)`; match permanent entries by zipping `doc_ids` and `doc_types`.
@@ -314,11 +320,13 @@ git commit -m "feat(moc): diagnose permanent note density"
 ### Task 4: `jfox moc diagnose` CLI and stable JSON contract
 
 **Files:**
+
 - Create: `jfox/moc/cli.py`
 - Modify: `jfox/cli.py:90-132`
 - Create: `tests/unit/test_moc_cli.py`
 
 **Interfaces:**
+
 - Consumes: `diagnose_moc_density(...) -> MocDiagnoseReport`.
 - Produces: Typer `moc_app` with the `diagnose` subcommand.
 - Produces: `report_to_dict(report) -> dict[str, Any]` with keys `success`, `kb`, `coverage`, `threshold_sweep`, `suggest`, `orphans`, and `warnings`.
@@ -417,10 +425,12 @@ git commit -m "feat(moc): add density diagnose command"
 ### Task 5: Formatting cleanup, diagnostics, and real-KB acceptance
 
 **Files:**
+
 - Modify: `jfox/bm25_index.py` (Black-only formatting; no behavior change)
 - Modify as required by diagnostics: files changed in Tasks 1-4 only
 
 **Interfaces:**
+
 - Consumes the completed command and test suite.
 - Produces a Black-clean branch and captured real-KB diagnostic evidence.
 

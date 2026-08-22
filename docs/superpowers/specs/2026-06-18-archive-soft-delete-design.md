@@ -5,6 +5,7 @@
 用户在把 session 笔记提炼为 permanent 笔记后，希望这些源 session 笔记不再出现在默认列表和搜索结果中，但又不想被永久删除。因此需要引入类似邮箱"归档"的软删除机制。
 
 目标：
+
 - 不真正删除文件，仅通过 frontmatter 标记 `archived: true`。
 - 默认的 `jfox list` / `jfox search` 隐藏已归档笔记。
 - 提供显式命令查看/恢复归档笔记。
@@ -56,6 +57,7 @@ def list_meta(
 ```
 
 过滤规则：
+
 - `archived_only=True`：只返回 `archived=True`。
 - `include_archived=True`：返回全部。
 - 默认：只返回 `archived=False`。
@@ -70,11 +72,13 @@ def unarchive_note(note_id: str) -> bool
 ```
 
 实现：
+
 1. 通过 `load_note_by_id(note_id)` 加载笔记。
 2. 设置 `note.archived = True/False`。
 3. 调用 `update_note(note)` 持久化并同步索引（向量 + BM25）。
 
 复用 `update_note` 可以自动处理：
+
 - 原子写入；
 - 文件名变化（归档不会改变文件名，但保留路径）；
 - 索引更新（先删除旧向量/BM25，再添加新内容）。
@@ -94,6 +98,7 @@ def unarchive_note(note_id: str) -> bool
 3. 过滤后取前 `top_k` 条。
 
 over-fetch 策略：
+
 - `_semantic_search` / `_keyword_search`：当 `not include_archived` 时，`search_k = max(top_k * 5, 20)`。
 - `_hybrid_search`：同样 over-fetch，融合后再过滤。
 

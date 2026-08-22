@@ -34,6 +34,7 @@ JFox Auto Summary 当前**只扫描 Claude Code 的会话**。用户同时使用
 ### Kimi Code session 格式（已实测验证）
 
 **目录结构**
+
 ```
 ~/.kimi-code/sessions/
 └── wd_<slug>_<hash>/            # slug=basename(cwd), hash=sha256(cwd)[:12]
@@ -219,6 +220,6 @@ run_once
 
 ## 参考
 
-- Issue #242: https://github.com/zhuxixi/jfox/issues/242
+- Issue #242: <https://github.com/zhuxixi/jfox/issues/242>
 - 相关代码：`jfox/auto_summary/{scanner,extractor,runner,ledger}.py`、`jfox/global_config.py`
 - Kimi session 实测路径：`~/.kimi-code/sessions/wd_*/session_*/agents/main/wire.jsonl`

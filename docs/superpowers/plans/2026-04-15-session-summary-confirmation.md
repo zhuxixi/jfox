@@ -15,6 +15,7 @@
 ### Task 1: Rewrite SKILL.md workflow section
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-session-summary/SKILL.md`
 
 This is the only task. The file is a single skill document — no decomposition needed.
@@ -65,6 +66,7 @@ jfox add "<markdown-escaped-summary>" \
 ```
 
 **注意**：
+
 - 标题格式统一为 `Session: <简短主题>`
 - 类型使用 Step 3 的选择结果，不再硬编码 `fleeting`
 - 标签统一使用 `session`
@@ -107,6 +109,7 @@ jfox show <note_id> --format json
 - **"Knowledge base not found"**: 提示用户先运行 `/jfox-common` 创建知识库
 - **内容过长导致 shell 解析失败**: 切换到 `--content-file` 方式
 - **特殊字符转义问题**: 使用单引号包裹内容，或写入临时文件
+
 ```
 
 - [ ] **Step 3: Verify the file reads correctly**

@@ -10,6 +10,7 @@
 把采集到的 **碎裂级**碎片（`session_fragments` 表），围绕**高价值锚点**合成为 **破损级**知识宝石（`candidate` 笔记）。合成需用 JFox 永久笔记做事实基准，降低 LLM 幻觉。
 
 **与 auto_summary 的区别（重要）**：
+
 - `auto_summary` = 整个 session 1 次总结，breadth 优先，粗，丢细节
 - L3 锚点合成 = 围绕高价值时刻做多次微合成，depth 优先，保住每个重要的注入/澄清瞬间
 
@@ -32,6 +33,7 @@
 ## 2. 锚点定义
 
 session 内的"观点注入 / 澄清"高价值时刻，三种：
+
 - `UserPromptSubmit` 且 fragment_type ∈ {`correction`, `decision`}（用户纠正/决策）
 - `PostToolUse` 且 tool_name = `AskUserQuestion`（CC 主动提问）
 
@@ -73,6 +75,7 @@ class GemLevel(str, Enum):
 JFox 现有 4 种 type（fleeting/literature/permanent/session），新增第 5 种 `candidate`。触及：`models.py`（NoteType 枚举）、`note.py`（`notes/candidate/` 存储路径）、`cli.py`（`--type` 过滤）、indexer（索引 candidate）。
 
 frontmatter：
+
 ```yaml
 id: candidate_<timestamp>
 type: candidate
@@ -107,6 +110,7 @@ created_at: ...
 ## 7. 范围
 
 **L3 本阶段做：**
+
 - 合成管线（锚点 → transcript 片段 → 永久笔记 top-5 → LLM → candidate 笔记）
 - `candidate` 笔记类型 + `GemLevel` 枚举（5 级建模，产出 flawed）
 - `synthesis_log` 去重表
@@ -114,6 +118,7 @@ created_at: ...
 - 基础 `jfox candidates list`（查看产出的 candidate）
 
 **不做（后续阶段）：**
+
 - L4：candidate 笔记的成熟度递进机制（flawed→normal→flawless→perfect）
 - L5：晋升工作流 `candidates review/confirm/reject/merge`、AI 辅助复核、candidate→permanent 转换、自动 vs 人工晋升规则
 - 跨 session 语义聚合（embedding 聚类）

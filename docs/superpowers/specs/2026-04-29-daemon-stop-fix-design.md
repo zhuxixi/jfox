@@ -58,6 +58,7 @@ def main():
 ```
 
 关键变更点：
+
 - `/shutdown` 是主要停止机制
 - PID 为 0 时从 `/health` 获取真实 PID（复用 `get_daemon_status()` 已有的逻辑）
 - 超时时**不删** PID 文件

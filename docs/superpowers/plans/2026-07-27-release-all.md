@@ -25,6 +25,7 @@
 ## File Structure
 
 新增：
+
 - `.claude/skills/release-kimi-plugin/release_kimi_plugin_helper.py` — kimi 发版 helper（单一 version 字段，镜像 cc）
 - `.claude/skills/release-kimi-plugin/SKILL.md` — kimi 发版 skill（镜像 cc SKILL）
 - `.claude/skills/release-all/release_all_helper.py` — 编排检测层（detect 子命令）
@@ -34,6 +35,7 @@
 - `tests/unit/test_release_all_helper.py` — detect 逻辑测试
 
 修改：
+
 - `.claude/skills/release/release_helper.py` — 加 verify 子命令 + main 分发
 - `.claude/skills/release/SKILL.md` — Step 9 前插 verify 步骤
 - `CLAUDE.md` — 发版相关段落补 `/release-all`、`/release-kimi-plugin`、verify（doc drift 防御）
@@ -43,10 +45,12 @@
 ## Task 1: release_helper.py 加 verify 子命令（关 #333）
 
 **Files:**
+
 - Modify: `.claude/skills/release/release_helper.py`
 - Test: `tests/unit/test_release_helper_verify.py`
 
 **Interfaces:**
+
 - Produces: `verify(root: Path | None = None) -> dict` 返回 `{"ok": bool, "missing": list[int], "extra": list[int], "functional_commits": int}`；`functional_commits_since_last_tag(root) -> list[str]`；`changelog_top_prs(root) -> set[int]`。CLI: `python release_helper.py verify` → 退出码 0(ok) / 1(missing)。
 
 - [ ] **Step 1: 写 verify 失败测试**
@@ -279,11 +283,13 @@ git commit -m "feat(release): #333 release_helper 加 verify 子命令（CHANGEL
 ## Task 2: release_kimi_plugin_helper.py + SKILL.md（镜像 cc）
 
 **Files:**
+
 - Create: `.claude/skills/release-kimi-plugin/release_kimi_plugin_helper.py`
 - Create: `.claude/skills/release-kimi-plugin/SKILL.md`
 - Test: `tests/unit/test_release_kimi_plugin_helper.py`
 
 **Interfaces:**
+
 - Produces: CLI `python release_kimi_plugin_helper.py <version> [--dry-run]` → JSON `{current_version, new_version, files_to_change|changed_files, changelog_summary}`。函数 `read_current_version(root)`、`compute_new_version(current, spec)`、`bump_version_files(root, old, new)`、`get_changelog(root, current)`、`assert_versions(root, expected)`。
 - Consumes: 无（独立轨道）。
 
@@ -683,10 +689,12 @@ git commit -m "feat(release): #334 新增 /release-kimi-plugin（镜像 cc，单
 ## Task 3: release_all_helper.py detect（编排检测层）
 
 **Files:**
+
 - Create: `.claude/skills/release-all/release_all_helper.py`
 - Test: `tests/unit/test_release_all_helper.py`
 
 **Interfaces:**
+
 - Produces: CLI `python release_all_helper.py [detect]` → JSON `{components: [...], any_changed: bool}`，每组件 `{name, changed, current_version, baseline, commits, suggested_bump?, suggested_version?, skip_reason?}`。函数 `detect(root) -> dict`、`detect_jfox(root)`、`detect_cc(root)`、`detect_kimi(root)`。
 - Consumes: 三组件版本文件路径（pyproject.toml / plugin.json / kimi.plugin.json）+ git。
 
@@ -1030,10 +1038,12 @@ git commit -m "feat(release): #334 release_all_helper detect——三组件改�
 ## Task 4: /release-all SKILL.md + /release SKILL verify 接线
 
 **Files:**
+
 - Create: `.claude/skills/release-all/SKILL.md`
 - Modify: `.claude/skills/release/SKILL.md`（Step 9 前插 verify）
 
 **Interfaces:**
+
 - Produces: `/release-all` skill 编排散文；`/release` Step 9 增加 verify gate。
 
 - [ ] **Step 1: 写 release-all SKILL.md**
@@ -1166,6 +1176,7 @@ git commit -m "feat(release): #334 /release-all 编排 skill + /release Step9 �
 ## Task 5: CLAUDE.md 文档同步 + 全量验证
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 
 **Interfaces:** 无（文档）。
@@ -1197,10 +1208,12 @@ Expected: 全 PASS。
 - [ ] **Step 3: lint（ruff + black 都要过）**
 
 Run:
+
 ```bash
 uv run ruff check .claude/skills/release/release_helper.py .claude/skills/release-kimi-plugin/ .claude/skills/release-all/ tests/unit/test_release_helper_verify.py tests/unit/test_release_kimi_plugin_helper.py tests/unit/test_release_all_helper.py
 uv run --with black==26.3.1 black --check .claude/skills/release/release_helper.py .claude/skills/release-kimi-plugin/ .claude/skills/release-all/ tests/unit/test_release_helper_verify.py tests/unit/test_release_kimi_plugin_helper.py tests/unit/test_release_all_helper.py
 ```
+
 Expected: 无错误（有则修后重跑）。
 
 - [ ] **Step 4: 提交**

@@ -25,6 +25,7 @@ No other files need changes.
 ### Task 1: Set HF offline env vars in `cli.py`
 
 **Files:**
+
 - Modify: `jfox/cli.py:1-39`
 
 This is the simplest change with immediate payoff: eliminates HuggingFace HTTP HEAD requests that add 0.5-2s to every embedding command.
@@ -112,6 +113,7 @@ Ref: #120"
 ### Task 2: Move `vector_store` import inside functions in `note.py`
 
 **Files:**
+
 - Modify: `jfox/note.py:10,74-76,192-194,250-253,301-303`
 
 This is the **critical fix**. `note.py` imports `from .vector_store import get_vector_store` at module level (line 10), which pulls in `chromadb`. Since `cli.py` does `from . import note` at module level, **every CLI command** pays the chromadb import cost.
@@ -228,6 +230,7 @@ Ref: #120"
 ### Task 3: Move heavy imports inside functions in `cli.py`
 
 **Files:**
+
 - Modify: `jfox/cli.py:31-39` (top-level imports)
 - Modify: `jfox/cli.py:556` (`_status_impl`)
 - Modify: `jfox/cli.py:1171` (`_query_impl`)
@@ -432,6 +435,7 @@ Ref: #120"
 ### Task 4: Write tests verifying lazy import behavior
 
 **Files:**
+
 - Create: `tests/unit/test_lazy_import.py`
 
 These tests verify that lightweight commands don't trigger heavy module imports. They use `sys.modules` to check which modules are loaded after importing only `cli`.
@@ -578,6 +582,7 @@ Only if issues were found and fixed in previous steps.
 ## Self-Review Checklist
 
 **1. Spec coverage:**
+
 - ✅ HF offline env vars → Task 1
 - ✅ `note.py` vector_store deferred import → Task 2
 - ✅ `cli.py` heavy imports moved to functions → Task 3
@@ -585,11 +590,13 @@ Only if issues were found and fixed in previous steps.
 - ✅ E2E smoke test → Task 5
 
 **2. Placeholder scan:**
+
 - ✅ No TBD/TODO/fill-in-later
 - ✅ All code blocks contain complete, copy-pasteable code
 - ✅ All commands specify expected output
 
 **3. Type consistency:**
+
 - ✅ All function names match actual codebase (`save_note`, `delete_note`, `update_note`, `get_stats`, `_status_impl`, `_query_impl`, `_graph_impl`, `_index_impl`, `bulk_import`, `perf`)
 - ✅ All line numbers verified against current codebase
 - ✅ Import paths consistent (`from .vector_store import get_vector_store`, etc.)

@@ -48,17 +48,22 @@ Core capability. For each user-confirmed suggestion:
 
 1. **Analyze**: Read the group of fleeting notes; extract core knowledge points
 2. **Find connections**:
+
    ```bash
    jfox suggest-links "<refined content summary>" --format json
    ```
+
    Filter results with score >= 0.6
 3. **Generate permanent note**: Structure core knowledge with embedded `[[wiki links]]` to existing notes
 4. **Cross-link within batch**: If creating multiple permanent notes in one batch, add `[[links]]` between them too
 5. **Insert**:
+
    ```bash
    jfox add "<content with [[links]]>" --title "<title>" --type permanent --tag <tag1> --tag <tag2> [--kb <name>]
    ```
+
 6. **Delete source fleeting**:
+
    ```bash
    jfox delete <original-id> --force
    ```
@@ -83,12 +88,16 @@ jfox graph --orphans --json
 ```
 
 For each orphaned permanent note:
+
 1. Read note content
 2. Find connections:
+
    ```bash
    jfox suggest-links "<content>" --format json
    ```
+
 3. If matches with score >= 0.6, suggest adding links:
+
    ```bash
    jfox edit <orphan-id> --content "Original content... [[Related Note Title]]"
    jfox edit <orphan-id> --content-file updated.md
@@ -112,6 +121,7 @@ Report before/after comparison:
 Users may want to create or edit notes during organization:
 
 **Create note:**
+
 ```bash
 jfox add "<content>" --title "<title>" --type <fleeting|permanent> --tag <tags> [--kb <name>]
 jfox add --content-file notes/draft.md --title "<title>" --type permanent --tag <tags> [--kb <name>]
@@ -121,6 +131,7 @@ echo "<content>" | jfox add --content-file - --title "<title>" --type fleeting
 For permanent notes, run `jfox suggest-links` first to find `[[wiki links]]` before inserting.
 
 **Edit existing note:**
+
 ```bash
 jfox edit <note_id> --content "New content" --title "New Title" --tag <tag>
 jfox edit <note_id> --kb <kb-name> --content "New content"

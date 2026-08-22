@@ -25,6 +25,7 @@
 ### Task 1: Add `update_note()` to `note.py`
 
 **Files:**
+
 - Modify: `jfox/note.py:172-200` (after `delete_note()`)
 - Test: `tests/unit/test_edit.py`
 
@@ -209,6 +210,7 @@ git commit -m "feat: add update_note() storage function for edit command"
 ### Task 2: Add `edit` CLI command
 
 **Files:**
+
 - Modify: `jfox/cli.py:860` (after `delete` command block)
 - Test: `tests/unit/test_edit.py`
 
@@ -521,6 +523,7 @@ git commit -m "feat: add edit command for modifying existing notes"
 ### Task 3: Add `edit()` method to ZKCLI test wrapper
 
 **Files:**
+
 - Modify: `tests/utils/jfox_cli.py:227` (after `delete()` method)
 
 This enables integration/e2e tests to call `cli.edit(...)`.
@@ -583,6 +586,7 @@ git commit -m "test: add edit() method to ZKCLI test wrapper"
 ### Task 4: Verify CLI command works end-to-end
 
 **Files:**
+
 - No new files
 
 Manual smoke test to confirm the CLI command works as expected.

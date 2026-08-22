@@ -32,6 +32,7 @@ def _atomic_write(filepath: Path, content: str) -> None:
 ```
 
 关键设计点：
+
 - `mkstemp(dir=filepath.parent)` — 临时文件与目标文件同目录，保证 `os.replace` 是同文件系统原子操作
 - `BaseException` 捕获 — 包括 KeyboardInterrupt/Ctrl+C
 - 异常时清理临时文件，用 try/except OSError 包裹（文件可能已被 fdopen 接管关闭）
@@ -45,6 +46,7 @@ def _atomic_write(filepath: Path, content: str) -> None:
 ### 测试
 
 新增单元测试 `tests/unit/test_atomic_write.py`：
+
 - 正常写入：验证文件内容正确
 - 写入异常：模拟 `to_markdown()` 抛异常，验证不留空文件、原文件不受影响
 - 临时文件清理：异常后无 `.tmp` 残留

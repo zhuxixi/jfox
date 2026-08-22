@@ -28,6 +28,7 @@
 ### Task 1: NoteType enum + Note model changes
 
 **Files:**
+
 - Modify: `jfox/models.py`
 
 - [ ] **Step 1: Write failing tests for NoteType.SESSION and Note.topic**
@@ -254,6 +255,7 @@ git commit -m "feat: add SESSION to NoteType and topic field to Note model"
 ### Task 2: Config — ensure_dirs includes session
 
 **Files:**
+
 - Modify: `jfox/config.py`
 
 - [ ] **Step 1: Write failing test**
@@ -306,6 +308,7 @@ git commit -m "feat: add session directory to ensure_dirs"
 ### Task 3: CLI — add `--topic` parameter to `add` command
 
 **Files:**
+
 - Modify: `jfox/cli.py`
 
 - [ ] **Step 1: Write failing test**
@@ -437,16 +440,19 @@ Find the `create_note` function in `jfox/note.py` and add `topic: Optional[str] 
 Update the three error messages in `cli.py` that list note types:
 
 Line 334:
+
 ```python
 raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session")
 ```
 
 Line 786:
+
 ```python
 raise ValueError(f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session")
 ```
 
 Line 1237:
+
 ```python
 f"Invalid note type: {note_type}. Use: fleeting, literature, permanent, session"
 ```
@@ -478,6 +484,7 @@ git commit -m "feat: add --topic parameter to add command for session type"
 ### Task 4: Built-in session template
 
 **Files:**
+
 - Modify: `jfox/template.py`
 
 - [ ] **Step 1: Write failing test**
@@ -572,6 +579,7 @@ git commit -m "feat: add session built-in template for AI Agent conversation rec
 ### Task 5: template_cli.py validation whitelist
 
 **Files:**
+
 - Modify: `jfox/template_cli.py`
 
 - [ ] **Step 1: Update note_type validation**
@@ -605,6 +613,7 @@ git commit -m "feat: add session to template_cli note_type validation"
 ### Task 6: Inbox — show both fleeting and session notes
 
 **Files:**
+
 - Modify: `jfox/cli.py`
 
 - [ ] **Step 1: Update `_inbox_impl`**
@@ -682,6 +691,7 @@ git commit -m "feat: inbox shows both fleeting and session notes"
 ### Task 7: Update jfox-session-summary skill
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-session-summary/SKILL.md`
 - Modify: `skills-recommend/kimi-cli/jfox-session-summary/SKILL.md`
 

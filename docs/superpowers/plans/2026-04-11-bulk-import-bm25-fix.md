@@ -23,6 +23,7 @@
 ### Task 1: Add `add_documents_batch()` to BM25Index
 
 **Files:**
+
 - Modify: `jfox/bm25_index.py:213` (after `remove_document` method)
 - Test: `tests/unit/test_bm25_batch.py`
 
@@ -190,6 +191,7 @@ In `jfox/bm25_index.py`, add this method after `remove_document()` (after line 2
 ```
 
 Also add `Tuple` to the imports at the top of the file (line 6):
+
 ```python
 from typing import Dict, List, Optional, Set, Tuple
 ```
@@ -211,6 +213,7 @@ git commit -m "feat(bm25): add add_documents_batch() for efficient bulk indexing
 ### Task 2: Wire BM25 batch update into `bulk_import_notes()`
 
 **Files:**
+
 - Modify: `jfox/performance.py:186-268`
 - Test: `tests/unit/test_bm25_batch.py` (append tests)
 

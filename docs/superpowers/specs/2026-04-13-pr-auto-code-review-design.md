@@ -5,6 +5,7 @@
 本系统实现当 GitHub 上任何仓库创建或更新 PR 时，自动触发 Claude Code 的 code review，并将结果提交到 PR 评论中。
 
 **核心目标：**
+
 - 全自动：PR 创建/更新后自动触发，无需人工干预
 - 多仓库：支持监控账号下所有可访问的仓库
 - 轻量级：单 Python 脚本，资源占用低
@@ -43,7 +44,7 @@
 
 GitHub Webhook 需要公网地址，smee.io 是 GitHub 官方提供的免费代理服务，将 webhook 事件转发到本地。
 
-- 访问 https://smee.io 获取一个唯一 URL
+- 访问 <https://smee.io> 获取一个唯一 URL
 - 本地客户端连接到 smee.io，接收事件
 - 无需暴露本地端口到公网
 
@@ -58,6 +59,7 @@ GitHub Webhook 需要公网地址，smee.io 是 GitHub 官方提供的免费代�
 5. **提交结果**：使用 `gh` CLI 将 review 结果提交到 PR
 
 **技术栈：**
+
 - Python 3.10+
 - Flask（轻量级 web 框架）
 - requests（HTTP 客户端）
@@ -164,7 +166,7 @@ pip install -r requirements.txt
 
 ### 配置
 
-1. 访问 https://smee.io 获取一个新的 channel URL
+1. 访问 <https://smee.io> 获取一个新的 channel URL
 2. 复制 `config.example.json` 为 `config.json`
 3. 将 smee_url 填入配置
 

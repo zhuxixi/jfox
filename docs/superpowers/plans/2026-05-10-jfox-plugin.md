@@ -32,6 +32,7 @@ No existing files are modified.
 ### Task 1: Create plugin manifest
 
 **Files:**
+
 - Create: `.claude-plugin/plugin.json`
 - Create: `.claude-plugin/marketplace.json`
 
@@ -105,6 +106,7 @@ Expected: `OK`
 ### Task 2: Create slash commands
 
 **Files:**
+
 - Create: `commands/jfox-common.md`
 - Create: `commands/jfox-ingest.md`
 - Create: `commands/jfox-organize.md`

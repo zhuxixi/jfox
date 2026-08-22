@@ -40,10 +40,12 @@
 ### Task 1: helpers — 失败解析（extract_failures + compute_signature）
 
 **Files:**
+
 - Create: `scripts/nightly_test_helpers.py`
 - Test: `tests/unit/test_nightly_test_helpers.py`
 
 **Interfaces:**
+
 - Produces: `extract_failures(pytest_output: str) -> list[str]`、`compute_signature(failures: list[str], top_n: int = 10) -> str`（后续 task 依赖）
 
 - [ ] **Step 1: 写 failing test**
@@ -164,10 +166,12 @@ git commit -m "feat(nightly-test): helpers 失败解析+签名 (#263)" -m "Co-Au
 ### Task 2: helpers — 决策 + 备份检查 + CLI dispatcher
 
 **Files:**
+
 - Modify: `scripts/nightly_test_helpers.py`（追加 2 个函数 + CLI）
 - Modify: `tests/unit/test_nightly_test_helpers.py`（追加测试）
 
 **Interfaces:**
+
 - Consumes: `extract_failures`、`compute_signature`（Task 1）
 - Produces: `decide_issue_action(signature, open_issues) -> ("create"|"comment", int|None)`、`check_backup_last_ok(state_path, today) -> bool`、CLI 子命令 `check-backup`/`signature`/`decide`（供 bash 调用）
 
@@ -337,9 +341,11 @@ git commit -m "feat(nightly-test): helpers 决策+备份检查+CLI (#263)" -m "C
 ### Task 3: bash — 骨架 + 备份检查
 
 **Files:**
+
 - Create: `scripts/nightly_test.sh`
 
 **Interfaces:**
+
 - Consumes: `python3 scripts/nightly_test_helpers.py check-backup <state>`（Task 2）
 - Produces: 可执行脚本骨架（参数解析/环境自举/flock/日志/备份检查已就位；核心测试流程与失败分支留占位函数，由 Task 4/5 填充）
 
@@ -455,9 +461,11 @@ git commit -m "feat(nightly-test): bash 骨架+备份检查+flock (#263)" -m "Co
 ### Task 4: bash — 核心测试流程（run_tests）
 
 **Files:**
+
 - Modify: `scripts/nightly_test.sh`（替换 `run_tests` 占位）
 
 **Interfaces:**
+
 - Consumes: `REAL_HOME`/`REPO_ROOT`/`LOG_DIR`/`DRY_RUN`/`KEEP_WORKTREE`（Task 3 骨架变量）
 - Produces: `run_tests` 把全量 pytest 的合并输出写到 stdout（主流程已重定向到 `$PYTEST_OUT`），退出码 = pytest 退出码；dry-run 时喂人造失败输出
 
@@ -546,9 +554,11 @@ git commit -m "feat(nightly-test): 核心测试流程 worktree+假HOME+pytest (#
 ### Task 5: bash — 失败分支 + issue 去重（report_failure）
 
 **Files:**
+
 - Modify: `scripts/nightly_test.sh`（替换 `report_failure` 占位）
 
 **Interfaces:**
+
 - Consumes: `python3 scripts/nightly_test_helpers.py signature`/`decide`（Task 2）、`REPO_SLUG`/`ISSUE_LABEL`/`LOG_DIR`（骨架）、`gh`（可能缺失→降级）
 - Produces: 失败时按签名去重 `gh issue create`/`comment`；`gh` 不可用时降级写 `$LOG_DIR/failed-<ts>.log`
 
@@ -565,7 +575,7 @@ report_failure() {
   # 算签名 + 首个失败 + 失败数（helpers CLI）
   local sig_line sig first count
   sig_line="$(python3 "$REPO_ROOT/scripts/nightly_test_helpers.py" signature <"$pytest_log")"
-  sig="${sig_line%%	*}"
+  sig="${sig_line%% *}"
   first="$(printf '%s' "$sig_line" | cut -f2)"
   count="$(printf '%s' "$sig_line" | cut -f3)"
 
@@ -608,7 +618,7 @@ report_failure() {
   decision="$(gh issue list --repo "$REPO_SLUG" --label "$ISSUE_LABEL" \
                 --state open --json number,title --limit 50 \
               | python3 "$REPO_ROOT/scripts/nightly_test_helpers.py" decide "$sig")"
-  action="${decision%%	*}"
+  action="${decision%% *}"
   num="$(printf '%s' "$decision" | cut -f2)"
 
   if [[ "$action" == "comment" && -n "$num" ]]; then
@@ -665,6 +675,7 @@ git commit -m "feat(nightly-test): 失败分支 gh issue 去重+降级 (#263)" -
 ### Task 6: 文档 + crontab 安装 + 验收清单
 
 **Files:**
+
 - Create: `docs/nightly-test.md`
 
 - [ ] **Step 1: 写文档**
@@ -673,11 +684,13 @@ git commit -m "feat(nightly-test): 失败分支 gh issue 去重+降级 (#263)" -
 
 - **职责**：一句话说明（每周二 09:00 跑全量测试，失败开 issue）。
 - **安装 crontab**：给用户执行的命令（本机，不进 PR）：
+
   ```
   # 编辑 crontab
   crontab -l | { cat; echo "0 9 * * 2 /home/elling/git-repo/github/jfox/scripts/nightly_test.sh >> /home/elling/.jfox-nightly-test/cron.log 2>&1"; } | crontab -
   crontab -l | grep nightly_test   # 确认
   ```
+
 - **label**：说明 `nightly-test-failure` 首次运行时脚本自动 `gh label create`，无需手工。
 - **dry-run**：`./scripts/nightly_test.sh --dry-run` 验证 issue 流程的步骤（含测试 issue 清理提醒）。
 - **前置依赖**：#338 备份必须启用且每天 08:00 跑（脚本靠 `state.json` 判断）。
@@ -710,6 +723,7 @@ git commit -m "docs(nightly-test): 安装/验收/故障排查 (#263)" -m "Co-Aut
 **类型/命名一致性**：`extract_failures`/`compute_signature`/`decide_issue_action`/`check_backup_last_ok` 在 Task 1→2→5 跨任务一致；CLI 子命令 `check-backup`/`signature`/`decide` 在 Task 2 定义、Task 3/5 调用一致。
 
 **风险点（实现时注意）**：
+
 - `--tb=short` 下 `==== FAILURES ====` 段标题可能因 pytest 版本/locale 变化；Task 5 的 traceback 截取 sed 若抓不到，回退到整日志 `head -200`。实现时用真实 dry-run 输出校准。
 - 假 HOME 下 `uv`/`git` 的全局配置（`~/.gitconfig`、`~/.config/uv`）会找不到——若 `uv sync` 或 `git fetch` 因此失败，需在 sandbox 里软链这些回真实路径，或 `export GIT_CONFIG_GLOBAL=$REAL_HOME/.gitconfig`。Task 4 实现时若命中再补。
 - gh issue `--search` 未用（改用 helpers decide 精确匹配 title），避免 search 模糊。

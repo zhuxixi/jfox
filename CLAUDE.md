@@ -127,6 +127,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 ## CI (GitHub Actions)
 
 Four jobs in `.github/workflows/integration-test.yml`:
+
 - **Fast** (PR/push): `not embedding and not slow`, Python 3.11, Ubuntu + Windows
 - **Core** (main branch): Core workflow tests with real embeddings, Python 3.10 + 3.12
 - **Full** (manual): All tests, all OS, all Python versions
@@ -162,6 +163,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 ## Claude Code Plugin
 
 JFox ships as a Claude Code plugin. Two-tier structure:
+
 - `.claude-plugin/marketplace.json` — top-level marketplace registry (version, description)
 - `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
 - `packages/cc-plugin/skills/` — 9 skills: `search`, `ingest`, `manage`, `organize`, `promote`, `session-summary`, `session-to-permanent`, `using-jfox`, `bookshelf`

@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](pyproject.toml)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 
 > A local-first Zettelkasten knowledge management CLI.
 > Bidirectional links, semantic search, knowledge graphs — all offline, all on CPU.
@@ -343,6 +343,7 @@ A session is considered "finished" when its file has not been modified for `idle
 | `jfox auto-summary run --dry-run` | Preview without writing |
 
 **Key options:**
+
 - `--interval` — Scan interval in minutes (default: 30)
 - `--idle-threshold` — Minutes of inactivity to consider a session finished (default: 30)
 - `--kb` — Target knowledge base for saved notes

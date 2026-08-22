@@ -5,10 +5,12 @@
 ### Phase 1: 核心功能增强（立即开始）
 
 #### 1. Issue #13 - Add `--kb` parameter to all note commands
+
 **状态**: ✅ 需求明确，可立即开发  
 **优先级**: **高** (阻塞 Agent 工作流)
 
 **实现要点**:
+
 - 修改 `cli.py` 中的以下命令，添加 `--kb` 参数：
   - `zk add`
   - `zk list`
@@ -79,10 +81,12 @@ class TestKBParameter:
 ---
 
 #### 2. Issue #14 - Add `kb current` command
+
 **状态**: ✅ 需求明确，可立即开发  
 **优先级**: **高**
 
 **实现要点**:
+
 - 在 `kb` 命令中添加 `current` action
 - 显示当前知识库的详细信息
 
@@ -123,10 +127,12 @@ class TestKBCurrent:
 ---
 
 #### 3. Issue #15 - Extend MCP Server
+
 **状态**: ✅ 需求明确，可立即开发  
 **优先级**: **高**
 
 **实现要点**:
+
 - 在 `mcp_server.py` 中添加新方法：
   - `kb_list`
   - `kb_switch`
@@ -206,10 +212,12 @@ class TestMCPServer:
 ### Phase 2: 搜索增强（优先开发）
 
 #### 4. Issue #16 - Add suggest-links command
+
 **状态**: ✅ 需求明确，可开发  
 **优先级**: 中
 
 **实现要点**:
+
 - 创建 `zk/suggester.py` 模块
 - 基于语义相似度推荐相关笔记
 - CLI 命令: `zk suggest-links "内容"`
@@ -265,10 +273,12 @@ class TestSuggestLinks:
 ---
 
 #### 5. Issue #17 - Hybrid Search (BM25 + Semantic)
+
 **状态**: ✅ 需求明确，但实现较复杂  
 **优先级**: 中
 
 **实现要点**:
+
 - 创建 `zk/bm25_index.py` 模块
 - 实现 RRF (Reciprocal Rank Fusion) 融合算法
 - CLI: `zk search "query" --mode hybrid`
@@ -346,10 +356,12 @@ class TestHybridSearch:
 ---
 
 #### 6. Issue #18 - Multi-format Output
+
 **状态**: ✅ 需求明确，可立即开发  
 **优先级**: 中
 
 **实现要点**:
+
 - 创建 `zk/formatters.py` 模块
 - 支持 json, csv, yaml, paths, table, tree 格式
 
@@ -435,29 +447,35 @@ class TestFormatters:
 ## 推荐的开发顺序
 
 ### Sprint 1 (1-2 天)
+
 1. **Issue #14** - `kb current` (最简单，热身)
 2. **Issue #13** - `--kb` parameter (核心功能)
 
 ### Sprint 2 (2-3 天)
-3. **Issue #15** - MCP Server 扩展 (Agent 必需)
+
+1. **Issue #15** - MCP Server 扩展 (Agent 必需)
 
 ### Sprint 3 (3-5 天)
-4. **Issue #18** - Multi-format output (工具集成)
-5. **Issue #16** - suggest-links (知识发现)
+
+1. **Issue #18** - Multi-format output (工具集成)
+2. **Issue #16** - suggest-links (知识发现)
 
 ### Sprint 4 (5-7 天)
-6. **Issue #17** - Hybrid Search (性能优化)
+
+1. **Issue #17** - Hybrid Search (性能优化)
 
 ---
 
 ## 测试基础设施
 
 ### 已有测试工具
+
 - `tests/utils/temp_kb.py` - 临时知识库管理
 - `tests/utils/jfox_cli.py` - CLI 命令封装
 - `tests/conftest.py` - pytest fixtures
 
 ### 需要添加
+
 - `tests/utils/format_checker.py` - 格式验证
 - `tests/utils/mcp_client.py` - MCP 测试客户端
 - `tests/benchmarks/` - 性能测试

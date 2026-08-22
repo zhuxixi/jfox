@@ -5,6 +5,7 @@
 在公司内网（有代理/防火墙限制）环境中，`huggingface_hub` 无法连接 HuggingFace 官方服务器，导致 `jfox daemon start` 首次启动时模型下载失败，卡在加载阶段。
 
 具体表现：
+
 - `sentence-transformers` 从 `huggingface.co` 下载超时或 SSL 握手失败
 - 即使设置 `HF_HUB_OFFLINE=1` 或 `HF_ENDPOINT=https://hf-mirror.com`，某些内网代理环境仍无法工作
 
@@ -162,6 +163,7 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
 ### 部分下载清理
 
 任何步骤开始后，如果下载中断（超时、进程被杀、异常退出），`_cleanup_partial()` 自动清理不完整的文件：
+
 - 删除 `.part` 临时文件
 - 删除不完整的 snapshot 目录
 - 确保下次加载时不会读到损坏的缓存

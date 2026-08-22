@@ -13,12 +13,14 @@
 ## 关键实现决策（对 spec §2.1 的细化，含 CR 调整）
 
 `Note.to_markdown` 区分两类 candidate 字段：
+
 - **生命周期字段**（`status`/`gem_level`/`confidence`/`knowledge_type`/`reject_reason`）：仅 `type==CANDIDATE` 时写入 frontmatter。promote 改 `type→PERMANENT` 后自动不再写入（dataclass 也清空）。
 - **溯源字段**（`source_fragments`/`grounded_by`）：**跨类型保留**——非空时写入 frontmatter（不限 type），promoted permanent 仍可追溯到来源碎片（#249）。
 
 > **CR round-1 c1 调整**：原计划 frontmatter 不保留、溯源靠正文「## 来源」段。CR 指出编程式 promote 或 skill 改写掉正文段时溯源会不可逆丢失，改为 frontmatter 跨类型保留（改了 `to_markdown`/`to_dict` 让 source_fragments/grounded_by 非空时跨类型写）。
 
 其他实现相对原计划的偏离（CR 过程调整，已同步 spec）：
+
 - `promote_note`/`reject_note` **去掉 cfg 参数**（round-4 issue-6）：原计划接受 cfg，但 `update_note` 写盘用全局 config，读 cfg 写全局会错位。改为全用全局 config，与 save/update/archive 一致。
 - `reject_note` **直接设 archived/status + 单次 update_note**（不调 archive_note，避免二次写盘）+ `type==CANDIDATE` 守卫（round-1 c8）。
 - `promote_note` links = 正文 wiki link（剥 code block）+ grounded_by（round-3 issue-4）；目标不存在 logger.warning 不阻塞（round-4 issue-5）。
@@ -44,6 +46,7 @@
 ## Task 1: Note 模型加 `reject_reason` 字段
 
 **Files:**
+
 - Modify: `jfox/models.py`（`Note` dataclass + `to_markdown` + `from_markdown` + `to_dict`）
 - Test: `tests/unit/test_note_promote.py`（新建）
 
@@ -130,6 +133,7 @@ git commit -m "feat(models): Note 加 reject_reason 字段（candidate reject �
 ## Task 2: `note.py` 加 `promote_note` 原子函数
 
 **Files:**
+
 - Modify: `jfox/note.py`（新增 `promote_note`）
 - Test: `tests/unit/test_note_promote.py`（追加）
 
@@ -293,6 +297,7 @@ git commit -m "feat(note): promote_note 原子函数（candidate→permanent + b
 ## Task 3: `note.py` 加 `reject_note` 函数
 
 **Files:**
+
 - Modify: `jfox/note.py`（新增 `reject_note`）
 - Test: `tests/unit/test_note_promote.py`（追加）
 
@@ -364,12 +369,14 @@ git commit -m "feat(note): reject_note（candidate 归档丢弃 + reason）"
 ## Task 4: `candidates promote` CLI 子命令
 
 **Files:**
+
 - Modify: `jfox/gem_synth/cli.py`（`candidates_app` 加 `promote`）
 - Test: `tests/unit/test_gem_synth_cli.py`（追加）
 
 - [ ] **Step 1: 追加失败测试**（`tests/unit/test_gem_synth_cli.py`，参考该文件现有 `CliRunner` + `app` import 模式；若文件顶部无则补）
 
 在文件顶部确认有（没有则加）：
+
 ```python
 from unittest.mock import patch
 from typer.testing import CliRunner
@@ -378,6 +385,7 @@ runner = CliRunner()
 ```
 
 追加测试：
+
 ```python
 def test_candidates_promote_command(temp_kb, mock_embedding_backend):
     """jfox candidates promote <id> 把 candidate 改成 permanent"""
@@ -459,6 +467,7 @@ git commit -m "feat(gem-synth): candidates promote 子命令"
 ## Task 5: `candidates reject` CLI 子命令
 
 **Files:**
+
 - Modify: `jfox/gem_synth/cli.py`（`candidates_app` 加 `reject`）
 - Test: `tests/unit/test_gem_synth_cli.py`（追加）
 
@@ -541,6 +550,7 @@ git commit -m "feat(gem-synth): candidates reject 子命令"
 ## Task 6: `promote` skill
 
 **Files:**
+
 - Create: `packages/cc-plugin/skills/promote/SKILL.md`
 - Modify: `packages/cc-plugin/.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json`（version bump，三处一致）
 
@@ -623,6 +633,7 @@ git commit -m "feat(plugin): promote skill（L5 candidate 过审编排）+ bump 
 ## Task 7: 端到端集成测试
 
 **Files:**
+
 - Create: `tests/integration/test_candidate_promote_flow.py`
 
 - [ ] **Step 1: 写集成测试**

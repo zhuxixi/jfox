@@ -13,6 +13,7 @@
 ### Task 1: 新增 `_atomic_write()` 工具函数
 
 **Files:**
+
 - Modify: `jfox/note.py` (imports at line 1-12, new function before `save_note` at line 62)
 
 - [ ] **Step 1: Add imports and `_atomic_write()` function**
@@ -154,6 +155,7 @@ git commit -m "feat(note): add _atomic_write() for crash-safe file writes"
 ### Task 2: 改造 `save_note()` 使用原子写入
 
 **Files:**
+
 - Modify: `jfox/note.py:62-95` (`save_note` function)
 
 - [ ] **Step 1: Write failing test**
@@ -229,6 +231,7 @@ Expected: `test_save_note_uses_atomic_write` FAILS (save_note still uses `open("
 Replace the body of `save_note()` in `jfox/note.py`. Change lines 64-70:
 
 Before:
+
 ```python
     try:
         # 确保目录存在
@@ -240,6 +243,7 @@ Before:
 ```
 
 After:
+
 ```python
     try:
         _atomic_write(note.filepath, note.to_markdown())
@@ -262,6 +266,7 @@ git commit -m "refactor(note): save_note uses atomic write"
 ### Task 3: 改造 `update_note()` 使用原子写入
 
 **Files:**
+
 - Modify: `jfox/note.py:263-270` (`update_note` function)
 
 - [ ] **Step 1: Write failing test**
@@ -317,6 +322,7 @@ Expected: `test_update_note_no_zero_byte_on_failure` FAILS
 In `jfox/note.py`, replace lines 267-270:
 
 Before:
+
 ```python
         # 写入新文件（filepath 属性根据当前字段生成）
         note_obj.filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -325,6 +331,7 @@ Before:
 ```
 
 After:
+
 ```python
         # 写入新文件（filepath 属性根据当前字段生成）
         _atomic_write(note_obj.filepath, note_obj.to_markdown())
@@ -347,6 +354,7 @@ git commit -m "refactor(note): update_note uses atomic write"
 ### Task 4: 改造 `performance.py` 批量导入使用原子写入
 
 **Files:**
+
 - Modify: `jfox/performance.py:237-246` (batch save loop)
 
 - [ ] **Step 1: Modify the batch save to use `_atomic_write`**
@@ -360,6 +368,7 @@ from .note import _atomic_write
 Then replace lines 237-246:
 
 Before:
+
 ```python
             # 批量保存（不索引）
             for note in notes:
@@ -374,6 +383,7 @@ Before:
 ```
 
 After:
+
 ```python
             # 批量保存（不索引）
             for note in notes:
@@ -414,6 +424,7 @@ Expected: No errors
 - [ ] **Step 3: Final commit with cleanup if needed**
 
 If any formatting fixes were needed:
+
 ```bash
 git add -A
 git commit -m "style: lint fixes for atomic write"

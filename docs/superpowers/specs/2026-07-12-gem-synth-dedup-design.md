@@ -9,6 +9,7 @@
 `synthesis_log` 现以 **`anchor_fragment_id`（输入）** 为去重键：`find_anchors` 用 `NOT EXISTS` 子查询排除已处理锚点。这挡住了"同一碎片被合成两次"，但挡不住**不同碎片产出同一知识点**。
 
 实测存量 754 条 candidate 里：
+
 - 142 条**逐字同标题**（如「cc-plugin 版本号需同步更新三处字段」出现 3 次，来自 3 个不同锚点碎片）
 - ~150 条**同主题改写**（Zima 双 Bot babysit 293 条、DeepSeek 批量 43 条等同事实改写）
 - 时间分布坐实 runaway loop：07-08/10/11 三天各产 200+ 条
@@ -18,11 +19,13 @@
 ## 2. 目标 / 非目标
 
 **目标**
+
 - gem-synth 在**存盘前**用正文 embedding 余弦检查：若与已有 candidate 或已晋升 permanent 重复，**不存盘**，锚点记 `duplicate` 状态。
 - 从源头不再产生重复 candidate（forward-going）。
 - 一次性 backfill 命令把现有 candidate + permanent 灌入 dedup 库，让新机制起步就有对比集。
 
 **非目标**
+
 - 不改 LLM prompt（合成质量另算）。
 - 不自动清理 702 条历史 pending（那是 L5 过审的活，本特性只管 forward + 提供 backfill 让对比集就位）。
 - 不改主搜索索引（candidate 仍 `add_to_index=False`，不污染搜索）。
@@ -64,10 +67,12 @@ synthesize_anchor(anchor):
 | backfill 命令 | `cli.py` | `jfox gem-synth dedup-backfill` 一次性灌现有 candidate + permanent |
 
 ### 余弦计算
+
 - <1k 向量 × 1024 维（~3MB），**numpy 暴力余弦**即可（微秒级），无需 ANN。
 - embedding 经现有 `EmbeddingBackend.encode_single()` 获取（走 daemon，已在跑）。
 
 ### embedding 内容口径（避免元数据扭曲余弦）
+
 - **新 candidate**：embed `llm_result["content"]`（干净合成正文，**不含** `_save_candidate_note` 后面追加的 `## 来源`/`## 置信度`/`## 参考的永久笔记` 元段落）。
 - **backfill 现有 candidate**：从文件正文里**剥掉**上述 3 个元段落（按 `## 来源`/`## 参考的永久笔记`/`## 置信度` 标题截断）再 embed，与新 candidate 口径一致。
 - **permanent**：embed 正文全文（permanent 无元段落问题）。
@@ -76,11 +81,13 @@ synthesize_anchor(anchor):
 ## 4. Schema 变动
 
 ### 4.1 `synthesis_log` 表（迁移）
+
 现有 `status` 取值 `success` / `failed`，新增 **`duplicate`**；新增列 **`dup_of TEXT`**（被重复的 note_id）。
 
 迁移沿用 `store.py::_maybe_migrate` 模式：`PRAGMA table_info` 查列，缺则 `ALTER TABLE … ADD COLUMN`，`duplicate column` 错误视为已迁移（幂等）。
 
 ### 4.2 新表 `dedup_embeddings`（同库）
+
 ```sql
 CREATE TABLE IF NOT EXISTS dedup_embeddings (
     note_id      TEXT PRIMARY KEY,
@@ -108,12 +115,14 @@ CREATE TABLE IF NOT EXISTS dedup_embeddings (
 dedup_enabled: bool = True
 dedup_threshold: float = 0.88   # 同事实重复阈值（高）；link-suggest 的 0.6 是"相关"，dedup 要"同一"
 ```
+
 - `dedup_threshold` 默认 0.88：实测逐字重复 ≈0.95+、同事实改写 0.88-0.95、仅相关 0.6-0.8。0.88 取改写下沿。
 - 配置走 `~/.zk_config.json` 的 `gem_synthesis` 段，沿用现有 `_safe_int`/`_safe_float` 解析模式。
 
 ## 7. Backfill 命令
 
 `jfox gem-synth dedup-backfill [--kb <name>]`
+
 - 扫 `<kb>/notes/candidate/`（排除 archived/rejected）+ `<kb>/notes/permanent/` 全部 .md
 - 对每条 `encode_single(content)` → upsert（content_hash 命中则跳过，省 daemon 调用）
 - 幂等、可重跑；输出 `已灌入 N 条（candidate X / permanent Y）`

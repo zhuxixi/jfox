@@ -38,10 +38,12 @@
 ## Task 1: note.py 生命周期注册表 + 纯单测
 
 **Files:**
+
 - Modify: `jfox/note.py`（在 `logger = logging.getLogger(__name__)` 即 line 15 之后插入注册表）
 - Test: `tests/unit/test_note_lifecycle_hooks.py`（新）
 
 **Interfaces:**
+
 - Produces: `register_lifecycle_hook(event: str, callback) -> None`、`unregister_lifecycle_hook(event: str, callback) -> None`、`_dispatch(event: str, **payload) -> None`、模块级 `_LIFECYCLE_HOOKS: Dict[str, List[Any]]`。回调签名：`callback(note_id: str, note_type, **payload)`。
 
 - [ ] **Step 1: 写失败测试** `tests/unit/test_note_lifecycle_hooks.py`
@@ -208,10 +210,12 @@ EOF
 ## Task 2: gem_synth 订阅器 + 单测
 
 **Files:**
+
 - Create: `jfox/gem_synth/lifecycle.py`
 - Test: `tests/unit/test_gem_synth_lifecycle.py`（新）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `register_lifecycle_hook`；`jfox/gem_synth/dedup.py` 的 `_resolve_kb_name`、`delete_dedup`、`update_dedup_type`、`release_blocked_anchors`（签名不变）；`jfox.models.NoteType`。
 - Produces: `register() -> None`（幂等）；模块内 `_on_deleted/_on_archived/_on_promoted/_on_rejected` 回调。
 
@@ -448,9 +452,11 @@ EOF
 ## Task 3: cli.py 模块级触发 register()
 
 **Files:**
+
 - Modify: `jfox/cli.py`（在 `from .template_cli import template_app` 即 line 42 之后插入）
 
 **Interfaces:**
+
 - Consumes: Task 2 的 `jfox.gem_synth.lifecycle.register()`
 - Produces: import `jfox.cli` 后 `_LIFECYCLE_HOOKS` 已填充 4 事件
 
@@ -508,10 +514,12 @@ EOF
 ## Task 4: note.py 4 处切换为 _dispatch + 重构 test_note_dedup_sync
 
 **Files:**
+
 - Modify: `jfox/note.py`（delete_note 283-295、archive_note 329-341、promote_note 446-451、reject_note 471-481 的 dedup 块）
 - Modify: `tests/unit/test_note_dedup_sync.py`（`_mock_backend` fixture 加 register）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `_dispatch`；Task 2 的订阅器经 Task 3 注册后自动接管同步。
 
 **关键**：这是行为切换点——切换前（Task 1-3）订阅器已就位但 note.py 仍在用旧 lazy import；本 task 一次性把 4 处切到 `_dispatch` 并删 `gem_synth` import。切完后 note.py 零 `gem_synth` 依赖。
@@ -702,9 +710,11 @@ Expected: **无输出**。核心存储层（note/global_config/models/config）�
 - [ ] **Step 3: 提供全量/集成测试命令给用户（不自主跑）**
 
 给用户：
+
 ```
 uv run pytest tests/ -m "not embedding and not slow" -v
 ```
+
 （CI fast 等价集；让用户确认无跨模块回归。）
 
 - [ ] **Step 4: issue #310 评论——KB-rename deferred 说明 + 收尾**
@@ -723,6 +733,7 @@ gh issue comment 310 --body "重构完成（待 PR）。
 ## Self-Review（写完即检）
 
 **Spec coverage**：
+
 - §3.1 注册表 → Task 1 ✅
 - §3.2 订阅器 → Task 2 ✅
 - §3.3 守卫下移 → Task 2（`_DEDUP_TYPES` 早返回）✅

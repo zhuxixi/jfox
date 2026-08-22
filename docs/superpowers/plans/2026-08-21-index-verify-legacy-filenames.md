@@ -21,10 +21,12 @@
 ### Task 1: verify_index 数据源替换 + 删除旧解析函数（`jfox/indexer.py`）
 
 **Files:**
+
 - Modify: `jfox/indexer.py:30-50`（删除 `_extract_note_id_from_filename`）、`jfox/indexer.py:315-346`（重写 `verify_index`）、`jfox/indexer.py:11`（删 `import re`）
 - Test: `tests/unit/test_indexer_verify.py`（整体重写）
 
 **Interfaces:**
+
 - Produces: `Indexer.verify_index() -> Dict[str, Any]`，键：
   - `total_files: int` — 扫描到的 md 文件总数（含 unreadable）
   - `valid_files: int` — 有有效 frontmatter id 的文件数（含重复）
@@ -293,9 +295,11 @@ git commit -m "fix(index): verify 以 frontmatter 真实 ID 对账向量库，�
 ### Task 2: CLI verify 分支输出更新（`jfox/cli.py`）
 
 **Files:**
+
 - Modify: `jfox/cli.py:2425-2457`（verify 分支）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `verify_index()` 返回结构（含 `error` / `checked` / `unreadable_files` / `duplicate_ids`）
 - Produces: 无（CLI 终端输出）
 
@@ -382,9 +386,11 @@ git commit -m "fix(cli): index verify 输出标注 VectorStore 并单独报告 u
 ### Task 3: 集成测试断言更新（`tests/test_advanced_features.py`）
 
 **Files:**
+
 - Modify: `tests/test_advanced_features.py:133-135`（test_indexer 的 verify 断言）、`tests/test_advanced_features.py:189-225`（test_verify_index_matches_filenames_to_ids）
 
 **Interfaces:**
+
 - Consumes: Task 1 的返回结构
 
 - [ ] **Step 1: 更新断言**
@@ -441,6 +447,7 @@ git commit -m "test(index): verify 集成测试断言对齐 frontmatter 对账�
 ### Task 4: 文档文案（`README.md`）
 
 **Files:**
+
 - Modify: `README.md:300`
 
 - [ ] **Step 1: 更新表格行**
@@ -469,6 +476,7 @@ git commit -m "docs: index verify 表格描述标注 vector store 与 frontmatte
 ## Self-Review
 
 **1. Spec coverage:**
+
 - 四种文件格式对账 → Task 1 `test_current_formats_still_reconcile` + `test_legacy_*`
 - candidate 不再误报 → Task 1 legacy 用例（candidate 目录）
 - missing/orphan 与 frontmatter 对账一致 → Task 1 `TestTrueDiff`（调研 R3 实测同口径）

@@ -25,6 +25,7 @@ No other files need changes.
 ### Task 1: Write failing tests for `--content-file` in `_edit_impl`
 
 **Files:**
+
 - Modify: `tests/unit/test_edit.py` (append to `TestEditImpl` class after line 387)
 
 - [ ] **Step 1: Add failing tests**
@@ -192,6 +193,7 @@ Expected: FAIL — `TypeError: _edit_impl() got an unexpected keyword argument '
 ### Task 2: Add `content_file` parameter to `_edit_impl()`
 
 **Files:**
+
 - Modify: `jfox/cli.py` lines 962-974 (function signature + validation block)
 
 - [ ] **Step 1: Update `_edit_impl` signature and validation**
@@ -247,6 +249,7 @@ def _edit_impl(
 ```
 
 **Key changes:**
+
 1. Added `content_file: Optional[str]` parameter (after `content`, before `title`)
 2. Added mutual exclusion check for `--content` / `--content-file`
 3. Added file reading: `content = p.read_text(encoding="utf-8")` — overwrites `content` so downstream code (`n.content = content`, wiki links parsing, etc.) works unchanged
@@ -262,6 +265,7 @@ Expected: All 5 new tests PASS.
 ### Task 3: Add `--content-file` parameter to `edit()` Typer command
 
 **Files:**
+
 - Modify: `jfox/cli.py` lines 1088-1116
 
 - [ ] **Step 1: Update `edit()` function signature**
@@ -342,6 +346,7 @@ def edit(
 ```
 
 **Key changes:**
+
 1. Added `content_file` parameter between `content` and `title` (mirrors `_edit_impl` signature order)
 2. Pass `content_file` to both `_edit_impl` call sites (with-kb branch and without-kb branch)
 
@@ -362,6 +367,7 @@ git commit -m "feat(edit): add --content-file parameter for long text input (#10
 ### Task 4: Update `ZKCLI.edit()` test wrapper
 
 **Files:**
+
 - Modify: `tests/utils/jfox_cli.py` lines 236-269
 
 - [ ] **Step 1: Add `content_file` parameter to `ZKCLI.edit()`**
@@ -479,6 +485,7 @@ Expected: No errors.
 ## Self-Review
 
 **1. Spec coverage:**
+
 - `--content-file` reads content from file → Task 2 (implementation) + Task 1 (test: `test_edit_content_file_reads_content`)
 - Error on nonexistent file → Task 2 (implementation) + Task 1 (test: `test_edit_content_file_not_exists_raises`)
 - Mutual exclusion with `--content` → Task 2 (implementation) + Task 1 (test: `test_edit_content_and_content_file_exclusive`)
@@ -491,6 +498,7 @@ Expected: No errors.
 **2. Placeholder scan:** No TBD/TODO found. All steps have complete code.
 
 **3. Type consistency:**
+
 - `content_file: Optional[str]` in all three locations: `_edit_impl()`, `edit()`, `ZKCLI.edit()`
 - `content_file` parameter position consistent: after `content`, before `title`
 - `_edit_impl` call sites pass `content_file` in the correct position (after `content`, before `title`)

@@ -22,7 +22,7 @@
   - `DEVELOPMENT_PLAN.md`：MD029 有序列表编号 1..6 重排（3 处）。
   - `docs/superpowers/specs/2026-08-11-permanent-note-template-design.md`：blockquote 空行补 `>`（1 处）。
   - `packages/kimi-plugin/skills/jfox-manage/SKILL.md`、`jfox-promote/SKILL.md`：blockquote 空行补 `>`（2 处）。
-  - `docs/superpowers/specs/2026-08-20-bm25-clear-orphan-followup-design.md`：`#396` 行首变 H1 假标题 → 前缀 `PR `（同时消 MD025+MD026）。
+  - `docs/superpowers/specs/2026-08-20-bm25-clear-orphan-followup-design.md`：`#396` 行首变 H1 假标题 → 前缀 `PR`（同时消 MD025+MD026）。
   - `docs/superpowers/specs/2026-07-26-kb-backup-restore-design.md`：MD056 表格缺列行修复（1 处）。
   - `README.md`：Platform badge 空链接 `](#)` → 去掉链接包裹（1 处）。
   - `SESSION_SUMMARY.md`：4 处标题前补空行（MD022）。

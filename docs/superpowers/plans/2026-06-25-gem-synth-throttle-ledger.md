@@ -15,6 +15,7 @@
 ## 文件结构
 
 改动：
+
 - `jfox/gem_synth/store.py` — schema 加 status/fail_reason + migration；加 mark_failed/status_counts/list_failed
 - `jfox/gem_synth/synthesizer.py` — 各失败路径 mark_failed
 - `jfox/gem_synth/loop.py` — `_tick_once` 时间预算循环
@@ -29,6 +30,7 @@
 ## Task 1: SynthesisLog ledger 扩展（store.py）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/store.py`
 - Test: `tests/unit/test_gem_synth_store.py`
 
@@ -100,6 +102,7 @@ Expected: FAIL（mark_failed / status_counts / list_failed 不存在）
 - [ ] **Step 3: 改 `jfox/gem_synth/store.py`**
 
 把 `_SCHEMA` 改为（candidate_note_id 去掉 NOT NULL，加 status/fail_reason）：
+
 ```python
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS synthesis_log (
@@ -113,6 +116,7 @@ CREATE TABLE IF NOT EXISTS synthesis_log (
 ```
 
 在 `__init__` 里，`self._conn.executescript(_SCHEMA)` + `self._conn.commit()` 之后、`self._closed = False` 之前，加 migration 调用：
+
 ```python
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
@@ -121,6 +125,7 @@ CREATE TABLE IF NOT EXISTS synthesis_log (
 ```
 
 在 `__init__` 之后、`is_processed` 之前，加 `_maybe_migrate` 方法：
+
 ```python
     def _maybe_migrate(self) -> None:
         """旧表升级：补 status / fail_reason 列（1.2.0 前的表没有）。新表已含，跳过。"""
@@ -135,6 +140,7 @@ CREATE TABLE IF NOT EXISTS synthesis_log (
 ```
 
 把 `mark_processed` 改为显式写 status：
+
 ```python
     def mark_processed(self, anchor_fragment_id: int, candidate_note_id: str) -> None:
         with self._lock:
@@ -147,6 +153,7 @@ CREATE TABLE IF NOT EXISTS synthesis_log (
 ```
 
 在 `mark_processed` 之后加 `mark_failed`、`status_counts`、`list_failed`：
+
 ```python
     def mark_failed(self, anchor_fragment_id: int, fail_reason: str) -> None:
         """失败锚点记账：status='failed' + 原因，candidate_note_id 留空。
@@ -209,6 +216,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ## Task 2: synthesize_anchor 失败路径 mark_failed（synthesizer.py）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/synthesizer.py`
 - Test: `tests/unit/test_gem_synth_synthesizer.py`
 
@@ -263,24 +271,28 @@ Expected: FAIL（失败路径没调 mark_failed，is_processed False）
 Read `synthesize_anchor`（约 line 108-153）。在每个 `return None` 失败路径**之前**插入 `log.mark_failed(anchor["fragment_id"], "<reason>")`。具体 4 处（按当前代码顺序）：
 
 (a) 无 transcript_path 路径（`if not transcript_path:` 分支），在 `return None` 前加：
+
 ```python
         log.mark_failed(anchor["fragment_id"], "no transcript_path")
         return None
 ```
 
 (b) transcript 上下文为空路径（`if not turn.strip():` 分支），在 `return None` 前加：
+
 ```python
         log.mark_failed(anchor["fragment_id"], "empty transcript context")
         return None
 ```
 
 (c) LLM 返 None 路径（`if llm_result is None:` 分支），在 `return None` 前加：
+
 ```python
         log.mark_failed(anchor["fragment_id"], "llm synthesis failed")
         return None
 ```
 
 (d) _save_candidate_note 失败路径（`if note_id is None:` 分支），在 `return None` 前加：
+
 ```python
         log.mark_failed(anchor["fragment_id"], "save candidate note failed")
         return None
@@ -307,6 +319,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ## Task 3: _tick_once 时间预算循环（loop.py）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/loop.py`
 - Test: `tests/unit/test_gem_synth_loop.py`
 
@@ -441,6 +454,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ## Task 4: jfox gem-synth status 命令 + count_anchors（cli.py + anchors.py）
 
 **Files:**
+
 - Modify: `jfox/gem_synth/anchors.py`（加 count_anchors）
 - Modify: `jfox/gem_synth/cli.py`（加 gem_synth_app + status）
 - Modify: `jfox/cli.py`（挂载 gem_synth_app）
@@ -449,6 +463,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - [ ] **Step 1: 加 count_anchors 测试 + 实现到 anchors.py**
 
 测试加到 `tests/unit/test_gem_synth_anchors.py`：
+
 ```python
 def test_count_anchors(tmp_path):
     from jfox.fragment.store import FragmentStore
@@ -466,6 +481,7 @@ def test_count_anchors(tmp_path):
 ```
 
 在 `jfox/gem_synth/anchors.py` 加 `count_anchors`（复用 `_anchor_where` 的 WHERE 逻辑）：
+
 ```python
 def count_anchors(fragments_db: Path, anchor_types: List[str]) -> int:
     """高信号锚点总数（不区分是否已处理）—— status 命令算 pending 用。"""
@@ -479,6 +495,7 @@ def count_anchors(fragments_db: Path, anchor_types: List[str]) -> int:
         conn.close()
     return int(row[0]) if row else 0
 ```
+
 （`_anchor_where`、`sqlite3`、`Path`、`List` 已在 anchors.py 导入。更新 `__all__` 加 `count_anchors`。）
 Run: `uv run pytest tests/unit/test_gem_synth_anchors.py -v` → PASS。
 
@@ -579,10 +596,12 @@ def gem_synth_status(
 ```
 
 **重要**：上面有两处占位需替换为真实实现（Read cli.py 看 candidates_app 怎么用 `_json_console`/`console`，复用同款；`get_gem_synthesis_config_for_status()` 改为真实取配置）：
+
 - `_json_console_print` → 复用 cli.py 已有的 `_json_console.print(_json.dumps(...))`（或 candidates_app 里的 typer.echo JSON 模式，**为一致用 candidates_app 同款**）。
 - `get_gem_synthesis_config_for_status()` → `from ..global_config import get_global_config_manager` 然后 `get_global_config_manager().get_gem_synthesis_config()`。`count_anchors` 需要 `cfg.anchor_types`。
 
 **最终 status 命令应该是**（替换上面占位后，无 `if False else None`、无 placeholder）：
+
 ```python
 @gem_synth_app.command("status")
 def gem_synth_status(
@@ -639,15 +658,19 @@ def gem_synth_status(
 
 __all__ = ["candidates_app", "gem_synth_app"]
 ```
+
 （用 `typer.echo` 输出 JSON，与 candidates show 一致，避免 Rich 二次转义。`console`/`Table`/`typer` 已在 cli.py 导入。）
 
 - [ ] **Step 5: 挂载 gem_synth_app 到 `jfox/cli.py`**
 
 在 `candidates_app` 挂载旁边（`from .gem_synth.cli import candidates_app` 那行附近）加：
+
 ```python
 from .gem_synth.cli import gem_synth_app  # noqa: E402
 ```
+
 和
+
 ```python
 app.add_typer(gem_synth_app, name="gem-synth", help="L3 宝石合成进度查看")
 ```
@@ -655,10 +678,12 @@ app.add_typer(gem_synth_app, name="gem-synth", help="L3 宝石合成进度查看
 - [ ] **Step 6: 跑测试 + 验证挂载**
 
 Run:
+
 ```bash
 uv run pytest tests/unit/test_gem_synth_cli.py tests/unit/test_gem_synth_anchors.py -v
 uv run jfox gem-synth --help
 ```
+
 Expected: 测试 PASS；help 显示 `status` 子命令。
 
 - [ ] **Step 7: 提交**
@@ -682,6 +707,7 @@ Expected: PASS
 - [ ] **Step 2: CI lint（jfox/ + tests/ 全量，别再像 #274 漏 tests/）**
 
 Run:
+
 ```bash
 uv run ruff check jfox/ tests/
 uv run black jfox/gem_synth/ jfox/cli.py tests/unit/test_gem_synth_*.py
@@ -700,6 +726,7 @@ gh pr create --title "feat(gem-synth): time-budget throttle + synthesis ledger +
 ## Self-Review 结果
 
 **1. Spec 覆盖：**
+
 - 时间预算限流（§1）→ Task 3 ✅
 - synthesis_log ledger（§2）→ Task 1 ✅
 - 失败标记不重试（§3）→ Task 2 ✅
@@ -710,6 +737,7 @@ gh pr create --title "feat(gem-synth): time-budget throttle + synthesis ledger +
 **2. 占位符扫描：** Task 4 Step 4 有一个"占位需替换"的中间版本 —— 但紧接给了**最终无占位版本**（用 typer.echo + get_global_config_manager）。实现时用最终版本，忽略中间占位草稿。其余步骤完整代码。
 
 **3. 签名一致性：**
+
 - `SynthesisLog.mark_failed(anchor_id, fail_reason)` / `status_counts()` / `list_failed()` — Task 1 定义，Task 2/4 调用一致 ✅
 - `synthesize_anchor` 各失败路径调 `log.mark_failed(anchor["fragment_id"], reason)` — Task 2，reason 字符串固定 ✅
 - `find_anchors(limit=1)` — Task 3 调用，anchors.py 已有 limit 参数 ✅

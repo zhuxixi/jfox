@@ -29,6 +29,7 @@
 ### Task 1: README.md — 架构图添加 daemon 层
 
 **Files:**
+
 - Modify: `README.md:42-70` (Architecture 架构图)
 
 - [ ] **Step 1: 在架构图 Index Layer 中添加 daemon 节点和连线**
@@ -76,6 +77,7 @@ git commit -m "docs: add daemon module to README architecture diagram and module
 ### Task 2: README.md — Command Reference 添加 show 和 daemon 命令
 
 **Files:**
+
 - Modify: `README.md:257-273` (Notes 章节), `README.md:308-313` (Performance & Debug 章节)
 
 - [ ] **Step 1: 在 Notes 章节表格添加 show 命令**
@@ -112,6 +114,7 @@ git commit -m "docs: add show and daemon commands to README command reference"
 ### Task 3: CLAUDE.md — 更新 cli.py 行数和 show 命令约定
 
 **Files:**
+
 - Modify: `CLAUDE.md:59` (cli.py 行数), `CLAUDE.md:98` (Adding a CLI command)
 
 - [ ] **Step 1: 更新 cli.py 行数**
@@ -143,6 +146,7 @@ git commit -m "docs: update CLAUDE.md with current cli.py size and show command 
 ### Task 4: jfox-common skill — 补充 show 和 daemon 命令
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-common/SKILL.md:310-340` (命令参考)
 
 - [ ] **Step 1: 在笔记 CRUD 章节添加 show 命令**
@@ -167,6 +171,7 @@ jfox daemon status                              # 查看 PID、端口、模型�
 ```
 
 注意：daemon 依赖（fastapi、uvicorn）已作为必选依赖安装，`jfox daemon start` 可直接使用。
+
 ```
 
 - [ ] **Step 3: Commit**
@@ -181,6 +186,7 @@ git commit -m "docs(skill): add show and daemon commands to jfox-common skill"
 ### Task 5: jfox-ingest skill — 补充 show 命令
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-ingest/SKILL.md:219-242` (命令参考)
 
 - [ ] **Step 1: 在命令参考中添加 show 命令**
@@ -204,6 +210,7 @@ git commit -m "docs(skill): add show command to jfox-ingest skill"
 ### Task 6: jfox-organize skill — 补充 show 命令
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-organize/SKILL.md:151-164` (命令参考)
 
 - [ ] **Step 1: 在命令参考中添加 show 命令**
@@ -226,6 +233,7 @@ git commit -m "docs(skill): add show command to jfox-organize skill"
 ### Task 7: jfox-search skill — 补充 show 和 daemon 提示
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-search/SKILL.md:38-48` (搜索结果展示), `README.md:102-106` (Error Handling)
 
 - [ ] **Step 1: 在搜索结果展示中添加 show 提示**
@@ -257,6 +265,7 @@ git commit -m "docs(skill): add show hint and daemon tip to jfox-search skill"
 ### Task 8: 新增 jfox-session-summary skill
 
 **Files:**
+
 - Create: `skills-recommend/claude-code/jfox-session-summary/SKILL.md`
 - Modify: `skills-recommend/README.md`
 
@@ -287,23 +296,29 @@ description: |
 回顾当前会话内容，生成结构化总结：
 
 ```
+
 ## 会话总结
 
 ### 主题
+
 [一句话描述会话主要话题]
 
 ### 完成的工作
+
 - [具体完成的任务 1]
 - [具体完成的任务 2]
 - ...
 
 ### 关键决策
+
 - [决策 1 及其理由]
 - [决策 2 及其理由]
 
 ### 待办 / 后续
+
 - [未完成的事项]
 - [后续步骤]
+
 ```
 
 ### Step 2: 写入知识库
@@ -318,6 +333,7 @@ jfox add "<markdown-escaped-summary>" \
 ```
 
 **注意**：
+
 - 标题格式统一为 `Session: <简短主题>`
 - 类型使用 `fleeting`（会话记录是临时性笔记，后续可提炼为 permanent）
 - 标签统一使用 `session`
@@ -360,6 +376,7 @@ jfox show <note_id> --format json
 - **"Knowledge base not found"**: 提示用户先运行 `/jfox-common` 创建知识库
 - **内容过长导致 shell 解析失败**: 切换到 `--content-file` 方式
 - **特殊字符转义问题**: 使用单引号包裹内容，或写入临时文件
+
 ```
 
 - [ ] **Step 2: 更新 skills-recommend/README.md 目录结构**
@@ -396,6 +413,7 @@ git commit -m "docs(skill): add jfox-session-summary skill for saving session su
 ### Task 9: 删除旧 skill/ 目录
 
 **Files:**
+
 - Delete: `skill/evals/evals.json`
 - Delete: `skill/knowledge-base-notes/SKILL.md`
 - Delete: `skill/knowledge-base-workspace/SKILL.md`

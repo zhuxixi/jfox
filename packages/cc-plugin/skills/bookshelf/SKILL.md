@@ -16,12 +16,14 @@ description: |
 
 - jfox 已安装（`jfox --version`）
 - 一本书的文件夹，结构：
+
   ```
   <folder>/
     bundle/              # scan2book 产物（含 manifest.json + pages/pNNN.md + images/）
     original.pdf         # 原件（可选）
     meta.json            # 可选；不给则 jfox 从 bundle manifest 脚手架生成
   ```
+
 - scan2book（如需自己抽 bundle）：需 GPU，在 GPU 机器上跑 `scan2book <pdf> --out <dir>`，
   再把产出的文件夹交给 `jfox bookshelf add`。jfox 本身**不调 scan2book、不需 GPU**。
 

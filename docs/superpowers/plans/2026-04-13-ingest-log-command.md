@@ -23,6 +23,7 @@
 ## Task 1: 创建 git_extractor.py 核心提取模块
 
 **Files:**
+
 - Create: `jfox/git_extractor.py`
 
 - [ ] **Step 1: 写失败测试——parse_git_log_output 解析 block 格式**
@@ -249,6 +250,7 @@ git commit -m "feat: add git_extractor module with block-delimited git log parse
 ## Task 2: 实现 extract_commits 函数（subprocess 调用）
 
 **Files:**
+
 - Modify: `jfox/git_extractor.py`
 - Modify: `tests/unit/test_git_extractor.py`
 
@@ -398,6 +400,7 @@ git commit -m "feat: add extract_commits with UTF-8 encoding and path normalizat
 ## Task 3: 实现 commits_to_notes 转换函数
 
 **Files:**
+
 - Modify: `jfox/git_extractor.py`
 - Modify: `tests/unit/test_git_extractor.py`
 
@@ -563,6 +566,7 @@ git commit -m "feat: add commits_to_notes conversion with Co-authored-by cleanup
 ## Task 4: 在 cli.py 添加 ingest-log 命令
 
 **Files:**
+
 - Modify: `jfox/cli.py`（在 `bulk_import` 命令附近追加）
 - Modify: `tests/unit/test_git_extractor.py`（添加集成级别测试）
 

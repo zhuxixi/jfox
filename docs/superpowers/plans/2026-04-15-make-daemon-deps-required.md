@@ -30,6 +30,7 @@
 ### Task 1: Move daemon deps to required in pyproject.toml
 
 **Files:**
+
 - Modify: `pyproject.toml:26-37,39-54`
 
 - [ ] **Step 1: Edit `pyproject.toml` — add fastapi and uvicorn to dependencies**
@@ -107,6 +108,7 @@ Closes #150"
 ### Task 2: Update README.md
 
 **Files:**
+
 - Modify: `README.md:57,70,88`
 
 - [ ] **Step 1: Update Mermaid diagram — remove "(可选)" from daemon label**
@@ -149,6 +151,7 @@ git commit -m "docs: remove optional daemon references from README"
 ### Task 3: Update CLAUDE.md
 
 **Files:**
+
 - Modify: `CLAUDE.md:70`
 
 - [ ] **Step 1: Update daemon description in module table**
@@ -177,6 +180,7 @@ git commit -m "docs: remove optional daemon references from CLAUDE.md"
 ### Task 4: Update docs/installation.md
 
 **Files:**
+
 - Modify: `docs/installation.md:44`
 
 - [ ] **Step 1: Add fastapi and uvicorn to Requirements list**
@@ -205,6 +209,7 @@ git commit -m "docs: add fastapi/uvicorn to installation requirements"
 ### Task 5: Update skills-recommend/ SKILL.md files
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-common/SKILL.md:350`
 - Modify: `skills-recommend/claude-code/jfox-search/SKILL.md:108`
 - Modify: `skills-recommend/claude-code/jfox-ingest/SKILL.md:246`
@@ -278,6 +283,7 @@ git commit -m "docs: remove [daemon] optional dependency notes from skills"
 ### Task 6: Update existing plan doc
 
 **Files:**
+
 - Modify: `docs/superpowers/plans/2026-04-14-sync-docs-daemon-show.md:64,169,245`
 
 - [ ] **Step 1: Update all three occurrences**

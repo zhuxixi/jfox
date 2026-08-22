@@ -54,6 +54,7 @@ zip -r /tmp/jfox-kimi-plugin.zip .
 ```
 
 插件内置 skill：
+
 - **using-jfox** — 会话启动时自动加载，环境检查与命令速查
 - **jfox-manage** — 创建/管理知识库、笔记 CRUD、健康检查
 - **jfox-ingest** — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
@@ -77,11 +78,13 @@ cp -r skills-recommend/kimi-cli/* ~/.kimi-code/skills/
 pi 支持 [Agent Skills 标准](https://agentskills.io/specification)，通过 `SKILL.md` 的 `description` 自然语言触发，也支持 `/skill:name` 显式调用。
 
 pi 会自动发现以下位置的 skills：
+
 - 全局：`~/.pi/agent/skills/`、`~/.agents/skills/`
 - 项目级：`.pi/skills/`、`.agents/skills/`
 - Package：`package.json` 中 `pi.skills` 指定的目录
 
 **安装方式一：手动复制**
+
 ```bash
 # 复制到全局 skills 目录
 mkdir -p ~/.pi/agent/skills/
@@ -89,12 +92,15 @@ cp -r skills-recommend/pi/* ~/.pi/agent/skills/
 ```
 
 **安装方式二：通过 pi package（零侵入，推荐）**
+
 ```bash
 pi install git:github.com/zhuxixi/jfox
 ```
+
 安装后 pi 会自动识别 `skills-recommend/pi/` 下的所有 skills。
 
 **pi 版 skill 列表：**
+
 - **jfox-common** — 创建/管理知识库、笔记 CRUD、健康检查、Daemon 管理
 - **jfox-ingest** — 从仓库导入 git log / PR / Issues 为 fleeting 笔记
 - **jfox-organize** — 整理知识库、提炼 permanent 笔记、生成 [[wiki links]]
@@ -111,6 +117,7 @@ pi install git:github.com/zhuxixi/jfox
 - **jfox-release-all** — 三件套编排发版（自动跳过无改动者）
 
 **与 kimi-cli 版的差异：**
+
 - description 中英双语，触发词覆盖更广
 - 交叉引用使用 pi 的 `/skill:name` 语法
 - 额外包含 `jfox-promote`、`jfox-bookshelf`、`jfox-overview`（从 cc-plugin 移植）、`jfox-ci`（从 `.claude/skills/` 移植），以及 `jfox-release`、`jfox-release-cc-plugin`、`jfox-release-kimi-plugin`、`jfox-release-all` 四条发版轨道（从 `.claude/skills/` 移植）
@@ -130,6 +137,7 @@ pi install git:github.com/zhuxixi/jfox
 ### 通用适配要点
 
 每个 skill 包含以下可复用信息：
+
 1. **触发条件** — 什么场景下使用该 skill
 2. **命令映射** — 用户意图对应的 jfox CLI 命令
 3. **工作流程** — 操作步骤和决策逻辑
@@ -143,4 +151,4 @@ pi install git:github.com/zhuxixi/jfox
 uv tool install jfox-cli
 ```
 
-详见：https://github.com/zhuxixi/jfox
+详见：<https://github.com/zhuxixi/jfox>

@@ -94,16 +94,20 @@ app.add_typer(todo_app, name="todo")
 **`list` 默认过滤 open**：与 `jfox list`（列出所有类型）不同，`jfox todo list` 默认只显示 `status=open` 的 todo，加 `--all` 才显示全部。
 
 **`review` 的行为（Agent 优先）**：
+
 - 默认（无 `--interactive`）：输出所有 open todo 的结构化列表，等价于 `jfox todo list`，供 Agent 消费
 - `jfox todo review --interactive`：进入交互模式，逐条展示：
+
   ```
   [1/5] 跟进客户反馈 (2026-05-22)
   客户提出了三个问题需要回复...
   操作: [d]one / [s]kip / [x]delete / [q]uit >
   ```
+
   交互结束后输出统计。
 
 **`done`/`open` 的实现**：
+
 - 复用 `note.update_note()`，但只修改 `status` 和 `updated` 字段
 - 为避免重命名文件（标题没变），`update_note()` 在检测到新旧路径相同时跳过 `unlink()`
 

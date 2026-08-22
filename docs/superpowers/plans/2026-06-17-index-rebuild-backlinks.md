@@ -13,11 +13,13 @@
 ### Task 1: 实现 `_rebuild_backlinks_impl()` 内部函数
 
 **Files:**
+
 - Modify: `jfox/cli.py`（在 `extract_wiki_links` / `find_note_id_by_title_or_id` 附近或 `_add_note_impl` 之后新增函数）
 
 - [ ] **Step 1: 编写核心函数**
 
   新增函数签名：
+
   ```python
   def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
       ...
@@ -43,12 +45,14 @@
 ### Task 2: 在 `index rebuild` action 中集成 `--backlinks` 选项
 
 **Files:**
+
 - Modify: `jfox/cli.py:index()` 命令参数
 - Modify: `jfox/cli.py` 中 `action == "rebuild"` 分支
 
 - [ ] **Step 1: 添加 Typer 选项**
 
   在 `index()` 命令中新增：
+
   ```python
   backlinks: bool = typer.Option(False, "--backlinks", "-b", help="重建时重新计算 backlinks"),
   ```
@@ -56,6 +60,7 @@
 - [ ] **Step 2: 在 rebuild action 中调用**
 
   在 `action == "rebuild"` 分支中，BM25 重建完成后：
+
   ```python
   if backlinks:
       bl_result = _rebuild_backlinks_impl(output_format)
@@ -72,6 +77,7 @@
 ### Task 3: 编写测试
 
 **Files:**
+
 - New: `tests/integration/test_index_rebuild_backlinks.py`
 - New: `tests/unit/test_rebuild_backlinks_impl.py`
 
@@ -134,6 +140,7 @@
 - [ ] **Step 1: 整理提交**
 
   使用 Conventional Commits：
+
   ```bash
   git add jfox/cli.py tests/unit/test_rebuild_backlinks_impl.py tests/integration/test_index_rebuild_backlinks.py docs/superpowers/specs/2026-06-17-index-rebuild-backlinks-design.md docs/superpowers/plans/2026-06-17-index-rebuild-backlinks.md
   git commit -m "fix(cli): jfox index rebuild --backlinks recalculates wiki links and backlinks

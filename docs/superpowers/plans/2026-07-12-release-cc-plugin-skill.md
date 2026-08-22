@@ -44,10 +44,12 @@ def main() -> None: ...
 ## Task 1: helper — 版本计算 + changelog + dry-run
 
 **Files:**
+
 - Create: `.claude/skills/release-cc-plugin/release_cc_plugin_helper.py`
 - Test: `tests/unit/test_release_cc_plugin_helper.py`
 
 **Interfaces:**
+
 - Produces: `read_current_version` / `compute_new_version` / `find_last_bump_commit` / `get_changelog` / `main`（dry-run 分支完整，非 dry-run 分支留给 Task 2）
 
 - [ ] **Step 1: 写失败测试**（subprocess 风格，镜像 test_release_helper.py）
@@ -334,10 +336,12 @@ git commit -m "feat(release-cc-plugin): helper 版本计算 + changelog + dry-ru
 ## Task 2: helper — bump 三字段 + 原子性
 
 **Files:**
+
 - Modify: `.claude/skills/release-cc-plugin/release_cc_plugin_helper.py`
 - Test: `tests/unit/test_release_cc_plugin_helper.py`（追加）
 
 **Interfaces:**
+
 - Consumes: `PLUGIN_JSON_REL` / `MARKETPLACE_JSON_REL`（Task 1 常量）
 - Produces: `assert_versions` / `bump_version_files`；`main` 非 dry-run 分支接通
 
@@ -484,9 +488,11 @@ git commit -m "feat(release-cc-plugin): helper 原子 bump 三字段 + 写后断
 ## Task 3: SKILL.md 流程编排
 
 **Files:**
+
 - Create: `.claude/skills/release-cc-plugin/SKILL.md`
 
 **Interfaces:**
+
 - Consumes: helper 的 `--dry-run` + 正式模式 JSON 契约（Task 1/2）
 
 - [ ] **Step 1: 写 SKILL.md**
@@ -510,10 +516,12 @@ kimi-plugin 是另一条轨道，本 skill 不管。
 ## 用法
 
 ```
+
 /release-cc-plugin patch     # bump patch: 0.5.1 → 0.5.2
 /release-cc-plugin minor     # bump minor: 0.5.1 → 0.6.0
 /release-cc-plugin major     # bump major: 0.5.1 → 1.0.0
 /release-cc-plugin 0.7.0     # 指定版本
+
 ```
 
 默认建议 patch（无新 skill/command → semver patch）。
@@ -598,6 +606,7 @@ PR 已创建: {URL}
 - 三处版本号由 helper 原子 bump（命中数不符报错不写），堵 CLAUDE.md 点名的「漏改任一处」坑。
 - 不要用 `/release`（那是 CLI/PyPI）。
 - 合 main 即发布；如需追溯可手动 `gh release create cc-plugin-v<x>`，但非默认。
+
 ```
 
 - [ ] **Step 2: 人工通读校验**
