@@ -2,6 +2,13 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.9.0] - 2026-08-22
+
+### Features
+- MOC create/update 命令——从诊断簇生成与维护 structure 笔记 (#413) (#414)
+
+[1.9.0]: https://github.com/zhuxixi/jfox/compare/v1.8.0...v1.9.0
+
 ## [1.8.0] - 2026-08-22
 
 ### Features
