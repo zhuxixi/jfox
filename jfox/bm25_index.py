@@ -48,7 +48,7 @@ class BM25Index:
 
         # 索引数据
         self.bm25: Optional[BM25Okapi] = None
-        self.documents: List[str] = []  # 分词后的文档列表
+        self.documents: List[List[str]] = []  # 分词后的文档列表（每个文档为 token 列表）
         self.doc_ids: List[str] = []  # 文档 ID 列表
         self.doc_types: List[Optional[str]] = []  # 文档类型列表
         self.doc_mapping: Dict[str, int] = {}  # note_id -> index
@@ -800,7 +800,7 @@ class BM25Index:
 
             try:
                 # 在局部变量中构建新索引
-                new_documents: List[str] = []
+                new_documents: List[List[str]] = []
                 new_ids: List[str] = []
                 new_types: List[Optional[str]] = []
                 new_mapping: Dict[str, int] = {}
