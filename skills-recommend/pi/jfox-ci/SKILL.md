@@ -80,6 +80,7 @@ gh run view <run_id> --json jobs --jq '.jobs[] | {name, status, conclusion}'
 ```
 
 逐个 job 报告状态：
+
 - conclusion: "success" → ✅
 - conclusion: "failure" → ❌
 - status: "in_progress" / "queued" → ⏳
@@ -87,10 +88,12 @@ gh run view <run_id> --json jobs --jq '.jobs[] | {name, status, conclusion}'
 ### Step C: 决策
 
 **全部 job 完成时**：
+
 - 全绿 → 报告 "CI 全绿 ✅"，告知用户，结束轮询
 - 有失败 → 报告 "CI 失败 ❌" 列出失败 job，建议查看日志：`gh run view <run_id> --log-failed`，结束轮询
 
 **仍在跑时**：
+
 - 轮次计数 +1
 - 若超过该测试类型的最大轮次 → 报告超时，建议手动检查，结束轮询
 - 否则报告当前进度，继续轮询

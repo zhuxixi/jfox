@@ -30,6 +30,7 @@
 > **约定**：所有命令均支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。
 
 This applies to:
+
 - `jfox-ingest/SKILL.md` lines 83, 179 (two note blocks)
 - `jfox-organize/SKILL.md` lines 65, 96, 161 (three note blocks)
 
@@ -38,16 +39,19 @@ This applies to:
 ### Task 1: Fix `--json` descriptions in jfox-ingest
 
 **Files:**
+
 - Modify: `~/.claude/skills/jfox-ingest/SKILL.md`
 
 - [ ] **Step 1: Replace first note block (around line 83)**
 
 Replace:
+
 ```
 > **注意**: `jfox ingest-log` 使用 `--json`（默认关闭）/`--format`（默认 table）控制输出。JSON 模式用 `--json`，不要用 `--format json`。
 ```
 
 With:
+
 ```
 > **约定**：`jfox ingest-log` 支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。
 ```
@@ -55,11 +59,13 @@ With:
 - [ ] **Step 2: Replace second note block (around line 179)**
 
 Replace:
+
 ```
 > **注意**: `jfox bulk-import` 使用 `--json`（默认开启）/`--no-json` 控制输出。不要使用 `--format json`。
 ```
 
 With:
+
 ```
 > **约定**：`jfox bulk-import` 默认输出 JSON。使用 `--no-json` 切换为 table 格式，或 `--format table` 显式指定。
 ```
@@ -73,16 +79,19 @@ Read the full file and confirm both note blocks are updated and no other "不要
 ### Task 2: Fix `--json` descriptions and add `--content-file` in jfox-organize
 
 **Files:**
+
 - Modify: `~/.claude/skills/jfox-organize/SKILL.md`
 
 - [ ] **Step 1: Replace first note block (around line 65)**
 
 Replace:
+
 ```
 > **注意**：`jfox add` 和 `jfox delete` 使用 `--json`/`--no-json`（默认开启），不要用 `--format json`。
 ```
 
 With:
+
 ```
 > **约定**：所有命令均支持 `--format json` 输出 JSON，也可使用快捷方式 `--json`（两者等价）。下文示例统一使用 `--json`。
 ```
@@ -90,11 +99,13 @@ With:
 - [ ] **Step 2: Replace second note block (around line 96)**
 
 Replace:
+
 ```
 > **注意**：`jfox edit` 使用 `--json`/`--no-json`（默认开启），不要用 `--format json`。
 ```
 
 With:
+
 ```
 > **约定**：`jfox edit` 支持 `--format json`，也可使用快捷方式 `--json`（两者等价）。
 ```
@@ -102,11 +113,13 @@ With:
 - [ ] **Step 3: Replace third note block in error handling (around line 161)**
 
 Replace:
+
 ```
 - **`jfox add` / `jfox edit` / `jfox delete` 使用 `--json`/`--no-json`**，不要用 `--format json`
 ```
 
 With:
+
 ```
 - **`jfox add` / `jfox edit` / `jfox delete`** 支持 `--format json`，也可使用快捷方式 `--json`
 ```
@@ -135,11 +148,13 @@ jfox edit <孤立笔记_id> --content-file updated.md
 - [ ] **Step 6: Add `--date` to `jfox daily` in command reference (around line 153)**
 
 Replace:
+
 ```bash
 jfox daily --json                             # 查看今天的笔记
 ```
 
 With:
+
 ```bash
 jfox daily --json                             # 查看今天的笔记
 jfox daily --date 2026-04-01 --json           # 查看指定日期的笔记
@@ -154,6 +169,7 @@ Read the full file and confirm no remaining "不要用" or "不要使用" warnin
 ### Task 3: Major update to jfox-common
 
 **Files:**
+
 - Modify: `~/.claude/skills/jfox-common/SKILL.md`
 
 This is the largest change. The skill currently covers only KB management and health check. It needs a new "笔记 CRUD" section and updates to the command reference.
@@ -185,6 +201,7 @@ jfox add --template meeting --title "周会记录"
 ```
 
 笔记类型：
+
 - `fleeting`（默认）— 快速捕获，稍后提炼
 - `literature` — 阅读笔记
 - `permanent` — 已提炼的知识
@@ -223,6 +240,7 @@ jfox daily --json                                # 今天的笔记
 jfox daily --date 2026-04-01 --json              # 指定日期
 jfox refs --search "<标题>" --format json        # 查看反向链接
 ```
+
 ```
 
 - [ ] **Step 2: Update "命令参考" section to include all commands**
@@ -282,6 +300,7 @@ jfox inbox --json --limit <N>                # 未处理笔记
 ```
 
 > 搜索、导入、整理等高频操作命令见对应技能文档（jfox-search、jfox-ingest、jfox-organize）。
+
 ```
 
 - [ ] **Step 3: Add `ingest-log` to "错误处理" table**
@@ -289,7 +308,9 @@ jfox inbox --json --limit <N>                # 未处理笔记
 Add a row to the error handling table:
 
 ```
+
 | `ingest-log` 报 "Not a git repository" | 提供正确的 Git 仓库路径 |
+
 ```
 
 - [ ] **Step 4: Verify full file reads correctly**

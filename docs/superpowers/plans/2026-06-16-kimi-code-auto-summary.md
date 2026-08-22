@@ -32,6 +32,7 @@
 ## Task 1: ledger key 来源前缀 + 旧数据迁移
 
 **Files:**
+
 - Modify: `jfox/auto_summary/ledger.py`（`_load` 方法，约 118-126 行）
 - Test: `tests/unit/test_ledger_migration.py`
 
@@ -101,6 +102,7 @@ Expected: PASS（2 passed）
 - [ ] **Step 5: 回归 + commit**
 
 Run: `uv run pytest tests/unit/ -k ledger -v`（若有现有 ledger 测试，确认不破）
+
 ```bash
 git add jfox/auto_summary/ledger.py tests/unit/test_ledger_migration.py
 git commit -m "feat(auto-summary): prefix ledger keys with source, migrate legacy bare keys"
@@ -111,6 +113,7 @@ git commit -m "feat(auto-summary): prefix ledger keys with source, migrate legac
 ## Task 2: AutoSummaryConfig 加 session_sources / kimi_sessions_dir
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（`AutoSummaryConfig`，约 47-104 行）
 - Test: `tests/unit/test_auto_summary_config_sources.py`
 
@@ -182,6 +185,7 @@ git commit -m "feat(auto-summary): add session_sources and kimi_sessions_dir con
 ## Task 3: SessionFile 加 source 字段
 
 **Files:**
+
 - Modify: `jfox/auto_summary/scanner.py`（`SessionFile` dataclass，约 31-39 行）
 - Test: `tests/unit/test_session_file_source.py`
 
@@ -237,6 +241,7 @@ Expected: PASS（2 passed）
 - [ ] **Step 5: 回归 scanner 现有测试 + commit**
 
 Run: `uv run pytest tests/unit/ -k scanner -v`（若有；否则跑 Task 3 两个用例即可）
+
 ```bash
 git add jfox/auto_summary/scanner.py tests/unit/test_session_file_source.py
 git commit -m "feat(auto-summary): add source field to SessionFile"
@@ -247,6 +252,7 @@ git commit -m "feat(auto-summary): add source field to SessionFile"
 ## Task 4: SessionSource 协议 + ClaudeCodeSource + 工厂
 
 **Files:**
+
 - Create: `jfox/auto_summary/sources.py`
 - Test: `tests/unit/test_session_source.py`
 
@@ -419,6 +425,7 @@ git commit -m "feat(auto-summary): add SessionSource protocol, ClaudeCodeSource 
 ## Task 5: KimiCodeSource.iter_sessions 扫描
 
 **Files:**
+
 - Modify: `jfox/auto_summary/kimi_source.py`
 - Test: `tests/unit/test_kimi_scanner.py`
 
@@ -571,6 +578,7 @@ git commit -m "feat(auto-summary): KimiCodeSource.iter_sessions scans wire.jsonl
 ## Task 6: KimiCodeSource.extract_dialog 解析
 
 **Files:**
+
 - Modify: `jfox/auto_summary/kimi_source.py`（加 `extract_dialog` + 辅助函数）
 - Test: `tests/unit/test_kimi_extractor.py`
 
@@ -802,6 +810,7 @@ git commit -m "feat(auto-summary): KimiCodeSource.extract_dialog parses wire.jso
 ## Task 7: runner 改为面向 source
 
 **Files:**
+
 - Modify: `jfox/auto_summary/runner.py`（`scan_pending` 约 98-118，`summarize_one` 约 161-276）
 - Test: `tests/unit/test_runner_multi_source.py`
 
@@ -911,6 +920,7 @@ def scan_pending(
 ```
 
 并把该函数内所有 `session_file.session_id` 作为 ledger key 的地方改为 `session_key(session_file)`。具体替换点：
+
 - `ledger.record_skip(session_file.session_id, ...)` → `ledger.record_skip(session_key(session_file), ...)`
 - `ledger.record_failure(session_file.session_id, ...)` → `ledger.record_failure(session_key(session_file), ...)`
 - `ledger.record_success(session_file.session_id, ...)` → `ledger.record_success(session_key(session_file), ...)`
@@ -926,6 +936,7 @@ Expected: PASS（2 passed）
 - [ ] **Step 5: 回归现有 runner 单测 + commit**
 
 Run: `uv run pytest tests/unit/ -k "runner or auto_summary" -v`
+
 ```bash
 git add jfox/auto_summary/runner.py tests/unit/test_runner_multi_source.py
 git commit -m "feat(auto-summary): runner scans multiple sources, ledger keys prefixed"
@@ -936,6 +947,7 @@ git commit -m "feat(auto-summary): runner scans multiple sources, ledger keys pr
 ## Task 8: SYSTEM_PROMPT 五段结构
 
 **Files:**
+
 - Modify: `jfox/auto_summary/runner.py`（`SYSTEM_PROMPT` 常量，约 38-59 行）
 - Test: `tests/unit/test_system_prompt_sections.py`
 
@@ -999,6 +1011,7 @@ git commit -m "feat(auto-summary): richer 5-section summary notes (compact style
 ## Task 9: 集成测试 + CHANGELOG
 
 **Files:**
+
 - Create: `tests/integration/test_auto_summary_kimi.py`
 - Modify: `CHANGELOG.md`
 

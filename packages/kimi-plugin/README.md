@@ -25,6 +25,7 @@ JFox 知识管理 CLI 的 [Kimi Code CLI](https://www.kimi.com/code) 插件。
 
 - Kimi Code CLI >= 0.2.0（本插件使用 `~/.kimi-code/skills/` 迁移后的插件机制）
 - jfox CLI 已安装：
+
   ```bash
   uv tool install jfox-cli
   ```

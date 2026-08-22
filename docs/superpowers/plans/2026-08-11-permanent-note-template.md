@@ -95,6 +95,7 @@
 ### Task 1: 替换 pi 平台 skill 的 Step 3 模板
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-session-to-permanent/SKILL.md`（Step 3「内容结构」块，约 L103–113）
 
 **Interfaces:** 本任务建立 canonical 替换结果，Task 2/3 必须与其逐字一致（Task 4 diff 验证）。
@@ -106,6 +107,7 @@ cd /home/elling/git-repo/github/jfox
 git branch --show-current   # 必须: issue-375-permanent-note-template
 grep -n "内容结构" skills-recommend/pi/jfox-session-to-permanent/SKILL.md
 ```
+
 Expected: 命中 `**内容结构**（事实 → Why → How to apply）：`
 
 - [ ] **Step 2: 替换**
@@ -122,6 +124,7 @@ grep -c "稳定核 + 类型段 + 易变细节\|类型段目录\|选标题的原�
 # 写作规范段仍在
 grep -c "写作规范（遵循 clear-reports" skills-recommend/pi/jfox-session-to-permanent/SKILL.md
 ```
+
 Expected: 第 1 条 = 0；第 2 条 ≥ 4；第 3 条 = 1。
 
 - [ ] **Step 4: Commit**
@@ -136,6 +139,7 @@ git commit -m "refactor(skill): session-to-permanent 模板改三层结构（pi,
 ### Task 2: 替换 cc-plugin skill 的 Step 3 模板（与 pi 逐字一致）
 
 **Files:**
+
 - Modify: `packages/cc-plugin/skills/session-to-permanent/SKILL.md`（Step 3，约 L97–107）
 
 **Interfaces:** 替换文字必须与 Task 1 结果逐字一致。
@@ -146,6 +150,7 @@ git commit -m "refactor(skill): session-to-permanent 模板改三层结构（pi,
 git branch --show-current   # issue-375-permanent-note-template
 grep -n "内容结构" packages/cc-plugin/skills/session-to-permanent/SKILL.md
 ```
+
 Expected: 命中旧锚点 `**内容结构**（事实 → Why → How to apply）：`
 
 - [ ] **Step 2: 替换**
@@ -171,6 +176,7 @@ git commit -m "refactor(skill): session-to-permanent 模板改三层结构（cc,
 ### Task 3: 替换 kimi-plugin skill 的 Step 3 模板（与 pi 逐字一致）
 
 **Files:**
+
 - Modify: `packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md`（Step 3，约 L97–107）
 
 **Interfaces:** 替换文字必须与 Task 1 结果逐字一致。
@@ -181,6 +187,7 @@ git commit -m "refactor(skill): session-to-permanent 模板改三层结构（cc,
 git branch --show-current   # issue-375-permanent-note-template
 grep -n "内容结构" packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md
 ```
+
 Expected: 命中旧锚点。
 
 - [ ] **Step 2: 替换**
@@ -222,6 +229,7 @@ extract() { sed -n '/\*\*内容结构\*\*/,/\*\*写作规范（遵循/p' "$1"; }
 diff <(extract "$A") <(extract "$B")
 diff <(extract "$A") <(extract "$C")
 ```
+
 Expected: 两个 diff 均**无输出**（区段逐字一致）。若有差异，回对应 Task 修正到一致。
 
 - [ ] **Step 2: 全局旧锚点 0 命中（排除 worktrees）**
@@ -230,6 +238,7 @@ Expected: 两个 diff 均**无输出**（区段逐字一致）。若有差异，
 grep -rn "事实 → Why → How to apply" --include="*.md" . | grep -v "/.worktrees/"
 grep -rn "## How to apply" --include="*.md" . | grep -v "/.worktrees/"
 ```
+
 Expected: 均无命中（session-to-permanent 三处已改；其它文件本就没有）。
 
 - [ ] **Step 3: 写作规范 5 条 + wiki links 段仍在（抽查一处即可，三处一致）**
@@ -245,6 +254,7 @@ grep -c "先给结论，再展开" skills-recommend/pi/jfox-session-to-permanent
 ```bash
 grep -rn "稳定核 + 类型段\|类型段目录" packages/cc-plugin/skills/promote packages/kimi-plugin/skills/jfox-promote skills-recommend/pi/jfox-promote 2>/dev/null
 ```
+
 Expected: 无命中（promote 没被碰）。
 
 - [ ] **Step 5: 若 Step 1–4 全过则无需 commit；若有回修则 commit 修正**

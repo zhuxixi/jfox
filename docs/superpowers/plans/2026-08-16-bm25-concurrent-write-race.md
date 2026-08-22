@@ -24,11 +24,13 @@
 ### Task 1: `_save` 重写——文件锁 + 原子写 + write_version + 日志
 
 **Files:**
+
 - Modify: `jfox/bm25_index.py`（`_save`、`_load`、`__init__`、新增 `_read_disk_write_version` / `_atomic_write_bytes` / `_atomic_write_text`）
 - Modify: `pyproject.toml`（dependencies 加 `filelock>=3.12`）
 - Test: `tests/unit/test_bm25_concurrency.py`（新建）
 
 **Interfaces:**
+
 - Produces:
   - `BM25Index._loaded_write_version: int`（实例属性，load 后 = 磁盘版本）
   - `BM25Index._read_disk_write_version() -> int`
@@ -248,10 +250,12 @@ git commit -m "feat(bm25): 索引写入加文件锁+原子写+write_version 乐�
 ### Task 2: 增量操作跟踪与重放合并（乐观锁核心）
 
 **Files:**
+
 - Modify: `jfox/bm25_index.py`（`add_document`/`remove_document`/`add_documents_batch` 拆出纯内存 helper，记录 `_pending_ops`；实现 `_replay_pending_ops`）
 - Test: `tests/unit/test_bm25_concurrency.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `_save` 新流程、`_pending_ops`、`_loaded_write_version`
 - Produces:
   - `BM25Index._add_document_local(note_id, content, note_type) -> bool`（纯内存，不 save 不记 pending）
@@ -415,10 +419,12 @@ git commit -m "feat(bm25): 写前乐观检测+增量重放合并，根治旧快�
 ### Task 3: rebuild 覆盖语义
 
 **Files:**
+
 - Modify: `jfox/bm25_index.py`（`rebuild_from_notes` 置 `_dirty_full_rebuild`）
 - Test: `tests/unit/test_bm25_concurrency.py`
 
 **Interfaces:**
+
 - Consumes: Task 1/2 的 `_save`、`_dirty_full_rebuild`
 
 - [ ] **Step 1: 写失败测试**
@@ -482,11 +488,13 @@ git commit -m "feat(bm25): rebuild 采用覆盖语义（stale 时不 merge）（
 ### Task 4: 读路径 stale 检测（daemon 搜索不滞后）
 
 **Files:**
+
 - Modify: `jfox/bm25_index.py`（新增 `check_stale_and_reload`）
 - Modify: `jfox/search_engine.py`（`HybridSearchEngine.__init__` 接线）
 - Test: `tests/unit/test_bm25_concurrency.py`
 
 **Interfaces:**
+
 - Produces: `BM25Index.check_stale_and_reload() -> None`（磁盘版本较新则 reload，失败静默兜底）
 
 - [ ] **Step 1: 写失败测试**
@@ -557,6 +565,7 @@ git commit -m "feat(search): 引擎构造时检测 BM25 磁盘版本并自动刷
 ### Task 5: 回归与收尾
 
 **Files:**
+
 - Modify: 无新代码
 
 - [ ] **Step 1: 全量快速测试回归**

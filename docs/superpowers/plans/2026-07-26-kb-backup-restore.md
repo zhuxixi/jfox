@@ -40,10 +40,12 @@
 ### Task 1: `BackupConfig` + global_config 接线
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（加 dataclass ~line 49 区、`GlobalConfig` ~324、`to_dict`/`from_dict` ~333/343、accessor ~631）
 - Test: `tests/test_backup.py`（新建）
 
 **Interfaces:**
+
 - Produces: `BackupConfig`（字段 `enabled: bool=False`、`schedule_time: str="08:00"`、`retain: int=7`、`backup_root: Optional[str]=None`）；`GlobalConfigManager.get_backup_config() -> BackupConfig`、`update_backup_config(**changes) -> bool`。
 
 - [ ] **Step 1: 写失败测试**（新建 `tests/test_backup.py`）
@@ -151,9 +153,11 @@ def _is_valid_time(s: str) -> bool:
 - [ ] **Step 4: 接入 `GlobalConfig`**（~line 328 加字段、~337 加 to_dict、~343 加 from_dict）
 
 `GlobalConfig` 字段加：
+
 ```python
     backup: BackupConfig = field(default_factory=BackupConfig)
 ```
+
 `to_dict` 加：`"backup": self.backup.to_dict(),`
 `from_dict` 的 `return cls(...)` 加：`backup=BackupConfig.from_dict(data.get("backup")),`
 
@@ -193,10 +197,12 @@ git commit -m "feat(backup): #338 BackupConfig + global_config 接线"
 ### Task 2: `BackupCoordinator` + `BackupManager.backup()` 核心
 
 **Files:**
+
 - Create: `jfox/backup/__init__.py`、`jfox/backup/manager.py`
 - Test: `tests/test_backup.py`（追加）
 
 **Interfaces:**
+
 - Consumes: `jfox.utils.atomic_write_json`
 - Produces: `BackupCoordinator.is_running() -> bool`、`BackupCoordinator.quiesce()`（contextmanager）；`BackupManager(backup_root, kb_root, config_path, retain).backup() -> Path`。
 
@@ -470,6 +476,7 @@ import json  # noqa: E402
 注意：上面末尾 `import json` 应移到文件顶部正常 import 区（这里为说明补 import；实现时放顶部）。`from __future__ import annotations` 已在顶部。
 
 写 `jfox/backup/__init__.py`：
+
 ```python
 """KB 滚动备份/恢复（daemon 调度 + CLI）。详见 manager.py / loop.py / cli.py。"""
 
@@ -497,10 +504,12 @@ git commit -m "feat(backup): #338 BackupManager 核心备份（tar+sha256+轮转
 ### Task 3: `restore()` + 端到端往返测试
 
 **Files:**
+
 - Modify: `jfox/backup/manager.py`（加 `restore`）
 - Test: `tests/test_backup.py`（追加）
 
 **Interfaces:**
+
 - Consumes: Task 2 的 `BackupManager`
 - Produces: `BackupManager.restore(snapshot: Path, yes: bool=False) -> None`
 
@@ -682,10 +691,12 @@ git commit -m "feat(backup): #338 可逆恢复（rename 旁置 + sha256 校验 +
 ### Task 4: `schedule.py` + `loop.py`（daemon 调度）
 
 **Files:**
+
 - Create: `jfox/backup/schedule.py`、`jfox/backup/loop.py`
 - Test: `tests/test_backup.py`（追加）
 
 **Interfaces:**
+
 - Consumes: Task 1 `get_backup_config`、Task 2 `BackupManager`
 - Produces: `should_run_now(schedule_time: str, last_run_ts: Optional[str], now: Optional[datetime]=None) -> bool`；`backup_loop(stop_event: threading.Event) -> None`
 
@@ -885,12 +896,14 @@ git commit -m "feat(backup): #338 daemon 调度（schedule 定点 + backup_loop�
 ### Task 5: daemon 接线 + gem_synth/auto_summary quiesce 检查
 
 **Files:**
+
 - Modify: `jfox/daemon/server.py`（~line 28-33 加全局、~141 后加 `_maybe_start_backup`/`_maybe_stop_backup`、`lifespan` ~195 加调用）
 - Modify: `jfox/auto_summary/loop.py`（`_tick_once` 入口 ~line 30 加检查）
 - Modify: `jfox/gem_synth/loop.py`（写 tick 入口加检查）
 - Test: `tests/test_backup.py`（加 quiesce 集成测试）
 
 **Interfaces:**
+
 - Consumes: Task 4 `backup_loop`、Task 2 `BackupCoordinator`
 - Produces: daemon 启停 backup loop；兄弟 loop 备份期间跳过写 tick
 
@@ -919,11 +932,14 @@ Run: `uv run pytest tests/test_backup.py -v -k quiesce_makes`
 - [ ] **Step 3: daemon server 接线**（`jfox/daemon/server.py`）
 
 3a. ~line 33 后加全局：
+
 ```python
 _backup_task: Optional[asyncio.Task] = None
 _backup_stop_event: Optional[threading.Event] = None
 ```
+
 3b. `_maybe_start_gem_synth` 之后（~line 178）加：
+
 ```python
 def _maybe_start_backup() -> None:
     """如果用户启用了 backup，启动后台循环 task"""
@@ -959,7 +975,9 @@ async def _maybe_stop_backup() -> None:
     _backup_task = None
     _backup_stop_event = None
 ```
+
 3c. `lifespan`（~line 195）加调用——startup 末尾加 `_maybe_start_backup()`，finally 开头加 `await _maybe_stop_backup()`：
+
 ```python
 @asynccontextmanager
 async def lifespan(app):
@@ -980,13 +998,16 @@ async def lifespan(app):
 - [ ] **Step 4: 兄弟 loop 加 quiesce 检查**
 
 4a. `jfox/auto_summary/loop.py` `_tick_once`（~line 30，`if not cfg.enabled` 之后）加：
+
 ```python
     from ..backup.manager import BackupCoordinator
 
     if BackupCoordinator.is_running():
         return "backup 进行中，跳过本轮 auto-summary"
 ```
+
 4b. `jfox/gem_synth/loop.py`：找到写 tick 函数（`_tick_once` 或等价物，用 `grep -n "def _tick_once\|def gem_synth_loop\|run_once\|cfg.enabled" jfox/gem_synth/loop.py` 定位），在其写操作入口（enabled 检查之后）加同样检查：
+
 ```python
     from ..backup.manager import BackupCoordinator
 
@@ -994,6 +1015,7 @@ async def lifespan(app):
         logger.info("gem_synth: backup 进行中，跳过本轮")
         return
 ```
+
 （lazy import 进函数体，避免顶层循环依赖——参考 CLAUDE.md「生命周期订阅重依赖 lazy import」教训。）
 
 - [ ] **Step 5: 跑全量 backup 测试 + 验证 import 无环**
@@ -1017,11 +1039,13 @@ git commit -m "feat(backup): #338 daemon 接线 + gem_synth/auto_summary quiesce
 ### Task 6: CLI（`jfox backup ...` + `jfox restore`）
 
 **Files:**
+
 - Create: `jfox/backup/cli.py`
 - Modify: `jfox/cli.py`（~line 102 后挂载）
 - Test: `tests/test_backup.py`（CLI 冒烟）
 
 **Interfaces:**
+
 - Consumes: Task 1-4 全部
 - Produces: `jfox backup run/enable/disable/status/list/verify`、`jfox restore <snapshot>`
 
@@ -1243,8 +1267,10 @@ def restore_cmd(
 ```python
 from .backup.cli import backup_app  # noqa: E402
 ```
+
 （与既有 import 风格一致，放在 `from .auto_summary.cli import auto_summary_app` 之后）
 然后：
+
 ```python
 app.add_typer(backup_app, name="backup", help="KB 滚动备份/恢复")
 ```
@@ -1255,10 +1281,12 @@ Run: `uv run pytest tests/test_backup.py -v`
 Expected: PASS（含 CLI 冒烟）
 
 验证 CLI 可用：
+
 ```bash
 uv run jfox backup --help
 uv run jfox backup status
 ```
+
 Expected: 打印帮助/status 表
 
 - [ ] **Step 6: lint + commit**
@@ -1275,6 +1303,7 @@ git commit -m "feat(backup): #338 CLI（run/enable/disable/status/list/verify/re
 ### Task 7: 文档 + README
 
 **Files:**
+
 - Modify: `README.md`（加「备份与恢复」一节）
 - Modify: `CLAUDE.md`（模块表加 `backup/`）
 
@@ -1301,6 +1330,7 @@ jfox restore <snapshot>         # 或 jfox backup restore <snapshot>
 
 备份内容：`~/.zettelkasten`（全部知识库）+ `~/.zk_config.json`，存于 `~/.jfox-backup/daily/`。
 恢复期间会短暂停 embedding daemon 拿干净快照；恢复前当前态会自动 rename 旁置，可安全回退。
+
 ```
 
 - [ ] **Step 2: CLAUDE.md 模块表加一行**

@@ -13,6 +13,7 @@
 **测试策略:** Phase A-D 的纯逻辑/IO 单测自主跑（秒级，无 LLM/模型）；Phase E（LLM 合成）+ Phase F daemon 装配 + Phase G 的端到端为集成测试，**用户手动跑**（需 daemon + claude 二进制）。符合 CLAUDE.md。
 
 **分阶段（每阶段可独立 merge）：**
+
 - **Phase A** 笔记基础设施（GemLevel + NoteType.candidate + Note 字段 + 存储）
 - **Phase B** 合成存储层（synthesis_log 表 + 锚点查询）
 - **Phase C** transcript 解析器
@@ -26,6 +27,7 @@
 ## 文件结构
 
 新增：
+
 - `jfox/gem_synth/__init__.py`
 - `jfox/gem_synth/store.py` — synthesis_log SQLite（建表/记账/查未处理锚点）
 - `jfox/gem_synth/anchors.py` — 从 fragments.db 查高信号未处理锚点
@@ -43,6 +45,7 @@
 - `tests/integration/test_gem_synth_flow.py`（用户跑）
 
 改动：
+
 - `jfox/models.py` — NoteType 加 `CANDIDATE`；新增 `GemLevel` 枚举；Note 加 candidate 专属可选字段 + to_markdown/from_markdown 序列化
 - `jfox/note.py` — filename 对 CANDIDATE 的处理（title slug）
 - `jfox/global_config.py` — `GemSynthesisConfig` 配置段 + 挂进 GlobalConfig
@@ -56,6 +59,7 @@
 ### Task A1: GemLevel 枚举 + NoteType.CANDIDATE
 
 **Files:**
+
 - Modify: `jfox/models.py`
 - Test: `tests/unit/test_note_type_candidate.py`
 
@@ -88,12 +92,14 @@ Expected: FAIL — `ImportError: cannot import name 'GemLevel'`
 - [ ] **Step 3: 改 `jfox/models.py`**
 
 在 `class NoteType(Enum)` 加一行：
+
 ```python
     SESSION = "session"  # AI Agent 会话记录
     CANDIDATE = "candidate"  # AI 合成的候选知识宝石（破损级，待 L5 审阅）
 ```
 
 在 NoteType 之后、Note 之前加 GemLevel：
+
 ```python
 class GemLevel(str, Enum):
     """知识宝石等级（碎裂→破损→完整→完美→无暇）。L3 仅产出 FLAWED。"""
@@ -124,6 +130,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task A2: Note 加 candidate 专属字段 + 序列化
 
 **Files:**
+
 - Modify: `jfox/models.py`（Note dataclass + to_markdown/from_markdown）
 - Test: `tests/unit/test_note_candidate_fields.py`
 
@@ -201,6 +208,7 @@ Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'ge
 - [ ] **Step 3: 改 `jfox/models.py` Note dataclass**
 
 在 Note 现有字段之后（`archived` 之后、运行时字段之前）加 candidate 专属可选字段：
+
 ```python
     archived: bool = False  # 是否已归档（软删除标记）
 
@@ -216,6 +224,7 @@ Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'ge
 - [ ] **Step 4: 改 `to_markdown` —— 仅 CANDIDATE 时输出这些字段**
 
 定位 `to_markdown` 里写 frontmatter 的部分（按现有代码风格，是拼 YAML）。在写入 `archived` 之后、frontmatter 结束之前，加：
+
 ```python
         if self.type == NoteType.CANDIDATE:
             lines.append(f"gem_level: {self.gem_level or 'flawed'}")
@@ -230,11 +239,13 @@ Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'ge
             if self.status:
                 lines.append(f"status: {self.status}")
 ```
+
 （具体 frontmatter 拼接方式以现有 `to_markdown` 为准 —— 用同样的 list-append + join 风格；若现有用的是 yaml.dump 则把 candidate 字段塞进同一个 dict。**实现前先 Read models.py 的 to_markdown 看它怎么写 frontmatter，照它的方式。**）
 
 - [ ] **Step 5: 改 `from_markdown` —— 解析这些字段**
 
 在 `from_markdown` 里解析 frontmatter dict 的地方，加（仅当解析到的 type==candidate 时读取，找不到则用默认）：
+
 ```python
     gem_level=frontmatter.get("gem_level"),
     confidence=frontmatter.get("confidence"),
@@ -243,6 +254,7 @@ Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'ge
     knowledge_type=frontmatter.get("knowledge_type"),
     status=frontmatter.get("status"),
 ```
+
 （`confidence` 从 YAML 读回可能是 int/float，测试用 0.82，YAML 解析为 float，OK。**实现前 Read from_markdown 确认 frontmatter dict 变量名。**）
 
 - [ ] **Step 6: 跑测试确认通过**
@@ -267,6 +279,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task A3: note.py filename 对 CANDIDATE 的处理
 
 **Files:**
+
 - Modify: `jfox/note.py`
 - Test: `tests/unit/test_note_candidate_filename.py`
 
@@ -321,6 +334,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task B1: GemSynthesisConfig
 
 **Files:**
+
 - Modify: `jfox/global_config.py`
 - Test: `tests/unit/test_gem_synth_config.py`
 
@@ -426,6 +440,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task B2: synthesis_log store
 
 **Files:**
+
 - Create: `jfox/gem_synth/__init__.py`, `jfox/gem_synth/store.py`
 - Test: `tests/unit/test_gem_synth_store.py`
 
@@ -587,6 +602,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task B3: 锚点查询（anchors.py）
 
 **Files:**
+
 - Create: `jfox/gem_synth/anchors.py`
 - Test: `tests/unit/test_gem_synth_anchors.py`
 
@@ -788,6 +804,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task C1: transcript "一轮"上下文提取
 
 **Files:**
+
 - Create: `jfox/gem_synth/transcript.py`
 - Test: `tests/unit/test_gem_synth_transcript.py`
 
@@ -993,6 +1010,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task D1: grounding 检索 permanent 笔记
 
 **Files:**
+
 - Create: `jfox/gem_synth/grounding.py`
 - Test: `tests/unit/test_gem_synth_grounding.py`
 
@@ -1109,6 +1127,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task E1: 独立 LLM 调用封装（claude -p）
 
 **Files:**
+
 - Create: `jfox/gem_synth/llm.py`
 - Test: `tests/unit/test_gem_synth_llm.py`
 
@@ -1294,6 +1313,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task E2: synthesizer 编排（锚点→candidate 笔记）
 
 **Files:**
+
 - Create: `jfox/gem_synth/synthesizer.py`
 - Test: `tests/unit/test_gem_synth_synthesizer.py`
 
@@ -1500,6 +1520,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task F1: daemon 后台循环
 
 **Files:**
+
 - Create: `jfox/gem_synth/loop.py`
 - Modify: `jfox/daemon/server.py`（lifespan 启动循环）
 - Test: `tests/unit/test_gem_synth_loop.py`
@@ -1652,6 +1673,7 @@ Expected: PASS（3 tests）
 - [ ] **Step 5: 在 `jfox/daemon/server.py` 装配循环**
 
 在模块级加全局变量（仿 auto_summary 的 `_auto_summary_task`/`_auto_summary_stop_event`）：
+
 ```python
 # auto-summary 后台 task 与停止信号 之后，加：
 _gem_synth_task: Optional[asyncio.Task] = None
@@ -1659,6 +1681,7 @@ _gem_synth_stop_event: Optional[threading.Event] = None
 ```
 
 加启动/停止函数（仿 `_maybe_start_auto_summary`/`_maybe_stop_auto_summary`）：
+
 ```python
 def _maybe_start_gem_synth() -> None:
     """如果用户启用了 gem-synthesis，启动后台循环 task"""
@@ -1696,6 +1719,7 @@ async def _maybe_stop_gem_synth() -> None:
 ```
 
 在 `lifespan` 里接线（紧跟 auto_summary 之后）：
+
 ```python
 @asynccontextmanager
 async def lifespan(app):
@@ -1731,6 +1755,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task G1: jfox candidates list
 
 **Files:**
+
 - Create: `jfox/gem_synth/cli.py`
 - Modify: `jfox/cli.py`（挂载）
 - Test: `tests/unit/test_gem_synth_cli.py`
@@ -1849,10 +1874,13 @@ __all__ = ["candidates_app"]
 - [ ] **Step 4: 挂载到 `jfox/cli.py`**
 
 在 `fragments_app` 挂载旁边（约第 106-108 行）加：
+
 ```python
 from .gem_synth.cli import candidates_app  # noqa: E402
 ```
+
 和
+
 ```python
 app.add_typer(candidates_app, name="candidates", help="查看 L3 合成的候选知识宝石")
 ```
@@ -1860,10 +1888,12 @@ app.add_typer(candidates_app, name="candidates", help="查看 L3 合成的候选
 - [ ] **Step 5: 跑测试 + 验证挂载**
 
 Run:
+
 ```bash
 uv run pytest tests/unit/test_gem_synth_cli.py -v
 uv run jfox candidates --help
 ```
+
 Expected: 测试 PASS；help 显示 `list` 子命令
 
 - [ ] **Step 6: 提交**
@@ -1882,6 +1912,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 ### Task H1: 端到端合成流程
 
 **Files:**
+
 - Create: `tests/integration/test_gem_synth_flow.py`
 
 - [ ] **Step 1: 写集成测试 `tests/integration/test_gem_synth_flow.py`**
@@ -1984,6 +2015,7 @@ Expected: PASS（确认没破坏既有，尤其 models/note/search 改动）
 - [ ] **Step 3: lint/format**
 
 Run:
+
 ```bash
 uv run black jfox/gem_synth/ jfox/models.py jfox/note.py jfox/global_config.py jfox/daemon/server.py jfox/cli.py tests/unit/test_gem_synth_*.py tests/unit/test_note_candidate*.py
 uv run ruff check jfox/gem_synth/ jfox/models.py jfox/note.py jfox/global_config.py jfox/daemon/server.py jfox/cli.py tests/unit/test_gem_synth_*.py
@@ -2004,6 +2036,7 @@ gh pr create --title "feat: L3 宝石合成（碎裂→破损 candidate 笔记�
 ## Self-Review 结果
 
 **1. Spec 覆盖**（对照 spec §1-9）：
+
 - 三输入模型（fragments/transcript/permanent）→ Task B3/C1/D1/E2 ✅
 - 锚点定义（correction/decision/AskUserQuestion）→ Task B3 ✅
 - 合成管线 5 步 → Task E2 synthesizer ✅
@@ -2017,6 +2050,7 @@ gh pr create --title "feat: L3 宝石合成（碎裂→破损 candidate 笔记�
 **2. 占位符扫描**：无 TBD；每个 code step 都有完整代码。部分步骤有"实现注意"（save_note/list_notes/HybridSearchEngine.search 返回结构实地核对）—— 这些是**需在实现时用 Read 确认现有签名**的明确指令，不是占位符。
 
 **3. 类型/签名一致性**：
+
 - `SynthesisLog.is_processed/mark_processed/filter_unprocessed` — B2 定义，B3/E2/F1 调用一致 ✅
 - `find_anchors(fragments_db, log, anchor_types, ...)` — B3 定义，F1 调用一致 ✅
 - `extract_turn_around(transcript_path, anchor_user_text)` — C1 定义，E2 调用一致 ✅

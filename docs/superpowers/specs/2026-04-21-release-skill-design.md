@@ -105,6 +105,7 @@ uv run python .claude/skills/release/release_helper.py <version>
 ### 3. 展示变更摘要并等待确认
 
 向用户展示：
+
 - 新版本号
 - CHANGELOG 条目预览
 - 即将修改的文件列表

@@ -27,6 +27,7 @@ No new files created. No test changes needed — these are pure renames/migratio
 ### Task 1: Migrate FastAPI `on_event` to `lifespan`
 
 **Files:**
+
 - Modify: `jfox/daemon/server.py`
 
 - [ ] **Step 1: Add import and replace `on_event` with `lifespan`**
@@ -100,12 +101,14 @@ Removes DeprecationWarning from daemon log. Refs #164."
 ### Task 2: Rename `get_sentence_embedding_dimension` in `embedding_backend.py`
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py:98`
 - Modify: `jfox/embedding_backend.py:138`
 
 - [ ] **Step 1: Replace two occurrences**
 
 Line 98, in `load()` method:
+
 ```python
 # Before:
 self._resolved_dim = self.model.get_sentence_embedding_dimension()
@@ -114,6 +117,7 @@ self._resolved_dim = self.model.get_embedding_dimension()
 ```
 
 Line 138, in `dimension` property:
+
 ```python
 # Before:
 return self.model.get_sentence_embedding_dimension()
@@ -141,11 +145,13 @@ Removes FutureWarning from sentence-transformers. Refs #164."
 ### Task 3: Use `backend.dimension` in `performance.py` fallback
 
 **Files:**
+
 - Modify: `jfox/performance.py:144`
 
 - [ ] **Step 1: Replace direct model access with dimension property**
 
 Line 144:
+
 ```python
 # Before:
 dim = backend.model.get_sentence_embedding_dimension()

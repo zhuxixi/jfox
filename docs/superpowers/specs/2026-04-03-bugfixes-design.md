@@ -19,6 +19,7 @@ Fix three independent bugs: missing jinja2 dependency, KB directory management, 
 **Problem**: `kb_manager.py` creates named KBs at `~/.zettelkasten-{name}` (scattered in home dir). `add_knowledge_base` accepts arbitrary paths without validation.
 
 **Fix**:
+
 1. Change default KB path in `kb_manager.py` from `~/.zettelkasten-{name}` to `~/.zettelkasten/<name>/`
 2. Add path validation in `global_config.py` `add_knowledge_base()` — reject paths outside `~/.zettelkasten/`
 3. No migration of existing KBs — fix going forward only

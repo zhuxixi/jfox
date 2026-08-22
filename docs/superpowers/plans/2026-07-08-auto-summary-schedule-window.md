@@ -41,10 +41,12 @@
 ### Task 1: 实现时间窗口判断核心 (`jfox/auto_summary/schedule.py`)
 
 **Files:**
+
 - Create: `jfox/auto_summary/schedule.py`
 - Test: `tests/unit/test_auto_summary_schedule.py`
 
 **Interfaces:**
+
 - Consumes: `AutoSummaryConfig`（需要 `schedule_enabled`, `schedule_weekday_start_hour`, `schedule_weekday_end_hour`, `schedule_weekend_start_hour`, `schedule_weekend_end_hour`, `schedule_timezone`, `schedule_holiday_provider`）
 - Produces:
   - `HolidayProvider` (ABC)
@@ -301,10 +303,12 @@ git commit -m "feat(auto_summary): add schedule window core module (#298)"
 ### Task 2: 扩展 AutoSummaryConfig 配置模型
 
 **Files:**
+
 - Modify: `jfox/global_config.py:48-112` (`AutoSummaryConfig` dataclass)
 - Test: `tests/unit/test_global_config.py`
 
 **Interfaces:**
+
 - Consumes: 无
 - Produces:
   - `AutoSummaryConfig.schedule_enabled: bool`
@@ -499,10 +503,12 @@ git commit -m "feat(global_config): add schedule window fields to AutoSummaryCon
 ### Task 3: 在 daemon 调度循环中应用窗口检查
 
 **Files:**
+
 - Modify: `jfox/auto_summary/loop.py`
 - Test: `tests/unit/test_auto_summary_loop.py`（新建）
 
 **Interfaces:**
+
 - Consumes: `_is_within_schedule_window()` from `jfox.auto_summary.schedule`
 - Produces: `auto_summary_loop()` 在窗口外跳过 tick
 
@@ -630,10 +636,12 @@ git commit -m "feat(auto_summary): apply schedule window check in daemon loop (#
 ### Task 4: 扩展 CLI 子命令
 
 **Files:**
+
 - Modify: `jfox/auto_summary/cli.py`
 - Test: `tests/unit/test_auto_summary_cli.py`（新建或修改）
 
 **Interfaces:**
+
 - Consumes: `_parse_hour_window()` from `jfox.auto_summary.schedule`
 - Produces:
   - `enable --schedule-enabled --schedule-weekday-window TEXT --schedule-weekend-window TEXT --schedule-timezone TEXT`
@@ -849,10 +857,12 @@ git commit -m "feat(auto_summary): add schedule window CLI options (#298)"
 ### Task 5: 文档更新与最终验证
 
 **Files:**
+
 - Modify: `README.md`
 - Run: 全量快速测试
 
 **Interfaces:**
+
 - Consumes: 前面任务实现的所有功能
 - Produces: 文档更新、测试通过
 
@@ -881,6 +891,7 @@ jfox auto-summary enable --schedule-enabled \
 ```bash
 jfox auto-summary run
 ```
+
 ```
 
 - [ ] **Step 2: 运行快速单元测试**

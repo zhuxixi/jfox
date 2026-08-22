@@ -34,6 +34,7 @@
 ## Task 1: cc-plugin promote 重写
 
 **Files:**
+
 - Modify: `packages/cc-plugin/skills/promote/SKILL.md`
 
 **Consumes:** spec §3 心智模型定稿文本、§4 改写范例、§5 术语清单、§6 改名映射。
@@ -81,10 +82,12 @@
 - [ ] **Step 10: grep 验收（cc 版）**
 
   Run:
+
   ```bash
   grep -nE "直接清|留 1|2\+H1|降级 H2|keep-best|reject 其余" packages/cc-plugin/skills/promote/SKILL.md
   grep -nE "\bL1\b|\bL2\b|\bL3\b" packages/cc-plugin/skills/promote/SKILL.md
   ```
+
   Expected: 第一条无命中（或仅保留并已配解释的）；第二条「L3」只出现在指合成层处（如「L3 合成」），去重档已改名。基线对照：`git show main:packages/cc-plugin/skills/promote/SKILL.md` 取改写前版本，比对命令数与脚本完整性。
 
 - [ ] **Step 11: 人工通读 cc 版**
@@ -103,6 +106,7 @@
 ## Task 2: kimi-plugin jfox-promote 同步重写
 
 **Files:**
+
 - Modify: `packages/kimi-plugin/skills/jfox-promote/SKILL.md`
 
 **Consumes:** Task 1 cc 版重写结果（作同步基准）、spec。
@@ -123,10 +127,12 @@
 - [ ] **Step 11: grep 验收（kimi 版）**
 
   Run:
+
   ```bash
   grep -nE "直接清|留 1|2\+H1|降级 H2|keep-best|reject 其余" packages/kimi-plugin/skills/jfox-promote/SKILL.md
   grep -nE "\bL1\b|\bL2\b|\bL3\b" packages/kimi-plugin/skills/jfox-promote/SKILL.md
   ```
+
   Expected: 同 Task 1 Step 10。
 
 - [ ] **Step 12: commit**
@@ -156,6 +162,7 @@
   ```bash
   grep -c "jfox candidates\|jfox gem-synth\|jfox edit\|jfox suggest-links" packages/{cc,kimi}-plugin/skills/{promote,jfox-promote}/SKILL.md
   ```
+
   Expected: 命令数量与改写前一致（基线 `git show main:<path>` 对照；命令块未被误删/误改）。Python 脚本块逻辑逐字未动（仅 print 输出标签 + 代码注释随去重档改名同步）。
 
 - [ ] **Step 4: 人工通读 cc 版**

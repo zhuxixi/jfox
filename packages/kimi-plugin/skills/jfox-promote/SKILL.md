@@ -10,7 +10,7 @@ description: Use when user wants to review/promote gem-synth candidate notes int
 积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。注意：candidate 的 pending（过审状态）和 gem-synth status（合成进度）是两回事。
 
 > 历史背景：对应 #249 五层 Loop 的 L5 晋升层；#319 起改为三模式以应对大积压。下面不依赖这些编号也能读懂。
-
+>
 > 本技能复用 `/skill:jfox-manage` §4.1 的共享约定（`--kb` / `--content-file` / `--format json`）。
 
 ## 前置条件
@@ -196,10 +196,12 @@ except Exception as e:
 模式1 砍掉精确和高度相似两档后，剩下的 candidate 会聚成若干主题簇（或小积压直接从这里开始）。对每个簇，先判断它讲的内容是否已被现有 permanent 覆盖（这就是「冗余」维度），再决定怎么处置：
 
 1. **查是否已被现有 permanent 覆盖**：
+
    ```bash
    jfox search "<簇主题关键词>" --type permanent
    jfox suggest-links "<簇代表正文>" --format json   # 阈值可放宽到 0.4–0.5
    ```
+
 2. **已被覆盖**：在簇里保留 grounding 最扎实、信息最完整的一条（keep-best），其余 reject。`grounding` 指 candidate 合成时依据的永久笔记，grounding 扎实意味着它的来源更可靠。
 3. **未被覆盖**：把簇内多条 candidate 改写、合并成一条新的 permanent（promote-merge）。
 

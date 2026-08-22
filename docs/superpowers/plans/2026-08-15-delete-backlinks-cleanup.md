@@ -24,10 +24,12 @@
 ### Task 1: delete_note() 增加 backlinks 增量移除（核心修复）
 
 **Files:**
+
 - Modify: `jfox/note.py:298-330`（`delete_note()`，try 块开头、`note.filepath.unlink()` 之前）
 - Create: `tests/unit/test_delete_backlink_cleanup.py`
 
 **Interfaces:**
+
 - Consumes: `note.links: List[str]`（被删笔记的 frontmatter 出链）、`load_note_by_id(tid) -> Optional[Note]`（note.py:195）、`_atomic_write(filepath, content)`（note.py:112，同模块）、`get_note_index().update_note_meta(note)`（note_index.py:304）
 - Produces: `delete_note(note_id) -> bool` 行为变更——删除前对每个 `note.links` 中的 target 移除 `note_id` 并落盘；无新公开 API。
 
@@ -205,9 +207,11 @@ git commit -m "fix(note): delete_note cleans note id from target backlinks (#386
 ### Task 2: 边界用例三连（写盘失败容错 / 无链接笔记 / 幂等守卫跳过）
 
 **Files:**
+
 - Modify: `tests/unit/test_delete_backlink_cleanup.py`（Task 1 创建的文件，追加 3 个测试方法到 `TestDeleteCleansBacklinks` 类）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `delete_note` 行为；`jfox.note._atomic_write` / `jfox.note.load_note_by_id`（patch/直调对象）；`use_kb(kb_name)`（jfox.config，测试内直调 note API 前必须进入）
 - Produces: 无（纯测试补充）
 
@@ -345,9 +349,11 @@ git commit -m "test(note): delete backlink cleanup edge cases — write failure,
 ### Task 3: promote 注释命令名修正 + 回归验证
 
 **Files:**
+
 - Modify: `jfox/note.py:452`（`promote_note` 内注释）
 
 **Interfaces:**
+
 - Consumes: 无
 - Produces: 注释文档正确性（`jfox index rebuild --backlinks` 是真实命令，cli.py:2466 `-b` flag）
 

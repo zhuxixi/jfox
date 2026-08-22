@@ -58,6 +58,7 @@ jfox add "<markdown-escaped-summary>" \
 ```
 
 **注意**：
+
 - 笔记类型固定为 `session`（AI Agent 会话记录，专为此场景设计）
 - `--topic` 参数必填，值应该是简短的英文标识（如 `atomic-write`、`daemon-stop-fix`），由总结内容自动归纳
 - 标题格式统一为 `Session: <简短主题>`

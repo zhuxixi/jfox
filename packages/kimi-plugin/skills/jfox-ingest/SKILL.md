@@ -14,14 +14,17 @@ description: Use when user wants to import data from a local git repository into
 ## 前置条件
 
 1. 知识库已存在：
+
    ```bash
    jfox kb list --json
    ```
+
    如果没有知识库，提示用户先调用 manage 技能（`/skill:jfox-manage`）创建。
 
 2. `git` 命令可用。
 
 3. 如需导入 GitHub PR/Issues，`gh` CLI 必须已认证：
+
    ```bash
    gh auth status
    ```
@@ -33,11 +36,13 @@ description: Use when user wants to import data from a local git repository into
 用户提供本地仓库路径（如 `/home/user/projects/my-app` 或 `C:\Users\me\code\project`）。
 
 检测是否为 GitHub 仓库：
+
 ```bash
 git -C <path> remote get-url origin
 ```
 
 检查输出是否包含 `github.com`。如果是，从 URL 中提取 `owner/repo`：
+
 - `git@github.com:owner/repo.git` → `owner/repo`
 - `https://github.com/owner/repo.git` → `owner/repo`
 
@@ -64,12 +69,14 @@ jfox ingest-log path/to/repo --limit 50 --kb name --type fleeting
 ```
 
 该命令会：
+
 - 调用 `git log` 提取 commit 历史
 - 自动解析为结构化数据（hash, subject, author, date, body）
 - 转换为 fleeting 笔记并批量导入知识库
 - 自动添加标签：`source:repo-name`, `source:git-log`
 
 生成笔记示例：
+
 ```
 Commit: a1b2c3d
 Author: 张三
@@ -91,6 +98,7 @@ gh pr list --repo <owner/repo> --state all --limit 20 --json number,title,body,s
 ```
 
 对于每个 PR，可选获取评论详情：
+
 ```bash
 gh pr view <number> --repo <owner/repo> --json comments
 ```
@@ -102,6 +110,7 @@ gh pr view <number> --repo <owner/repo> --json comments
 - **tags**: `source:<repo-name>`, `source:pr`
 
 示例笔记内容：
+
 ```
 PR #42: Add user authentication
 State: merged
@@ -130,6 +139,7 @@ gh issue list --repo <owner/repo> --state all --limit 30 --json number,title,bod
 - **tags**: `source:<repo-name>`, `source:issue`
 
 示例笔记内容：
+
 ```
 Issue #15: Login page crashes on mobile
 State: closed
@@ -148,6 +158,7 @@ Comments:
 git-log 数据已通过 `jfox ingest-log` 完成导入，此步骤仅处理 GitHub PR/Issues 数据。
 
 **去重检查**：导入前检查知识库中是否已有该仓库的数据：
+
 ```bash
 jfox search "repo-name" --json
 ```
@@ -172,6 +183,7 @@ jfox search "repo-name" --json
 ```
 
 保存到临时文件（使用跨平台路径），然后执行导入：
+
 ```bash
 jfox bulk-import temp-file.json --type fleeting --kb name
 ```

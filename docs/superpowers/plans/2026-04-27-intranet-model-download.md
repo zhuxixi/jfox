@@ -26,6 +26,7 @@
 ### Task 1: ModelDownloader 核心类
 
 **Files:**
+
 - Create: `jfox/model_downloader.py`
 
 - [ ] **Step 1: 编写模型下载器核心类**
@@ -262,6 +263,7 @@ git commit -m "feat(model): add ModelDownloader with 3-step retry chain"
 ### Task 2: CLI 新增 `model download` 命令
 
 **Files:**
+
 - Modify: `jfox/cli.py`
 - 在 `daemon` 命令附近添加
 
@@ -337,6 +339,7 @@ git commit -m "feat(cli): add model download command"
 ### Task 3: daemon start 自动调用下载检查
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py`
 
 - [ ] **Step 1: 在 start_daemon 中添加下载检查**
@@ -366,11 +369,13 @@ git commit -m "feat(cli): add model download command"
 ```
 
 **注意：** 这里选择**不阻断启动**。理由：
+
 1. 如果下载失败但用户已有其他方式放置了模型，daemon 加载可能仍成功
 2. 让 daemon 自己去加载可以暴露更底层的错误信息
 3. 避免下载逻辑 bug 导致 daemon 完全无法启动
 
 如果希望严格阻断（下载失败就不启动），改为：
+
 ```python
             if not downloader.ensure_cached():
                 logger.error("模型自动下载失败，daemon 未启动")
@@ -394,6 +399,7 @@ git commit -m "feat(daemon): auto-download model before start with retry chain"
 ### Task 4: 降级兜底脚本
 
 **Files:**
+
 - Create: `scripts/download-model-intranet.sh`
 
 - [ ] **Step 1: 创建 bash 脚本**
@@ -486,6 +492,7 @@ git commit -m "feat(scripts): add intranet model download fallback script"
 ### Task 5: 单元测试
 
 **Files:**
+
 - Create: `tests/unit/test_model_downloader.py`
 
 - [ ] **Step 1: 编写单元测试**
@@ -642,6 +649,7 @@ git commit -m "test(model): add ModelDownloader unit tests"
 ### Task 6: 集成测试
 
 **Files:**
+
 - Create: `tests/integration/test_model_download.py`
 
 - [ ] **Step 1: 编写集成测试**
@@ -794,7 +802,7 @@ git commit -m "test(model): add model download integration tests"
 | daemon start 自动调用 | Task 3 |
 | curl 子进程下载到 HF 缓存 | Task 1 |
 | 部分下载清理 | Task 1 (TemporaryDirectory) |
-| 超时策略 | Task 1 (_TIMEOUT_HF_HUB, _TIMEOUT_CURL) |
+| 超时策略 | Task 1 (_TIMEOUT_HF_HUB,_TIMEOUT_CURL) |
 | 降级兜底脚本 | Task 4 |
 | 单元测试 | Task 5 |
 | 集成测试 | Task 6 |

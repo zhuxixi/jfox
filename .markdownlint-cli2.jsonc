@@ -1,0 +1,37 @@
+{
+  // jfox Markdown 风格约定（issue #411）。markdownlint-cli2 配置，
+  // 默认规则集为基线，以下禁用/override 均有明确理由，勿随意改动。
+  "config": {
+    // 行宽：表格长行与长 URL 无法折行，README 现状即超宽
+    "MD013": false,
+    // 重复标题：同级内允许重复（docs 中「示例」类标题常见），父级仍禁止
+    "MD024": { "siblings_only": true },
+    // 表格分隔行样式：两侧空格对渲染零差别，强制统一会产生上千行无意义
+    // diff 噪声（PR #408 的实际噪声源）
+    "MD060": false,
+    "MD055": false,
+    // fence 语言：大量纯文本 fence，无语言可标
+    "MD040": false,
+    // 粗体标题：**粗体标题** 是 docs 常见习惯
+    "MD036": false,
+    // 内联 HTML：个别文档需要
+    "MD033": false,
+    // 标题跳级：docs/superpowers/plans 的生成模板固定 # → ### 跳级
+    // （模板在外部 superpowers skill，不在本仓）
+    "MD001": false
+  },
+  "overrides": [
+    {
+      // GitHub PR 模板以 ## 开头是惯例（H1 会重复 PR 标题）
+      "filter": [".github/PULL_REQUEST_TEMPLATE.md"],
+      "config": { "MD041": false },
+      "combine": "merge"
+    },
+    {
+      // 对话记录式文档：fence 嵌在列表项内，插空行会破坏列表语义
+      "filter": ["jessica-jones-static-cable.md"],
+      "config": { "MD031": false, "MD032": false },
+      "combine": "merge"
+    }
+  ]
+}

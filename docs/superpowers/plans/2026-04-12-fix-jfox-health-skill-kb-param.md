@@ -13,6 +13,7 @@
 ### Task 1: Update SKILL.md — Data Collection and Command Reference sections
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-health/SKILL.md`
 
 - [ ] **Step 1: Add KB parameter instruction to Data Collection section**
@@ -45,6 +46,7 @@ jfox list --format json --limit 500 [--kb <name>]
 # 6. Unprocessed inbox count
 jfox inbox --json --limit 100 [--kb <name>]
 ```
+
 ```
 
 - [ ] **Step 2: Update Command Reference section to show --kb support**
@@ -65,6 +67,7 @@ jfox index rebuild [--kb <name>]            # 重建索引
 jfox list --format json --limit <N> [--kb <name>]  # 笔记列表
 jfox inbox --json --limit <N> [--kb <name>]        # 未处理笔记
 ```
+
 ```
 
 - [ ] **Step 3: Update Report Format section to include KB name**
@@ -77,6 +80,7 @@ Replace lines 104-126 (the Report Format section) with:
 Present the health report in this format:
 
 ```
+
 📊 知识库健康报告[KB: {kb_name}]
 
 总体评分: {grade} ({score}/100)
@@ -88,14 +92,17 @@ Present the health report in this format:
 ⚠️ 收件箱: {inbox_count} 条未处理 — {建议}
 
 详细指标:
+
 - 集群数: {clusters}
 - Top hubs: {hub_list}
 - 连通率: {connectivity_ratio}
 
 建议操作:
+
 1. {最优先的操作}
 2. {次要操作}
 3. {可选优化}
+
 ```
 ```
 
@@ -174,6 +181,7 @@ jfox kb remove test-health-107
 ## Self-Review
 
 **Spec coverage:** All requirements from issue #107 covered:
+
 - Data Collection section updated with --kb → Task 1 Step 1
 - Command Reference section updated with --kb → Task 1 Step 2
 - Report Format includes KB name → Task 1 Step 3

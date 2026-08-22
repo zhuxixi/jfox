@@ -27,6 +27,7 @@
 ### Task 1: VectorStore.reset_collection() — 新增方法 + 测试
 
 **Files:**
+
 - Modify: `jfox/vector_store.py:186-207`
 - Modify: `tests/unit/test_vector_store_clear.py`
 
@@ -152,6 +153,7 @@ git commit -m "feat(vector_store): add reset_collection() for full collection re
 ### Task 2: Indexer.index_all() 使用 reset_collection() 替代 clear()
 
 **Files:**
+
 - Modify: `jfox/indexer.py:253`
 - Modify: `tests/unit/test_indexer_clear_before_rebuild.py`
 
@@ -263,6 +265,7 @@ git commit -m "fix(indexer): use reset_collection() for full rebuild on model sw
 ### Task 3: add_note() 维度不匹配友好错误提示
 
 **Files:**
+
 - Modify: `jfox/vector_store.py:84-86`
 - Modify: `tests/unit/test_vector_store_clear.py`（追加测试）
 
@@ -391,6 +394,7 @@ git commit -m "fix(vector_store): friendly error message on embedding dimension 
 ### Task 4: Daemon 日志落盘 — 子进程 stdout/stderr 写入日志文件
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py:38,148-155`
 - Modify: `jfox/daemon/__init__.py`（导出 DAEMON_LOG_FILE）
 - Modify: `tests/unit/test_daemon_process.py`
@@ -448,14 +452,14 @@ Expected: FAIL — `ImportError: cannot import name 'DAEMON_LOG_FILE'`
 DAEMON_LOG_FILE = Path.home() / ".jfox_daemon.log"
 ```
 
-2. 将 `STARTUP_TIMEOUT = 60` 行（第 38 行）改为：
+1. 将 `STARTUP_TIMEOUT = 60` 行（第 38 行）改为：
 
 ```python
 STARTUP_TIMEOUT = 60  # 常规启动超时（秒）
 FIRST_RUN_TIMEOUT = 300  # 首次下载模型超时（秒）
 ```
 
-3. 在 `start_daemon()` 函数中，将 `subprocess.Popen` 调用（第 148-155 行）的 stdout/stderr 从 DEVNULL 改为日志文件。替换：
+1. 在 `start_daemon()` 函数中，将 `subprocess.Popen` 调用（第 148-155 行）的 stdout/stderr 从 DEVNULL 改为日志文件。替换：
 
 ```python
     try:
@@ -492,7 +496,7 @@ FIRST_RUN_TIMEOUT = 300  # 首次下载模型超时（秒）
 
 在函数末尾的 `return False`（启动超时）之前，也需要关闭 `log_file`。为了正确管理文件句柄，需要用 try/finally 包裹。完整的 `start_daemon` 函数替换见下方。
 
-4. 完整的 `start_daemon()` 替换为：
+1. 完整的 `start_daemon()` 替换为：
 
 ```python
 def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
@@ -587,7 +591,7 @@ def start_daemon(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> bool:
         log_file.close()
 ```
 
-5. 在 `start_daemon()` 函数之前（第 106 行之前）添加预检函数：
+1. 在 `start_daemon()` 函数之前（第 106 行之前）添加预检函数：
 
 ```python
 def _check_model_cache() -> dict:
@@ -645,7 +649,7 @@ def _check_model_cache() -> dict:
         return {"needs_download": False, "model_name": "unknown", "size_hint": ""}
 ```
 
-- [ ] **Step 4: 更新 __init__.py 导出**
+- [ ] **Step 4: 更新 **init**.py 导出**
 
 在 `jfox/daemon/__init__.py` 中追加导出：
 
@@ -672,6 +676,7 @@ git commit -m "fix(daemon): redirect subprocess logs to file, add model cache pr
 ### Task 5: CLI daemon start 输出增加日志文件提示
 
 **Files:**
+
 - Modify: `jfox/cli.py:2614-2634`
 
 - [ ] **Step 1: 修改 CLI 输出**

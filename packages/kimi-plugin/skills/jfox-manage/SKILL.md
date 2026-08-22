@@ -20,9 +20,11 @@ description: |
 ## 1. 前置条件
 
 确认 jfox 已安装：
+
 ```bash
 jfox --version
 ```
+
 未安装时：`uv tool install jfox-cli`
 
 ## 2. 知识库路径约定
@@ -50,16 +52,19 @@ jfox kb list --json
 ### 3.2 创建知识库
 
 **默认知识库（首次使用）：**
+
 ```bash
 jfox init
 ```
 
 **命名知识库：**
+
 ```bash
 jfox init --name <name> --desc "<description>"
 ```
 
 示例：
+
 ```bash
 jfox init --name work --desc "工作笔记"
 jfox init --name research --desc "研究笔记"
@@ -67,6 +72,7 @@ jfox init --name personal --desc "个人知识库"
 ```
 
 **自定义路径（必须在 ~/.zettelkasten/ 下）：**
+
 ```bash
 jfox init --name <name> --path ~/.zettelkasten/<custom-path>
 ```
@@ -138,6 +144,7 @@ jfox add --template meeting --title "周会记录"
 ```
 
 笔记类型：
+
 - `fleeting`（默认）— 快速捕获，稍后提炼
 - `literature` — 阅读笔记
 - `permanent` — 已提炼的知识
@@ -219,7 +226,7 @@ jfox check --json                 # JSON 输出
 - `--clean` 会删除空文件；损坏文件不会被自动删除，需要人工修复
 
 > `jfox check --clean` 是日常维护的首选命令，可替代 `list` + 手动删除空文件的组合操作。
-
+>
 > 深度体检请用 §5.2 的 6 项指标采集——6 条命令互相独立、只读，可用 **AgentSwarm** 并行执行加速。
 
 ### 5.2 6 项指标采集
@@ -277,26 +284,31 @@ prompt_template: "执行命令 {{item}}，返回原始输出以及解析后的 J
 分析指标，检测以下 5 种衰减模式：
 
 #### 1. 知识孤岛（孤立比例过高）
+
 - **信号**：> 40% 的笔记没有任何链接
 - **原因**：笔记已记录但未与现有知识建立关联
 - **修复**：调用 organize 技能（`/skill:jfox-organize`）查找并为孤立笔记添加链接
 
 #### 2. Inbox 积压（未处理笔记过多）
+
 - **信号**：> 30 条未处理的 fleeting 笔记
 - **原因**：持续捕获想法，但未进行反思和提炼
 - **修复**：调用 organize 技能（`/skill:jfox-organize`）处理收件箱
 
 #### 3. 低连接度（平均连接度不足）
+
 - **信号**：笔记平均链接数 < 1.0
 - **原因**：添加笔记时未使用 `[[links]]` 语法
 - **修复**：使用 `jfox suggest-links` 为现有笔记查找连接
 
 #### 4. 索引失效（索引不同步）
+
 - **信号**：`jfox index verify` 报告不匹配
 - **原因**：文件在 jfox CLI 之外被添加或修改
 - **修复**：`jfox index rebuild` 重建搜索索引
 
 #### 5. Hub 依赖（图谱结构脆弱）
+
 - **信号**：Top 3 中心节点拥有 > 50% 的所有边
 - **原因**：过度依赖少数"枢纽"笔记
 - **修复**：创建中间笔记以分散连接
@@ -352,6 +364,7 @@ Score = 100
 使用默认知识库时显示 `[KB: default]`。
 
 使用 emoji 指示器：
+
 - ✅ 健康 / 通过
 - ⚠️ 警告 / 需关注
 - ❌ 危险 / 异常

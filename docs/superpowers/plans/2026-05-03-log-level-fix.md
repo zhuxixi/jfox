@@ -13,6 +13,7 @@
 ### Task 1: 修复日志级别
 
 **Files:**
+
 - Modify: `jfox/note.py:105`
 
 - [ ] **Step 1: 修改日志级别**

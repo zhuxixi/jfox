@@ -22,6 +22,7 @@ jfox 有三条**独立**发版轨道，skill 覆盖参差：
 **目标**：新增 `/release-all` 编排 skill，一条命令检测三个组件各自是否有未发布改动，**自动跳过无改动者**，为有改动者批量建 PR，最后发 jfox GitHub Release。顺带补 kimi-plugin helper（+ 单 skill），让三轨道对称；并把 #333 的 verify 校验折进 `release_helper.py`，`/release` 与 `/release-all` 共用。
 
 **非目标**：
+
 - 不自动合并 PR（main 保护分支，用户手动合并）。
 - 不统一三组件版本号（三条独立轨道，语义各自独立）。
 - 不替换 `/release`、`/release-cc-plugin`（它们仍是单组件入口；`/release-all` 编排复用它们）。
@@ -82,15 +83,18 @@ jfox 有三条**独立**发版轨道，skill 覆盖参差：
 | kimi-plugin | `git log -S '"version": "<cur>"' --format=%H -- packages/kimi-plugin/kimi.plugin.json`（fallback 同上） | `git log <baseline>..HEAD --oneline -- packages/kimi-plugin/` | 非空 → changed |
 
 **suggested_bump**：
+
 - jfox：基线..HEAD 含 `^feat` → minor，否则 patch。
 - cc / kimi：默认 patch（与 `/release-cc-plugin` 默认一致：「无新 skill/command → patch」）。是否升 minor 由用户在确认环节覆盖。
 
 **依赖**：检测逻辑是「基线..HEAD 是否有功能性 commit」，约 10 行/组件，**本脚本内轻量实现**，不跨 skill 目录 import 各 helper（解耦；真正的 changelog 生成仍由各组件 helper 在 bump 时负责，避免「何谓功能 commit」两处定义漂移）。
 
 **用法**：
+
 ```bash
 uv run python .claude/skills/release-all/release_all_helper.py detect
 ```
+
 退出码 0 正常；某组件检测异常时该组件 `changed=false` + `skip_reason` 带 error，不中断其他组件。
 
 ### 3.2 `release_kimi_plugin_helper.py` + `/release-kimi-plugin` skill（新增）
@@ -116,6 +120,7 @@ uv run python .claude/skills/release-all/release_all_helper.py detect
 4. `missing = A - B`，`extra = B - A`。`missing` 非空 → 打印缺失条目，**退出码 1**；皆空 → 退出码 0。
 
 接线：
+
 - `/release` Step 9（`gh release create` 前）先跑 `verify`，非 0 即停。
 - `/release-all` jfox Release 段同上。
 
@@ -126,6 +131,7 @@ uv run python .claude/skills/release-all/release_all_helper.py detect
 编排层，纯散文调度，发版动作委托各组件 helper。流程：
 
 **Step 1 · 前置校验**（任一不符即停）：
+
 ```bash
 git branch --show-current                            # 期望 main
 git status --porcelain                               # 期望 空
@@ -134,24 +140,28 @@ gh pr list --state open --json headRefName --jq '.[].headRefName' | grep 'chore/
 ```
 
 **Step 2 · 检测**：
+
 ```bash
 uv run python .claude/skills/release-all/release_all_helper.py detect
 ```
 
 **Step 3 · 展示合并计划 + 确认 bump 类型**：
 向用户展示 detect 结果：
+
 ```
 📦 Release-All 计划:
   jfox       1.5.0 → 1.6.0  (minor)   ✓ 有改动  [feat(backup)#339, feat(gem-synth)#335]
   cc-plugin  0.6.0 → 0.6.1  (patch)   ✓ 有改动  [docs(promote)#342]
   kimi-plugin 0.14.0                ✗ 无改动，跳过
 ```
+
 - 若命令带参数（`/release-all minor`）→ 统一套用到所有 changed 组件。
 - 否则逐组件确认 suggested_bump（用户可改 patch/minor/major 或指定 x.y.z）。
 - 全部 changed=false → 打印「三组件均无未发布改动，无需发版」并结束。
 
 **Step 4 · 逐组件 bump + 建 PR**（顺序 jfox → cc → kimi，仅 changed 者）：
 对每个 changed 组件，执行其单组件 skill 的 bump+PR 段。detect 已算出 `suggested_version` 并经用户确认，故**跳过各单组件 skill 的 dry-run 预览步**，直接正式 bump → 分支 → commit → push → `gh pr create`：
+
 - jfox → `release_helper.py <v>` → 分支 `chore/bump-version-<v>` → PR
 - cc → `release_cc_plugin_helper.py <v>` → 分支 `chore/bump-cc-plugin-<v>` → PR
 - kimi → `release_kimi_plugin_helper.py <v>` → 分支 `chore/bump-kimi-plugin-<v>` → PR
@@ -159,21 +169,25 @@ uv run python .claude/skills/release-all/release_all_helper.py detect
 收集所有 PR URL。三组件文件不冲突，PR 可并存。
 
 **Step 5 · 告知用户合并**：
+
 ```
 已创建 N 个 bump PR：
   - jfox:       <URL>
   - cc-plugin:  <URL>
 请依次合并后告知我，我将继续创建 jfox GitHub Release（cc/kimi 合 main 即生效，无需 Release）。
 ```
+
 等待用户确认全部合并。
 
 **Step 6 · 发 jfox Release**（仅当 jfox 在计划内）：
+
 ```bash
 git checkout main && git pull origin main
 uv run python .claude/skills/release/release_helper.py verify     # #333 兜底
 # verify 退出码 0 才继续：
 gh release create v<jfox_ver> --title "v<jfox_ver>" --notes "<changelog_preview>"
 ```
+
 verify 非 0 → 打印 missing 条目，**停**，提示用户补 CHANGELOG 后重跑（不自动建 Release）。
 
 cc/kimi 在计划内但无 Release 步骤。
@@ -216,6 +230,7 @@ cc/kimi 在计划内但无 Release 步骤。
 ## 7. 改动清单
 
 新增：
+
 - `.claude/skills/release-all/SKILL.md`
 - `.claude/skills/release-all/release_all_helper.py`
 - `.claude/skills/release-kimi-plugin/SKILL.md`
@@ -225,10 +240,12 @@ cc/kimi 在计划内但无 Release 步骤。
 - `tests/unit/test_release_helper_verify.py`
 
 修改：
+
 - `.claude/skills/release/release_helper.py`（加 `verify` 子命令；main 路由 `verify` 分支）
 - `.claude/skills/release/SKILL.md`（Step 9 前插 verify 步骤）
 
 文档（可选，CR 一致性）：
+
 - `CLAUDE.md` 发版相关段落补 `/release-all`、`/release-kimi-plugin`、verify 说明（若 Zima CR 会查文档 drift 则同步）。
 
 ## 8. 与现有 skill 的关系

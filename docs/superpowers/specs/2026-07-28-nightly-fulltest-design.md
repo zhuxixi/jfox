@@ -69,11 +69,13 @@ scripts/nightly_test.sh  ← 仓内，走 PR，全权负责
 **issue label**：`nightly-test-failure`（issue 标签需先在仓库存在；脚本首次运行前手工建一次，或脚本里 `gh label create nightly-test-failure --if-not-exists`）。
 
 **去重逻辑**：
+
 - `gh issue list --repo zhuxixi/jfox --label nightly-test-failure --state open --search "sig:<signature>" --json number,title`
 - 命中 open issue → `gh issue comment <num> --body "<本次失败摘要 + 复现于 <时间>>"`（追加，不新开）
 - 未命中 → `gh issue create --title "..." --label nightly-test-failure --body "..."`
 
 **issue body 模板**（bash heredoc 填充）：
+
 - 失败时间、commit SHA（`origin/main` 的）、signature
 - 失败 test 列表（前 10，含 nodeid）
 - traceback 摘要（`--tb=short` 输出，截断到合理长度，如 200 行 / 8KB）

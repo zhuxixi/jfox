@@ -25,6 +25,7 @@ jfox auto-summary status --json
 ```
 
 输出包含：
+
 - 当前启用状态（enabled）
 - 扫描间隔（interval_minutes）
 - session 结束判定阈值（idle_threshold_minutes）
@@ -136,6 +137,7 @@ jfox auto-summary forget <session_id>
 `session_id` 支持完整 ID 或前缀。移除后，该 session 会在下次扫描时被重新处理。
 
 适用场景：
+
 - 某条 session 之前处理失败或被跳过，想重跑
 - 想修改后再总结
 

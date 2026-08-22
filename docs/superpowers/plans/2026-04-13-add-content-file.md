@@ -13,6 +13,7 @@
 ### Task 1: 文件读取逻辑提取为公共函数
 
 **Files:**
+
 - Modify: `jfox/cli.py` (在 `_edit_impl` 之前添加公共函数)
 - Modify: `jfox/cli.py:970-986` (`_edit_impl` 调用改为使用公共函数)
 
@@ -88,6 +89,7 @@ git commit -m "refactor: extract _read_content_file() for shared --content-file 
 ### Task 2: add 命令支持 --content-file 选项
 
 **Files:**
+
 - Modify: `jfox/cli.py:366-383` (`add` 函数签名和调用)
 
 - [ ] **Step 1: 修改 `add()` 函数签名**
@@ -182,6 +184,7 @@ git commit -m "feat: add --content-file option to jfox add command"
 ### Task 3: 测试 --content-file 功能
 
 **Files:**
+
 - Modify: `tests/test_cli_format.py` (在 `TestAddAndDeleteFormat` 类中添加测试)
 
 - [ ] **Step 1: 在 `test_add_format_json` 之前添加 --content-file 测试**

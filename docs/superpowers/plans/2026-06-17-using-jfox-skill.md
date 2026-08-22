@@ -28,6 +28,7 @@
 ## Task 1: Create the skill with its contract test (TDD red → green)
 
 **Files:**
+
 - Create: `tests/unit/test_using_jfox_skill.py`
 - Create: `packages/cc-plugin/skills/using-jfox/SKILL.md`
 
@@ -237,6 +238,7 @@ Expected: only `packages/cc-plugin/skills/using-jfox/SKILL.md` shows as added; `
 - [ ] **Step 4: Manual routing sanity (human)**
 
 With the plugin installed/reloaded, ask two prompts and confirm the routing:
+
 - 「jfox 能做什么」→ should route to **using-jfox** (overview).
 - 「搜索一下关于 X 的笔记」→ should route to **search**, **not** using-jfox.
 
@@ -245,6 +247,7 @@ If the second one wrongly hits using-jfox, the description picked up a competing
 - [ ] **Step 5: Done — report**
 
 The feature is complete. Note in the PR/issue:
+
 - Files added (1 skill + 1 test).
 - Acceptance criteria from spec Section 7 all met (verify the checklist).
 - Follow-ups FU-1 (single-source refactor, post #244–247) and FU-2 (Kimi consistency) remain open, tracked in the spec.
@@ -256,6 +259,7 @@ The feature is complete. Note in the PR/issue:
 ## Self-Review (run before handing off)
 
 **Spec coverage** — every spec section maps to a task:
+
 - §1 File & naming → Task 1 Step 3 (file path + `name: using-jfox`).
 - §2 Description / trigger strategy → Task 1 Step 3 (frontmatter) + guarded by Task 1 Step 1 tests.
 - §3 Body structure (6 sections) → Task 1 Step 3 (env check, capability map, note model, workflows, conventions, boundary).

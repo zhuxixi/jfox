@@ -13,6 +13,7 @@
 ### Task 1: 添加跳过计数和 warning 输出
 
 **Files:**
+
 - Modify: `jfox/note.py:167-197` (list_notes 函数)
 - Test: `tests/unit/test_list_notes_skip.py` (新建)
 

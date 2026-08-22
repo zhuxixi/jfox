@@ -13,6 +13,7 @@
 ### Task 1: Add `VectorStore.clear()` method
 
 **Files:**
+
 - Modify: `jfox/vector_store.py:170` (after `get_stats`, before the global instance block)
 - Test: `tests/unit/test_vector_store_clear.py` (new file)
 
@@ -147,6 +148,7 @@ git commit -m "feat: add VectorStore.clear() method for index rebuild"
 ### Task 2: Call `clear()` in `Indexer.index_all()` before re-indexing
 
 **Files:**
+
 - Modify: `jfox/indexer.py:220-224` (start of `index_all` method body)
 - Test: `tests/unit/test_indexer_clear_before_rebuild.py` (new file)
 
@@ -283,6 +285,7 @@ git commit -m "fix: clear vector store before re-indexing in index_all()"
 ### Task 3: Integration verification
 
 **Files:**
+
 - No new files. Verify existing tests still pass.
 
 - [ ] **Step 1: Run fast unit tests**

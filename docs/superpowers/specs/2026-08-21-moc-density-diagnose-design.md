@@ -11,6 +11,7 @@ Epic #376 要在 jfox 引入 MOC / structure note 层。按 Zettelkasten 涌现�
 本命令是 Epic 的破冰任务：只读诊断，不写任何笔记，输出数据驱动后续 `moc create` 的决策。
 
 调研已确认（2026-08-16 实测，见 #390 评论）：
+
 - 本机 KB permanent 实际 375–382 条（#376 背景中「1471」系 BM25 全类型总数误读，已在 #376 评论修正）
 - 读全量向量 0.53s，377×377 余弦矩阵 52ms / 1.1MB —— 纯 CPU numpy 完全够用，不碰 GPU daemon
 - bge-m3 嵌入空间下 0.5 阈值无区分度（平均 190 邻居），必须多档阈值对比
@@ -21,6 +22,7 @@ Epic #376 要在 jfox 引入 MOC / structure note 层。按 Zettelkasten 涌现�
 **范围**：仅 permanent 笔记。session / candidate / fleeting 不参与聚类、不出现在口径检查表。
 
 **非目标**：
+
 - 不生成 / 修改任何笔记（MOC 生成是后续子 issue）
 - 不动 candidate 层（promote 簇级 triage 是另一套机械去重）
 - 不修复索引口径异常（#391 的职责，本命令只如实报告）

@@ -24,6 +24,7 @@ skills-recommend/claude-code/
 ```
 
 Each SKILL.md has:
+
 - YAML frontmatter: `name`, `description` (with trigger phrases)
 - Body: overview, prerequisites, workflow steps, command reference, error handling
 
@@ -32,6 +33,7 @@ Each SKILL.md has:
 ### Task 1: Create jfox-ingest SKILL.md
 
 **Files:**
+
 - Create: `skills-recommend/claude-code/jfox-ingest/SKILL.md`
 
 - [ ] **Step 1: Create the directory**
@@ -45,6 +47,7 @@ mkdir -p skills-recommend/claude-code/jfox-ingest
 Write the complete file with these sections:
 
 **Frontmatter:**
+
 ```yaml
 ---
 name: jfox-ingest
@@ -62,24 +65,32 @@ description: Use when user wants to import data from a local git repository into
    - **Step 1: 确定仓库信息** — User provides local path. Run `git -C <path> remote get-url origin` to detect if it's a GitHub repo (check for `github.com` in URL). Extract `owner/repo` from the URL.
    - **Step 2: 选择数据源** — Based on user's instruction, determine which sources to import: git-log, github-pr, github-issue, or all. If user says "导入这个仓库" without specifying, default to all available sources.
    - **Step 3: 采集 git log** — Run:
+
      ```bash
      git -C <path> log --format="%H|%s|%b|%an|%ad" --date=short -50
      ```
+
      Parse output: each line is one commit. Structure each into `{title, content, tags}` where title = commit subject, content = hash + body + author + date, tags = `source:<repo-name>`, `source:git-log`.
    - **Step 4: 采集 GitHub PRs** (only if GitHub repo detected):
+
      ```bash
      gh pr list --repo <owner/repo> --state all --limit 20 --json number,title,body,state,author,createdAt,updatedAt,labels
      ```
+
      For each PR, optionally fetch comments: `gh pr view <number> --repo <owner/repo> --json comments`. Structure each into `{title, content, tags}` where title = PR title, content = description + comments + metadata, tags = `source:<repo-name>`, `source:pr`.
    - **Step 5: 采集 GitHub Issues** (only if GitHub repo detected):
+
      ```bash
      gh issue list --repo <owner/repo> --state all --limit 30 --json number,title,body,state,author,createdAt,labels,comments
      ```
+
      Structure each into `{title, content, tags}` where title = Issue title, content = description + comments + metadata, tags = `source:<repo-name>`, `source:issue`.
    - **Step 6: 去重与导入** — Before importing, check for duplicates. Run `jfox search --tag "source:<repo-name>" --format json` to see what's already imported. Only import new records. Generate a temporary JSON file with the records array, then run:
+
      ```bash
      jfox bulk-import <temp-file.json> --type fleeting [--kb <name>]
      ```
+
      Note: `jfox bulk-import` uses `--json`/`--no-json` (default: on), NOT `--format json`.
    - **Step 7: 确认报告** — Report how many notes were imported, broken down by source type (e.g., "导入了 50 条 git log + 15 条 PR + 10 条 Issues，共 75 条 fleeting 笔记到 homework 知识库").
 
@@ -95,6 +106,7 @@ description: Use when user wants to import data from a local git repository into
 6. **GitLab 预留**: Note that for non-GitHub repos (no `github.com` in remote URL), only git log is imported. GitLab CLI support is a future extension.
 
 7. **命令参考**:
+
    ```bash
    # 检测仓库类型
    git -C <path> remote get-url origin
@@ -140,6 +152,7 @@ git commit -m "feat(skills): add jfox-ingest skill for repo data import"
 ### Task 2: Create jfox-common SKILL.md
 
 **Files:**
+
 - Create: `skills-recommend/claude-code/jfox-common/SKILL.md`
 
 - [ ] **Step 1: Create the directory**
@@ -153,6 +166,7 @@ mkdir -p skills-recommend/claude-code/jfox-common
 This skill merges the existing jfox-init and jfox-health content. Write the complete file with these sections:
 
 **Frontmatter:**
+
 ```yaml
 ---
 name: jfox-common
@@ -207,6 +221,7 @@ git commit -m "feat(skills): add jfox-common skill merging init and health"
 ### Task 3: Rewrite jfox-organize SKILL.md
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-organize/SKILL.md` (full rewrite)
 
 - [ ] **Step 1: Read the existing file for reference**
@@ -216,6 +231,7 @@ Read `skills-recommend/claude-code/jfox-organize/SKILL.md` to understand the cur
 - [ ] **Step 2: Rewrite jfox-organize/SKILL.md**
 
 **Frontmatter (update):**
+
 ```yaml
 ---
 name: jfox-organize
@@ -234,6 +250,7 @@ description: Use when user wants to organize their Zettelkasten, refine fleeting
    - Group notes by `source:*` tag (e.g., all `source:git-log` notes from the same repo together)
    - Within each group, identify mergeable sub-groups (similar topics, related commits in the same PR)
    - Present refinement suggestions to user in this format:
+
      ```
      收件箱: N 条 fleeting 笔记
 
@@ -243,6 +260,7 @@ description: Use when user wants to organize their Zettelkasten, refine fleeting
      3. [逐条] 3 条手动输入笔记 → 逐条处理
      4. [删除] 2 条过时笔记 → 清理
      ```
+
    - Ask user to confirm which suggestions to execute
 
 4. **Step 2: 提炼（fleeting → permanent）**:
@@ -252,16 +270,21 @@ description: Use when user wants to organize their Zettelkasten, refine fleeting
    - Generate a permanent note with `[[wiki links]]` embedded for each related note found
    - Also check if other permanent notes being created in this batch are related — cross-link them
    - Insert the permanent note:
+
      ```bash
      jfox add "<content with [[links]]>" --title "<title>" --type permanent --tag <tag1> --tag <tag2> [--kb <name>]
      ```
+
    - Delete the source fleeting notes:
+
      ```bash
      jfox delete <original-id> --force
      ```
+
    Note: `jfox add` and `jfox delete` use `--json`/`--no-json` (default: on), NOT `--format json`.
 
    **提炼策略表**:
+
    | 来源 | 策略 | permanent 示例 |
    |------|------|---------------|
    | git-log (多个 commits) | 按时间段/主题合并，提取技术决策和变更摘要 | "JFox v0.1.4 技术变更总结" |
@@ -273,9 +296,11 @@ description: Use when user wants to organize their Zettelkasten, refine fleeting
    - `jfox graph --orphans --json` — find isolated notes
    - For each orphan permanent note, run `jfox suggest-links "<content>" --format json`
    - If good matches found (score >= 0.6), suggest adding `[[links]]`:
+
      ```bash
      jfox edit <orphan_id> --content "原内容... [[相关笔记标题]]"
      ```
+
    - `jfox graph --stats --json` — confirm improvement
    - Report: before/after comparison of avg_degree, isolated_nodes
 
@@ -286,6 +311,7 @@ description: Use when user wants to organize their Zettelkasten, refine fleeting
    - `jfox edit <note_id> --content "新内容" --title "新标题" --tag <tag>` for editing existing notes
 
 7. **命令参考**:
+
    ```bash
    # Inbox 管理
    jfox inbox --json --limit <N>
@@ -302,6 +328,7 @@ description: Use when user wants to organize their Zettelkasten, refine fleeting
    jfox list --format json --limit <N>
    jfox daily --json
    ```
+
    Do NOT include commands that belong to other skills (search queries, health checks, KB management, data ingestion).
 
 8. **错误处理**:
@@ -330,6 +357,7 @@ git commit -m "feat(skills): rewrite jfox-organize with refinement and wiki link
 ### Task 4: Trim jfox-search SKILL.md
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-search/SKILL.md`
 
 - [ ] **Step 1: Read the existing file**
@@ -339,6 +367,7 @@ Read `skills-recommend/claude-code/jfox-search/SKILL.md` to understand what to k
 - [ ] **Step 2: Trim the file**
 
 Specific changes:
+
 - Remove any literature-related search filters or examples
 - Remove `--type literature` from command examples
 - Remove the literature note type from any type selection tables
@@ -369,6 +398,7 @@ git commit -m "refactor(skills): trim jfox-search, remove literature references"
 ### Task 5: Delete obsolete skills and update README
 
 **Files:**
+
 - Delete: `skills-recommend/claude-code/jfox-init/SKILL.md`
 - Delete: `skills-recommend/claude-code/jfox-insert/SKILL.md`
 - Delete: `skills-recommend/claude-code/jfox-health/SKILL.md`
@@ -396,6 +426,7 @@ Expected: Only `jfox-common`, `jfox-ingest`, `jfox-organize`, `jfox-search`
 - [ ] **Step 3: Update README.md**
 
 Read `skills-recommend/README.md`. Rewrite it to reflect the new 4-skill structure:
+
 - Update the directory tree to show the 4 new skills
 - Update the skill list (`/jfox-common`, `/jfox-ingest`, `/jfox-organize`, `/jfox-search`)
 - Update the usage instructions (copy to `~/.claude/skills/`)
@@ -422,6 +453,7 @@ ls -R skills-recommend/claude-code/
 ```
 
 Expected: Exactly 4 directories, each with exactly 1 SKILL.md:
+
 ```
 jfox-common/SKILL.md
 jfox-ingest/SKILL.md

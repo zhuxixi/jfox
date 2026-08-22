@@ -13,6 +13,7 @@ description: |
 管理笔记模板，让重复类型的笔记（会议、阅读、永久笔记、AI 会话）保持统一结构。
 
 模板存储在当前知识库的 `.zk/templates/` 目录下，分为：
+
 - **内置模板**（built-in）：`quick`、`meeting`、`literature`、`session`，不可修改或删除
 - **自定义模板**：用户自行创建，可编辑、删除
 
@@ -83,10 +84,13 @@ jfox template create permanent \
 `jfox template create` 的 `--content` 适合中等长度内容。如果模板内容很长，推荐：
 
 1. 先创建模板骨架：
+
    ```bash
    jfox template create my-template --description "我的模板" --type permanent
    ```
+
 2. 使用系统编辑器补充完整内容：
+
    ```bash
    jfox template edit my-template
    ```

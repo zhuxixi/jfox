@@ -13,6 +13,7 @@
 ### Task 1: 写测试 + 实现 check 命令
 
 **Files:**
+
 - Modify: `jfox/cli.py:2702-2717` (在 `main()` 入口前插入新命令)
 - Test: `tests/unit/test_check.py` (新建)
 

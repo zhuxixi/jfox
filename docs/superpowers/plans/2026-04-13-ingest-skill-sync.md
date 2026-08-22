@@ -24,6 +24,7 @@
 ### Task 1: 更新 Step 3 — 用 `jfox ingest-log` 替代手动 git log
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-ingest/SKILL.md:58-79`
 
 - [ ] **Step 1: 替换 Step 3 的内容**
@@ -97,6 +98,7 @@ Expected: Step 3 部分显示 `jfox ingest-log` 命令，不再有手动 `git lo
 ### Task 2: 更新 Step 6 — 简化 git-log 导入，保留 PR/Issues 的 bulk-import
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-ingest/SKILL.md:142-173`
 
 - [ ] **Step 1: 替换 Step 6 的内容**
@@ -188,6 +190,7 @@ Expected: Step 6 标题改为"导入 GitHub 数据"，JSON 示例中不再包含
 ### Task 3: 更新命令参考和错误处理
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-ingest/SKILL.md:211-237`
 
 - [ ] **Step 1: 替换命令参考部分**
@@ -281,6 +284,7 @@ Expected: 命令参考中 `git log` 原生命令被 `jfox ingest-log` 替代，�
 ### Task 4: 更新笔记格式规范说明
 
 **Files:**
+
 - Modify: `skills-recommend/claude-code/jfox-ingest/SKILL.md:196-205`
 
 - [ ] **Step 1: 在笔记格式规范表格前添加说明**
@@ -300,6 +304,7 @@ Expected: 笔记格式规范表格上方出现说明文字，注明 git-log 部�
 ### Task 5: 同步到全局 skills 目录
 
 **Files:**
+
 - Copy to: `~/.claude/skills/jfox-ingest/SKILL.md`
 
 - [ ] **Step 1: 复制更新后的 SKILL.md 到全局目录**
@@ -321,6 +326,7 @@ Expected: 无输出（文件完全一致）。
 ### Task 6: Commit
 
 **Files:**
+
 - Commit: `skills-recommend/claude-code/jfox-ingest/SKILL.md`
 
 - [ ] **Step 1: 提交变更**

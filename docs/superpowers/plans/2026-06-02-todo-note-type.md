@@ -29,6 +29,7 @@
 ### Task 1: 扩展 NoteType 枚举和 Note 模型
 
 **Files:**
+
 - Modify: `jfox/models.py`
 - Test: `tests/unit/test_todo_crud.py`
 
@@ -173,7 +174,7 @@ class NoteType(Enum):
     TODO = "todo"  # 新增: 便签待办
 ```
 
-2. 在 `Note` dataclass 中新增 `status` 字段（line 36 后，backlinks 之前）
+1. 在 `Note` dataclass 中新增 `status` 字段（line 36 后，backlinks 之前）
 
 ```python
     source: Optional[str] = None  # 来源（文献笔记）
@@ -181,14 +182,14 @@ class NoteType(Enum):
     status: Optional[str] = None  # 状态（todo 类型: open | done）
 ```
 
-3. 修改 `to_markdown()`（line 86-89 后），在 `topic` 处理之后添加：
+1. 修改 `to_markdown()`（line 86-89 后），在 `topic` 处理之后添加：
 
 ```python
         if self.status:
             frontmatter["status"] = self.status
 ```
 
-4. 修改 `from_markdown()`（line 137-138 后），在 `topic` 参数之后添加：
+1. 修改 `from_markdown()`（line 137-138 后），在 `topic` 参数之后添加：
 
 ```python
             source=fm.get("source"),
@@ -197,7 +198,7 @@ class NoteType(Enum):
         )
 ```
 
-5. 修改 `to_dict()`（line 155 后），在 `topic` 之后添加：
+1. 修改 `to_dict()`（line 155 后），在 `topic` 之后添加：
 
 ```python
             "topic": self.topic,
@@ -229,6 +230,7 @@ Refs #230"
 ### Task 2: 更新配置层（config.py + note.py）
 
 **Files:**
+
 - Modify: `jfox/config.py`
 - Modify: `jfox/note.py`
 - Test: `tests/unit/test_todo_crud.py`（追加测试）
@@ -392,6 +394,7 @@ Refs #230"
 ### Task 3: 更新 CLI type 校验文案
 
 **Files:**
+
 - Modify: `jfox/cli.py`
 
 - [ ] **Step 1: 修改 _add_note_impl 的校验文案**
@@ -428,6 +431,7 @@ Refs #230"
 ### Task 4: 创建 todo_cli.py — add / list 命令
 
 **Files:**
+
 - Create: `jfox/todo_cli.py`
 - Modify: `jfox/cli.py`（注册 sub-app）
 - Test: `tests/unit/test_todo_cli.py`
@@ -822,6 +826,7 @@ Refs #230"
 ### Task 5: 创建 done / open / delete 命令
 
 **Files:**
+
 - Modify: `jfox/todo_cli.py`
 - Test: `tests/unit/test_todo_cli.py`（追加测试）
 
@@ -1096,6 +1101,7 @@ Refs #230"
 ### Task 6: 创建 review 命令
 
 **Files:**
+
 - Modify: `jfox/todo_cli.py`
 - Test: `tests/unit/test_todo_review.py`
 
@@ -1395,6 +1401,7 @@ Refs #230"
 ### Task 7: 集成测试
 
 **Files:**
+
 - Create: `tests/unit/test_todo_integration.py`
 
 - [ ] **Step 1: 写集成测试**
@@ -1521,6 +1528,7 @@ Refs #230"
 ### Task 8: 验证与手动测试
 
 **Files:**
+
 - None (manual verification)
 
 - [ ] **Step 1: 运行全部 todo 测试**
@@ -1564,6 +1572,7 @@ uv run jfox todo delete "测试待办" --kb todo-test
 uv run jfox todo add "搜索测试" --content "关键词内容" --kb todo-test
 uv run jfox search "关键词" --kb todo-test
 ```
+
 Expected: 搜索结果包含 todo 笔记
 
 - [ ] **Step 5: 验证 graph 包含 todo**
@@ -1571,6 +1580,7 @@ Expected: 搜索结果包含 todo 笔记
 ```bash
 uv run jfox graph --kb todo-test
 ```
+
 Expected: 图谱统计中包含 todo 节点
 
 - [ ] **Step 6: 运行完整单元测试套件（快速）**

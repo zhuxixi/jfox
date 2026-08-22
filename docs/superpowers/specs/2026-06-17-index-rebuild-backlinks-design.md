@@ -5,12 +5,14 @@
 ## 背景
 
 `jfox index rebuild` 当前只重建：
+
 1. ChromaDB 向量索引（`Indexer.index_all()` → `vector_store.reset_collection()` + 全量 add）
 2. BM25 关键词索引（`bm25_index.rebuild_from_notes()`）
 
 但它**没有**重新解析笔记正文中的 `[[笔记标题]]` 维基链接，也没有根据解析结果更新笔记 frontmatter 中的 `links` 和 `backlinks` 字段。
 
 这会导致以下问题：
+
 - 手动修改笔记文件后，即使执行 `jfox index rebuild`，backlinks 关系也不会恢复
 - 知识库迁移/整理后，链接网络丢失
 - 必须通过 `jfox add` 重新创建笔记才能建立链接
@@ -18,6 +20,7 @@
 ## 目标
 
 让 `jfox index rebuild` 支持可选的 `--backlinks` 参数，在重建索引的同时：
+
 1. 全量加载所有笔记
 2. 解析每篇笔记正文中的 `[[...]]` 维基链接
 3. 按标题/ID 解析链接目标
@@ -36,12 +39,14 @@
 ### 1. 新增 `jfox index rebuild --backlinks`
 
 在 `jfox/cli.py` 的 `index()` 命令中：
+
 - 为 `rebuild` action 增加 `--backlinks` / `-b` 选项
 - 当用户传入 `--backlinks` 时，在 `indexer.index_all()` 和 BM25 重建完成后调用 backlinks 重建逻辑
 
 ### 2. 独立函数 `_rebuild_backlinks_impl()`
 
 在 `jfox/cli.py` 中新增内部实现函数，职责单一：
+
 - 通过 `note.list_notes()` 加载所有笔记
 - 构建 `标题/ID → note_id` 的解析映射
 - 遍历每篇笔记，调用现有 `extract_wiki_links()` 提取链接
@@ -52,12 +57,14 @@
 ### 3. 输出与结果
 
 JSON 输出增加字段：
+
 - `backlinks_rebuilt`: bool
 - `backlinks_updated`: int（实际写入文件的笔记数量）
 - `backlinks_total`: int（扫描的笔记总数）
 - `unresolved_links`: List[str]（无法解析的链接文本，去重）
 
 Table 输出增加对应行：
+
 - `✓ Backlinks rebuilt: X notes updated / Y scanned`
 - 如有未解析链接，显示警告
 

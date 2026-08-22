@@ -13,14 +13,17 @@ Ingest git log, GitHub PRs, and GitHub Issues from local repositories as fleetin
 ## Prerequisites
 
 1. Knowledge base exists:
+
    ```bash
    jfox kb list --format json
    ```
+
    If none exists, prompt user to use `jfox-common` skill to create one first.
 
 2. `git` command available.
 
 3. For GitHub PR/Issues: `gh` CLI authenticated:
+
    ```bash
    gh auth status
    ```
@@ -32,11 +35,13 @@ Ingest git log, GitHub PRs, and GitHub Issues from local repositories as fleetin
 User provides a local repository path.
 
 Detect if GitHub repository:
+
 ```bash
 git -C <path> remote get-url origin
 ```
 
 Check output for `github.com`. If present, extract `owner/repo`:
+
 - `git@github.com:owner/repo.git` → `owner/repo`
 - `https://github.com/owner/repo.git` → `owner/repo`
 
@@ -61,12 +66,14 @@ jfox ingest-log path/to/repo --limit 50 --kb <name> --type fleeting
 ```
 
 This command:
+
 - Calls `git log` to extract commit history
 - Parses structured data (hash, subject, author, date, body)
 - Converts to fleeting notes and bulk imports
 - Auto-adds tags: `source:<repo-name>`, `source:git-log`
 
 Example generated note:
+
 ```
 Commit: a1b2c3d
 Author: Zhang San
@@ -88,11 +95,13 @@ gh pr list --repo <owner/repo> --state all --limit 20 --json number,title,body,s
 ```
 
 Optional: fetch comments per PR:
+
 ```bash
 gh pr view <number> --repo <owner/repo> --json comments
 ```
 
 Transform to note structure:
+
 - **title**: PR title
 - **content**: PR number, state, description, key comments, metadata
 - **tags**: `source:<repo-name>`, `source:pr`
@@ -106,6 +115,7 @@ gh issue list --repo <owner/repo> --state all --limit 30 --json number,title,bod
 ```
 
 Transform to note structure:
+
 - **title**: Issue title
 - **content**: Issue number, state, description, comments, metadata
 - **tags**: `source:<repo-name>`, `source:issue`
@@ -115,6 +125,7 @@ Transform to note structure:
 Git-log was already imported in Step 3. This step handles PRs/Issues only.
 
 **Deduplication**: Check for existing data before importing:
+
 ```bash
 jfox search "<repo-name>" --format json
 ```
@@ -139,6 +150,7 @@ If records exist, only import new entries (by PR/Issue number).
 ```
 
 Save to temp file, then import:
+
 ```bash
 jfox bulk-import temp-file.json --type fleeting --kb <name>
 ```
@@ -158,6 +170,7 @@ Ingestion complete!
 ## Manual Input Support
 
 If user pastes text without a repository path, organize as a single fleeting note:
+
 ```bash
 jfox add "<content>" --title "<title>" --type fleeting --tag <tags> [--kb <name>]
 ```

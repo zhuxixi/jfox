@@ -58,6 +58,7 @@
 ### Week 1: Phase 1 - 纯逻辑模块
 
 #### Day 1: formatters.py + models.py（1小时）
+
 ```python
 # test_formatters_unit.py
 class TestOutputFormatter:
@@ -125,6 +126,7 @@ title: 测试
 ```
 
 #### Day 2: bm25_index.py（1小时）
+
 ```python
 # test_bm25_unit.py
 class TestBM25Index:
@@ -177,6 +179,7 @@ class TestBM25Index:
 ```
 
 #### Day 3-4: global_config.py（补全）（1小时）
+
 ```python
 # test_global_config_unit.py
 class TestGlobalConfigManager:
@@ -209,6 +212,7 @@ class TestGlobalConfigManager:
 ### Week 2: Phase 2 - 核心算法
 
 #### Day 1-2: graph.py（2小时）
+
 ```python
 # test_graph_unit.py
 class TestKnowledgeGraph:
@@ -257,6 +261,7 @@ class TestKnowledgeGraph:
 ```
 
 #### Day 3-4: kb_manager.py（2小时）
+
 ```python
 # test_kb_manager_unit.py
 class TestKnowledgeBaseManager:
@@ -292,6 +297,7 @@ class TestKnowledgeBaseManager:
 ### Week 3: Phase 3 - 业务逻辑
 
 #### Day 1-2: template.py（1.5小时）
+
 ```python
 # test_template_unit.py
 class TestTemplateManager:
@@ -333,6 +339,7 @@ class TestTemplateManager:
 ```
 
 #### Day 3-4: indexer.py（1.5小时）
+
 ```python
 # test_indexer_unit.py
 class TestIndexer:

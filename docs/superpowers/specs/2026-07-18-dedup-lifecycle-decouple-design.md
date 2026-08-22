@@ -26,11 +26,13 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 ## 2. 目标 / 非目标
 
 **目标**
+
 - `note.py` / `global_config.py` 零 `gem_synth.dedup` import（核心层零反向依赖）。
 - dedup 生命周期同步行为完全不变（delete/archive/promote/reject 后 dedup 表状态一致）。
 - 现有 dedup 测试行为覆盖不回归。
 
 **非目标**
+
 - **不修** `rename_knowledge_base` 的 `dedup_embeddings.kb` 迁移（#310 验收第 3 条 deferred）：依据 KB 笔记 `...705752` 决策——用户不重命名 KB，`jfox gem-synth dedup-backfill` 可兜底。记为已知限制。
 - 不改 dedup 算法 / threshold / 配置。
 - 不改 `dedup_embeddings` schema。
@@ -42,6 +44,7 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 ### 3.1 note.py 注册表（新，零 gem_synth 依赖）
 
 `note.py` 加模块级注册表 + 三个 API：
+
 - `register_lifecycle_hook(event: str, callback: Callable) -> None`（幂等：重复注册同一 callback 不叠加）
 - `unregister_lifecycle_hook(event: str, callback: Callable) -> None`（取消注册，主要用于测试清理）
 - `_dispatch(event: str, **payload) -> None`：遍历该 event 的回调，每个独立 `try/except logger.warning`（保持现有「dedup 同步失败仅 warning 不阻塞」语义）
@@ -70,6 +73,7 @@ PR #308 给 gem-synth 加 dedup 时，把"笔记生命周期 → 同步 dedup �
 ### 3.4 注册时机（关键设计点）
 
 `gem_synth.lifecycle.register()` 由 **`jfox/__init__.py` 模块级**调用一次（实施期 cc 审查驱动从 cli.py 上移，覆盖库式调用方）。理由：
+
 - `__init__` 是包顶层，任何 `import jfox.*`（CLI、库式 `from jfox.note import ...`、daemon/脚本）都触发包加载 → 订阅就位，无隐式调用顺序耦合。
 - `__init__ → gem_synth` 是包顶层依赖，合规（验收只禁 `note.py`/`global_config.py` 反向依赖）。
 - daemon 进程（gem-synth loop）入口本就 import `gem_synth`，由其 import 链覆盖（writing-plans 阶段 grep 确认 daemon 入口触发 register，必要时在 daemon 启动显式调）。

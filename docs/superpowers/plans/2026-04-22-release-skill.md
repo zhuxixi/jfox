@@ -25,6 +25,7 @@ No existing files are modified.
 ### Task 1: release_helper.py — Version Calculation
 
 **Files:**
+
 - Create: `.claude/skills/release/release_helper.py`
 - Test: `tests/unit/test_release_helper.py`
 
@@ -512,6 +513,7 @@ git commit -m "feat(skills): add release helper script with version bump and CHA
 ### Task 2: SKILL.md — Release Skill 指令文件
 
 **Files:**
+
 - Create: `.claude/skills/release/SKILL.md`
 
 - [ ] **Step 1: Create SKILL.md**
@@ -531,10 +533,12 @@ description: Release a new version of jfox. Bumps version, generates CHANGELOG, 
 ## 用法
 
 ```
+
 /release 0.5.0          # 指定具体版本号
 /release patch          # bump patch: 0.4.1 → 0.4.2
 /release minor          # bump minor: 0.4.1 → 0.5.0
 /release major          # bump major: 0.4.1 → 1.0.0
+
 ```
 
 ## 执行流程
@@ -688,6 +692,7 @@ GitHub Actions 将自动发布到 PyPI。
 - **不使用 `--no-verify`**，保持 pre-commit hook 正常运行
 - **始终在新分支操作**，不直接修改 main
 - **每个确认点都必须等待**，不自动跳过
+
 ```
 
 - [ ] **Step 2: Test the skill invocation**
@@ -699,6 +704,7 @@ head -5 .claude/skills/release/SKILL.md
 ```
 
 期望看到：
+
 ```
 ---
 name: release

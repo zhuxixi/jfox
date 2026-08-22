@@ -5,7 +5,7 @@
 
 ## 1. 背景
 
-#396 的乐观并发控制（filelock + write_version + 增量重放 + tmp 孤儿信号）合并后，cc round-4 复审发现 7 条边界问题。本 spec 覆盖全部 7 条的修法。
+PR #396 的乐观并发控制（filelock + write_version + 增量重放 + tmp 孤儿信号）合并后，cc round-4 复审发现 7 条边界问题。本 spec 覆盖全部 7 条的修法。
 
 ## 2. 修复项与方案
 

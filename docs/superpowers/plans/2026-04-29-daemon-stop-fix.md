@@ -25,6 +25,7 @@
 ### Task 1: Add /shutdown endpoint to server.py
 
 **Files:**
+
 - Modify: `jfox/daemon/server.py`
 
 - [ ] **Step 1: Add global `_server` variable and `/shutdown` endpoint**
@@ -94,6 +95,7 @@ git commit -m "feat(daemon): add /shutdown endpoint for graceful stop"
 ### Task 2: Add _http_shutdown() helper and rewrite stop_daemon()
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py`
 
 - [ ] **Step 1: Add `_http_shutdown()` helper**
@@ -189,6 +191,7 @@ def stop_daemon() -> bool:
 ```
 
 Key differences from the old version:
+
 - `/shutdown` HTTP call is tried first (lines after "优先通过 HTTP")
 - Health check loop after `/shutdown` waits up to 3 seconds
 - If PID is 0, fetches real PID from `/health` response (the "Bug 1" fix)
@@ -212,6 +215,7 @@ git commit -m "fix(daemon): rewrite stop_daemon with HTTP-first shutdown"
 ### Task 3: Fix CLI to check stop_daemon() return value
 
 **Files:**
+
 - Modify: `jfox/cli.py:2657-2663`
 
 - [ ] **Step 1: Update daemon stop branch to check return value**

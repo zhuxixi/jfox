@@ -23,9 +23,10 @@
 
 ---
 
-### Task 1: model_downloader.py — 常量和 _check_cached 重构
+### Task 1: model_downloader.py — 常量和_check_cached 重构
 
 **Files:**
+
 - Modify: `jfox/model_downloader.py:1-282`
 - Test: `tests/unit/test_model_downloader.py`
 
@@ -99,9 +100,10 @@ git commit -m "refactor(model_downloader): split _check_cached into HF hub + loc
 
 ---
 
-### Task 2: model_downloader.py — _try_hf_hub_download 移除镜像站参数
+### Task 2: model_downloader.py —_try_hf_hub_download 移除镜像站参数
 
 **Files:**
+
 - Modify: `jfox/model_downloader.py:109-163`
 - Test: `tests/unit/test_model_downloader.py`
 
@@ -197,6 +199,7 @@ def ensure_cached(self) -> bool:
 1. 删除 `from jfox.model_downloader import _HF_MIRROR` 行，改为 `from jfox.model_downloader import _DEFAULT_MIRROR, ModelDownloader`
 
 2. 更新 `test_ensure_cached_step1_succeeds`：
+
 ```python
 def test_ensure_cached_step1_succeeds(self, downloader):
     with patch.object(downloader, "_try_hf_hub_download", return_value=True) as mock_hf:
@@ -209,7 +212,8 @@ def test_ensure_cached_step1_succeeds(self, downloader):
                 mock_curl.assert_not_called()
 ```
 
-3. 更新 `test_ensure_cached_step1_fails_step2_succeeds`（原 Step 1 失败，Step 2 成功）：
+1. 更新 `test_ensure_cached_step1_fails_step2_succeeds`（原 Step 1 失败，Step 2 成功）：
+
 ```python
 def test_ensure_cached_step1_fails_step2_succeeds(self, downloader):
     with patch.object(downloader, "_try_hf_hub_download", return_value=False) as mock_hf:
@@ -222,7 +226,8 @@ def test_ensure_cached_step1_fails_step2_succeeds(self, downloader):
                 mock_curl.assert_not_called()
 ```
 
-4. 更新 `test_ensure_cached_step1_2_fail_step3_succeeds`（原 Step 1/2 失败，Step 3 成功）：
+1. 更新 `test_ensure_cached_step1_2_fail_step3_succeeds`（原 Step 1/2 失败，Step 3 成功）：
+
 ```python
 def test_ensure_cached_step1_2_fail_step3_succeeds(self, downloader):
     with patch.object(downloader, "_try_hf_hub_download", return_value=False) as mock_hf:
@@ -235,7 +240,8 @@ def test_ensure_cached_step1_2_fail_step3_succeeds(self, downloader):
                 mock_curl.assert_called_once()
 ```
 
-5. 更新 `test_ensure_cached_all_fail`：
+1. 更新 `test_ensure_cached_all_fail`：
+
 ```python
 def test_ensure_cached_all_fail(self, downloader):
     with patch.object(downloader, "_try_hf_hub_download", return_value=False):
@@ -245,7 +251,7 @@ def test_ensure_cached_all_fail(self, downloader):
                 assert result is False
 ```
 
-6. 删除 `test_try_hf_hub_download_sets_env`（endpoint 逻辑已移除）
+1. 删除 `test_try_hf_hub_download_sets_env`（endpoint 逻辑已移除）
 
 - [ ] **Step 4: 运行更新后的测试**
 
@@ -262,9 +268,10 @@ git commit -m "refactor(model_downloader): remove hf-mirror endpoint param, rest
 
 ---
 
-### Task 3: model_downloader.py — 新增 _try_modelscope_http
+### Task 3: model_downloader.py — 新增_try_modelscope_http
 
 **Files:**
+
 - Modify: `jfox/model_downloader.py`
 - Test: `tests/unit/test_model_downloader.py`
 
@@ -386,9 +393,10 @@ git commit -m "feat(model_downloader): add ModelScope HTTP download step"
 
 ---
 
-### Task 4: model_downloader.py — _try_curl_download 改造为 ModelScope
+### Task 4: model_downloader.py —_try_curl_download 改造为 ModelScope
 
 **Files:**
+
 - Modify: `jfox/model_downloader.py:165-270`
 - Test: `tests/unit/test_model_downloader.py`
 
@@ -534,6 +542,7 @@ git commit -m "feat(model_downloader): curl download from ModelScope API to loca
 ### Task 5: model_downloader.py — 日志级别提升和 get_manual_instructions 更新
 
 **Files:**
+
 - Modify: `jfox/model_downloader.py`
 - Test: `tests/unit/test_model_downloader.py`
 
@@ -599,6 +608,7 @@ git commit -m "feat(model_downloader): upgrade log level to warning, update manu
 ### Task 6: embedding_backend.py — 本地路径加载支持
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py`
 - Create: `tests/unit/test_embedding_local_load.py`
 
@@ -732,6 +742,7 @@ git commit -m "feat(embedding_backend): support loading model from local directo
 ### Task 7: process.py — 阻断启动和本地目录预检
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py`
 - Test: `tests/unit/test_daemon_process.py`
 
@@ -857,6 +868,7 @@ git commit -m "feat(daemon): block startup on download failure, check local mode
 ### Task 8: 集成验证
 
 **Files:**
+
 - All modified files
 
 - [ ] **Step 1: 运行 model_downloader 全部单元测试**
@@ -886,6 +898,7 @@ Expected: 全部 PASS，无新增失败
 - [ ] **Step 5: 格式化和 lint**
 
 Run:
+
 ```bash
 uv run black jfox/ tests/
 uv run ruff check jfox/ tests/
@@ -905,6 +918,7 @@ git commit -m "feat: replace hf-mirror.com with ModelScope, fix #225 startup fai
 ## Self-Review
 
 **Spec coverage:**
+
 - [x] 替换下载源 hf-mirror.com → ModelScope — Task 3, 4
 - [x] 修复报错体验（阻断启动）— Task 7 Step 1
 - [x] 提升日志级别 — Task 5 Step 1
@@ -917,11 +931,13 @@ git commit -m "feat: replace hf-mirror.com with ModelScope, fix #225 startup fai
 **Placeholder scan:** 无 TBD、TODO、"implement later"、"add appropriate error handling"。所有步骤包含完整代码。
 
 **Type consistency:**
+
 - `_try_hf_hub_download()` 签名统一为无 `endpoint` 参数
 - `_get_local_model_path()` 返回 `Path` 或 `None`，在 `load()` 中统一检查
 - `_MODELSCOPE_API_TEMPLATE` 格式在 Task 3 和 Task 4 中一致
 
 **测试覆盖:**
+
 - ModelScope HTTP 下载成功/失败/自定义镜像
 - curl ModelScope 下载成功/自定义镜像
 - 日志级别变更验证（通过 mock 确认 warning 被调用）

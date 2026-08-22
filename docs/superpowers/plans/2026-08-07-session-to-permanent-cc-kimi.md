@@ -21,15 +21,18 @@
 ## File Structure
 
 **新增：**
+
 - `packages/cc-plugin/skills/session-to-permanent/SKILL.md` — CC 版（无前缀）
 - `packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md` — Kimi 版（jfox- 前缀）
 
 **修改：**
+
 - `packages/cc-plugin/skills/using-jfox/SKILL.md` — 路由表 + 职责列表 + 会话沉淀工作流
 - `packages/kimi-plugin/README.md` — 9→10 skill 表 + 文件结构树 + 差异表核心技能清单
 - `packages/kimi-plugin/skills/using-jfox/SKILL.md` — 术语映射表 + 跨 skill 引用语法
 
 **只读基底/参照：**
+
 - `skills-recommend/pi/jfox-session-to-permanent/SKILL.md`（pi 范本，#366）
 - `packages/cc-plugin/skills/session-summary/SKILL.md`、`packages/kimi-plugin/skills/jfox-session-summary/SKILL.md`（frontmatter 风格参照）
 
@@ -38,6 +41,7 @@
 ## Task 0: 落 spec + plan 进 worktree（首 commit）
 
 **Files:**
+
 - Create: `docs/superpowers/specs/2026-08-07-session-to-permanent-cc-kimi-design.md`（从 `~/.claude/.../spec.md` 搬入）
 - Create: `docs/superpowers/plans/2026-08-07-session-to-permanent-cc-kimi.md`（从 `~/.claude/.../plan.md` 搬入）
 
@@ -50,12 +54,14 @@
 ## Task 1: CC 版 SKILL.md
 
 **Files:**
+
 - Create: `packages/cc-plugin/skills/session-to-permanent/SKILL.md`
 - 只读基底: `skills-recommend/pi/jfox-session-to-permanent/SKILL.md`
 
 **Interfaces:** 产出 CC 版完整 SKILL.md；Task 3 同步 `using-jfox` 时引用本 skill 名 `session-to-permanent`。
 
 **改动点（相对 pi 范本，逐条）：**
+
 1. frontmatter `name: jfox-session-to-permanent` → `name: session-to-permanent`（CC 无前缀）；description 英文+触发词保持不变
 2. 正文所有 `/skill:jfox-common` → `/jfox:manage`（§4.1/§4.2/§4.5/§6 共享约定、add 参数、写入验证、daemon）
 3. `/skill:jfox-promote` → `/jfox:promote`（含 §6 suggest-links 误命中坑引用）
@@ -66,6 +72,7 @@
 8. 命令示例 `--json` 保持不变（与 `/jfox:manage` §4.1 公共约定一致）
 
 **验证（grep，worktree 根目录）：**
+
 - `grep -rn '/skill:jfox' packages/cc-plugin/skills/session-to-permanent/` → 零命中
 - `grep -rn 'question(' packages/cc-plugin/skills/session-to-permanent/` → 零命中
 - `grep -rn '/jfox:manage\|/jfox:promote\|/jfox:organize' packages/cc-plugin/skills/session-to-permanent/` → 有命中
@@ -80,10 +87,12 @@
 ## Task 2: Kimi 版 SKILL.md
 
 **Files:**
+
 - Create: `packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md`
 - 只读基底: 同 Task 1
 
 **改动点（相对 pi 范本）：**
+
 1. frontmatter `name: jfox-session-to-permanent`（Kimi 带前缀，与 pi 同名、目录不同）；description 保持
 2. 正文所有 `/skill:jfox-common` → `/skill:jfox-manage`（Kimi 无 common，对应 manage）
 3. `/skill:jfox-promote`、`/skill:jfox-organize` → 保持（Kimi 也是这名）
@@ -93,6 +102,7 @@
 7. 命令 `--json` 保持
 
 **验证（grep）：**
+
 - `grep -rn '/skill:jfox-common' packages/kimi-plugin/skills/jfox-session-to-permanent/` → 零命中（Kimi 无 common）
 - `grep -rn 'question(' packages/kimi-plugin/skills/jfox-session-to-permanent/` → 零命中
 - `grep -rn '/skill:jfox-manage\|/skill:jfox-promote\|/skill:jfox-organize' packages/kimi-plugin/skills/jfox-session-to-permanent/` → 有命中
@@ -109,6 +119,7 @@
 **Files:** Modify `packages/cc-plugin/skills/using-jfox/SKILL.md`
 
 **改动：**
+
 1. 路由表「我该用哪个 skill」（当前 5 行）加第 6 行：
    `| 从当前会话提炼可复用知识为 permanent | \`session-to-permanent\` | 提炼到永久笔记 / session to permanent |`
 2. 「N 个 skill 一句话职责」5 → 6，在 session-summary 后加：
@@ -117,6 +128,7 @@
    `2. **会话沉淀**：会话末尾按需选择——\`session-summary\`（整段对话存档）或 \`session-to-permanent\`（提炼可复用知识为 permanent，先去重再审阅落库）。`
 
 **验证：**
+
 - `grep -c 'session-to-permanent' packages/cc-plugin/skills/using-jfox/SKILL.md` → ≥3
 
 - [ ] Step 1: 三处 Edit
@@ -130,17 +142,21 @@
 **Files:** Modify `packages/kimi-plugin/README.md`
 
 **改动：**
+
 1. 第 7 行「9 个核心 skill」→「10 个核心 skill」
 2. 功能表在 `jfox-session-summary` 行后加：
    `| \`jfox-session-to-permanent\` | 从当前会话提炼可复用知识为 permanent（先去重、审阅后落库） | "提炼到永久笔记"、"session to permanent" |`
 3. 文件结构树在 `jfox-session-summary/` 块后加：
+
    ```
        ├── jfox-session-to-permanent/
        │   └── SKILL.md
    ```
+
 4. 「与 Claude Code 插件的差异」表「核心技能」行：CC 列追加 `session-to-permanent`，Kimi 列追加 `jfox-session-to-permanent`
 
 **验证：**
+
 - `grep -c 'jfox-session-to-permanent' packages/kimi-plugin/README.md` → ≥3
 - `grep '10 个核心 skill' packages/kimi-plugin/README.md` → 有命中
 
@@ -155,12 +171,14 @@
 **Files:** Modify `packages/kimi-plugin/skills/using-jfox/SKILL.md`
 
 **改动：**
+
 1. 术语映射表（当前 6 行）在 `保存会话` 行后加：
    `| 会话提炼永久笔记、session to permanent | \`/skill:jfox-session-to-permanent\` |`
 2. 「跨 Skill 引用语法」列表在 `/skill:jfox-session-summary` 后加：
    `/skill:jfox-session-to-permanent`
 
 **验证：**
+
 - `grep -c 'jfox-session-to-permanent' packages/kimi-plugin/skills/using-jfox/SKILL.md` → ≥2
 
 - [ ] Step 1: 两处 Edit

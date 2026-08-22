@@ -149,10 +149,12 @@ except Exception as e:
 模式1 砍掉精确和高度相似两档后，剩下的 candidate 会聚成若干主题簇（或小积压直接从这里开始）。对每个簇，先判断它讲的内容是否已被现有 permanent 覆盖（这就是「冗余」维度），再决定怎么处置：
 
 1. **查是否已被现有 permanent 覆盖**：
+
    ```bash
    jfox search "<簇主题关键词>" --type permanent
    jfox suggest-links "<簇代表正文>" --format json   # 阈值可放宽到 0.4–0.5
    ```
+
 2. **已被覆盖**：在簇里保留 grounding 最扎实、信息最完整的一条（keep-best），其余 reject。`grounding` 指 candidate 合成时依据的永久笔记，grounding 扎实意味着它的来源更可靠。
 3. **未被覆盖**：把簇内多条 candidate 改写、合并成一条新的 permanent（promote-merge）。
 

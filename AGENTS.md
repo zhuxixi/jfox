@@ -11,6 +11,7 @@
 - **技术特点**: 纯 CPU 运行，无需 GPU/NPU，数据完全本地存储
 
 ### 为什么叫 JFox？
+
 - **J** - 创始人名字 "Jiefeng" 的首字母
 - **Fox** - 谐音 "Box"（盒子），呼应卡片盒本质；狐狸象征聪明、机敏
 
@@ -192,6 +193,7 @@ class GemLevel(str, Enum):
 ```
 
 各类型文件名格式：
+
 - `fleeting`: `YYYYMMDD-HHMMSS.md`
 - `literature`: `YYYYMMDDHHMMSS-{slug}.md`
 - `permanent`: `YYYYMMDDHHMMSS-{slug}.md`
@@ -252,6 +254,16 @@ topic: null                    # 会话主题（仅 session 类型）
 - 使用 try-except 捕获具体异常
 - 记录错误日志（logging）
 - CLI 命令返回结构化错误（JSON 格式）
+
+### Markdown 风格约定
+
+- **工具**: markdownlint-cli2 v0.23.2（Node 版），配置在根目录 `.markdownlint-cli2.jsonc`
+- **规则基线**: markdownlint 默认规则集，禁用项及理由见配置文件注释（行宽、表格对齐、fence 语言、粗体标题、内联 HTML、标题跳级等）
+- **本地命令**:
+  - 检查：`npx --yes markdownlint-cli2`
+  - 自动修复：`npx --yes markdownlint-cli2 --fix`
+- **CI 门禁**: lint job 含 markdownlint 步骤，所有 git 跟踪的 md 文件必须通过（含 docs/、skills-recommend/）
+- **AI 生成文档**（docs/superpowers/plans、specs）同样受此约束，生成后需 lint 通过才能合入
 
 ## 测试策略
 
@@ -487,6 +499,7 @@ class OutputFormatter:
 📋 **完整会话历史**: [SESSION.md](./SESSION.md)
 
 > 最近3个 session 摘要：
+>
 > - **Session 2** (2026-03-25): 修复 Windows Unicode 编码问题，改进 list table 格式
 > - **Session 1** (2026-03-25): 通过 `/init` 命令生成 AGENTS.md 项目指南
 

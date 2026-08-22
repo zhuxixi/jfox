@@ -49,17 +49,22 @@ jfox inbox --json --limit 50
 
 1. **分析**：阅读分组内的 fleeting 笔记，提取核心知识点
 2. **查找关联**：
+
    ```bash
    jfox suggest-links "<提炼后的内容摘要>" --format json
    ```
+
    筛选 score >= 0.6 的关联笔记
 3. **生成 permanent 笔记**：将核心知识点整理为结构化内容，嵌入 `[[wiki links]]` 关联到已有笔记
 4. **批量交叉链接**：如果同一批正在创建多条 permanent 笔记，在它们之间也添加 `[[links]]`
 5. **插入**：
+
    ```bash
    jfox add "<包含 [[links]] 的内容>" --title "<标题>" --type permanent --tag <tag1> --tag <tag2> [--kb <name>]
    ```
+
 6. **删除源 fleeting**：
+
    ```bash
    jfox delete <原始-id> --force
    ```
@@ -85,10 +90,13 @@ jfox graph --orphans --json
 
 1. 获取笔记内容
 2. 查找关联：
+
    ```bash
    jfox suggest-links "<内容>" --format json
    ```
+
 3. 如果有匹配度 >= 0.6 的结果，建议添加链接：
+
    ```bash
    jfox edit <孤立笔记_id> --content "原内容... [[相关笔记标题]]"
 

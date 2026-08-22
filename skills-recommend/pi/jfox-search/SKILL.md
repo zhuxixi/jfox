@@ -59,6 +59,7 @@ Parse JSON output and present as:
 ### Graph-Aware Search
 
 For exploring connections around a topic:
+
 ```bash
 jfox query "<topic>" --top 10 --depth 2 --json
 ```
@@ -68,6 +69,7 @@ Returns both search results AND their graph neighbors for broader knowledge land
 ### Backlink Discovery
 
 Find what references a specific note:
+
 ```bash
 jfox refs --search "<title>" --json
 ```
@@ -75,6 +77,7 @@ jfox refs --search "<title>" --json
 ### Link Recommendations
 
 Find notes that should be linked from given content:
+
 ```bash
 jfox suggest-links "<content>" --top 10 --threshold 0.6 --json
 ```
@@ -104,6 +107,7 @@ jfox refs --note "<note-id>" --json
 ## Multi-KB Search
 
 All search commands support `--kb <name>` to target a specific KB:
+
 ```bash
 jfox search "<query>" --kb work --json
 ```

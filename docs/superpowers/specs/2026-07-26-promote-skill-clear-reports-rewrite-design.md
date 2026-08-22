@@ -20,11 +20,13 @@ promote（cc）+ jfox-promote（kimi）两个 SKILL.md 是 #340 评估的 P0 重
 ## 2. 目标 / 非目标
 
 **目标**
+
 - 按 clear-reports 七规则重写 promote / jfox-promote 的**散文解释层**。
 - cc/kimi 两版过审核心（§0–§7 + 关键约束）同步、风格一致；kimi 另保留「监控 L3 合成 / 命令参考 / 错误处理 / 使用建议」等独有章节（见 §7 表）。cc promote 自身无跨 skill 引用。
 - 本 spec 文档本身按 clear-reports 写（示范 + 防下次飘）。
 
 **非目标**
+
 - 不改命令块；Python 脚本（dedup_scan、clean_for_promote）的逻辑 / 控制流 / 变量名原样保留，仅 print 输出标签和代码注释随去重档改名同步（避免散文叫「高度相似」、脚本输出叫「L2」的新不一致）。
 - 不改触发词 / frontmatter / 错误处理表「场景-处理」骨架。
 - 不改工作流步骤顺序与判定逻辑（只改表达，不改行为）。

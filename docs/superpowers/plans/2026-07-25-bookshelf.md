@@ -45,12 +45,14 @@
 ### Task 1: meta.py — BookMeta + 构造器
 
 **Files:**
+
 - Create: `jfox/bookshelf/__init__.py`
 - Create: `jfox/bookshelf/meta.py`
 - Create: `tests/unit/bookshelf/__init__.py`（空）
 - Test: `tests/unit/bookshelf/test_meta.py`
 
 **Interfaces:**
+
 - Produces: `BookMeta`、`build_meta_from_bundle`、`normalize_user_meta`、`SCHEMA_VERSION`（Task 2/3/4 依赖）。
 
 - [ ] **Step 1: 写失败测试** `tests/unit/bookshelf/test_meta.py`
@@ -326,11 +328,13 @@ git commit -m "feat(bookshelf): meta schema + BookMeta (#325)"
 ### Task 2: store.py 读侧（list/get/page）
 
 **Files:**
+
 - Create: `jfox/bookshelf/store.py`
 - Create: `tests/unit/bookshelf/conftest.py`
 - Test: `tests/unit/bookshelf/test_store.py`
 
 **Interfaces:**
+
 - Consumes: `BookMeta`（Task 1）。
 - Produces: `BookShelf`（读方法）、`BookNotFoundError`、`InvalidBundleError`、`BookAlreadyExistsError`、常量、`make_book_folder` fixture（Task 3/4/5/6 用）。
 
@@ -571,11 +575,13 @@ git commit -m "feat(bookshelf): BookShelf read side + test fixture (#325)"
 ### Task 3: store.py 写侧（add + remove）
 
 **Files:**
+
 - Modify: `jfox/bookshelf/store.py`（顶部 imports + 追加 `add`/`remove`/helpers）
 - Modify: `jfox/bookshelf/__init__.py`（导出 `BookShelf`）
 - Test: `tests/unit/bookshelf/test_store.py`（追加写侧用例）
 
 **Interfaces:**
+
 - Produces: `BookShelf.add` / `BookShelf.remove`（Task 4 cli 依赖）。
 
 - [ ] **Step 1: 追加失败测试**（`tests/unit/bookshelf/test_store.py` 末尾）
@@ -841,11 +847,13 @@ git commit -m "feat(bookshelf): BookShelf add/remove (#325)"
 ### Task 4: cli.py sub-app + add 命令 + 接线
 
 **Files:**
+
 - Create: `jfox/bookshelf/cli.py`
 - Modify: `jfox/cli.py`（~L119 后注册 sub-app）
 - Test: `tests/unit/bookshelf/test_cli.py`
 
 **Interfaces:**
+
 - Consumes: `BookShelf.add`（Task 3）、`config`/`use_kb`（`jfox.config`）。
 - Produces: `bookshelf_app`（`jfox/cli.py` 注册）。
 
@@ -972,10 +980,13 @@ __all__ = ["bookshelf_app"]
 - [ ] **Step 4: 在 `jfox/cli.py` 注册 sub-app**（在 `gem-synth` 块之后，约 L119 后）
 
 定位现有：
+
 ```python
 app.add_typer(gem_synth_app, name="gem-synth", help="L3 宝石合成进度查看")
 ```
+
 在其后插入：
+
 ```python
 # bookshelf 子命令组（好书资产管理）
 from .bookshelf.cli import bookshelf_app  # noqa: E402
@@ -1002,10 +1013,12 @@ git commit -m "feat(bookshelf): cli sub-app + add command (#325)"
 ### Task 5: cli list + show
 
 **Files:**
+
 - Modify: `jfox/bookshelf/cli.py`（追加 `list_cmd`/`show_cmd`）
 - Test: `tests/unit/bookshelf/test_cli.py`（追加）
 
 **Interfaces:**
+
 - Produces: `bookshelf list`、`bookshelf show`。
 
 - [ ] **Step 1: 追加失败测试**
@@ -1148,10 +1161,12 @@ git commit -m "feat(bookshelf): list + show commands (#325)"
 ### Task 6: cli remove
 
 **Files:**
+
 - Modify: `jfox/bookshelf/cli.py`（追加 `remove_cmd`）
 - Test: `tests/unit/bookshelf/test_cli.py`（追加）
 
 **Interfaces:**
+
 - Produces: `bookshelf remove`。
 
 - [ ] **Step 1: 追加失败测试**
@@ -1237,6 +1252,7 @@ git commit -m "feat(bookshelf): remove command (#325)"
 ### Task 7: cc-plugin skill + CLAUDE.md + 冒烟
 
 **Files:**
+
 - Create: `packages/cc-plugin/skills/bookshelf/SKILL.md`
 - Modify: `CLAUDE.md`（模块表加 bookshelf 行）
 - Test: `tests/unit/bookshelf/test_cli.py`（追加 `--help` 冒烟）
@@ -1284,10 +1300,12 @@ description: |
 - jfox 已安装（`jfox --version`）
 - 一本书的文件夹，结构：
   ```
+
   <folder>/
     bundle/              # scan2book 产物（含 manifest.json + pages/pNNN.md + images/）
     original.pdf         # 原件（可选）
     meta.json            # 可选；不给则 jfox 从 bundle manifest 脚手架生成
+
   ```
 - scan2book（如需自己抽 bundle）：需 GPU，在 GPU 机器上跑 `scan2book <pdf> --out <dir>`，
   再把产出的文件夹交给 `jfox bookshelf add`。jfox 本身**不调 scan2book、不需 GPU**。
@@ -1319,10 +1337,13 @@ description: |
 - [ ] **Step 4: 改 `CLAUDE.md` 模块表**（在 `fragment/` 行后加一行）
 
 定位现有行：
+
 ```
 | `fragment/` | 碎片采集：detector 分类 + store SQLite(WAL) + service 编排 |
 ```
+
 在其后插入：
+
 ```
 | `bookshelf/` | 好书资产管理：store 文件夹 CRUD + meta jfox 自有元数据（wrap scan2book manifest）+ cli sub-app；纯文件管理不进索引 |
 ```
@@ -1364,4 +1385,5 @@ Plan complete and saved to `docs/superpowers/plans/2026-07-25-bookshelf.md`. 两
 
 1. **Subagent-Driven（推荐）** — 每个 task 派一个新 subagent，任务间两阶段 review，迭代快。
 2. **Inline Execution** — 当前 session 直接跑 executing-plans，批量执行带 checkpoint。
+
 ```

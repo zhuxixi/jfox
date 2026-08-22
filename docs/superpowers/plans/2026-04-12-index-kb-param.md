@@ -24,6 +24,7 @@ No other files need changes. `use_kb()` in `config.py` already handles singleton
 ### Task 1: Write failing test — nonexistent KB reports error
 
 **Files:**
+
 - Create: `tests/unit/test_index_kb_param.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -83,6 +84,7 @@ Expected: All 5 tests FAIL — `--kb` is rejected as an unknown option by Typer 
 ### Task 2: Add `--kb` parameter to `index()` command
 
 **Files:**
+
 - Modify: `jfox/cli.py:1588-1738`
 
 - [ ] **Step 1: Modify the `index()` function signature**
@@ -270,6 +272,7 @@ In the same function, replace lines 1598-1738 (from `"""索引管理..."""` to t
 ```
 
 **Key changes:**
+
 1. Added `kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称")` to signature
 2. Added `from .config import use_kb` and `with use_kb(kb):` wrapping all action branches
 3. All existing logic unchanged, just indented one level deeper inside the `with` block
@@ -285,6 +288,7 @@ Expected: Tests now fail with "not found" error messages (not "No such option") 
 ### Task 3: Add tests for successful `--kb` usage with a real KB
 
 **Files:**
+
 - Modify: `tests/unit/test_index_kb_param.py`
 
 - [ ] **Step 1: Add tests that use a real temp KB**
@@ -415,11 +419,13 @@ git commit -m "fix: add --kb parameter to jfox index command (#104)"
 ### Task 4: Update ZKCLI index methods to be explicit about `--kb`
 
 **Files:**
+
 - Modify: `tests/utils/jfox_cli.py:297-309`
 
 - [ ] **Step 1: Verify ZKCLI already handles --kb for index**
 
 The `ZKCLI._run()` method at line 94 already adds `--kb` for all commands except `init` and `kb`:
+
 ```python
 if cmd not in ("init", "kb") and self._initialized:
     if "--kb" not in args and "-k" not in args:
@@ -459,6 +465,7 @@ Expected: No errors.
 ## Self-Review
 
 **1. Spec coverage:**
+
 - `jfox index verify --kb <name>` works → Task 2 (implementation) + Task 3 (test)
 - `jfox index rebuild --kb <name>` works → Task 2 (implementation) + Task 3 (test)
 - `jfox index status --kb <name>` works → Task 2 (implementation) + Task 3 (test)

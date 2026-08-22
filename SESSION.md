@@ -18,6 +18,7 @@
 本次会话完成了 GitHub Actions CI/CD 配置的搭建和测试覆盖率现状分析。
 
 主要工作：
+
 1. 创建完整的 CI/CD 工作流 (.github/workflows/integration-test.yml)
    - 支持 Fast/Core/Full 三级测试策略
    - 解决 Windows 上 Unicode 编码错误 (PYTHONIOENCODING=utf-8)
@@ -44,23 +45,28 @@
 **修复 Windows 编码问题和测试失败**
 
 排查并修复了两个失败的测试：
+
 - `test_list_format_table`: Unicode 编码错误
 - `test_graph_stats_format_table`: Unicode 编码错误
 
 **问题原因:**
+
 - `cli.py` 中使用了 `•`（项目符号）字符，Windows GBK 编码无法处理
 - `list --format table` 输出格式不符合测试期望
 
 **修复内容:**
+
 - 将 12 处 `•` 替换为 ASCII 字符 `-`
 - Console 初始化添加 `legacy_windows=False` 参数
 - 改进 `list --format table` 输出为 Rich Table 格式（含 ID/Title/Type/Created 列）
 
 **其他工作:**
+
 - 安装 ZK-CLI 到全局目录（`pip install -e .`）
 - 查看现有 GitHub Issues，确认 #41 已包含知识库归档需求
 
 **提交:**
+
 - c9d924d - fix: Windows Unicode encoding issues and improve list table format
 
 ### Session 1 - 2026-03-25
@@ -68,6 +74,7 @@
 通过 `/init` 命令初始化项目 AGENTS.md 文档。
 
 **完成的工作:**
+
 - 使用系统 `/init` 命令自动分析代码库
 - 生成了完整的 AGENTS.md 项目指南，包含:
   - 项目概述（JFox / ZK CLI 介绍）
@@ -81,6 +88,7 @@
 - 提交 AGENTS.md 到仓库 (commit: cedc714)
 
 **涉及文件:**
+
 - `AGENTS.md` - 新增 AI Agent 项目指南
 
 ---

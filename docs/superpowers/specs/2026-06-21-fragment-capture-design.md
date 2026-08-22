@@ -72,6 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_frag_type    ON session_fragments(fragment_type, 
 ## 4. CC Hook 配置
 
 **`packages/cc-plugin/hooks/hooks.json`**：
+
 ```json
 {
   "description": "JFox 碎片采集 - 实时捕获 session 纠正/决策信号",
@@ -87,6 +88,7 @@ CREATE INDEX IF NOT EXISTS idx_frag_type    ON session_fragments(fragment_type, 
 ```
 
 **`fragment-capture.sh`**（哑管道，~15 行，永不阻塞 CC）：
+
 ```bash
 #!/usr/bin/env bash
 set -u
@@ -105,6 +107,7 @@ exit 0
 ## 5. Daemon API
 
 **`POST /api/fragment`** — body = CC 原始事件 JSON
+
 - 解析 `hook_event_name` → 调 `detector.classify()` 得 `fragment_type` + `content`
 - `store.insert(...)`（metadata_json 存完整原文）
 - 若 `Stop`：`store.session_summary(session_id)` 计算本轮各类型计数，写一条 `session_summary` 行，响应带 `message`
@@ -125,6 +128,7 @@ exit 0
 关键词放 `~/.zk_config.json` 的 `fragment_capture` 段，仿 `auto_summary` 先例，可改、可关（`enabled:false`）。
 
 ## 7. Stop 摘要输出
+
 daemon 在 Stop 响应里返回 `message`（如「本轮采集 12 碎片：纠正 3 / 决策 2 / 工具 7」）；hook 脚本打印一行到 stdout，满足验收「Stop 触发时输出本轮采集摘要」。完整明细在 `jfox fragments list --session <id>`。
 
 ## 8. 验收标准映射（issue 6 项）
@@ -139,9 +143,11 @@ daemon 在 Stop 响应里返回 `message`（如「本轮采集 12 碎片：纠�
 | < 100ms 不影响 CC | 实测 curl <10ms，有 `timeout` 兜底 |
 
 ## 9. 与原 issue 描述的偏离（实现说明里会注明）
+
 1. **检测在 daemon 服务端**（非 hook 端）—— 实测 Python 冷启动超 100ms。
 2. **hook 用 curl 非 `jfox fragment capture` 子进程** —— 同上。
 3. **首次引入应用层 SQLite** —— JFox 此前无 SQLite（`auto_summary` 用 JSON）。
 
 ## 10. 不做（Phase 2~5）
+
 Hermes 采集 / 碎片分析合成 / 候选笔记生成 / 宝石晋升 —— 后续 issue。

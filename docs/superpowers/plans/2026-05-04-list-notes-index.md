@@ -13,6 +13,7 @@
 ## Task 1: Create NoteMeta dataclass and NoteIndex skeleton
 
 **Files:**
+
 - Create: `jfox/note_index.py`
 - Test: `tests/unit/test_note_index.py`
 
@@ -465,9 +466,10 @@ git commit -m "feat: add NoteIndex with frontmatter-only metadata parsing (#190)
 
 ---
 
-## Task 2: Wire reset_note_index into use_kb and _reset_singletons
+## Task 2: Wire reset_note_index into use_kb and_reset_singletons
 
 **Files:**
+
 - Modify: `jfox/config.py:129-141` — `_reset_singletons()`
 
 - [ ] **Step 1: Add reset_note_index to _reset_singletons**
@@ -510,6 +512,7 @@ git commit -m "feat: wire reset_note_index into use_kb singleton reset (#190)"
 ## Task 3: Refactor list_notes() to use NoteIndex internally
 
 **Files:**
+
 - Modify: `jfox/note.py:149-203` — `list_notes()`
 
 - [ ] **Step 1: Write failing test for list_notes efficiency (verify limit+tags bug fix)**
@@ -648,6 +651,7 @@ git commit -m "refactor: list_notes() uses NoteIndex to reduce load_note calls (
 ## Task 4: Migrate find_note_id_by_title_or_id to NoteIndex
 
 **Files:**
+
 - Modify: `jfox/cli.py:239-261` — `find_note_id_by_title_or_id()`
 
 - [ ] **Step 1: Rewrite find_note_id_by_title_or_id to use NoteIndex**
@@ -765,6 +769,7 @@ git commit -m "refactor: find_note_id_by_title_or_id uses NoteIndex (#190)"
 ## Task 5: Migrate refs, daily, inbox to NoteIndex
 
 **Files:**
+
 - Modify: `jfox/cli.py:894-1000` — `_refs_impl`
 - Modify: `jfox/cli.py:1560-1600` — `_daily_impl`
 - Modify: `jfox/cli.py:1631-1660` — `_inbox_impl`

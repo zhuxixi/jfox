@@ -29,6 +29,7 @@
 ### Task 1: EmbeddingBackend 构造函数和 device 解析
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py:12-18` (EmbeddingBackend class)
 - Create: `tests/test_embedding_device.py`
 
@@ -300,6 +301,7 @@ git commit -m "feat: add device auto-detection and model selection to EmbeddingB
 ### Task 2: Config 默认值变更
 
 **Files:**
+
 - Modify: `jfox/config.py:32-33` (ZKConfig default values)
 - Modify: `tests/test_config_unit.py:49-51,94,124,147` (update assertions)
 
@@ -353,6 +355,7 @@ git commit -m "refactor: change config defaults to 'auto' for embedding model se
 ### Task 3: MockEmbeddingBackend 适配 + get_backend 测试
 
 **Files:**
+
 - Modify: `tests/conftest.py:64-80` (MockEmbeddingBackend)
 - Modify: `tests/test_embedding_device.py` (add get_backend tests)
 
@@ -454,6 +457,7 @@ git commit -m "test: add get_backend config tests and update MockEmbeddingBacken
 ### Task 4: CLI `config set` 命令
 
 **Files:**
+
 - Modify: `jfox/cli.py` (add config command)
 - Create: `tests/test_config_set_unit.py`
 
@@ -684,6 +688,7 @@ git commit -m "feat: add 'jfox config set' command for device/model configuratio
 ### Task 5: CLI `status` 显示实际设备信息
 
 **Files:**
+
 - Modify: `jfox/cli.py:572-621` (_status_impl function)
 
 - [ ] **Step 1: Update _status_impl to show actual device info**
@@ -736,6 +741,7 @@ git commit -m "fix: show actual device info in jfox status instead of hardcoded 
 ### Task 6: Daemon 改造 — 读 config + /health 报告设备
 
 **Files:**
+
 - Modify: `jfox/daemon/server.py:24-37,45-49,76-84`
 - Modify: `jfox/daemon/process.py:208-226` (get_daemon_status)
 

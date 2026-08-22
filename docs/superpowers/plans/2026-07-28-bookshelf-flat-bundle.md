@@ -9,6 +9,7 @@
 **Tech Stack:** Python ≥3.10，Typer CLI，pytest（已有 `make_book_folder` fixture + `cli_fast`）。
 
 ## Global Constraints
+
 - 注释/文档中文；行宽 100（black + ruff）。
 - 目的地恒为 `<kb>/bookshelf/<slug>/{meta.json, bundle/{manifest.json, pages/, images/}, <original>?}`，**不改**。
 - meta schema 不变（`BookMeta` / `build_meta_from_bundle` / `normalize_user_meta` 字段不动）。
@@ -21,6 +22,7 @@
 ---
 
 ## File Structure
+
 - **Modify** `jfox/bookshelf/store.py` — 加 `_sha256_of`、`_detect_bundle`、`_copy_bundle_whitelist`、`_resolve_original`、`_remove_consumed_sources`；收紧 `_find_original`；`add()` 改用新助手 + 加 `original` 参数。
 - **Modify** `jfox/bookshelf/cli.py` — `add_cmd` 加 `--original` flag，透传 `shelf.add(..., original=...)`。
 - **Modify** `tests/unit/bookshelf/conftest.py` — `make_book_folder` 加 `layout` + `with_process_files` 参数。
@@ -32,10 +34,12 @@
 ### Task 1: 扩展 `make_book_folder` fixture 支持扁平布局 + 过程文件
 
 **Files:**
+
 - Modify: `tests/unit/bookshelf/conftest.py`
 - Test: `tests/unit/bookshelf/test_store.py`（新增 `test_make_book_folder_flat_layout`）
 
 **Interfaces:**
+
 - Produces: `make_book_folder(layout="wrapped"|"flat", with_process_files=False)`。`layout="flat"` 时 manifest/pages/images 直接落在 `folder/` 顶层（无 `bundle/` 子目录）；`with_process_files=True` 在 `folder/` 顶层写 `checkpoint.json / qa_report.json / qa_review.html`。默认 `layout="wrapped"` 不破坏现有 wrapped 测试。
 
 - [ ] **Step 1: Write the failing test**
@@ -145,10 +149,12 @@ git commit -m "test(bookshelf): #349 make_book_folder 支持 flat 布局 + 过�
 ### Task 2: `_detect_bundle` 布局探测助手
 
 **Files:**
+
 - Modify: `jfox/bookshelf/store.py`（加 `_detect_bundle` 静态方法）
 - Test: `tests/unit/bookshelf/test_store.py`
 
 **Interfaces:**
+
 - Produces: `BookShelf._detect_bundle(src_folder: Path) -> Path` — 返回 bundle 源目录（wrapped → `src_folder/bundle`；flat → `src_folder`）；都不在抛 `InvalidBundleError`。
 
 - [ ] **Step 1: Write the failing tests**
@@ -233,10 +239,12 @@ git commit -m "feat(bookshelf): #349 _detect_bundle 探测包装/扁平布局"
 ### Task 3: 收紧 `_find_original`（仅已知扩展名，去最大文件兜底）+ 抽 `_sha256_of`
 
 **Files:**
+
 - Modify: `jfox/bookshelf/store.py`（加模块级 `_sha256_of`；改 `_find_original`）
 - Test: `tests/unit/bookshelf/test_store.py`（改 `test_find_original_fallback_largest_when_no_known_ext`）
 
 **Interfaces:**
+
 - Produces: `_sha256_of(path: Path) -> str`（模块级）；`_find_original` 无候选时返回 `(None, None)`。
 - Consumes: 无（首个 store 改动）。
 
@@ -311,10 +319,12 @@ git commit -m "fix(bookshelf): #349 _find_original 仅认已知原件扩展名�
 ### Task 4: `add()` 改用 `_detect_bundle` + 白名单复制（核心）
 
 **Files:**
+
 - Modify: `jfox/bookshelf/store.py`（加 `BUNDLE_WHITELIST_FILES/DIRS` 常量 + `_copy_bundle_whitelist`；改 `add()` 的 manifest 定位与复制段）
 - Test: `tests/unit/bookshelf/test_store.py`
 
 **Interfaces:**
+
 - Consumes: Task 2 `_detect_bundle`、Task 3 `_find_original`。
 - Produces: `add()` 支持扁平布局；`_copy_bundle_whitelist(bundle_src, dest_bundle)`。
 
@@ -402,6 +412,7 @@ BUNDLE_WHITELIST_DIRS = ("pages", "images")
 在 `jfox/bookshelf/store.py` 的 `add()` 里：
 
 (a) 把开头的 manifest 定位段：
+
 ```python
         src_folder = Path(src_folder).expanduser().resolve()
         manifest_path = src_folder / BUNDLE_DIRNAME / MANIFEST_FILENAME
@@ -412,7 +423,9 @@ BUNDLE_WHITELIST_DIRS = ("pages", "images")
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 ```
+
 替换为：
+
 ```python
         src_folder = Path(src_folder).expanduser().resolve()
         bundle_src = self._detect_bundle(src_folder)
@@ -422,11 +435,14 @@ BUNDLE_WHITELIST_DIRS = ("pages", "images")
 ```
 
 (b) 把 stage 段里的整目录复制：
+
 ```python
             bundle_src = src_folder / BUNDLE_DIRNAME
             shutil.copytree(str(bundle_src), str(stage / BUNDLE_DIRNAME))
 ```
+
 替换为：
+
 ```python
             self._copy_bundle_whitelist(bundle_src, stage / BUNDLE_DIRNAME)
 ```
@@ -450,10 +466,12 @@ git commit -m "fix(bookshelf): #349 add 支持扁平布局 + 白名单复制跳�
 ### Task 5: `--original` flag（`_resolve_original` + `add()` 参数）
 
 **Files:**
+
 - Modify: `jfox/bookshelf/store.py`（加 `_resolve_original`；`add()` 加 `original` 参数）
 - Test: `tests/unit/bookshelf/test_store.py`
 
 **Interfaces:**
+
 - Consumes: Task 3 `_sha256_of`、`_find_original`。
 - Produces: `add(..., original: Optional[str]=None)`；`_resolve_original(src_folder, original) -> (orig_src_path, basename, sha)`。
 
@@ -525,6 +543,7 @@ Expected: FAIL（`TypeError: add() got an unexpected keyword argument 'original'
 - [ ] **Step 4: Wire `original` param into `add()`**
 
 (a) 改 `add()` 签名，在 `force: bool = False,` 之后加参数：
+
 ```python
     def add(
         self,
@@ -539,10 +558,13 @@ Expected: FAIL（`TypeError: add() got an unexpected keyword argument 'original'
 ```
 
 (b) 把原件解析行：
+
 ```python
         original_file, original_sha256 = self._find_original(src_folder)
 ```
+
 替换为：
+
 ```python
         orig_src_path, original_file, original_sha256 = self._resolve_original(
             src_folder, original
@@ -550,13 +572,16 @@ Expected: FAIL（`TypeError: add() got an unexpected keyword argument 'original'
 ```
 
 (c) 把 stage 段里复制原件的条件块：
+
 ```python
             if original_file:
                 orig_src = src_folder / original_file
                 if orig_src.exists():
                     shutil.copy2(str(orig_src), str(stage / original_file))
 ```
+
 替换为（用 `orig_src_path`，覆盖自动探测与 --original 两种来源）：
+
 ```python
             if original_file and orig_src_path is not None:
                 shutil.copy2(str(orig_src_path), str(stage / original_file))
@@ -579,10 +604,12 @@ git commit -m "feat(bookshelf): #349 add --original flag 覆盖原件自动探�
 ### Task 6: 扁平布局 `--move` 删除消费项（`_remove_consumed_sources`）
 
 **Files:**
+
 - Modify: `jfox/bookshelf/store.py`（加 `_remove_consumed_sources`；改 `add()` 的 move 段）
 - Test: `tests/unit/bookshelf/test_store.py`
 
 **Interfaces:**
+
 - Consumes: Task 4 `bundle_src`、Task 5 `orig_src_path`、白名单常量。
 
 - [ ] **Step 1: Write the failing tests**
@@ -660,6 +687,7 @@ Expected: `test_add_move_flat_removes_consumed_keeps_process` FAIL（旧 move �
 - [ ] **Step 4: Rewire `add()` move section**
 
 把 `add()` 末尾的 move 段：
+
 ```python
         # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）。
         # 源在书架内部时跳过删源——那种情况源==目标书目录，删源=删新书（cc-1）。
@@ -673,7 +701,9 @@ Expected: `test_add_move_flat_removes_consumed_keeps_process` FAIL（旧 move �
                     except OSError as e:
                         logger.warning("删源原件失败（新书已就位）%s: %s", orig_src, e)
 ```
+
 替换为：
+
 ```python
         # --move：成功替换后再删源（issue-2 点2：避免 meta.save 失败时源已搬走）。
         # 源在书架内部时跳过删源——那种情况源==目标书目录，删源=删新书（cc-1）。
@@ -698,10 +728,12 @@ git commit -m "fix(bookshelf): #349 扁平 --move 只删消费项，保留过程
 ### Task 7: CLI `add` 加 `--original` flag
 
 **Files:**
+
 - Modify: `jfox/bookshelf/cli.py`（`add_cmd` 加 `--original`，透传 `add`）
 - Test: `tests/unit/bookshelf/test_cli.py`
 
 **Interfaces:**
+
 - Consumes: Task 5 `BookShelf.add(..., original=...)`。
 
 - [ ] **Step 1: Write the failing test**
@@ -752,6 +784,7 @@ Expected: FAIL（`--original` 选项不存在；扁平因 store 已支持其实�
 ```
 
 并把 `add_cmd` 里的调用：
+
 ```python
             meta = shelf.add(
                 Path(folder).expanduser().resolve(),
@@ -759,7 +792,9 @@ Expected: FAIL（`--original` 选项不存在；扁平因 store 已支持其实�
                 force=force,
             )
 ```
+
 改为：
+
 ```python
             meta = shelf.add(
                 Path(folder).expanduser().resolve(),
@@ -786,6 +821,7 @@ git commit -m "feat(bookshelf): #349 CLI add 加 --original flag"
 ### Task 8: 全量 bookshelf 单测 + lint + 本机真实 bundle 验收
 
 **Files:**
+
 - 无新文件；验证为主。
 
 - [ ] **Step 1: 跑全部 bookshelf 单测**
@@ -801,6 +837,7 @@ Expected: 都干净（black 行宽 100）
 - [ ] **Step 3: 本机真实 bundle 验收（issue 验收标准）**
 
 Run（用临时 KB 避免污染默认库）:
+
 ```bash
 uv run jfox kb create bookshelf-verify-349 2>/dev/null || true
 uv run jfox bookshelf add /home/elling/ebooks/人类简史-从动物到上帝 \
@@ -809,6 +846,7 @@ uv run jfox bookshelf list --kb bookshelf-verify-349
 uv run jfox bookshelf show 人类简史-从动物到上帝 --page 1 --kb bookshelf-verify-349 | head -20
 uv run jfox bookshelf show 人类简史-从动物到上帝 --page 100 --kb bookshelf-verify-349 | head -20
 ```
+
 Expected: add 跑通（自动探测无原件→`--original` 兜底）；list 列出；show 第 1/100 页有内容。检查 `~/.zettelkasten/bookshelf-verify-349/bookshelf/人类简史-从动物到上帝/` 下 `bundle/` 无 `checkpoint.json/qa_*`。
 
 - [ ] **Step 4: 清理验收临时 KB**
