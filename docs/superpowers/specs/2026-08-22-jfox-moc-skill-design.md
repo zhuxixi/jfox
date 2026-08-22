@@ -35,7 +35,7 @@ skills-recommend/pi/jfox-overview/SKILL.md  # 修改：路由表 + 工作流示�
 1. **诊断**：`jfox moc diagnose --json` → 呈现 coverage 口径对比、阈值扫描、主题簇（hub + members）、孤儿清单。
 2. **草稿确认**：选定簇 → `jfox moc create --cluster <i> --threshold <t> [--title <主题名>]`（dry-run 默认）→ 展示草稿（hub 置顶、按共享 tag 分组、成员清单）→ 人工确认主题名与成员取舍（可增删）。
 3. **落盘**：确认后 `--yes` 重跑 → 生成 structure note、回填成员 backlinks。
-4. **维护**：定期 `jfox moc update --json` 看 diff（add/remove/kept）→ 人工确认后 `--yes` 应用。**只摘死链**（磁盘存在性为准，防 stale index），语义漂移不自动摘除。
+4. **维护**：定期 `jfox moc update --format json` 看 diff（add/remove/kept）→ 人工确认后 `--yes` 应用。**只摘死链**（磁盘存在性为准，防 stale index），语义漂移不自动摘除。
 5. **孤儿收纳**：`create --include-orphans` 并入「待归类」小节；或移交 organize 图谱优化补链。
 
 ### 内嵌原则
