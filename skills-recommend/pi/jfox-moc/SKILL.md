@@ -15,7 +15,7 @@ description: |
 
 **半自动原则：机器出草稿、人确认落盘**——所有生成/更新先 dry-run 展示 diff，人工确认后才 `--yes` 落盘，绝不静默创建。
 
-> 复用 `/skill:jfox-common` §4.1 共享约定（`--kb` / `--json` / `--format json`）。
+> 复用 `/skill:jfox-common` §4.1 共享约定（`--kb` / `--format json`）。注意：moc 命令组中 `diagnose` 支持 `--json` 简写，`create` / `update` 需用 `--format json`。
 
 ## 何时用
 
@@ -45,7 +45,7 @@ jfox moc diagnose --json --top 10
 选定簇后 dry-run 生成草稿（默认不落盘）：
 
 ```bash
-jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --json
+jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --format json
 ```
 
 - `--cluster`：簇序号（从 0 起，对应 diagnose 输出顺序）
@@ -71,8 +71,8 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --yes
 新笔记加入主题后 MOC 会过时，定期 diff 维护：
 
 ```bash
-jfox moc update --json                # 全部 structure note 与最新簇 diff（dry-run 默认）
-jfox moc update --id <moc_id> --json  # 单条 MOC
+jfox moc update --format json                # 全部 structure note 与最新簇 diff（dry-run 默认）
+jfox moc update --id <moc_id> --format json  # 单条 MOC
 ```
 
 - diff 语义：`add` 新增成员、`remove` 死链（仅以磁盘存在性判定，防 stale index）、`kept` 保留
