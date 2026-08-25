@@ -1,6 +1,6 @@
 {
   "name": "jfox",
-  "version": "0.14.3",
+  "version": "0.14.4",
   "description": "JFox 知识管理 CLI 的 Kimi Code 集成——搜索、写入工作流（导入/整理/过审/会话总结/模板/自动总结）与知识库管理、系统维护",
   "skills": "./skills/",
   "sessionStart": {
