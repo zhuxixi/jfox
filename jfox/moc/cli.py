@@ -348,8 +348,13 @@ def create_cmd(
     yes: bool = typer.Option(False, "--yes"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k"),
     output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ) -> None:
     """从诊断主题簇生成 MOC 笔记草稿。"""
+    if json_output:
+        output_format = "json"
     if output_format not in {"table", "json"}:
         _fail("format must be table or json", output_format)
     if not 0 < threshold < 1:
@@ -481,8 +486,13 @@ def update_cmd(
     yes: bool = typer.Option(False, "--yes"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k"),
     output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ) -> None:
     """重扫主题簇，diff 现有 MOC 成员。"""
+    if json_output:
+        output_format = "json"
     if output_format not in {"table", "json"}:
         _fail("format must be table or json", output_format)
     if not 0 < threshold < 1:

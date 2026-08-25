@@ -65,6 +65,7 @@ def test_moc_create_help_registers_exact_contract():
     assert "从诊断主题簇生成 MOC 笔记草稿（dry-run 默认，--yes 落盘）。" in lines
     assert "--max-size" in " ".join(lines)
     assert "--include-orphans" in " ".join(lines)
+    assert "--json" in " ".join(lines)
 
 
 def test_moc_group_help_lists_create_and_update():
@@ -194,3 +195,30 @@ def test_create_dry_run_shows_ghost_warnings_in_json():
     assert result.exit_code == 0
     payload = json.loads(_strip_ansi(result.output))
     assert ghost_warning in payload["warnings"]
+
+
+def test_create_json_shorthand_matches_format_json():
+    """--json 简写与 --format json 输出一致（含 created 字段）。"""
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with (
+            patch("jfox.moc.cli.get_note_index") as mock_index,
+            patch("jfox.moc.cli.write_moc") as mock_write,
+            patch("jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2"}, [])),
+        ):
+            mock_index.return_value.get_all_meta.return_value = _mock_meta()
+            fake_moc = Note(
+                id="20260822000001",
+                title="Zima Hub MOC",
+                content="",
+                type=NoteType.STRUCTURE,
+                created=dt(2026, 8, 22),
+                updated=dt(2026, 8, 22),
+            )
+            mock_write.return_value = fake_moc
+            result = runner.invoke(app, ["moc", "create", "--yes", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(_strip_ansi(result.output))
+    assert payload["success"] is True
+    assert payload["created"]["id"] == "20260822000001"
+    assert mock_write.call_count == 1
