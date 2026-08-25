@@ -232,23 +232,28 @@ def generate_changelog(
         pr = f" (#{e['pr']})" if e["pr"] else ""
         return f"- {scope}{e['message']}{pr}"
 
+    # markdownlint MD022/MD032: 标题与列表之间必须空行
     if features:
         lines.append("### Features")
+        lines.append("")
         lines.extend(format_entry(e) for e in features)
         lines.append("")
 
     if fixes:
         lines.append("### Fixes")
+        lines.append("")
         lines.extend(format_entry(e) for e in fixes)
         lines.append("")
 
     if perfs:
         lines.append("### Performance")
+        lines.append("")
         lines.extend(format_entry(e) for e in perfs)
         lines.append("")
 
     if changes:
         lines.append("### Changes")
+        lines.append("")
         lines.extend(format_entry(e) for e in changes)
         lines.append("")
 
