@@ -8,6 +8,7 @@ All notable changes to jfox-cli will be documented in this file.
 
 - **skill**: jfox-moc skill + organize 密度交接 (#417) (#419)
 - 引入 markdownlint 统一 Markdown 风格（#411） (#418)
+- **moc**: create/update 补 --json 简写 (#425) (#429)
 
 ### Fixes
 
@@ -18,6 +19,7 @@ All notable changes to jfox-cli will be documented in this file.
 ### Changes
 
 - **bm25**: 清理存量类型债——documents 注解 List[List[str]] + batch 快照 possibly-unbound 模式（#405） (#421)
+- **claude.md**: 记 moc/ 模块、vector_store 只读快照读路径与 index verify 对账语义（#407/#410） (#415)
 
 [1.10.0]: https://github.com/zhuxixi/jfox/compare/v1.9.0...v1.10.0
 
