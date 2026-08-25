@@ -22,10 +22,12 @@
 ### Task 1: create_cmd 加 --json 简写
 
 **Files:**
+
 - Modify: `jfox/moc/cli.py`（create_cmd，约 338-371 行）
 - Test: `tests/unit/test_moc_create_cli.py`
 
 **Interfaces:**
+
 - Consumes: 无（第一个任务）
 - Produces: `create_cmd(json_output: bool)` —— 后续无任务依赖，纯用户面参数
 
@@ -101,10 +103,12 @@ git commit -m "feat(moc): create supports --json shorthand (#425)"
 ### Task 2: update_cmd 加 --json 简写
 
 **Files:**
+
 - Modify: `jfox/moc/cli.py`（update_cmd，约 516-538 行）
 - Test: `tests/unit/test_moc_update_cli.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 的置位模式（`if json_output: output_format = "json"`）
 - Produces: `update_cmd(json_output: bool)` —— 无后续依赖
 
@@ -174,10 +178,12 @@ git commit -m "feat(moc): update supports --json shorthand (#425)"
 ### Task 3: SKILL.md 文档同步 + help 契约断言
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-moc/SKILL.md`
 - Test: `tests/unit/test_moc_create_cli.py`、`tests/unit/test_moc_update_cli.py`
 
 **Interfaces:**
+
 - Consumes: Task 1/2 的 `--json` 参数已落地
 - Produces: 无
 
@@ -220,7 +226,7 @@ Expected: 三个文件全 PASS
 > 复用 `/skill:jfox-common` §4.1 共享约定（`--kb` / `--json`，等价于 `--format json`）。
 ```
 
-2. Step 2 示例 `jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --format json` 中 `--format json` → `--json`；Step 4 示例 `jfox moc update --format json` 和 `jfox moc update --id <moc_id> --format json` 中 `--format json` → `--json`。
+1. Step 2 示例 `jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --format json` 中 `--format json` → `--json`；Step 4 示例 `jfox moc update --format json` 和 `jfox moc update --id <moc_id> --format json` 中 `--format json` → `--json`。
 
 - [ ] **Step 4: markdownlint 检查**
 
