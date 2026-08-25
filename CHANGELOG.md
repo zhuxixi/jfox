@@ -15,6 +15,7 @@ All notable changes to jfox-cli will be documented in this file.
 - **docs**: spec update command uses --format json, align with CLI contract (#417) (#424)
 - #392 CR 低危遗留项——re-read-and-merge 修复双文件与并发丢更新 (#422)
 - markdownlint 尊重 .gitignore，修复 lint job 扫描 .venv 失败（#418 后续） (#420)
+- **release**: changelog 生成格式符合 markdownlint MD022/MD032 (#431)
 
 ### Changes
 
