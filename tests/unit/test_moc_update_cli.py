@@ -80,6 +80,7 @@ def test_moc_update_help_registers_exact_contract():
     lines = _help_lines(result.output)
     assert "Usage: jfox moc update [OPTIONS]" in lines
     assert "重扫主题簇，diff 现有 MOC 成员（增补新笔记、摘除死链）。" in lines
+    assert "--json" in " ".join(lines)
 
 
 def test_moc_group_help_lists_create_and_update():

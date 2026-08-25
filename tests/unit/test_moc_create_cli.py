@@ -65,6 +65,7 @@ def test_moc_create_help_registers_exact_contract():
     assert "从诊断主题簇生成 MOC 笔记草稿（dry-run 默认，--yes 落盘）。" in lines
     assert "--max-size" in " ".join(lines)
     assert "--include-orphans" in " ".join(lines)
+    assert "--json" in " ".join(lines)
 
 
 def test_moc_group_help_lists_create_and_update():
