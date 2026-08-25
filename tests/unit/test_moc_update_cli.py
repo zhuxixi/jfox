@@ -246,3 +246,24 @@ def test_update_removes_dead_link_missing_from_disk():
     first = payload["updates"][0]
     assert "99" in first["remove"]
     assert [m["id"] for m in first["add"]] == ["3"]
+
+
+def test_update_json_shorthand_matches_format_json():
+    """--json 简写与 --format json 输出一致（diff add/remove/kept）。"""
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        with patch("jfox.moc.cli.list_notes", return_value=[_moc_note()]):
+            with patch("jfox.moc.cli.get_note_index") as mock_index:
+                mock_index.return_value.get_all_meta.return_value = _mock_meta()
+                with patch(
+                    "jfox.moc.cli.verify_members_on_disk", return_value=({"1", "2", "3"}, [])
+                ):
+                    result = runner.invoke(app, ["moc", "update", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(_strip_ansi(result.output))
+    assert payload["success"] is True
+    first = payload["updates"][0]
+    assert first["moc_id"] == "20260822000001"
+    assert [m["id"] for m in first["add"]] == ["3"]
+    assert first["remove"] == ["99"]
+    assert first["kept"] == 2
