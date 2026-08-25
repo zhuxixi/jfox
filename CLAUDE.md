@@ -76,7 +76,8 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重，命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补进已有草稿，#309；permanent 仍跳过）；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
 | `auto_summary/` | 自动总结子系统：daemon 内扫描 `~/.claude/projects/` 已结束的 Claude Code session，经 `claude -p` 生成摘要写入 `session` 笔记；CLI `jfox auto-summary run/scan/status/enable/disable`，ledger 去重 + schedule time window |
 | `backup/` | KB 滚动备份/恢复：`manager.py` BackupManager（tar.gz+sha256 清单+滚动轮转+可逆 restore）+ daemon `loop.py` 定时备份（镜像 auto-summary，quiesce 标志让 gem_synth/auto_summary 跳过写 tick）+ `jfox backup run/enable/disable/status/list/verify/restore`；默认关，opt-in |
-| `vector_store.py` | ChromaDB vector store for semantic search |
+| `moc/` | MOC 密度诊断：`cluster.py` 纯逻辑聚类（永久笔记向量余弦相似度多阈值扫描 + 链接/语义孤儿检测，N×N 稠密矩阵上限 `MAX_DENSE_CLUSTER_NOTES=5000`）+ `cli.py` sub-app，CLI `jfox moc diagnose`；重依赖经 `__init__.py` 的 `__getattr__` 按需加载（#410） |
+| `vector_store.py` | ChromaDB vector store for semantic search；批量读 `get_all_embeddings()` 走复制前后清单校验一致的只读快照副本而非活库（Chroma 只读集合也会写 SQLite），失败抛 `VectorStoreReadError`（#407） |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
 | `performance.py` | Batch processing and model caching |
@@ -183,3 +184,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：单 target 写盘失败仅 warning 不中断；悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
+- `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
