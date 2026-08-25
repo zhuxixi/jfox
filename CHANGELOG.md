@@ -5,15 +5,18 @@ All notable changes to jfox-cli will be documented in this file.
 ## [1.10.0] - 2026-08-25
 
 ### Features
+
 - **skill**: jfox-moc skill + organize 密度交接 (#417) (#419)
 - 引入 markdownlint 统一 Markdown 风格（#411） (#418)
 
 ### Fixes
+
 - **docs**: spec update command uses --format json, align with CLI contract (#417) (#424)
 - #392 CR 低危遗留项——re-read-and-merge 修复双文件与并发丢更新 (#422)
 - markdownlint 尊重 .gitignore，修复 lint job 扫描 .venv 失败（#418 后续） (#420)
 
 ### Changes
+
 - **bm25**: 清理存量类型债——documents 注解 List[List[str]] + batch 快照 possibly-unbound 模式（#405） (#421)
 
 [1.10.0]: https://github.com/zhuxixi/jfox/compare/v1.9.0...v1.10.0
