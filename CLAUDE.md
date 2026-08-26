@@ -154,6 +154,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **三组件版本轨道独立**，语义各自不同；`/release-all` 只统一编排、不统一版本号。
 - **只有 jfox CLI 打 tag / 发 GitHub Release**；cc/kimi 仅 bump + PR。
 - `release_helper.py verify`（#333）：创建 jfox GitHub Release 前核对 `last_tag..HEAD` 功能 commit 的 PR 号是否都进 CHANGELOG 顶段，防 bump 后被外部 PR 抢先合入致漏项（v1.1.0/v1.5.0 踩过）。`/release` Step 9 与 `/release-all` 都调用。
+- CHANGELOG 条目格式受 markdownlint 约束（MD022/MD032：标题/列表前后空行）：`release_helper.py` 的 `generate_changelog` 已合规（#431），发版后手补条目（verify 兜底，如 #432/#433）同样须守，否则 CI lint job 挂。
 
 ## Windows Notes
 
@@ -169,7 +170,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
 - `packages/cc-plugin/skills/` — 9 skills: `search`, `ingest`, `manage`, `organize`, `promote`, `session-summary`, `session-to-permanent`, `using-jfox`, `bookshelf`
 
-**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.0.
+**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.4.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 
 ## Branch Rules
