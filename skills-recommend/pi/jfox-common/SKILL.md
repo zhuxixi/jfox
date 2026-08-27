@@ -169,6 +169,7 @@ jfox delete <note_id>               # 需确认
 jfox delete <note_id> --force       # 跳过确认（硬删，不可恢复）
 jfox archive <note_id>              # 归档（软删除）：文件保留，默认列表和搜索中隐藏
 jfox unarchive <note_id>            # 恢复归档笔记
+jfox list --archived --json         # 仅列出已归档笔记（配合 unarchive 找回）
 ```
 
 > 清理已提炼的源笔记优先用 archive（软删除可恢复），delete --force 仅用于确认要永久删除的场景。

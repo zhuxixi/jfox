@@ -135,6 +135,7 @@ jfox delete <note_id>               # Confirm required
 jfox delete <note_id> --force       # Skip confirmation (hard delete, irreversible)
 jfox archive <note_id>              # Archive (soft delete): file kept, hidden from default list/search
 jfox unarchive <note_id>            # Restore archived note
+jfox list --archived --json         # List archived notes (find IDs before restore)
 ```
 
 > Prefer archive (recoverable) for cleaning up source notes after refinement; use delete --force only for permanent removal.
