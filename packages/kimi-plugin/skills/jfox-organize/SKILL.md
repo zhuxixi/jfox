@@ -63,11 +63,13 @@ jfox inbox --json --limit 50
    jfox add "<包含 [[links]] 的内容>" --title "<标题>" --type permanent --tag <tag1> --tag <tag2> [--kb <name>]
    ```
 
-6. **删除源 fleeting**：
+6. **归档源 fleeting**：
 
    ```bash
-   jfox delete <原始-id> --force
+   jfox archive <原始-id>
    ```
+
+   archive 是软删除（文件保留），`jfox unarchive` 可恢复；误判可回滚，清理源笔记统一用 archive 而非 delete --force。
 
 ### 提炼策略表
 
@@ -145,7 +147,7 @@ jfox graph --stats --json                     # 图谱统计指标（avg_degree�
 
 - **收件箱为空** → 告知用户 "收件箱为空，无需整理"，可跳到 Step 3 图谱优化
 - **`jfox suggest-links` 返回低匹配度**（score < 0.6）→ 跳过链接推荐，不强制添加
-- **`jfox delete` 目标 ID 不存在** → 报告错误，跳过继续处理其他笔记
+- **`jfox archive` 目标 ID 不存在** → 报告错误，跳过继续处理其他笔记
 
 ## 使用建议
 

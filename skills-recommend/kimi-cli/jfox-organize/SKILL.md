@@ -62,11 +62,13 @@ Core capability. For each user-confirmed suggestion:
    jfox add "<content with [[links]]>" --title "<title>" --type permanent --tag <tag1> --tag <tag2> [--kb <name>]
    ```
 
-6. **Delete source fleeting**:
+6. **Archive source fleeting**:
 
    ```bash
-   jfox delete <original-id> --force
+   jfox archive <original-id>
    ```
+
+   Archive is soft delete (file preserved); `jfox unarchive` restores it. Prefer archive over delete --force so a mistaken cleanup can be rolled back.
 
 > All commands support `--format json` or `--json`. Examples use `--json`.
 
@@ -152,7 +154,7 @@ Default type: `fleeting` (quick capture, refine later with this skill).
 jfox inbox --json --limit <N>
 jfox add "<content>" --type permanent --title "<title>" --tag <tags>
 jfox edit <id> --content "New content"
-jfox delete <id> --force
+jfox archive <id>
 jfox suggest-links "<content>" --format json
 jfox graph --orphans --json
 jfox graph --stats --json
@@ -170,7 +172,7 @@ jfox daemon stop
 
 - **Empty inbox**: Inform user "Inbox is empty, nothing to organize"; skip to Step 3 graph optimization
 - **`jfox suggest-links` low score** (< 0.6): Skip link recommendation; do not force-add
-- **`jfox delete` ID not found**: Report error; continue processing other notes
+- **`jfox archive` ID not found**: Report error; continue processing other notes
 - **`jfox add` / `jfox edit` / `jfox delete`**: Support `--format json` or `--json`
 
 ## Usage Tips
