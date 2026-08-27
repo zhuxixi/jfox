@@ -128,12 +128,16 @@ jfox edit <note_id> --kb work --content "New content"
 
 Editing preserves original note ID and creation time.
 
-### Delete Note
+### Delete & Archive Note
 
 ```bash
 jfox delete <note_id>               # Confirm required
-jfox delete <note_id> --force       # Skip confirmation
+jfox delete <note_id> --force       # Skip confirmation (hard delete, irreversible)
+jfox archive <note_id>              # Archive (soft delete): file kept, hidden from default list/search
+jfox unarchive <note_id>            # Restore archived note
 ```
+
+> Prefer archive (recoverable) for cleaning up source notes after refinement; use delete --force only for permanent removal.
 
 ### List & View Notes
 
@@ -292,6 +296,8 @@ jfox add --content-file <path> --title "<title>"
 jfox edit <id> --content "<new>" --title "<title>"
 jfox edit <id> --content-file <path>
 jfox delete <id> --force
+jfox archive <id>                                     # Archive (soft delete, restorable via unarchive)
+jfox unarchive <id>                                   # Restore archived note
 jfox show <id_or_title>
 jfox list --format json --limit <N>
 jfox daily --json

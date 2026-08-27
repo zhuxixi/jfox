@@ -162,12 +162,16 @@ jfox edit <note_id> --kb work --content "新内容"
 
 编辑会保留原始笔记 ID 和创建时间。
 
-### 4.4 删除笔记
+### 4.4 删除与归档笔记
 
 ```bash
 jfox delete <note_id>               # 需确认
-jfox delete <note_id> --force       # 跳过确认
+jfox delete <note_id> --force       # 跳过确认（硬删，不可恢复）
+jfox archive <note_id>              # 归档（软删除）：文件保留，默认列表和搜索中隐藏
+jfox unarchive <note_id>            # 恢复归档笔记
 ```
+
+> 清理已提炼的源笔记优先用 archive（软删除可恢复），delete --force 仅用于确认要永久删除的场景。
 
 ### 4.5 查看笔记
 
@@ -356,6 +360,8 @@ jfox add --content-file <path> --title "<title>"                   # 从文件�
 jfox edit <id> --content "<new>" --title "<title>"                 # 编辑笔记
 jfox edit <id> --content-file <path>                               # 从文件编辑
 jfox delete <id> --force                                           # 删除笔记
+jfox archive <id>                                                  # 归档（软删除，可 unarchive 恢复）
+jfox unarchive <id>                                                # 恢复归档笔记
 jfox show <id_or_title>                                            # 查看笔记完整内容（--json 输出结构化字段）
 jfox list --json --limit <N>                                       # 列出笔记
 jfox daily --json                                                  # 今天的笔记
