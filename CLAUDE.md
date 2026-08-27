@@ -110,6 +110,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Modifying data models**: Update `Note` class in `models.py`, update `to_markdown()`/`from_markdown()`, consider backward compat
 - **Viewing note content**: `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，默认输出完整 Markdown（`--json` / `--format json` 输出结构化字段）
 - **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `gem_synth/lifecycle.py` 同步 dedup 表）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
+- **源笔记清理统一 archive**: skill 整理/提炼后清理源笔记用 `jfox archive`（软删除，`jfox unarchive` 可回滚误判），不用 `delete --force` 硬删（#436）
 
 ## Test Infrastructure
 
@@ -171,6 +172,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 
 **Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.0.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
+**Skill 多副本同步**: skill 文案/行为改动须同步所有镜像副本——`packages/cc-plugin/skills/`、`packages/kimi-plugin/skills/`、`skills-recommend/kimi-cli/`、`skills-recommend/pi/`，只改一处会各端行为分叉（#440 踩过同步模式）
 
 ## Branch Rules
 
