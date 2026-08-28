@@ -6,6 +6,15 @@ from jfox.vector_store import VectorStore
 
 
 def _dimension_error():
+    """Real chromadb (>=0.5) dimension-mismatch message.
+
+    Embedding dim (model, 512) comes first; collection dim (index, 384) second.
+    """
+    return ValueError("Embedding dimension 512 does not match collection dimensionality 384")
+
+
+def _legacy_dimension_error():
+    """Legacy/wrapper message shape kept as a fallback path."""
     return ValueError(
         "InvalidDimensionalityException: Collection expecting embedding with "
         "dimension of 384, got 512"
@@ -63,6 +72,10 @@ class TestDimensionWarning:
         assert results == []
         assert vs.last_dimension_warning is not None
         assert "384" in vs.last_dimension_warning and "512" in vs.last_dimension_warning
+        # Real chromadb format: model dim first, collection dim second —
+        # warning must label index dim 384 and model dim 512 in that order.
+        assert "索引维度(384)" in vs.last_dimension_warning
+        assert "模型维度(512)" in vs.last_dimension_warning
         assert "daemon restart" in vs.last_dimension_warning
 
     def test_add_sets_warning(self, tmp_path, monkeypatch):
@@ -98,3 +111,19 @@ class TestDimensionWarning:
         assert text is not None
         assert "daemon restart" in text
         assert VectorStore._dimension_warning_text("some other error") is None
+
+    def test_warning_text_legacy_format(self):
+        """Legacy 'dimension of X, got Y' messages keep working (X=index dim)."""
+        text = VectorStore._dimension_warning_text(str(_legacy_dimension_error()))
+        assert text is not None
+        assert "索引维度(384)" in text
+        assert "模型维度(512)" in text
+
+    def test_warning_text_real_format_dim_order(self):
+        """Real chromadb message: model dim first, collection dim second."""
+        text = VectorStore._dimension_warning_text(str(_dimension_error()))
+        assert text is not None
+        assert "索引维度(384)" in text
+        assert "模型维度(512)" in text
+        # The two dims must not be swapped: index(384) precedes model(512)
+        assert text.index("索引维度(384)") < text.index("模型维度(512)")

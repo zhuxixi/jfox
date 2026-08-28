@@ -23,6 +23,7 @@
 ### Task 1: 模型切换本体（常量 + 维度 fallback + README）
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py:13-14`（模型常量）、`jfox/embedding_backend.py:160-167`（dimension fallback）
 - Modify: `jfox/daemon/process.py:443`
 - Modify: `jfox/daemon/client.py:28`、`jfox/daemon/client.py:43`
@@ -30,6 +31,7 @@
 - Test: `tests/unit/test_default_model_switch.py`（新建）
 
 **Interfaces:**
+
 - Produces: `_CPU_DEFAULT_MODEL = "BAAI/bge-small-zh-v1.5"`；`EmbeddingBackend.dimension` 未加载 fallback 从 384 → 512；`DaemonClient.dimension` 初始值与 /health 缺省值 512。后续任务按这些值断言。
 
 - [ ] **Step 1: Write the failing test**
@@ -118,10 +120,12 @@ git commit -m "feat(embedding): switch CPU default model to bge-small-zh-v1.5 (5
 ### Task 2: load() 接入 ModelDownloader 降级链（#374 核心）
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py:104-125`（`load()` 的本地路径未命中分支）
 - Test: `tests/unit/test_embedding_local_load.py`（追加）
 
 **Interfaces:**
+
 - Consumes: `ModelDownloader(model_name).ensure_cached() -> bool`（`jfox/model_downloader.py:73`，已存在）
 - Produces: `load()` 行为契约——本地目录未命中时先走 `ensure_cached()` 三级降级（HF → ModelScope → curl），成功后优先从本地目录加载，仍无本地目录则 `SentenceTransformer(model_name)`（此时 HF 缓存已命中，不再联网）；`ensure_cached()` 返回 False 时维持现状直接尝试 `SentenceTransformer`（最终失败抛原异常）。
 
@@ -247,10 +251,12 @@ git commit -m "fix(embedding): route load() through ModelDownloader fallback cha
 ### Task 3: 新模块 embedding_migration — 维度检测
 
 **Files:**
+
 - Create: `jfox/embedding_migration.py`
 - Test: `tests/unit/test_embedding_migration.py`
 
 **Interfaces:**
+
 - Consumes: `DaemonClient(url).available -> bool`、`.dimension -> int`（Task 1 后默认 512）；`GlobalConfigManager().list_knowledge_bases() -> List[KnowledgeBaseEntry]`（`name: str, path: str`）；`is_daemon_running()`、`_get_daemon_url()`（`jfox/daemon/process.py`）
 - Produces（Task 4 依赖）:
 
@@ -509,11 +515,13 @@ git commit -m "feat(migration): detect embedding dimension mismatch across all K
 ### Task 4: prompt_migration + CLI 挂载（restart/start 成功路径）
 
 **Files:**
+
 - Modify: `jfox/embedding_migration.py`（追加 `prompt_migration`）
 - Modify: `jfox/cli.py`（daemon 命令 start 成功路径 ~3246、restart 成功路径 ~3283，各在 `_print_daemon_status()` 之后）
 - Test: `tests/unit/test_embedding_migration.py`（追加）
 
 **Interfaces:**
+
 - Consumes: Task 3 的 `check_dimension_mismatch` / `DimensionMismatchReport`；`Indexer(config, vector_store).index_all() -> int`（`jfox/indexer.py:210`）；`use_kb(kb_name)` 上下文管理器（`jfox/config.py`）；`get_vector_store()` 单例
 - Produces: CLI 行为——`jfox daemon start|restart` 成功后自动检测；有 mismatch 时 Rich 警告 + `typer.confirm`；确认 y 逐库 `index_all()`（BM25 不动）；非 tty 或拒绝时仅警告。
 
@@ -667,11 +675,13 @@ git commit -m "feat(migration): interactive per-KB rebuild prompt on daemon star
 ### Task 5: search / add 维度不匹配兜底警告
 
 **Files:**
+
 - Modify: `jfox/vector_store.py`（`__init__` 加属性；`add_note` :101-117 维度分支；`search` :184-185 except）
 - Modify: `jfox/cli.py`（`_add_impl` 尾部、`_search_impl` 尾部）
 - Test: `tests/unit/test_vector_store_dimension_warning.py`（新建）
 
 **Interfaces:**
+
 - Produces: `VectorStore.last_dimension_warning: Optional[str]`（实例属性，检测到维度不匹配时非空，文本含旧/新维度与 `jfox daemon restart` 指引）；CLI `add`/`search` 在操作完成后检查单例该属性并打印警告。
 
 - [ ] **Step 1: Write the failing test**
@@ -837,9 +847,11 @@ git commit -m "feat(search): surface dimension-mismatch warnings on search/add i
 ### Task 6: 收尾验证（fast 回归 + 真实模型下载实测）
 
 **Files:**
+
 - 无新文件；可能修 Task 1-5 引入的问题
 
 **Interfaces:**
+
 - Consumes: 全部前序任务
 
 - [ ] **Step 1: Fast 全量回归**

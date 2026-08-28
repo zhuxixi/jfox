@@ -46,12 +46,39 @@ class VectorStore:
 
     @staticmethod
     def _dimension_warning_text(error_msg: str) -> Optional[str]:
-        """Build a user-facing warning when the error is a dim mismatch."""
-        if "dimension" not in error_msg.lower() or "expecting" not in error_msg.lower():
+        """Build a user-facing warning when the error is a dim mismatch.
+
+        Real chromadb (>=0.5) raises:
+          "Embedding dimension 512 does not match collection dimensionality 384"
+        (embedding/model dim first, collection dim second). Older versions and
+        some wrappers emit the legacy "... dimension of 384, got 512" shape
+        (collection dim first). Match both; keep a generic fallback.
+        """
+        msg_lower = error_msg.lower()
+        # Keyword gate: any known dimension-mismatch phrasing
+        if "dimension" not in msg_lower:
             return None
-        m = re.search(r"dimension of (\d+).*got (\d+)", error_msg, re.IGNORECASE)
+        if not any(kw in msg_lower for kw in ("does not match", "expecting", "dimensionality")):
+            return None
+
+        old, new = None, None
+        # Real chromadb format: "Embedding dimension <model_dim> does not match
+        # collection dimensionality <index_dim>" — model dim is group(1),
+        # collection/index dim is group(2).
+        m = re.search(
+            r"Embedding dimension (\d+) does not match collection dimensionality (\d+)",
+            error_msg,
+            re.IGNORECASE,
+        )
         if m:
-            old, new = m.group(1), m.group(2)
+            old, new = m.group(2), m.group(1)
+        else:
+            # Legacy/fake format: "dimension of X, got Y" — X is the collection dim
+            m = re.search(r"dimension of (\d+).*got (\d+)", error_msg, re.IGNORECASE)
+            if m:
+                old, new = m.group(1), m.group(2)
+
+        if old is not None and new is not None:
             return (
                 f"索引维度({old})与当前 embedding 模型维度({new})不匹配。"
                 f"请执行 jfox daemon restart 获取迁移引导，或 jfox index rebuild 重建索引。"

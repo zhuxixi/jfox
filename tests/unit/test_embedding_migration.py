@@ -46,9 +46,7 @@ def _patch_env(monkeypatch, tmp_path, health_dim, kb_specs):
         unregistered = spec[4] if len(spec) > 4 else False
         kb_path = tmp_path / kb_name
         kb_path.mkdir()
-        entries.append(
-            KnowledgeBaseEntry(name=kb_name, path=str(kb_path), created="2026-08-28")
-        )
+        entries.append(KnowledgeBaseEntry(name=kb_name, path=str(kb_path), created="2026-08-28"))
         if exists:
             chroma_root = kb_path / ".zk" / "chroma_db"
             chroma_root.mkdir(parents=True)
@@ -87,7 +85,8 @@ class TestCheckDimensionMismatch:
     def test_mismatch_detected(self, monkeypatch, tmp_path):
         # default KB has 384-dim index, model reports 512
         _patch_env(
-            monkeypatch, tmp_path,
+            monkeypatch,
+            tmp_path,
             health_dim=512,
             kb_specs=[("default", True, 384, 100), ("work", True, 512, 5)],
         )
@@ -99,7 +98,8 @@ class TestCheckDimensionMismatch:
 
     def test_all_match_returns_none(self, monkeypatch, tmp_path):
         _patch_env(
-            monkeypatch, tmp_path,
+            monkeypatch,
+            tmp_path,
             health_dim=512,
             kb_specs=[("default", True, 512, 100)],
         )
@@ -107,7 +107,8 @@ class TestCheckDimensionMismatch:
 
     def test_empty_kb_skipped(self, monkeypatch, tmp_path):
         _patch_env(
-            monkeypatch, tmp_path,
+            monkeypatch,
+            tmp_path,
             health_dim=512,
             kb_specs=[("default", True, None, 0), ("fresh", False, None, 0)],
         )
@@ -117,7 +118,8 @@ class TestCheckDimensionMismatch:
         # "broken" KB has an empty chroma DB (count=0) -> skipped as empty KB,
         # while the healthy mismatching KB is still reported.
         _patch_env(
-            monkeypatch, tmp_path,
+            monkeypatch,
+            tmp_path,
             health_dim=512,
             kb_specs=[("default", True, 384, 10), ("broken", True, None, 0)],
         )
@@ -129,7 +131,8 @@ class TestCheckDimensionMismatch:
         # "broken" KB: chroma dir exists but NOT registered -> PersistentClient
         # raises inside the per-KB try; the loop must continue to "default".
         _patch_env(
-            monkeypatch, tmp_path,
+            monkeypatch,
+            tmp_path,
             health_dim=512,
             kb_specs=[
                 ("default", True, 384, 10),
