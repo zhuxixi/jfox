@@ -109,9 +109,23 @@ def prompt_migration(report: DimensionMismatchReport) -> None:
 
     from .config import config
 
+    # Per-KB isolation: one broken KB must not abort the remaining rebuilds
+    # nor turn a successful daemon start into exit code 1 (#442).
+    failed: list = []
     for kb in report.affected_kbs:
-        with _use_kb(kb):
-            indexer = _Indexer(config, _get_vector_store())
-            count = indexer.index_all()
-            console.print(f"[green]✓[/green] {kb}: 已重建 {count} 条笔记索引")
-    console.print("[green]索引迁移完成，语义搜索已恢复。[/green]")
+        try:
+            with _use_kb(kb):
+                indexer = _Indexer(config, _get_vector_store())
+                count = indexer.index_all()
+                console.print(f"[green]✓[/green] {kb}: 已重建 {count} 条笔记索引")
+        except Exception as e:
+            logger.error(f"rebuild failed for KB {kb}: {e}")
+            console.print(f"[red]✗ {kb}: 重建失败，已跳过[/red]")
+            failed.append(kb)
+    if failed:
+        console.print(
+            f"[yellow]以下知识库重建失败: {', '.join(failed)}，"
+            f"请稍后手动执行 [cyan]jfox index rebuild --kb <name>[/cyan][/yellow]"
+        )
+    else:
+        console.print("[green]索引迁移完成，语义搜索已恢复。[/green]")

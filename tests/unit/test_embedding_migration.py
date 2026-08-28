@@ -114,7 +114,8 @@ class TestCheckDimensionMismatch:
         assert check_dimension_mismatch() is None
 
     def test_corrupt_kb_skipped_not_fatal(self, monkeypatch, tmp_path):
-        # "broken" KB: chroma dir exists but unlisted in chroma_roots -> PersistentClient raises
+        # "broken" KB has an empty chroma DB (count=0) -> skipped as empty KB,
+        # while the healthy mismatching KB is still reported.
         _patch_env(
             monkeypatch, tmp_path,
             health_dim=512,
@@ -225,3 +226,45 @@ class TestPromptMigration:
         monkeypatch.setattr("typer.confirm", _must_not_confirm)
 
         em.prompt_migration(self._report())  # must not raise
+
+    def test_rebuild_continues_after_kb_failure(self, monkeypatch):
+        import jfox.embedding_migration as em
+
+        attempts = []
+        entered = []
+
+        class FlakyIndexer:
+            def __init__(self, config, vector_store):
+                pass
+
+            def index_all(self, progress_callback=None):
+                attempts.append(1)
+                if len(attempts) == 1:
+                    raise RuntimeError("chroma boom")
+                return 3
+
+        class FakeUseKb:
+            def __init__(self, name):
+                self.name = name
+
+            def __enter__(self):
+                entered.append(self.name)
+
+            def __exit__(self, *args):
+                return False
+
+        report = DimensionMismatchReport(
+            model_dimension=512,
+            affected_kbs=["bad", "good"],
+            kb_dimensions={"bad": 384, "good": 384},
+        )
+
+        monkeypatch.setattr(em, "_Indexer", FlakyIndexer)
+        monkeypatch.setattr(em, "_use_kb", FakeUseKb)
+        monkeypatch.setattr(em, "_get_vector_store", lambda: object())
+        monkeypatch.setattr("typer.confirm", lambda *a, **kw: True)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        em.prompt_migration(report)  # must not raise
+        assert attempts == [1, 1]  # both KBs attempted
+        assert entered == ["bad", "good"]
