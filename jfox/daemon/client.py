@@ -25,7 +25,7 @@ class DaemonClient:
         self.base_url = base_url.rstrip("/")
         self._health_cache_time: float = 0.0
         self._health_cache_result: Optional[bool] = None
-        self._dimension: int = 384
+        self._dimension: int = 512
 
     @property
     def available(self) -> bool:
@@ -40,7 +40,7 @@ class DaemonClient:
 
             resp = urllib.request.urlopen(f"{self.base_url}/health", timeout=_HEALTH_TIMEOUT)
             data = json.loads(resp.read().decode("utf-8"))
-            self._dimension = data.get("dimension", 384)
+            self._dimension = data.get("dimension", 512)
             self._health_cache_result = True
         except Exception:
             self._health_cache_result = False
