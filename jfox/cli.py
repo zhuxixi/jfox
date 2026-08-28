@@ -1435,12 +1435,58 @@ def _delete_impl(
     note_id: str,
     force: bool,
     output_format: str,
+    allow_dangling: bool = False,
 ):
     """删除笔记的内部实现"""
     # 先查找笔记
     n = note.load_note_by_id(note_id)
     if not n:
         raise ValueError(f"Note not found: {note_id}")
+
+    # 入链检查（delete guard）
+    if not allow_dangling:
+        from .redirect import scan_references
+
+        ref_report = scan_references(note_id, n.title)
+        if ref_report.has_references():
+            total_refs = len(ref_report.referencing_ids())
+            error_msg = (
+                f"{total_refs} note(s) reference this note. "
+                f"Use 'jfox redirect {note_id} <KEEP_ID>' to migrate references, "
+                f"or use --allow-dangling to delete anyway."
+            )
+            if output_format == "json":
+                result = {
+                    "success": False,
+                    "error": error_msg,
+                    "references": {
+                        "frontmatter": [
+                            {"id": src_id, "title": src_title, "path": str(p)}
+                            for src_id, src_title, p in ref_report.frontmatter_refs[:10]
+                        ],
+                        "body": [
+                            {"id": src_id, "title": src_title, "path": str(p)}
+                            for src_id, src_title, p in ref_report.body_refs[:10]
+                        ],
+                        "total": total_refs,
+                    },
+                }
+                print(output_json(result))
+                raise typer.Exit(1)
+            else:
+                console.print(
+                    f"[red]✗[/red] Cannot delete: {total_refs} note(s) reference this note."
+                )
+                console.print("\n[yellow]References:[/yellow]")
+                for src_id, src_title, _ in (ref_report.frontmatter_refs + ref_report.body_refs)[
+                    :10
+                ]:
+                    console.print(f"  - [{src_id}] {src_title}")
+                if total_refs > 10:
+                    console.print(f"  ... and {total_refs - 10} more")
+                console.print(f"\n[dim]Fix with: jfox redirect {note_id} <KEEP_ID>[/dim]")
+                console.print(f"[dim]Or force delete: jfox delete {note_id} --allow-dangling[/dim]")
+                raise typer.Exit(1)
 
     # 确认删除
     if not force:
@@ -1480,13 +1526,16 @@ def _delete_impl(
 def delete(
     note_id: str = typer.Argument(..., help="笔记 ID"),
     force: bool = typer.Option(False, "--force", "-f", help="强制删除不确认"),
+    allow_dangling: bool = typer.Option(
+        False, "--allow-dangling", help="允许删除被引用的笔记（产生悬空链接）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
     json_output: bool = typer.Option(
         False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
     ),
 ):
-    """删除笔记"""
+    """删除笔记（删除前检查入链，有引用时报错）"""
     try:
         # 向后兼容：--json 快捷方式
         if json_output:
@@ -1495,7 +1544,7 @@ def delete(
         from .config import use_kb
 
         with use_kb(kb):
-            _delete_impl(note_id, force, output_format)
+            _delete_impl(note_id, force, output_format, allow_dangling=allow_dangling)
 
     except typer.Exit:
         raise
@@ -3877,6 +3926,134 @@ def update(
             print(output_json({"success": False, "error": str(e)}))
         else:
             console.print(f"[red]X[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+def _redirect_impl(old_id: str, keep_id: str, dry_run: bool, output_format: str):
+    """redirect 命令的内部实现：编排迁移并输出结果"""
+    from .redirect import redirect_references
+
+    result = redirect_references(old_id, keep_id, dry_run=dry_run)
+
+    # 任何失败面（errors / conflicts / unreadable / 验证未过）都以非零退出码结束，
+    # 避免 conflicts-only 场景误报成功（CR issue-4）
+    if not result.success:
+        if output_format == "json":
+            print(
+                output_json(
+                    {
+                        "success": False,
+                        "errors": result.errors,
+                        "conflicts": result.conflicts,
+                        "unreadable_files": result.unreadable_files,
+                        "verification_passed": result.verification_passed,
+                    }
+                )
+            )
+        else:
+            console.print("[red]✗ Redirect failed:[/red]")
+            for err in result.errors:
+                console.print(f"  - {err}")
+            if result.conflicts:
+                console.print(f"[yellow]⚠ Conflicts ({len(result.conflicts)}):[/yellow]")
+                for path in result.conflicts[:5]:
+                    console.print(f"  - {path}")
+            if result.unreadable_files:
+                console.print(
+                    f"[yellow]⚠ Unreadable files ({len(result.unreadable_files)}):[/yellow]"
+                )
+                for path in result.unreadable_files[:5]:
+                    console.print(f"  - {path}")
+            if not dry_run and not result.verification_passed:
+                console.print("[yellow]⚠ Verification: Some references may remain[/yellow]")
+        raise typer.Exit(1)
+
+    if output_format == "json":
+        print(
+            output_json(
+                {
+                    "success": result.success,
+                    "old_id": result.old_id,
+                    "keep_id": result.keep_id,
+                    "files_changed": result.files_changed,
+                    "frontmatter_links_updated": result.frontmatter_links_updated,
+                    "body_links_updated": result.body_links_updated,
+                    "backlinks_updated": result.backlinks_updated,
+                    "conflicts": result.conflicts,
+                    "unreadable_files": result.unreadable_files,
+                    "errors": result.errors,
+                    "verification_passed": result.verification_passed,
+                    "dry_run": dry_run,
+                }
+            )
+        )
+    else:
+        if dry_run:
+            console.print("[yellow]Dry run - no files modified[/yellow]")
+        console.print(f"[green]✓[/green] Redirect: {old_id} → {keep_id}")
+        console.print(f"  Files changed: {result.files_changed}")
+        console.print(f"  Frontmatter links updated: {result.frontmatter_links_updated}")
+        console.print(f"  Body links updated: {result.body_links_updated}")
+        console.print(f"  Backlinks updated: {result.backlinks_updated}")
+
+        if result.conflicts:
+            console.print(f"\n[yellow]⚠ Conflicts ({len(result.conflicts)}):[/yellow]")
+            for path in result.conflicts[:5]:
+                console.print(f"  - {path}")
+            if len(result.conflicts) > 5:
+                console.print(f"  ... and {len(result.conflicts) - 5} more")
+
+        if result.unreadable_files:
+            console.print(
+                f"\n[yellow]⚠ Unreadable files ({len(result.unreadable_files)}):[/yellow]"
+            )
+            for path in result.unreadable_files[:5]:
+                console.print(f"  - {path}")
+
+        if not dry_run:
+            if result.verification_passed:
+                console.print("\n[green]✓ Verification: No remaining references to OLD_ID[/green]")
+            else:
+                console.print("\n[yellow]⚠ Verification: Some references may remain[/yellow]")
+
+
+@app.command()
+def redirect(
+    old_id: str = typer.Argument(..., help="旧笔记 ID（要被替换的引用目标）"),
+    keep_id: str = typer.Argument(..., help="新笔记 ID（替换后的引用目标）"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="仅报告、不实际修改文件"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
+    output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+):
+    """批量重定向：将所有引用 OLD_ID 的笔记改为引用 KEEP_ID
+
+    示例:
+        jfox redirect old-note-id keep-note-id
+        jfox redirect old-note-id keep-note-id --dry-run  # 预览
+    """
+    if json_output:
+        output_format = "json"
+
+    try:
+        if kb:
+            from .config import use_kb
+
+            with use_kb(kb):
+                _redirect_impl(old_id, keep_id, dry_run, output_format)
+        else:
+            _redirect_impl(old_id, keep_id, dry_run, output_format)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        result = {"success": False, "error": str(e)}
+        if output_format == "json":
+            print(output_json(result))
+        else:
+            console.print(f"[red]✗[/red] Error: {e}")
         raise typer.Exit(1)
 
 

@@ -267,7 +267,9 @@ jfox query "Luhmann's methodology" --depth 2
 | `jfox list --type permanent --limit 20` | Filter by type |
 | `jfox status` | Show knowledge base status |
 | `jfox edit NOTE_ID` | Edit note in `$EDITOR` |
-| `jfox delete NOTE_ID --force` | Delete a note |
+| `jfox delete NOTE_ID --force` | Delete a note (blocked if other notes reference it) |
+| `jfox delete NOTE_ID --allow-dangling` | Delete a referenced note anyway, leaving dangling links |
+| `jfox redirect OLD_ID KEEP_ID` | Migrate all references (frontmatter + body) from OLD to KEEP; `--dry-run` to preview |
 | `jfox daily` | Show today's notes |
 | `jfox daily --date 2026-03-20` | Show notes for a date |
 | `jfox inbox` | Show fleeting notes |
