@@ -1,362 +1,438 @@
-"""引用重定向：批量更新所有指向旧笔记的引用。
+"""引用重定向：把所有指向旧笔记的引用迁移到保留笔记。
 
-核心功能：
-1. 扫描谁引用了 OLD_ID（frontmatter links + 正文 wiki link）
-2. 批量重写为 KEEP_ID（保留 alias/anchor，保持 grounded_by 不变）
-3. Preflight 检查重复标题、不存在的 ID、文件可读性
+设计要点：
+1. `delete` 只能清理被删笔记自己的出链对应的 backlinks，无法推断替代目标，
+   因此引用迁移必须是独立、显式的操作（issue #435）。
+2. frontmatter `links` 与正文 wiki link 是同一引用关系的两种表示，
+   必须在同一次操作里同步重写；只改一处会在下次 `edit` 重新解析时回退。
+3. 正文改写保持无损：保留 alias 与 anchor，不触碰非链接文本，
+   不丢失未知 frontmatter 字段。
+4. 标题歧义（重复标题）无法确定原始目标，preflight 阶段直接拒绝。
 """
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 import yaml
 
-from .config import config
-from .models import Note
+from .config import ZKConfig
 from .note import load_note_by_id
-from .note_index import (
-    _normalize_wiki_link_title,
-    _strip_wiki_link_exclusions,
-    extract_wiki_links_from_text,
-    get_note_index,
-)
+from .note_index import _normalize_wiki_link_title, get_note_index
 
 logger = logging.getLogger(__name__)
 
-# Wiki link 正则：捕获完整 span 以便 lossless rewrite
-_WIKI_LINK_SPAN_RE = re.compile(r"\[\[([^\]]+)\]\]")
+# 捕获完整 [[...]] span，用于按原始偏移做无损替换
+_WIKI_LINK_SPAN_RE = re.compile(r"\[\[([^\[\]]+)\]\]")
+
+# 需要排除的 Markdown 区域（与 note_index 的扫描口径保持一致）
+_FENCED_CODE_RE = re.compile(r"```[\s\S]*?```")
+_HTML_COMMENT_RE = re.compile(r"<!--[\s\S]*?-->")
+
+# frontmatter / 正文切分：保留分隔符原样以便字节级还原
+_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---(\r?\n)(.*)$", re.DOTALL)
 
 
 @dataclass
 class ReferenceReport:
-    """入链扫描报告"""
+    """入链扫描结果与 preflight 诊断"""
 
     old_id: str
-    old_title: str
+    old_title: str = ""
     keep_id: Optional[str] = None
     keep_title: Optional[str] = None
 
-    # 引用方列表
-    frontmatter_refs: List[Tuple[str, str, Path]] = field(default_factory=list)  # (src_id, src_title, path)
+    # (source_id, source_title, path)
+    frontmatter_refs: List[Tuple[str, str, Path]] = field(default_factory=list)
     body_refs: List[Tuple[str, str, Path]] = field(default_factory=list)
 
-    # Preflight 问题
-    duplicate_old_titles: List[Tuple[str, str]] = field(default_factory=list)  # (id, title) 列表
-    duplicate_keep_titles: List[Tuple[str, str]] = field(default_factory=list)
-    unreadable_files: List[str] = field(default_factory=list)
+    # preflight 硬门禁
     old_not_found: bool = False
     keep_not_found: bool = False
+    same_id: bool = False
+    duplicate_old_titles: List[Tuple[str, str]] = field(default_factory=list)
+    duplicate_keep_titles: List[Tuple[str, str]] = field(default_factory=list)
+
+    def referencing_ids(self) -> Set[str]:
+        """去重后的引用方 ID 集合"""
+        return {sid for sid, _, _ in self.frontmatter_refs} | {sid for sid, _, _ in self.body_refs}
 
     def has_references(self) -> bool:
-        """是否存在任何引用"""
         return bool(self.frontmatter_refs or self.body_refs)
 
+    def blocking_reasons(self) -> List[str]:
+        """返回阻止继续执行的原因列表；为空表示 preflight 通过"""
+        reasons: List[str] = []
+        if self.old_not_found:
+            reasons.append(f"OLD note not found: {self.old_id}")
+        if self.keep_not_found:
+            reasons.append(f"KEEP note not found: {self.keep_id}")
+        if self.same_id:
+            reasons.append("OLD and KEEP must be different notes")
+        if self.duplicate_old_titles:
+            ids = ", ".join(nid for nid, _ in self.duplicate_old_titles)
+            reasons.append(
+                f"Ambiguous OLD title '{self.old_title}': shared by {len(self.duplicate_old_titles)} notes ({ids}). "
+                "Rename or archive duplicates before redirecting."
+            )
+        if self.duplicate_keep_titles:
+            ids = ", ".join(nid for nid, _ in self.duplicate_keep_titles)
+            reasons.append(
+                f"Ambiguous KEEP title '{self.keep_title}': shared by {len(self.duplicate_keep_titles)} notes ({ids})."
+            )
+        return reasons
+
     def can_proceed(self) -> bool:
-        """Preflight 是否通过"""
-        return not (
-            self.old_not_found
-            or self.keep_not_found
-            or self.duplicate_old_titles
-            or self.duplicate_keep_titles
-        )
+        return not self.blocking_reasons()
 
 
 @dataclass
 class RedirectResult:
-    """Redirect 执行结果"""
+    """redirect 执行结果。文件改写与派生索引分开统计。"""
 
     success: bool
     old_id: str
     keep_id: str
+    dry_run: bool = False
 
     files_changed: int = 0
     frontmatter_links_updated: int = 0
     body_links_updated: int = 0
     backlinks_updated: int = 0
 
-    conflicts: List[str] = field(default_factory=list)  # 文件冲突（mtime 变化）
-    unmigratable: List[str] = field(default_factory=list)  # substring-only 匹配
+    conflicts: List[str] = field(default_factory=list)
     unreadable_files: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
 
     verification_passed: bool = False
 
 
+def _mask_exclusions(text: str) -> str:
+    """把 fenced code block / HTML 注释替换为等长空白，保持字符偏移不变。
+
+    这样在掩码文本上定位 wiki link，偏移可以直接套用到原文，
+    既排除了代码块内的伪链接，又不会错位。
+    """
+
+    def _blank(match: re.Match) -> str:
+        # 保留换行，其余字符替换为空格，长度不变
+        return re.sub(r"[^\n]", " ", match.group(0))
+
+    text = _FENCED_CODE_RE.sub(_blank, text)
+    text = _HTML_COMMENT_RE.sub(_blank, text)
+    return text
+
+
+def _link_matches_old(inner: str, old_id: str, old_title: str) -> bool:
+    """判断一个 wiki link 内容是否精确指向旧笔记。
+
+    只接受精确 ID 或精确标题匹配；不做 substring 模糊匹配，
+    避免把 [[Foo]] 误判为对 "Foo Bar" 的引用。
+    """
+    target = _normalize_wiki_link_title(inner)
+    if target == old_id:
+        return True
+    return bool(old_title) and target.casefold() == old_title.casefold()
+
+
+def _rewritten_inner(inner: str, keep_id: str) -> str:
+    """生成新的 link 内容，保留 alias 与 anchor。
+
+    [[Old]]              -> [[KEEP]]
+    [[Old|别名]]          -> [[KEEP|别名]]
+    [[Old#锚点]]          -> [[KEEP#锚点]]
+    [[Old#锚点|别名]]      -> [[KEEP#锚点|别名]]
+    """
+    target_part, sep, alias_part = inner.partition("|")
+    _, anchor_sep, anchor = target_part.partition("#")
+
+    new_target = keep_id
+    if anchor_sep:
+        new_target = f"{keep_id}#{anchor.strip()}"
+    if sep:
+        return f"{new_target}|{alias_part}"
+    return new_target
+
+
+def _rewrite_body_links(body: str, old_id: str, old_title: str, keep_id: str) -> Tuple[str, int]:
+    """重写正文中指向旧笔记的 wiki link，返回 (新正文, 改写处数)。
+
+    代码块与 HTML 注释内的内容不会被改写。
+    """
+    masked = _mask_exclusions(body)
+
+    replacements: List[Tuple[int, int, str]] = []
+    for match in _WIKI_LINK_SPAN_RE.finditer(masked):
+        inner = match.group(1)
+        if not _link_matches_old(inner, old_id, old_title):
+            continue
+        replacements.append((match.start(), match.end(), f"[[{_rewritten_inner(inner, keep_id)}]]"))
+
+    if not replacements:
+        return body, 0
+
+    # 从后往前替换，保持前面的偏移有效
+    new_body = body
+    for start, end, new_text in reversed(replacements):
+        new_body = new_body[:start] + new_text + new_body[end:]
+
+    return new_body, len(replacements)
+
+
 def scan_references(
-    old_id: str, old_title: Optional[str] = None, keep_id: Optional[str] = None
+    old_id: str,
+    old_title: Optional[str] = None,
+    keep_id: Optional[str] = None,
+    cfg: Optional[ZKConfig] = None,
 ) -> ReferenceReport:
-    """扫描所有引用 old_id 的笔记（frontmatter + 正文）。
+    """扫描所有指向 old_id 的引用（frontmatter links + 正文 wiki link）。
+
+    扫描范围显式包含归档笔记：归档笔记既是有效引用来源，也是有效目标，
+    但默认的 list/rebuild 路径会把它们过滤掉。
 
     Args:
         old_id: 旧笔记 ID
-        old_title: 旧笔记标题（可选，若不提供则从文件加载）
-        keep_id: 新笔记 ID（可选，用于 preflight 检查重复标题）
-
-    Returns:
-        ReferenceReport 包含所有引用方和 preflight 问题
+        old_title: 旧笔记标题（省略时从笔记文件读取）
+        keep_id: 保留笔记 ID（提供时会一并做 preflight 校验）
+        cfg: 目标知识库配置（省略时使用当前默认配置）
     """
     report = ReferenceReport(old_id=old_id, old_title=old_title or "", keep_id=keep_id)
 
-    # 加载 old/keep 笔记，验证存在性
-    try:
-        old_note = load_note_by_id(old_id)
-    except Exception:
-        old_note = None
-    
+    old_note = load_note_by_id(old_id, cfg=cfg)
     if not old_note:
         report.old_not_found = True
         return report
     report.old_title = old_note.title
 
     if keep_id:
-        try:
-            keep_note = load_note_by_id(keep_id)
-        except Exception:
-            keep_note = None
-        
+        if keep_id == old_id:
+            report.same_id = True
+            return report
+        keep_note = load_note_by_id(keep_id, cfg=cfg)
         if not keep_note:
             report.keep_not_found = True
             return report
         report.keep_title = keep_note.title
 
-    # 检查重复标题
-    idx = get_note_index()
+    idx = get_note_index(cfg)
     all_meta = idx.get_all_meta()
 
     old_title_matches = [
-        (m.id, m.title) for m in all_meta if m.title.casefold() == old_note.title.casefold()
+        (m.id, m.title) for m in all_meta if m.title.casefold() == report.old_title.casefold()
     ]
     if len(old_title_matches) > 1:
         report.duplicate_old_titles = old_title_matches
 
-    if keep_id and report.keep_title:
+    if report.keep_title:
         keep_title_matches = [
-            (m.id, m.title)
-            for m in all_meta
-            if m.title.casefold() == report.keep_title.casefold()
+            (m.id, m.title) for m in all_meta if m.title.casefold() == report.keep_title.casefold()
         ]
         if len(keep_title_matches) > 1:
             report.duplicate_keep_titles = keep_title_matches
 
-    # 扫描 frontmatter links
     for meta in all_meta:
+        if meta.id == old_id:
+            continue
         if old_id in meta.links:
             report.frontmatter_refs.append((meta.id, meta.title, Path(meta.filepath)))
 
-    # 扫描正文引用（包含归档来源）
-    body_referencers = idx.find_notes_referencing_title(old_note.title)
-    for meta in body_referencers:
+    for meta in idx.find_notes_referencing_title(report.old_title):
+        if meta.id == old_id:
+            continue
         report.body_refs.append((meta.id, meta.title, Path(meta.filepath)))
 
     return report
 
 
 def redirect_references(
-    old_id: str, keep_id: str, dry_run: bool = False, force: bool = False
+    old_id: str,
+    keep_id: str,
+    dry_run: bool = False,
+    cfg: Optional[ZKConfig] = None,
 ) -> RedirectResult:
-    """批量重写所有引用 old_id 的笔记。
+    """把所有指向 old_id 的引用迁移到 keep_id。
+
+    旧笔记本身不会被删除：删除是独立决策，需要在验证通过后显式执行。
 
     Args:
         old_id: 旧笔记 ID
-        keep_id: 新笔记 ID
-        dry_run: True 时只报告、不实际写文件
-        force: True 时跳过 mtime 冲突检查
-
-    Returns:
-        RedirectResult 包含更新统计和错误列表
+        keep_id: 保留笔记 ID
+        dry_run: 只报告影响范围，不写任何文件
+        cfg: 目标知识库配置
     """
-    result = RedirectResult(success=False, old_id=old_id, keep_id=keep_id)
+    result = RedirectResult(success=False, old_id=old_id, keep_id=keep_id, dry_run=dry_run)
 
-    # Preflight
-    report = scan_references(old_id, keep_id=keep_id)
-    if not report.can_proceed():
-        if report.old_not_found:
-            result.errors.append(f"OLD note not found: {old_id}")
-        if report.keep_not_found:
-            result.errors.append(f"KEEP note not found: {keep_id}")
-        if report.duplicate_old_titles:
-            result.errors.append(
-                f"Ambiguous OLD title: {len(report.duplicate_old_titles)} notes share '{report.old_title}'"
-            )
-        if report.duplicate_keep_titles:
-            result.errors.append(
-                f"Ambiguous KEEP title: {len(report.duplicate_keep_titles)} notes share '{report.keep_title}'"
-            )
-        return result
-
-    if not report.has_references():
-        result.success = True
+    report = scan_references(old_id, keep_id=keep_id, cfg=cfg)
+    blocking = report.blocking_reasons()
+    if blocking:
+        result.errors.extend(blocking)
         return result
 
     old_title = report.old_title
-    changed_files: Set[Path] = set()
 
-    # 收集所有需要更新的文件（frontmatter + body 可能重叠）
-    all_paths = set([p for _, _, p in report.frontmatter_refs] + [p for _, _, p in report.body_refs])
+    # frontmatter 与正文引用可能落在同一文件，先合并去重
+    target_paths = sorted(
+        {p for _, _, p in report.frontmatter_refs} | {p for _, _, p in report.body_refs}
+    )
 
-    for path in all_paths:
+    for path in target_paths:
         try:
             if not path.exists():
                 result.unreadable_files.append(str(path))
                 continue
 
             original = path.read_text(encoding="utf-8")
-            original_mtime = path.stat().st_mtime_ns
-            original_hash = hashlib.sha256(original.encode("utf-8")).hexdigest()
-
-            # 解析 frontmatter + body
-            match = re.match(r"^---\n(.*?)\n---\n+(.*)$", original, re.DOTALL)
+            match = _FRONTMATTER_RE.match(original)
             if not match:
                 result.unreadable_files.append(str(path))
                 continue
 
-            fm_raw, body = match.group(1), match.group(2)
-            fm = yaml.safe_load(fm_raw)
-            if not isinstance(fm, dict):
+            fm_raw, separator, rest = match.group(1), match.group(2), match.group(3)
+            try:
+                frontmatter = yaml.safe_load(fm_raw)
+            except yaml.YAMLError as exc:
+                result.unreadable_files.append(f"{path}: invalid frontmatter ({exc})")
+                continue
+
+            if not isinstance(frontmatter, dict):
                 result.unreadable_files.append(str(path))
                 continue
 
-            changed = False
-
-            # 1. 更新 frontmatter links
-            if isinstance(fm.get("links"), list) and old_id in fm["links"]:
-                fm["links"] = [keep_id if x == old_id else x for x in fm["links"]]
+            fm_changed = False
+            links = frontmatter.get("links")
+            if isinstance(links, list) and old_id in links:
+                migrated: List[str] = []
+                for value in links:
+                    replacement = keep_id if value == old_id else value
+                    if replacement not in migrated:
+                        migrated.append(replacement)
+                frontmatter["links"] = migrated
                 result.frontmatter_links_updated += 1
-                changed = True
+                fm_changed = True
 
-            # 2. 更新 frontmatter backlinks（若当前笔记是 keep_id）
-            if fm.get("id") == keep_id and isinstance(fm.get("backlinks"), list):
-                if old_id in fm["backlinks"]:
-                    fm["backlinks"] = [x for x in fm["backlinks"] if x != old_id]
-                    result.backlinks_updated += 1
-                    changed = True
+            new_rest, body_count = _rewrite_body_links(rest, old_id, old_title, keep_id)
+            body_changed = body_count > 0
 
-            # 3. 更新正文 wiki link：[[OLD_TITLE]] / [[OLD_ID]] → [[KEEP_ID]]
-            #    保留 alias/anchor：[[OLD_TITLE|alias]] → [[KEEP_ID|alias]]
-            new_body, body_changed_count = _rewrite_body_links(body, old_id, old_title, keep_id)
-            if body_changed_count > 0:
-                body = new_body
-                result.body_links_updated += body_changed_count
-                changed = True
-
-            if not changed:
+            if not (fm_changed or body_changed):
                 continue
+
+            result.files_changed += 1
+            result.body_links_updated += body_count
 
             if dry_run:
-                result.files_changed += 1
                 continue
 
-            # 冲突检查
-            if not force:
-                current_mtime = path.stat().st_mtime_ns
-                if current_mtime != original_mtime:
-                    result.conflicts.append(str(path))
-                    continue
+            new_fm_raw = yaml.dump(
+                frontmatter, allow_unicode=True, sort_keys=False, default_flow_style=False
+            )
+            new_content = f"---\n{new_fm_raw}---{separator}{new_rest}"
 
-            # 写回
-            new_fm_raw = yaml.dump(fm, allow_unicode=True, sort_keys=False)
-            new_content = f"---\n{new_fm_raw}---\n\n{body}"
-            path.write_text(new_content, encoding="utf-8")
+            # 写前复核：内容在扫描后被改动则报冲突，不覆盖他人修改
+            if path.read_text(encoding="utf-8") != original:
+                result.conflicts.append(str(path))
+                result.files_changed -= 1
+                result.body_links_updated -= body_count
+                if fm_changed:
+                    result.frontmatter_links_updated -= 1
+                continue
 
-            changed_files.add(path)
-            result.files_changed += 1
+            _atomic_replace(path, new_content)
 
-        except Exception as e:
-            result.errors.append(f"{path}: {e}")
-            logger.error(f"Failed to update {path}: {e}")
+        except OSError as exc:
+            result.errors.append(f"{path}: {exc}")
+            logger.error("redirect failed for %s: %s", path, exc)
 
-    # Post-redirect 验证
-    if not dry_run and not result.conflicts and not result.errors:
-        verify_report = scan_references(old_id)
-        result.verification_passed = not verify_report.has_references()
+    # 保留笔记的 backlinks 需要纳入新增来源，并清掉旧笔记残留
+    if not dry_run and not result.errors:
+        result.backlinks_updated = _sync_keep_backlinks(
+            keep_id, old_id, report.referencing_ids(), cfg=cfg
+        )
 
-    result.success = result.files_changed > 0 or (not report.has_references())
+    if not dry_run:
+        # 改写后索引缓存已过期，验证前必须重建
+        from .note_index import reset_note_index
+
+        reset_note_index()
+        verification = scan_references(old_id, cfg=cfg)
+        result.verification_passed = not verification.has_references()
+
+    result.success = not result.errors and not result.conflicts
     return result
 
 
-def _rewrite_body_links(
-    body: str, old_id: str, old_title: str, keep_id: str
-) -> Tuple[str, int]:
-    """重写正文中的 wiki link：[[OLD_TITLE]] / [[OLD_ID]] → [[KEEP_ID]]。
+def _sync_keep_backlinks(
+    keep_id: str,
+    old_id: str,
+    source_ids: Set[str],
+    cfg: Optional[ZKConfig] = None,
+) -> int:
+    """把迁移来的来源写入保留笔记的 backlinks，并移除旧笔记残留。
 
-    保留 alias 和 anchor：
-    - [[OLD_TITLE|alias]] → [[KEEP_ID|alias]]
-    - [[OLD_TITLE#anchor]] → [[KEEP_ID#anchor]]
-    - [[OLD_TITLE|alias#anchor]] → [[KEEP_ID|alias#anchor]]（极端情况）
-
-    Args:
-        body: 正文
-        old_id: 旧 ID
-        old_title: 旧标题（精确匹配）
-        keep_id: 新 ID
-
-    Returns:
-        (new_body, changed_count)
+    采用 re-read-and-merge：只改 backlinks 字段，避免覆盖并发修改。
+    文件定位用 find_note_file（按 cfg 搜索）；不能依赖 Note.filepath
+    property —— from_markdown 不回填 _filepath，它会退回全局 config 推算路径。
     """
-    # 剥除 code block/HTML comment 再扫 wiki link
-    excluded_body = _strip_wiki_link_exclusions(body)
-    spans = list(_WIKI_LINK_SPAN_RE.finditer(excluded_body))
-    if not spans:
-        return body, 0
+    from .config import config
+    from .note import find_note_file
 
-    # 收集需要替换的 span（逆序，从后往前替换以保持 offset）
-    replacements: List[Tuple[int, int, str]] = []  # (start, end, new_text)
-    for m in reversed(spans):
-        inner = m.group(1).strip()
-        target_part = inner.split("|", 1)[0].split("#", 1)[0].strip()
-        normalized = _normalize_wiki_link_title(inner)
+    use_cfg = cfg if cfg is not None else config
+    path = find_note_file(use_cfg, keep_id)
+    if not path or not path.exists():
+        return 0
 
-        # 匹配条件：精确 ID 或精确标题
-        if target_part == old_id or normalized.casefold() == old_title.casefold():
-            # 保留 alias/anchor
-            if "|" in inner:
-                # [[target|alias]] → [[KEEP_ID|alias]]
-                alias_part = inner.split("|", 1)[1]
-                new_inner = f"{keep_id}|{alias_part}"
-            elif "#" in inner.split("|", 1)[0]:
-                # [[target#anchor]] → [[KEEP_ID#anchor]]
-                anchor_part = inner.split("|", 1)[0].split("#", 1)[1]
-                new_inner = f"{keep_id}#{anchor_part}"
-            else:
-                # [[target]] → [[KEEP_ID]]
-                new_inner = keep_id
+    try:
+        original = path.read_text(encoding="utf-8")
+        match = _FRONTMATTER_RE.match(original)
+        if not match:
+            return 0
 
-            replacements.append((m.start(), m.end(), f"[[{new_inner}]]"))
+        fm_raw, separator, rest = match.group(1), match.group(2), match.group(3)
+        frontmatter = yaml.safe_load(fm_raw)
+        if not isinstance(frontmatter, dict):
+            return 0
 
-    # 执行替换
-    if not replacements:
-        return body, 0
+        current = frontmatter.get("backlinks")
+        backlinks = list(current) if isinstance(current, list) else []
 
-    # 注意：excluded_body 的 offset 可能与 body 不同（剥除了 code block）
-    # 所以需要在原始 body 上重新匹配并替换
-    original_spans = list(_WIKI_LINK_SPAN_RE.finditer(body))
-    original_replacements: List[Tuple[int, int, str]] = []
+        merged = [b for b in backlinks if b != old_id]
+        for source_id in sorted(source_ids):
+            if source_id != keep_id and source_id not in merged:
+                merged.append(source_id)
 
-    for orig_m in reversed(original_spans):
-        inner = orig_m.group(1).strip()
-        target_part = inner.split("|", 1)[0].split("#", 1)[0].strip()
-        normalized = _normalize_wiki_link_title(inner)
+        if merged == backlinks:
+            return 0
 
-        if target_part == old_id or normalized.casefold() == old_title.casefold():
-            if "|" in inner:
-                alias_part = inner.split("|", 1)[1]
-                new_inner = f"{keep_id}|{alias_part}"
-            elif "#" in inner.split("|", 1)[0]:
-                anchor_part = inner.split("|", 1)[0].split("#", 1)[1]
-                new_inner = f"{keep_id}#{anchor_part}"
-            else:
-                new_inner = keep_id
-            original_replacements.append((orig_m.start(), orig_m.end(), f"[[{new_inner}]]"))
+        frontmatter["backlinks"] = merged
+        new_fm_raw = yaml.dump(
+            frontmatter, allow_unicode=True, sort_keys=False, default_flow_style=False
+        )
+        _atomic_replace(path, f"---\n{new_fm_raw}---{separator}{rest}")
+        return len(merged) - len(backlinks) if len(merged) != len(backlinks) else 1
+    except (OSError, yaml.YAMLError) as exc:
+        logger.error("failed to sync backlinks for %s: %s", keep_id, exc)
+        return 0
 
-    new_body = body
-    for start, end, new_text in original_replacements:
-        new_body = new_body[:start] + new_text + new_body[end:]
 
-    return new_body, len(original_replacements)
+def _atomic_replace(path: Path, content: str) -> None:
+    """单文件原子写入（同目录临时文件 + os.replace）。
+
+    注意：这只保证单个文件不会写坏，不构成跨文件事务。
+    """
+    import os
+    import tempfile
+
+    directory = path.parent
+    fd, tmp_name = tempfile.mkstemp(dir=str(directory), prefix=".redirect-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise

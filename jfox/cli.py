@@ -1474,9 +1474,13 @@ def _delete_impl(
                 print(output_json(result))
                 raise typer.Exit(1)
             else:
-                console.print(f"[red]✗[/red] Cannot delete: {total_refs} note(s) reference this note.")
+                console.print(
+                    f"[red]✗[/red] Cannot delete: {total_refs} note(s) reference this note."
+                )
                 console.print("\n[yellow]References:[/yellow]")
-                for src_id, src_title, _ in (ref_report.frontmatter_refs + ref_report.body_refs)[:10]:
+                for src_id, src_title, _ in (ref_report.frontmatter_refs + ref_report.body_refs)[
+                    :10
+                ]:
                     console.print(f"  - [{src_id}] {src_title}")
                 if total_refs > 10:
                     console.print(f"  ... and {total_refs - 10} more")
@@ -1522,7 +1526,9 @@ def _delete_impl(
 def delete(
     note_id: str = typer.Argument(..., help="笔记 ID"),
     force: bool = typer.Option(False, "--force", "-f", help="强制删除不确认"),
-    allow_dangling: bool = typer.Option(False, "--allow-dangling", help="允许删除被引用的笔记（产生悬空链接）"),
+    allow_dangling: bool = typer.Option(
+        False, "--allow-dangling", help="允许删除被引用的笔记（产生悬空链接）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -1538,7 +1544,7 @@ def delete(
         from .config import use_kb
 
         with use_kb(kb):
-            _delete_impl(note_id, force, output_format)
+            _delete_impl(note_id, force, output_format, allow_dangling=allow_dangling)
 
     except typer.Exit:
         raise
@@ -3928,7 +3934,6 @@ def redirect(
     old_id: str = typer.Argument(..., help="旧笔记 ID（要被替换的引用目标）"),
     keep_id: str = typer.Argument(..., help="新笔记 ID（替换后的引用目标）"),
     dry_run: bool = typer.Option(False, "--dry-run", help="仅报告、不实际修改文件"),
-    force: bool = typer.Option(False, "--force", "-f", help="跳过文件冲突检查"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -3951,9 +3956,9 @@ def redirect(
             from .config import use_kb
 
             with use_kb(kb):
-                result = redirect_references(old_id, keep_id, dry_run=dry_run, force=force)
+                result = redirect_references(old_id, keep_id, dry_run=dry_run)
         else:
-            result = redirect_references(old_id, keep_id, dry_run=dry_run, force=force)
+            result = redirect_references(old_id, keep_id, dry_run=dry_run)
 
         if not result.success and result.errors:
             if output_format == "json":
@@ -3976,8 +3981,8 @@ def redirect(
                         "body_links_updated": result.body_links_updated,
                         "backlinks_updated": result.backlinks_updated,
                         "conflicts": result.conflicts,
-                        "unmigratable": result.unmigratable,
                         "unreadable_files": result.unreadable_files,
+                        "errors": result.errors,
                         "verification_passed": result.verification_passed,
                         "dry_run": dry_run,
                     }
@@ -4014,6 +4019,8 @@ def redirect(
                 else:
                     console.print("\n[yellow]⚠ Verification: Some references may remain[/yellow]")
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":

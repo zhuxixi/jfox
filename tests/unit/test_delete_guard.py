@@ -1,127 +1,157 @@
-"""测试 delete 命令的入链保护（delete guard）"""
+"""
+测试类型: 单元测试
+目标功能: jfox delete 入链保护（issue #435 delete guard）
+预估耗时: < 2秒
+依赖要求: 临时知识库，mock embedding backend
+
+删除被引用笔记前必须显式决策：默认拒绝并提示 redirect 迁移，
+--allow-dangling 才放行。redirect 迁移后删除应畅通。
+"""
+
+import json
+from unittest.mock import patch
 
 import pytest
-from datetime import datetime
+from typer.testing import CliRunner
+from utils.temp_kb import temp_kb_registered
 
-from jfox.models import Note, NoteType
+from jfox.cli import app
+
+pytestmark = [pytest.mark.unit, pytest.mark.fast]
+
+runner = CliRunner()
 
 
-@pytest.fixture
-def setup_delete_scenario(temp_kb):
-    """创建测试场景：target 被 2 篇笔记引用"""
-    now = datetime(2026, 8, 27, 10, 0)
-    
-    target = Note("TARGET", "Target", "target body", NoteType.PERMANENT, now, now)
-    ref1 = Note("REF1", "Ref1", "content", NoteType.PERMANENT, now, now, links=["TARGET"])
-    ref2 = Note("REF2", "Ref2", "[[Target]]", NoteType.PERMANENT, now, now)
-    orphan = Note("ORPHAN", "Orphan", "no refs", NoteType.PERMANENT, now, now)
-    
-    for n in [target, ref1, ref2, orphan]:
-        p = temp_kb / "notes" / n.type.value / f"{n.id}.md"
-        p.write_text(n.to_markdown(), encoding="utf-8")
-    
-    return temp_kb, target, [ref1, ref2], orphan
+def _add(runner, kb_name, title, content):
+    """创建笔记并返回 (exit_code, note_id, output)"""
+    result = runner.invoke(
+        app,
+        [
+            "add",
+            content,
+            "--title",
+            title,
+            "--type",
+            "permanent",
+            "--kb",
+            kb_name,
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    return json.loads(result.output)["note"]["id"]
+
+
+def _show(runner, kb_name, note_id):
+    shown = runner.invoke(app, ["show", note_id, "--kb", kb_name, "--json"])
+    assert shown.exit_code == 0, shown.output
+    return json.loads(shown.output)
 
 
 class TestDeleteGuard:
-    """测试删除前入链检查"""
-    
-    def test_delete_refuses_when_referenced(self, cli, setup_delete_scenario):
-        """有入链时拒绝删除"""
-        temp_kb, target, refs, orphan = setup_delete_scenario
-        
-        result = cli.delete("TARGET", force=True)
-        
-        assert not result.success
-        assert "reference" in result.stderr.lower()
-        assert "REF1" in result.stderr or "REF2" in result.stderr
-    
-    def test_delete_succeeds_with_allow_dangling(self, cli, setup_delete_scenario):
-        """--allow-dangling 跳过检查"""
-        temp_kb, target, refs, orphan = setup_delete_scenario
-        
-        result = cli.delete("TARGET", force=True, allow_dangling=True)
-        
-        assert result.success
-        # 验证文件已删除
-        target_path = temp_kb / "notes/permanent/TARGET.md"
-        assert not target_path.exists()
-    
-    def test_delete_succeeds_when_no_references(self, cli, setup_delete_scenario):
-        """无入链时正常删除"""
-        temp_kb, target, refs, orphan = setup_delete_scenario
-        
-        result = cli.delete("ORPHAN", force=True)
-        
-        assert result.success
-        orphan_path = temp_kb / "notes/permanent/ORPHAN.md"
-        assert not orphan_path.exists()
-    
-    def test_delete_guard_includes_archived_refs(self, cli, temp_kb):
-        """归档来源的引用也被检查"""
-        now = datetime.now()
-        target = Note("TARGET", "Target", "body", NoteType.PERMANENT, now, now)
-        archived_ref = Note("ARCH", "Archived", "[[Target]]", NoteType.PERMANENT, now, now, archived=True)
-        
-        for n in [target, archived_ref]:
-            p = temp_kb / "notes" / n.type.value / f"{n.id}.md"
-            p.write_text(n.to_markdown(), encoding="utf-8")
-        
-        result = cli.delete("TARGET", force=True)
-        
-        assert not result.success
-        assert "reference" in result.stderr.lower()
-    
-    def test_delete_json_output_includes_references(self, cli, setup_delete_scenario):
-        """JSON 输出包含引用方列表"""
-        temp_kb, target, refs, orphan = setup_delete_scenario
-        
-        result = cli.delete("TARGET", force=True, output_format="json")
-        
-        assert not result.success
-        data = result.json
-        assert "references" in data
-        assert data["references"]["total"] == 2
-        assert any(r["id"] == "REF1" for r in data["references"]["frontmatter"])
-        assert any(r["id"] == "REF2" for r in data["references"]["body"])
-    
-    def test_delete_suggests_redirect_in_error(self, cli, setup_delete_scenario):
-        """错误提示建议使用 redirect"""
-        temp_kb, target, refs, orphan = setup_delete_scenario
-        
-        result = cli.delete("TARGET", force=True)
-        
-        assert not result.success
-        assert "redirect" in result.stderr.lower()
+    """delete 命令的入链保护"""
 
+    def test_delete_blocked_when_referenced(self, mock_embedding_backend):
+        """被引用笔记默认拒绝删除，错误信息指向 redirect"""
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend",
+                return_value=mock_embedding_backend,
+            ):
+                b_id = _add(runner, kb_name, "笔记B", "B body")
+                _add(runner, kb_name, "笔记A", "A 引用 [[笔记B]]")
 
-class TestDeleteWorkflow:
-    """测试删除工作流"""
-    
-    def test_redirect_then_delete(self, cli, temp_kb):
-        """先 redirect 再 delete 的完整流程"""
-        now = datetime.now()
-        old = Note("OLD", "Old", "body", NoteType.PERMANENT, now, now)
-        keep = Note("KEEP", "Keep", "body", NoteType.PERMANENT, now, now)
-        ref = Note("REF", "Ref", "[[Old]]", NoteType.PERMANENT, now, now)
-        
-        for n in [old, keep, ref]:
-            p = temp_kb / "notes" / n.type.value / f"{n.id}.md"
-            p.write_text(n.to_markdown(), encoding="utf-8")
-        
-        # Step 1: redirect
-        redirect_result = cli.redirect("OLD", "KEEP")
-        assert redirect_result.success
-        
-        # Step 2: delete 现在应该成功
-        delete_result = cli.delete("OLD", force=True)
-        assert delete_result.success
-        
-        # 验证
-        old_path = temp_kb / "notes/permanent/OLD.md"
-        assert not old_path.exists()
-        
-        ref_path = temp_kb / "notes/permanent/REF.md"
-        content = ref_path.read_text(encoding="utf-8")
-        assert "[[KEEP]]" in content
-        assert "[[Old]]" not in content
+                result = runner.invoke(app, ["delete", b_id, "--force", "--kb", kb_name, "--json"])
+
+                assert result.exit_code == 1
+                payload = json.loads(result.output)
+                assert payload["success"] is False
+                assert "redirect" in payload["error"]
+                assert payload["references"]["total"] >= 1
+
+                # 笔记未被删除
+                assert _show(runner, kb_name, b_id)["id"] == b_id
+
+    def test_delete_unreferenced_note_ok(self, mock_embedding_backend):
+        """无引用笔记正常删除，不需要 --allow-dangling"""
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend",
+                return_value=mock_embedding_backend,
+            ):
+                b_id = _add(runner, kb_name, "孤立笔记", "no refs")
+                _add(runner, kb_name, "其他笔记", "不引用任何笔记")
+
+                result = runner.invoke(app, ["delete", b_id, "--force", "--kb", kb_name, "--json"])
+
+                assert result.exit_code == 0, result.output
+                payload = json.loads(result.output)
+                assert payload["success"] is True
+
+    def test_delete_allow_dangling_flag(self, mock_embedding_backend):
+        """--allow-dangling 显式放行，产生悬空引用由用户承担"""
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend",
+                return_value=mock_embedding_backend,
+            ):
+                b_id = _add(runner, kb_name, "笔记B", "B body")
+                a_id = _add(runner, kb_name, "笔记A", "A 引用 [[笔记B]]")
+
+                result = runner.invoke(
+                    app,
+                    ["delete", b_id, "--force", "--allow-dangling", "--kb", kb_name, "--json"],
+                )
+
+                assert result.exit_code == 0, result.output
+                # 悬空引用保留在 A 的 frontmatter（不做静默清理）
+                a_note = _show(runner, kb_name, a_id)
+                assert b_id in a_note["links"]
+
+    def test_redirect_then_delete_succeeds(self, mock_embedding_backend):
+        """先 redirect 迁移引用，再删除旧笔记：#435 的标准工作流"""
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend",
+                return_value=mock_embedding_backend,
+            ):
+                b_id = _add(runner, kb_name, "笔记B", "B body")
+                c_id = _add(runner, kb_name, "笔记C", "C body")
+                a_id = _add(runner, kb_name, "笔记A", "A 引用 [[笔记B]]")
+
+                # 1. 迁移引用 B → C
+                redirect_result = runner.invoke(
+                    app, ["redirect", b_id, c_id, "--kb", kb_name, "--json"]
+                )
+                assert redirect_result.exit_code == 0, redirect_result.output
+
+                # 2. 删除 B 不再被拦截
+                delete_result = runner.invoke(
+                    app, ["delete", b_id, "--force", "--kb", kb_name, "--json"]
+                )
+                assert delete_result.exit_code == 0, delete_result.output
+
+                # 3. A 的引用已指向 C（frontmatter 与正文）
+                a_note = _show(runner, kb_name, a_id)
+                assert c_id in a_note["links"]
+                assert b_id not in a_note["links"]
+                assert f"[[{c_id}]]" in a_note["content"]
+
+    def test_guard_covers_archived_references(self, mock_embedding_backend):
+        """归档笔记的引用同样构成删除保护（不能静默过滤）"""
+        with temp_kb_registered() as kb_name:
+            with patch(
+                "jfox.embedding_backend.get_backend",
+                return_value=mock_embedding_backend,
+            ):
+                b_id = _add(runner, kb_name, "笔记B", "B body")
+                src_id = _add(runner, kb_name, "归档来源", "旧文引用 [[笔记B]]")
+
+                # 归档来源笔记
+                archive_result = runner.invoke(app, ["archive", src_id, "--kb", kb_name, "--json"])
+                assert archive_result.exit_code == 0, archive_result.output
+
+                result = runner.invoke(app, ["delete", b_id, "--force", "--kb", kb_name, "--json"])
+                assert result.exit_code == 1
+                payload = json.loads(result.output)
+                assert payload["references"]["total"] >= 1
