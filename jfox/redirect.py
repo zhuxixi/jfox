@@ -265,7 +265,12 @@ def _find_body_refs(
             text = Path(meta.filepath).read_text(encoding="utf-8")
         except OSError:
             continue
-        masked = _mask_exclusions(text)
+        # 与改写同口径：只扫 frontmatter 之后的正文。
+        # 全文匹配会把 frontmatter 字段（如 title）里的 [[...]] 计为 body ref，
+        # 但改写阶段不触碰 frontmatter 文本 → 验证永远不过的死锁（CR issue-9）
+        fm_match = _FRONTMATTER_RE.match(text)
+        body = fm_match.group(3) if fm_match else text
+        masked = _mask_exclusions(body)
         for m in _WIKI_LINK_SPAN_RE.finditer(masked):
             if _link_matches_old(m.group(1), old_id, old_title):
                 refs.append((meta.id, meta.title, Path(meta.filepath)))

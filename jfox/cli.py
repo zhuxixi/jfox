@@ -3964,6 +3964,8 @@ def _redirect_impl(old_id: str, keep_id: str, dry_run: bool, output_format: str)
                 )
                 for path in result.unreadable_files[:5]:
                     console.print(f"  - {path}")
+            if not dry_run and not result.verification_passed:
+                console.print("[yellow]⚠ Verification: Some references may remain[/yellow]")
         raise typer.Exit(1)
 
     if output_format == "json":

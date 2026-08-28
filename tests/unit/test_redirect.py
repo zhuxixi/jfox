@@ -134,6 +134,33 @@ class TestScanReferences:
         assert f"[[{KEEP_ID}]]" in after
         assert f"[[{OLD_ID}]]" not in after
 
+    def test_frontmatter_wikilink_text_not_counted_as_body_ref(self, kb):
+        """frontmatter 字段里的 [[...]] 不算正文引用。
+
+        发现与改写必须同口径：改写只碰 frontmatter 之后的正文。
+        注意 title 会被 to_markdown 复制为正文 H1（属正文，会被改写），
+        故用 frontmatter 独有字段 source 构造真·frontmatter-only 场景；
+        若把这类文本计为 body ref，验证将永远不通过（CR issue-9）。
+        """
+        _write_note(kb, OLD_ID, "旧概念")
+        _write_note(kb, KEEP_ID, "新概念")
+        _write_note(
+            kb,
+            SRC_BODY_ID,
+            "普通标题",
+            content="不引用任何笔记",
+            extra_fm="source: '参见[[旧概念]]原文'",
+        )
+
+        report = scan_references(OLD_ID, cfg=kb)
+        assert SRC_BODY_ID not in {sid for sid, _, _ in report.body_refs}
+        assert not report.has_references()
+
+        result = redirect_references(OLD_ID, KEEP_ID, cfg=kb)
+        assert result.success, result.errors
+        assert result.verification_passed
+        assert result.files_changed == 0
+
     def test_scan_old_not_found(self, kb):
         report = scan_references("99999999000001", cfg=kb)
         assert report.old_not_found
