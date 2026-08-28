@@ -64,9 +64,12 @@ def check_dimension_mismatch() -> Optional[DimensionMismatchReport]:
             chroma_path = Path(kb.path).expanduser() / ".zk" / "chroma_db"
             if not chroma_path.exists():
                 continue
+            # Settings MUST stay aligned with VectorStore.init: ChromaDB caches
+            # clients per path at process level and rejects a second client on
+            # the same path with different settings (#442).
             c = chromadb.PersistentClient(
                 path=str(chroma_path),
-                settings=Settings(anonymized_telemetry=False),
+                settings=Settings(anonymized_telemetry=False, allow_reset=True),
             )
             collection = c.get_collection("notes")
             if collection.count() == 0:
