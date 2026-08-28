@@ -57,7 +57,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 | Module | Role |
 |--------|------|
-| `cli.py` | All CLI commands (~2900 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
+| `cli.py` | All CLI commands (~4100 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
 | `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
 | `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json` |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
@@ -70,8 +70,9 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `models.py` | `Note` data model with frontmatter serialization |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
 | `bm25_index.py` | BM25 keyword search index；写路径 filelock + 原子写 + `write_version` 乐观并发控制，多进程并发写安全（#391/#396） |
-| `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理） |
+| `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理）；CPU 默认模型 `BAAI/bge-small-zh-v1.5`（512 维，#442），本地模型目录未命中时先走 ModelDownloader 下载链再兜底加载（#374） |
 | `daemon/` | Embedding 模型 HTTP 守护进程 (`server.py`/`client.py`/`process.py`)，`jfox daemon start/stop/status` |
+| `embedding_migration.py` | 全 KB 向量维度不匹配检测（#442）：daemon start/restart 时比对各 KB Chroma 集合维度与 daemon 服务维度，发现旧模型建库则交互式逐 KB 提示 rebuild，单 KB 失败不阻断其余 |
 | `fragment/` | 碎片采集：detector 分类 + store SQLite(WAL) + service 编排 |
 | `bookshelf/` | 好书资产管理：store 文件夹 CRUD + meta jfox 自有元数据（wrap scan2book manifest）+ cli sub-app；纯文件管理不进索引 |
 | `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重，命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补进已有草稿，#309；permanent 仍跳过）；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
@@ -80,6 +81,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `moc/` | MOC 结构层：`cluster.py` 密度诊断（永久笔记向量余弦相似度多阈值聚类 + 链接/语义孤儿检测，N×N 稠密矩阵上限 5000，#410）+ `draft.py`/`generate.py` create/update（从诊断簇生成并维护 structure 笔记，落盘带 backlinks 回填与成员磁盘存在性校验，#413）；CLI `jfox moc diagnose/create/update`；重依赖经 `__init__.py` 的 `__getattr__` 按需加载 |
 | `vector_store.py` | ChromaDB vector store for semantic search；批量读 `get_all_embeddings()` 走复制前后清单校验一致的只读快照副本而非活库（Chroma 只读集合也会写 SQLite），失败抛 `VectorStoreReadError`（#407） |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
+| `redirect.py` | 笔记重定向 + delete 入链保护（#435/#449）：`jfox redirect OLD_ID KEEP_ID` 批量改写引用（frontmatter+正文，保留 alias/anchor，跳过 code fence/HTML 注释，非 dry-run 后验证无残留 OLD 引用）；`jfox delete` 默认拒绝删除被引用笔记，`--allow-dangling` 放行 |
 | `template.py` / `template_cli.py` | Jinja2 template system for structured note creation |
 | `performance.py` | Batch processing and model caching |
 
@@ -191,3 +193,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：写盘前按真实磁盘路径 re-read-and-merge——重读 fresh 再合并写回，文件名发散不产生同 id 双文件、与常驻 daemon 并发写不丢更新（#392/#422）；单 target 写盘失败仅 warning 不中断，悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
+- CPU 默认 embedding 模型已从 `all-MiniLM-L6-v2`（384 维）切到 `BAAI/bge-small-zh-v1.5`（512 维，#442）：旧 KB 向量库维度不匹配时 search/add 显式告警不静默失败（`vector_store.last_dimension_warning`），按提示 `jfox index rebuild` 重建该 KB；CI 模型缓存 key 也随模型名（#453）
