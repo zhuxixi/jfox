@@ -110,8 +110,16 @@ class EmbeddingBackend:
         try:
             from sentence_transformers import SentenceTransformer
 
-            # 优先从本地目录加载
+            # Prefer local model dir; on miss, run ModelDownloader fallback chain
+            # (HF -> ModelScope -> curl) before hard-loading via network (#374).
             local_path = self._get_local_model_path()
+            if local_path is None:
+                from .model_downloader import ModelDownloader
+
+                if ModelDownloader(self.model_name).ensure_cached():
+                    # Download may land in ~/.zettelkasten/.models/ — re-probe;
+                    # if it landed in HF hub cache, fall through to name-based load.
+                    local_path = self._get_local_model_path()
             if local_path is not None:
                 self.model = SentenceTransformer(str(local_path), device=self._resolved_device)
             else:
