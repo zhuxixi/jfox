@@ -26,6 +26,9 @@ class DaemonClient:
         self._health_cache_time: float = 0.0
         self._health_cache_result: Optional[bool] = None
         self._dimension: int = 512
+        # True only when /health actually reported an integer "dimension";
+        # the 512 fallback above must not be mistaken for a real value (#442).
+        self._dimension_from_health: bool = False
 
     @property
     def available(self) -> bool:
@@ -41,6 +44,7 @@ class DaemonClient:
             resp = urllib.request.urlopen(f"{self.base_url}/health", timeout=_HEALTH_TIMEOUT)
             data = json.loads(resp.read().decode("utf-8"))
             self._dimension = data.get("dimension", 512)
+            self._dimension_from_health = isinstance(data.get("dimension"), int)
             self._health_cache_result = True
         except Exception:
             self._health_cache_result = False

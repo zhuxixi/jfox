@@ -193,3 +193,34 @@ class TestLoadFallsBackToModelDownloader:
         backend.load()
         assert loaded_with == [str(local_dir)]
         assert backend.dimension == 512
+
+    def test_ensure_cached_true_but_no_local_dir_loads_by_name(self, monkeypatch):
+        # ensure_cached() landed the model in the HF hub cache (not
+        # ~/.zettelkasten/.models/): load() must fall through to a name-based
+        # SentenceTransformer construction, which then reads the HF cache.
+        backend, eb = self._make_backend(monkeypatch)
+        monkeypatch.setattr(eb.EmbeddingBackend, "_get_local_model_path", lambda self: None)
+
+        class FakeDownloader:
+            def __init__(self, model_name):
+                pass
+
+            def ensure_cached(self):
+                return True  # downloaded, but to the HF hub cache
+
+        monkeypatch.setattr("jfox.model_downloader.ModelDownloader", FakeDownloader)
+
+        loaded_with = []
+
+        class FakeST:
+            def __init__(self, name, device=None):
+                loaded_with.append(name)
+
+            def get_sentence_embedding_dimension(self):
+                return 512
+
+        monkeypatch.setattr("sentence_transformers.SentenceTransformer", FakeST)
+
+        backend.load()
+        assert loaded_with == ["BAAI/bge-small-zh-v1.5"]  # by name, not a path
+        assert backend.dimension == 512

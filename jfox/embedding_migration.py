@@ -41,7 +41,13 @@ def check_dimension_mismatch() -> Optional[DimensionMismatchReport]:
         client = _DaemonClient(_get_daemon_url())
         if not client.available:
             return None
+        # Stale/old daemons may omit "dimension" from /health; DaemonClient then
+        # falls back to a default 512 we cannot trust for migration checks (#442).
+        if getattr(client, "_dimension_from_health", True) is not True:
+            return None
         model_dim = client.dimension
+        if not isinstance(model_dim, int) or model_dim <= 0:
+            return None
     except Exception as e:
         logger.debug(f"migration check skipped, daemon unavailable: {e}")
         return None
@@ -86,13 +92,22 @@ def prompt_migration(report: DimensionMismatchReport) -> None:
     from rich.console import Console
 
     console = Console()
-    console.print(
-        f"[yellow]⚠ 检测到 embedding 模型已更换（当前模型 {report.model_dimension} 维）[/yellow]"
-    )
-    for kb in report.affected_kbs:
+    dims = [report.kb_dimensions.get(kb) for kb in report.affected_kbs]
+    if len(set(dims)) == 1 and isinstance(dims[0], int):
+        # Canonical copy from spec §4.5 for the common single-dimension case
         console.print(
-            f"  - 知识库 [cyan]{kb}[/cyan]: 索引 {report.kb_dimensions.get(kb, '?')} 维"
+            f"[yellow]⚠ 检测到 embedding 模型已更换"
+            f"（索引维度 {dims[0]} ≠ 当前模型 {report.model_dimension}）[/yellow]"
         )
+        console.print(f"  受影响知识库: {', '.join(report.affected_kbs)}")
+    else:
+        console.print(
+            f"[yellow]⚠ 检测到 embedding 模型已更换（当前模型 {report.model_dimension} 维）[/yellow]"
+        )
+        for kb in report.affected_kbs:
+            console.print(
+                f"  - 知识库 [cyan]{kb}[/cyan]: 索引 {report.kb_dimensions.get(kb, '?')} 维"
+            )
     console.print("  影响语义搜索（返回空结果）与新笔记向量索引。")
 
     if not sys.stdin.isatty():

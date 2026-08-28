@@ -160,6 +160,21 @@ class TestCheckDimensionMismatch:
         monkeypatch.setattr(em, "_get_daemon_url", lambda: "http://127.0.0.1:8300")
         assert check_dimension_mismatch() is None
 
+    def test_default_dimension_without_health_field_skips_check(self, monkeypatch):
+        # Daemon up, but /health omitted "dimension": DaemonClient fell back to
+        # its 512 default and flagged it not-from-health — check must skip (#442).
+        import jfox.embedding_migration as em
+
+        class StaleDaemonClient:
+            available = True
+            dimension = 512
+            _dimension_from_health = False
+
+        monkeypatch.setattr(em, "_DaemonClient", StaleDaemonClient)
+        monkeypatch.setattr(em, "_is_daemon_running", lambda: True)
+        monkeypatch.setattr(em, "_get_daemon_url", lambda: "http://127.0.0.1:8300")
+        assert check_dimension_mismatch() is None
+
 
 class TestPromptMigration:
     def _report(self):

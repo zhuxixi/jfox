@@ -21,10 +21,8 @@ class TestDefaultModelSwitch:
         assert backend.dimension == 512
 
     def test_daemon_client_dimension_default_is_512(self):
-        client = DaemonClient.__new__(DaemonClient)  # skip __init__ network access
-        assert client._dimension if hasattr(client, "_dimension") else True
-        # Direct check of the class-level default used in __init__
-        import inspect
-
-        src = inspect.getsource(DaemonClient.__init__)
-        assert "512" in src
+        # __init__ only sets attributes (no network); fresh client must default
+        # to 512 and must NOT claim the dimension came from /health (#442).
+        client = DaemonClient("http://127.0.0.1:8300")
+        assert client._dimension == 512
+        assert client._dimension_from_health is False

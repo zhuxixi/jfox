@@ -160,14 +160,14 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/torch/sentence_transformers
-        key: ${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
+        key: ${{ runner.os }}-sentence-transformers-bge-small-zh-v1.5
 
     - name: Cache model (Windows)
       if: runner.os == 'Windows'
       uses: actions/cache@v4
       with:
         path: ~\AppData\Local\torch\sentence_transformers
-        key: ${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
+        key: ${{ runner.os }}-sentence-transformers-bge-small-zh-v1.5
 
     - name: Install dependencies
       run: uv sync --extra dev
@@ -218,14 +218,14 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ~/.cache/torch/sentence_transformers
-        key: ${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
+        key: ${{ runner.os }}-sentence-transformers-bge-small-zh-v1.5
 
     - name: Cache model (Windows)
       if: runner.os == 'Windows'
       uses: actions/cache@v4
       with:
         path: ~\AppData\Local\torch\sentence_transformers
-        key: ${{ runner.os }}-sentence-transformers-all-MiniLM-L6-v2
+        key: ${{ runner.os }}-sentence-transformers-bge-small-zh-v1.5
 
     - name: Install dependencies
       run: uv sync --extra dev
