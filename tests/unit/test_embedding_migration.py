@@ -1,8 +1,6 @@
 """Dimension mismatch detection across all KBs (#442)."""
 
-import pytest
-
-from jfox.embedding_migration import DimensionMismatchReport, check_dimension_mismatch
+from jfox.embedding_migration import check_dimension_mismatch
 
 
 class _FakeCollection:
