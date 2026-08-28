@@ -2,7 +2,7 @@
 
 ## Model Download Slow or Failed
 
-The embedding model (`all-MiniLM-L6-v2`) is downloaded from HuggingFace on first use. If download is slow:
+The embedding model (`BAAI/bge-small-zh-v1.5` on CPU) is downloaded from HuggingFace on first use. If download is slow:
 
 ```bash
 # Use HuggingFace mirror (China users)

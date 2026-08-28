@@ -22,7 +22,7 @@
 | 语言 | Python >= 3.10 |
 | CLI 框架 | Typer >= 0.12.0 |
 | 终端美化 | Rich >= 13.0.0 |
-| 文本嵌入 | sentence-transformers >= 3.0 (all-MiniLM-L6-v2) |
+| 文本嵌入 | sentence-transformers >= 3.0 (bge-small-zh-v1.5 / bge-m3) |
 | 向量数据库 | ChromaDB >= 0.5.0 |
 | 知识图谱 | NetworkX >= 3.0 |
 | 文件监控 | Watchdog >= 3.0 |

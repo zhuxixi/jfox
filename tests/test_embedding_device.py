@@ -48,11 +48,11 @@ class TestModelSelection:
                 resolved_model = backend._resolve_model_name("cuda")
                 assert resolved_model == "BAAI/bge-m3"
 
-    def test_none_model_with_cpu_selects_minilm(self):
-        """model_name=None + device=cpu → 选择 MiniLM"""
+    def test_none_model_with_cpu_selects_bge_small_zh(self):
+        """model_name=None + device=cpu → 选择 bge-small-zh-v1.5 (#442)"""
         backend = EmbeddingBackend(model_name=None, device="cpu")
         resolved_model = backend._resolve_model_name("cpu")
-        assert resolved_model == "sentence-transformers/all-MiniLM-L6-v2"
+        assert resolved_model == "BAAI/bge-small-zh-v1.5"
 
     def test_explicit_model_overrides_auto(self):
         """手动指定模型时优先使用手动值"""

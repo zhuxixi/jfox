@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # 默认模型
 _GPU_DEFAULT_MODEL = "BAAI/bge-m3"
-_CPU_DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+_CPU_DEFAULT_MODEL = "BAAI/bge-small-zh-v1.5"
 
 
 class EmbeddingBackend:
@@ -110,8 +110,16 @@ class EmbeddingBackend:
         try:
             from sentence_transformers import SentenceTransformer
 
-            # 优先从本地目录加载
+            # Prefer local model dir; on miss, run ModelDownloader fallback chain
+            # (HF -> ModelScope -> curl) before hard-loading via network (#374).
             local_path = self._get_local_model_path()
+            if local_path is None:
+                from .model_downloader import ModelDownloader
+
+                if ModelDownloader(self.model_name).ensure_cached():
+                    # Download may land in ~/.zettelkasten/.models/ — re-probe;
+                    # if it landed in HF hub cache, fall through to name-based load.
+                    local_path = self._get_local_model_path()
             if local_path is not None:
                 self.model = SentenceTransformer(str(local_path), device=self._resolved_device)
             else:
@@ -164,7 +172,9 @@ class EmbeddingBackend:
         if self.model_name and self.model_name != "auto":
             if "bge-m3" in self.model_name or "bge-large" in self.model_name:
                 return 1024
-        return 384  # 默认 MiniLM 维度
+            if "bge-small-zh" in self.model_name:
+                return 512
+        return 512  # default bge-small-zh-v1.5 dimension
 
     @property
     def resolved_device(self) -> str:

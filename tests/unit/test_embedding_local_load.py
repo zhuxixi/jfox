@@ -82,11 +82,145 @@ class TestEmbeddingLocalLoad:
         mock_model.get_sentence_embedding_dimension.return_value = 384
 
         with patch.object(backend, "_get_local_model_path", return_value=None):
-            with patch(
-                "sentence_transformers.SentenceTransformer", return_value=mock_model
-            ) as mock_st:
-                with patch.object(backend, "_check_daemon", return_value=False):
-                    backend.load()
-                    mock_st.assert_called_once_with(
-                        "sentence-transformers/all-MiniLM-L6-v2", device="cpu"
-                    )
+            # ensure_cached is on the new load() path; mock it so this test
+            # stays hermetic (no real download attempts in CI).
+            with patch("jfox.model_downloader.ModelDownloader") as mock_downloader:
+                mock_downloader.return_value.ensure_cached.return_value = False
+                with patch(
+                    "sentence_transformers.SentenceTransformer", return_value=mock_model
+                ) as mock_st:
+                    with patch.object(backend, "_check_daemon", return_value=False):
+                        backend.load()
+                        mock_st.assert_called_once_with(
+                            "sentence-transformers/all-MiniLM-L6-v2", device="cpu"
+                        )
+
+
+@pytest.fixture(autouse=True)
+def _stub_sentence_transformers(monkeypatch):
+    """Stub the sentence_transformers module when it is not installed.
+
+    CI installs the real dependency, so this is a no-op there. Local dev
+    venvs without the heavy ML stack can still run these tests: the stub
+    lets attribute-level patches ("sentence_transformers.SentenceTransformer")
+    resolve against an importable module.
+    """
+    import sys
+    import types
+
+    try:
+        import sentence_transformers  # noqa: F401
+
+        return
+    except ImportError:
+        pass
+    stub = types.ModuleType("sentence_transformers")
+    stub.SentenceTransformer = object
+    monkeypatch.setitem(sys.modules, "sentence_transformers", stub)
+
+
+class TestLoadFallsBackToModelDownloader:
+    """load() must try ModelDownloader.ensure_cached() when local dir misses (#374)."""
+
+    def _make_backend(self, monkeypatch):
+        from jfox import embedding_backend as eb
+
+        backend = eb.EmbeddingBackend()
+        backend.model_name = "BAAI/bge-small-zh-v1.5"
+        backend._resolved_device = "cpu"
+        monkeypatch.setattr(eb.EmbeddingBackend, "_check_daemon", lambda self: False)
+        return backend, eb
+
+    def test_ensure_cached_called_when_local_missing(self, monkeypatch):
+        backend, eb = self._make_backend(monkeypatch)
+        monkeypatch.setattr(eb.EmbeddingBackend, "_get_local_model_path", lambda self: None)
+
+        calls = []
+
+        class FakeDownloader:
+            def __init__(self, model_name):
+                calls.append(model_name)
+
+            def ensure_cached(self):
+                return False  # all three fallbacks fail
+
+        monkeypatch.setattr("jfox.model_downloader.ModelDownloader", FakeDownloader)
+
+        class FakeST:
+            def __init__(self, name, device=None):
+                raise RuntimeError("network unreachable")
+
+        monkeypatch.setattr("sentence_transformers.SentenceTransformer", FakeST)
+
+        with pytest.raises(RuntimeError):
+            backend.load()
+        assert calls == ["BAAI/bge-small-zh-v1.5"]
+
+    def test_load_uses_local_dir_after_download(self, monkeypatch, tmp_path):
+        backend, eb = self._make_backend(monkeypatch)
+        local_dir = tmp_path / "downloaded-model"
+        local_dir.mkdir()
+
+        # First probe misses, second probe (after download) hits
+        probes = []
+
+        def fake_local_path(self):
+            probes.append(1)
+            return local_dir if len(probes) > 1 else None
+
+        monkeypatch.setattr(eb.EmbeddingBackend, "_get_local_model_path", fake_local_path)
+
+        class FakeDownloader:
+            def __init__(self, model_name):
+                pass
+
+            def ensure_cached(self):
+                return True
+
+        monkeypatch.setattr("jfox.model_downloader.ModelDownloader", FakeDownloader)
+
+        loaded_with = []
+
+        class FakeST:
+            def __init__(self, name, device=None):
+                loaded_with.append(name)
+
+            def get_sentence_embedding_dimension(self):
+                return 512
+
+        monkeypatch.setattr("sentence_transformers.SentenceTransformer", FakeST)
+
+        backend.load()
+        assert loaded_with == [str(local_dir)]
+        assert backend.dimension == 512
+
+    def test_ensure_cached_true_but_no_local_dir_loads_by_name(self, monkeypatch):
+        # ensure_cached() landed the model in the HF hub cache (not
+        # ~/.zettelkasten/.models/): load() must fall through to a name-based
+        # SentenceTransformer construction, which then reads the HF cache.
+        backend, eb = self._make_backend(monkeypatch)
+        monkeypatch.setattr(eb.EmbeddingBackend, "_get_local_model_path", lambda self: None)
+
+        class FakeDownloader:
+            def __init__(self, model_name):
+                pass
+
+            def ensure_cached(self):
+                return True  # downloaded, but to the HF hub cache
+
+        monkeypatch.setattr("jfox.model_downloader.ModelDownloader", FakeDownloader)
+
+        loaded_with = []
+
+        class FakeST:
+            def __init__(self, name, device=None):
+                loaded_with.append(name)
+
+            def get_sentence_embedding_dimension(self):
+                return 512
+
+        monkeypatch.setattr("sentence_transformers.SentenceTransformer", FakeST)
+
+        backend.load()
+        assert loaded_with == ["BAAI/bge-small-zh-v1.5"]  # by name, not a path
+        assert backend.dimension == 512

@@ -631,8 +631,16 @@ def _add_note_impl(
         if new_note_backfill_save_failed:
             result["backfill_note_save_failed"] = True
 
+        from .vector_store import get_vector_store
+
         if output_format == "json":
             print(output_json(result))
+            import sys
+
+            dim_warning = get_vector_store().last_dimension_warning
+            if dim_warning:
+                # Keep stdout JSON purely structured
+                print(f"⚠ {dim_warning} 笔记已保存，但未进入向量索引。", file=sys.stderr)
         else:
             _print_action_table(
                 "created",
@@ -669,6 +677,13 @@ def _add_note_impl(
                 console.print(
                     f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
                 )
+
+            # Dimension-mismatch safety net (#442): the note file itself is saved;
+            # only the vector index write was skipped.
+            dim_warning = get_vector_store().last_dimension_warning
+            if dim_warning:
+                console.print(f"  [yellow]⚠ {dim_warning}[/yellow]")
+                console.print("  [yellow]笔记已保存，但未进入向量索引。[/yellow]")
     else:
         raise Exception("Failed to save note")
 
@@ -817,6 +832,20 @@ def _search_impl(
         console.print(OutputFormatter.to_paths(paths, key="filepath"))
     else:
         raise ValueError(f"Unsupported format: {output_format}")
+
+    # Dimension-mismatch safety net (#442): vector_store surfaces the warning on
+    # its instance; display it so empty semantic results are explainable.
+    from .vector_store import get_vector_store
+
+    dim_warning = get_vector_store().last_dimension_warning
+    if dim_warning:
+        if output_format == "table":
+            console.print(f"[yellow]⚠ {dim_warning}[/yellow]")
+        else:
+            # Keep stdout purely structured in json/csv/yaml/paths modes
+            import sys
+
+            print(f"⚠ {dim_warning}", file=sys.stderr)
 
 
 @app.command()
@@ -3257,6 +3286,13 @@ def daemon(
                     else:
                         console.print("[red]✗ auto-summary 配置写入失败[/red]")
                 _print_daemon_status()
+
+                # Dimension-mismatch check after daemon model load (#442)
+                from .embedding_migration import check_dimension_mismatch, prompt_migration
+
+                report = check_dimension_mismatch()
+                if report:
+                    prompt_migration(report)
             else:
                 console.print("[red]✗ Daemon 启动失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
@@ -3293,6 +3329,13 @@ def daemon(
                     else:
                         console.print("[red]✗ auto-summary 配置写入失败[/red]")
                 _print_daemon_status()
+
+                # Dimension-mismatch check after daemon model load (#442)
+                from .embedding_migration import check_dimension_mismatch, prompt_migration
+
+                report = check_dimension_mismatch()
+                if report:
+                    prompt_migration(report)
             else:
                 console.print("[red]✗ Daemon 重启失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")

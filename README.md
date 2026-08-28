@@ -53,7 +53,7 @@ graph TB
         se[search_engine.py<br/>HybridSearchEngine]
         vs[vector_store.py<br/>ChromaDB]
         bm[bm25_index.py<br/>BM25Okapi]
-        emb[embedding_backend.py<br/>all-MiniLM-L6-v2]
+        emb[embedding_backend.py<br/>bge-small-zh-v1.5]
         daemon["daemon/<br/>HTTP Server"]
     end
     subgraph Analysis ["Analysis Layer"]
@@ -84,7 +84,7 @@ graph TB
 | `search_engine.py` | `HybridSearchEngine` — dispatches to semantic/keyword/hybrid with RRF fusion |
 | `vector_store.py` | ChromaDB wrapper with cosine similarity search |
 | `bm25_index.py` | BM25 keyword index with Chinese/English tokenizer |
-| `embedding_backend.py` | Lazy-loaded SentenceTransformer (`all-MiniLM-L6-v2`, 384-dim vectors) |
+| `embedding_backend.py` | Lazy-loaded SentenceTransformer (`BAAI/bge-small-zh-v1.5`, 512-dim vectors; GPU auto-switches to bge-m3) |
 | `daemon/` | Embedding HTTP 守护进程，常驻模型避免重复加载 |
 | `graph.py` | NetworkX DiGraph built from links + wiki links; BFS, clusters, hubs |
 | `indexer.py` | File watcher (watchdog) with debounce for incremental ChromaDB updates |

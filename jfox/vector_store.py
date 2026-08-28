@@ -39,6 +39,54 @@ class VectorStore:
         self._read_only_tempdir: Optional[tempfile.TemporaryDirectory[str]] = None
         self._read_only_snapshot: Optional[Path] = None
         self._owns_read_only_client = False
+        # Surfaced dimension-mismatch warning for CLI display (#442).
+        # Set by add_note()/search() when ChromaDB reports dim mismatch;
+        # CLI add/search commands print it after their main work.
+        self.last_dimension_warning: Optional[str] = None
+
+    @staticmethod
+    def _dimension_warning_text(error_msg: str) -> Optional[str]:
+        """Build a user-facing warning when the error is a dim mismatch.
+
+        Real chromadb (>=0.5) raises:
+          "Embedding dimension 512 does not match collection dimensionality 384"
+        (embedding/model dim first, collection dim second). Older versions and
+        some wrappers emit the legacy "... dimension of 384, got 512" shape
+        (collection dim first). Match both; keep a generic fallback.
+        """
+        msg_lower = error_msg.lower()
+        # Keyword gate: any known dimension-mismatch phrasing
+        if "dimension" not in msg_lower:
+            return None
+        if not any(kw in msg_lower for kw in ("does not match", "expecting", "dimensionality")):
+            return None
+
+        old, new = None, None
+        # Real chromadb format: "Embedding dimension <model_dim> does not match
+        # collection dimensionality <index_dim>" — model dim is group(1),
+        # collection/index dim is group(2).
+        m = re.search(
+            r"Embedding dimension (\d+) does not match collection dimensionality (\d+)",
+            error_msg,
+            re.IGNORECASE,
+        )
+        if m:
+            old, new = m.group(2), m.group(1)
+        else:
+            # Legacy/fake format: "dimension of X, got Y" — X is the collection dim
+            m = re.search(r"dimension of (\d+).*got (\d+)", error_msg, re.IGNORECASE)
+            if m:
+                old, new = m.group(1), m.group(2)
+
+        if old is not None and new is not None:
+            return (
+                f"索引维度({old})与当前 embedding 模型维度({new})不匹配。"
+                f"请执行 jfox daemon restart 获取迁移引导，或 jfox index rebuild 重建索引。"
+            )
+        return (
+            "索引维度与当前 embedding 模型维度不匹配。"
+            "请执行 jfox daemon restart 获取迁移引导，或 jfox index rebuild 重建索引。"
+        )
 
     def init(self):
         """初始化 ChromaDB"""
@@ -101,23 +149,11 @@ class VectorStore:
 
         except Exception as e:
             error_msg = str(e)
-            if "dimension" in error_msg.lower() and "expecting" in error_msg.lower():
-                # 维度不匹配：模型已切换，提示用户 rebuild
-                dim_match = re.search(r"dimension of (\d+).*got (\d+)", error_msg, re.IGNORECASE)
-                if dim_match:
-                    old_dim, new_dim = dim_match.group(1), dim_match.group(2)
-                    logger.error(
-                        f"Embedding 维度不匹配（collection: {old_dim}, "
-                        f"当前模型: {new_dim}）。"
-                        f"可能是模型已切换，请执行 jfox index rebuild "
-                        f"重建索引。原始错误: {error_msg}"
-                    )
-                else:
-                    logger.error(
-                        f"Embedding 维度不匹配，可能是模型已切换。"
-                        f"请执行 jfox index rebuild 重建索引。"
-                        f"原始错误: {error_msg}"
-                    )
+            warning = self._dimension_warning_text(error_msg)
+            if warning:
+                # Keep the log for debugging, surface to CLI via instance attr
+                logger.error(f"Embedding dim mismatch for note {note.id}: {error_msg}")
+                self.last_dimension_warning = warning
             else:
                 logger.error(f"Failed to add note {note.id}: {error_msg}")
             return False
@@ -182,7 +218,12 @@ class VectorStore:
             return formatted_results
 
         except Exception as e:
-            logger.error(f"Search failed: {e}")
+            warning = self._dimension_warning_text(str(e))
+            if warning:
+                logger.error(f"Search failed (dim mismatch): {e}")
+                self.last_dimension_warning = warning
+            else:
+                logger.error(f"Search failed: {e}")
             return []
 
     def delete_note(self, note_id: str) -> bool:
