@@ -6,6 +6,7 @@ one KB was indexed with a different (old) model.
 """
 
 import logging
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -16,9 +17,13 @@ from chromadb.config import Settings
 logger = logging.getLogger(__name__)
 
 # Re-exported seams for tests (monkeypatch these instead of real modules)
+from .config import use_kb as _use_kb
 from .daemon.client import DaemonClient as _DaemonClient
-from .daemon.process import _get_daemon_url, is_daemon_running as _is_daemon_running
+from .daemon.process import _get_daemon_url
+from .daemon.process import is_daemon_running as _is_daemon_running
 from .global_config import GlobalConfigManager as _GlobalConfigManager
+from .indexer import Indexer as _Indexer
+from .vector_store import get_vector_store as _get_vector_store
 
 
 @dataclass
@@ -49,10 +54,10 @@ def check_dimension_mismatch() -> Optional[DimensionMismatchReport]:
         return None
 
     for kb in kbs:
-        chroma_path = Path(kb.path).expanduser() / ".zk" / "chroma_db"
-        if not chroma_path.exists():
-            continue
         try:
+            chroma_path = Path(kb.path).expanduser() / ".zk" / "chroma_db"
+            if not chroma_path.exists():
+                continue
             c = chromadb.PersistentClient(
                 path=str(chroma_path),
                 settings=Settings(anonymized_telemetry=False),
@@ -74,3 +79,39 @@ def check_dimension_mismatch() -> Optional[DimensionMismatchReport]:
             report.kb_dimensions[kb.name] = kb_dim
 
     return report if report.affected_kbs else None
+
+
+def prompt_migration(report: DimensionMismatchReport) -> None:
+    """Warn about dimension mismatch and offer interactive per-KB rebuild."""
+    from rich.console import Console
+
+    console = Console()
+    console.print(
+        f"[yellow]⚠ 检测到 embedding 模型已更换（当前模型 {report.model_dimension} 维）[/yellow]"
+    )
+    for kb in report.affected_kbs:
+        console.print(
+            f"  - 知识库 [cyan]{kb}[/cyan]: 索引 {report.kb_dimensions.get(kb, '?')} 维"
+        )
+    console.print("  影响语义搜索（返回空结果）与新笔记向量索引。")
+
+    if not sys.stdin.isatty():
+        console.print(
+            "  非交互环境，请手动执行 [cyan]jfox index rebuild --kb <name>[/cyan] 重建索引。"
+        )
+        return
+
+    import typer
+
+    if not typer.confirm("是否现在重建索引？将逐库重新嵌入全部笔记", default=False):
+        console.print("  已跳过。可稍后执行 [cyan]jfox index rebuild[/cyan] 重建。")
+        return
+
+    from .config import config
+
+    for kb in report.affected_kbs:
+        with _use_kb(kb):
+            indexer = _Indexer(config, _get_vector_store())
+            count = indexer.index_all()
+            console.print(f"[green]✓[/green] {kb}: 已重建 {count} 条笔记索引")
+    console.print("[green]索引迁移完成，语义搜索已恢复。[/green]")

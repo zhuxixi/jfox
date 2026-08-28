@@ -1,6 +1,9 @@
 """Dimension mismatch detection across all KBs (#442)."""
 
-from jfox.embedding_migration import check_dimension_mismatch
+from jfox.embedding_migration import (
+    DimensionMismatchReport,
+    check_dimension_mismatch,
+)
 
 
 class _FakeCollection:
@@ -28,13 +31,19 @@ class _FakeClient:
 
 
 def _patch_env(monkeypatch, tmp_path, health_dim, kb_specs):
-    """kb_specs: list of (kb_name, exists, dim_or_None, count). Returns affected expectations."""
+    """kb_specs: list of (kb_name, exists, dim_or_None, count[, unregistered]).
+
+    unregistered=True: chroma dir exists on disk but is NOT registered in
+    chroma_roots, so FakeChroma.PersistentClient raises (corrupt-dir path).
+    """
     import jfox.embedding_migration as em
     from jfox.global_config import KnowledgeBaseEntry
 
     entries = []
     chroma_roots = {}
-    for kb_name, exists, dim, count in kb_specs:
+    for spec in kb_specs:
+        kb_name, exists, dim, count = spec[:4]
+        unregistered = spec[4] if len(spec) > 4 else False
         kb_path = tmp_path / kb_name
         kb_path.mkdir()
         entries.append(
@@ -43,7 +52,8 @@ def _patch_env(monkeypatch, tmp_path, health_dim, kb_specs):
         if exists:
             chroma_root = kb_path / ".zk" / "chroma_db"
             chroma_root.mkdir(parents=True)
-            chroma_roots[str(chroma_root)] = _FakeCollection(dim=dim, count=count)
+            if not unregistered:
+                chroma_roots[str(chroma_root)] = _FakeCollection(dim=dim, count=count)
 
     class FakeGlobalConfigManager:
         def list_knowledge_bases(self):
@@ -114,6 +124,21 @@ class TestCheckDimensionMismatch:
         assert report is not None
         assert report.affected_kbs == ["default"]
 
+    def test_unregistered_chroma_dir_raises_and_is_skipped(self, monkeypatch, tmp_path):
+        # "broken" KB: chroma dir exists but NOT registered -> PersistentClient
+        # raises inside the per-KB try; the loop must continue to "default".
+        _patch_env(
+            monkeypatch, tmp_path,
+            health_dim=512,
+            kb_specs=[
+                ("default", True, 384, 10),
+                ("broken", True, None, 0, True),
+            ],
+        )
+        report = check_dimension_mismatch()
+        assert report is not None
+        assert report.affected_kbs == ["default"]
+
     def test_daemon_down_returns_none(self, monkeypatch, tmp_path):
         import jfox.embedding_migration as em
 
@@ -133,3 +158,70 @@ class TestCheckDimensionMismatch:
         monkeypatch.setattr(em, "_is_daemon_running", lambda: True)
         monkeypatch.setattr(em, "_get_daemon_url", lambda: "http://127.0.0.1:8300")
         assert check_dimension_mismatch() is None
+
+
+class TestPromptMigration:
+    def _report(self):
+        return DimensionMismatchReport(
+            model_dimension=512,
+            affected_kbs=["default"],
+            kb_dimensions={"default": 384},
+        )
+
+    def test_confirm_yes_triggers_rebuild(self, monkeypatch):
+        import jfox.embedding_migration as em
+
+        rebuilt = []
+
+        class FakeIndexer:
+            def __init__(self, config, vector_store):
+                pass
+
+            def index_all(self, progress_callback=None):
+                rebuilt.append(True)
+                return 7
+
+        entered = []
+
+        class FakeUseKb:
+            def __init__(self, name):
+                self.name = name
+
+            def __enter__(self):
+                entered.append(self.name)
+
+            def __exit__(self, *args):
+                return False
+
+        monkeypatch.setattr(em, "_Indexer", FakeIndexer)
+        monkeypatch.setattr(em, "_use_kb", FakeUseKb)
+        monkeypatch.setattr(em, "_get_vector_store", lambda: object())
+        monkeypatch.setattr("typer.confirm", lambda *a, **kw: True)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        em.prompt_migration(self._report())
+        assert rebuilt == [True]
+        assert entered == ["default"]
+
+    def test_confirm_no_skips_rebuild(self, monkeypatch):
+        import jfox.embedding_migration as em
+
+        def _must_not_rebuild(*a):
+            raise AssertionError("must not rebuild")
+
+        monkeypatch.setattr(em, "_Indexer", _must_not_rebuild)
+        monkeypatch.setattr("typer.confirm", lambda *a, **kw: False)
+        monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+        em.prompt_migration(self._report())  # must not raise
+
+    def test_non_tty_prints_hint_only(self, monkeypatch):
+        import jfox.embedding_migration as em
+
+        def _must_not_confirm(*a, **kw):
+            raise AssertionError("must not confirm")
+
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        monkeypatch.setattr("typer.confirm", _must_not_confirm)
+
+        em.prompt_migration(self._report())  # must not raise

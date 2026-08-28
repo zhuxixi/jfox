@@ -3257,6 +3257,13 @@ def daemon(
                     else:
                         console.print("[red]✗ auto-summary 配置写入失败[/red]")
                 _print_daemon_status()
+
+                # Dimension-mismatch check after daemon model load (#442)
+                from .embedding_migration import check_dimension_mismatch, prompt_migration
+
+                report = check_dimension_mismatch()
+                if report:
+                    prompt_migration(report)
             else:
                 console.print("[red]✗ Daemon 启动失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
@@ -3293,6 +3300,13 @@ def daemon(
                     else:
                         console.print("[red]✗ auto-summary 配置写入失败[/red]")
                 _print_daemon_status()
+
+                # Dimension-mismatch check after daemon model load (#442)
+                from .embedding_migration import check_dimension_mismatch, prompt_migration
+
+                report = check_dimension_mismatch()
+                if report:
+                    prompt_migration(report)
             else:
                 console.print("[red]✗ Daemon 重启失败[/red]")
                 console.print(f"[dim]查看日志: {DAEMON_LOG_FILE}[/dim]")
