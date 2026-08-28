@@ -1449,7 +1449,7 @@ def _delete_impl(
 
         ref_report = scan_references(note_id, n.title)
         if ref_report.has_references():
-            total_refs = len(ref_report.frontmatter_refs) + len(ref_report.body_refs)
+            total_refs = len(ref_report.referencing_ids())
             error_msg = (
                 f"{total_refs} note(s) reference this note. "
                 f"Use 'jfox redirect {note_id} <KEEP_ID>' to migrate references, "
@@ -3929,6 +3929,92 @@ def update(
         raise typer.Exit(1)
 
 
+def _redirect_impl(old_id: str, keep_id: str, dry_run: bool, output_format: str):
+    """redirect 命令的内部实现：编排迁移并输出结果"""
+    from .redirect import redirect_references
+
+    result = redirect_references(old_id, keep_id, dry_run=dry_run)
+
+    # 任何失败面（errors / conflicts / unreadable / 验证未过）都以非零退出码结束，
+    # 避免 conflicts-only 场景误报成功（CR issue-4）
+    if not result.success:
+        if output_format == "json":
+            print(
+                output_json(
+                    {
+                        "success": False,
+                        "errors": result.errors,
+                        "conflicts": result.conflicts,
+                        "unreadable_files": result.unreadable_files,
+                        "verification_passed": result.verification_passed,
+                    }
+                )
+            )
+        else:
+            console.print("[red]✗ Redirect failed:[/red]")
+            for err in result.errors:
+                console.print(f"  - {err}")
+            if result.conflicts:
+                console.print(f"[yellow]⚠ Conflicts ({len(result.conflicts)}):[/yellow]")
+                for path in result.conflicts[:5]:
+                    console.print(f"  - {path}")
+            if result.unreadable_files:
+                console.print(
+                    f"[yellow]⚠ Unreadable files ({len(result.unreadable_files)}):[/yellow]"
+                )
+                for path in result.unreadable_files[:5]:
+                    console.print(f"  - {path}")
+        raise typer.Exit(1)
+
+    if output_format == "json":
+        print(
+            output_json(
+                {
+                    "success": result.success,
+                    "old_id": result.old_id,
+                    "keep_id": result.keep_id,
+                    "files_changed": result.files_changed,
+                    "frontmatter_links_updated": result.frontmatter_links_updated,
+                    "body_links_updated": result.body_links_updated,
+                    "backlinks_updated": result.backlinks_updated,
+                    "conflicts": result.conflicts,
+                    "unreadable_files": result.unreadable_files,
+                    "errors": result.errors,
+                    "verification_passed": result.verification_passed,
+                    "dry_run": dry_run,
+                }
+            )
+        )
+    else:
+        if dry_run:
+            console.print("[yellow]Dry run - no files modified[/yellow]")
+        console.print(f"[green]✓[/green] Redirect: {old_id} → {keep_id}")
+        console.print(f"  Files changed: {result.files_changed}")
+        console.print(f"  Frontmatter links updated: {result.frontmatter_links_updated}")
+        console.print(f"  Body links updated: {result.body_links_updated}")
+        console.print(f"  Backlinks updated: {result.backlinks_updated}")
+
+        if result.conflicts:
+            console.print(f"\n[yellow]⚠ Conflicts ({len(result.conflicts)}):[/yellow]")
+            for path in result.conflicts[:5]:
+                console.print(f"  - {path}")
+            if len(result.conflicts) > 5:
+                console.print(f"  ... and {len(result.conflicts) - 5} more")
+
+        if result.unreadable_files:
+            console.print(
+                f"\n[yellow]⚠ Unreadable files ({len(result.unreadable_files)}):[/yellow]"
+            )
+            for path in result.unreadable_files[:5]:
+                console.print(f"  - {path}")
+
+        if not dry_run:
+            if result.verification_passed:
+                console.print("\n[green]✓ Verification: No remaining references to OLD_ID[/green]")
+            else:
+                console.print("\n[yellow]⚠ Verification: Some references may remain[/yellow]")
+
+
 @app.command()
 def redirect(
     old_id: str = typer.Argument(..., help="旧笔记 ID（要被替换的引用目标）"),
@@ -3946,8 +4032,6 @@ def redirect(
         jfox redirect old-note-id keep-note-id
         jfox redirect old-note-id keep-note-id --dry-run  # 预览
     """
-    from .redirect import redirect_references
-
     if json_output:
         output_format = "json"
 
@@ -3956,68 +4040,9 @@ def redirect(
             from .config import use_kb
 
             with use_kb(kb):
-                result = redirect_references(old_id, keep_id, dry_run=dry_run)
+                _redirect_impl(old_id, keep_id, dry_run, output_format)
         else:
-            result = redirect_references(old_id, keep_id, dry_run=dry_run)
-
-        if not result.success and result.errors:
-            if output_format == "json":
-                print(output_json({"success": False, "errors": result.errors}))
-            else:
-                console.print("[red]✗ Redirect failed:[/red]")
-                for err in result.errors:
-                    console.print(f"  - {err}")
-            raise typer.Exit(1)
-
-        if output_format == "json":
-            print(
-                output_json(
-                    {
-                        "success": result.success,
-                        "old_id": result.old_id,
-                        "keep_id": result.keep_id,
-                        "files_changed": result.files_changed,
-                        "frontmatter_links_updated": result.frontmatter_links_updated,
-                        "body_links_updated": result.body_links_updated,
-                        "backlinks_updated": result.backlinks_updated,
-                        "conflicts": result.conflicts,
-                        "unreadable_files": result.unreadable_files,
-                        "errors": result.errors,
-                        "verification_passed": result.verification_passed,
-                        "dry_run": dry_run,
-                    }
-                )
-            )
-        else:
-            if dry_run:
-                console.print("[yellow]Dry run - no files modified[/yellow]")
-            console.print(f"[green]✓[/green] Redirect: {old_id} → {keep_id}")
-            console.print(f"  Files changed: {result.files_changed}")
-            console.print(f"  Frontmatter links updated: {result.frontmatter_links_updated}")
-            console.print(f"  Body links updated: {result.body_links_updated}")
-            console.print(f"  Backlinks updated: {result.backlinks_updated}")
-
-            if result.conflicts:
-                console.print(f"\n[yellow]⚠ Conflicts ({len(result.conflicts)}):[/yellow]")
-                for path in result.conflicts[:5]:
-                    console.print(f"  - {path}")
-                if len(result.conflicts) > 5:
-                    console.print(f"  ... and {len(result.conflicts) - 5} more")
-
-            if result.unreadable_files:
-                console.print(
-                    f"\n[yellow]⚠ Unreadable files ({len(result.unreadable_files)}):[/yellow]"
-                )
-                for path in result.unreadable_files[:5]:
-                    console.print(f"  - {path}")
-
-            if not dry_run:
-                if result.verification_passed:
-                    console.print(
-                        "\n[green]✓ Verification: No remaining references to OLD_ID[/green]"
-                    )
-                else:
-                    console.print("\n[yellow]⚠ Verification: Some references may remain[/yellow]")
+            _redirect_impl(old_id, keep_id, dry_run, output_format)
 
     except typer.Exit:
         raise

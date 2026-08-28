@@ -113,6 +113,27 @@ class TestScanReferences:
         report = scan_references(OLD_ID, cfg=kb)
         assert "20260828000010" in {sid for sid, _, _ in report.frontmatter_refs}
 
+    def test_scan_finds_body_id_only_refs(self, kb):
+        """仅正文 [[OLD_ID]] 引用（无 frontmatter links 回填）也必须被发现。
+
+        手写/外部导入文件不会回填 links，是 #435 悬空引用的真实来源
+        （find_notes_referencing_title 只按标题匹配，覆盖不了它）。
+        """
+        _write_note(kb, OLD_ID, "旧概念")
+        _write_note(kb, KEEP_ID, "新概念")
+        src = _write_note(kb, SRC_BODY_ID, "手写来源", content="见 [[%s]]" % OLD_ID)
+
+        report = scan_references(OLD_ID, cfg=kb)
+        assert SRC_BODY_ID in {sid for sid, _, _ in report.body_refs}
+
+        result = redirect_references(OLD_ID, KEEP_ID, cfg=kb)
+        assert result.success, result.errors
+        assert result.verification_passed
+
+        after = src.read_text(encoding="utf-8")
+        assert f"[[{KEEP_ID}]]" in after
+        assert f"[[{OLD_ID}]]" not in after
+
     def test_scan_old_not_found(self, kb):
         report = scan_references("99999999000001", cfg=kb)
         assert report.old_not_found

@@ -21,7 +21,7 @@ from typing import List, Optional, Set, Tuple
 import yaml
 
 from .config import ZKConfig
-from .note import load_note_by_id
+from .note import _atomic_write, load_note_by_id
 from .note_index import _normalize_wiki_link_title, get_note_index
 
 logger = logging.getLogger(__name__)
@@ -240,12 +240,37 @@ def scan_references(
         if old_id in meta.links:
             report.frontmatter_refs.append((meta.id, meta.title, Path(meta.filepath)))
 
-    for meta in idx.find_notes_referencing_title(report.old_title):
-        if meta.id == old_id:
-            continue
-        report.body_refs.append((meta.id, meta.title, Path(meta.filepath)))
+    report.body_refs = _find_body_refs(all_meta, old_id, report.old_title)
 
     return report
+
+
+def _find_body_refs(
+    metas: List,
+    old_id: str,
+    old_title: str,
+) -> List[Tuple[str, str, Path]]:
+    """按正文 wiki link 精确匹配（ID 或标题）发现引用方。
+
+    与 _rewrite_body_links 同口径（等长掩码 + normalize + 精确比较）。
+    不能只用 NoteIndex.find_notes_referencing_title：它只按标题匹配，
+    手写/外部导入文件可能仅有正文 [[OLD_ID]] 引用而无 frontmatter
+    links 回填——那正是 #435 要消灭的悬空来源（CR issue-1）。
+    """
+    refs: List[Tuple[str, str, Path]] = []
+    for meta in metas:
+        if meta.id == old_id:
+            continue
+        try:
+            text = Path(meta.filepath).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        masked = _mask_exclusions(text)
+        for m in _WIKI_LINK_SPAN_RE.finditer(masked):
+            if _link_matches_old(m.group(1), old_id, old_title):
+                refs.append((meta.id, meta.title, Path(meta.filepath)))
+                break
+    return refs
 
 
 def redirect_references(
@@ -278,6 +303,12 @@ def redirect_references(
     target_paths = sorted(
         {p for _, _, p in report.frontmatter_refs} | {p for _, _, p in report.body_refs}
     )
+
+    # 路径 → 引用方 ID（仅收集实际改写成功的，供 backlinks 同步；CR issue-8）
+    path_sources = {}
+    for sid, _, p in list(report.frontmatter_refs) + list(report.body_refs):
+        path_sources.setdefault(p, set()).add(sid)
+    migrated_ids: Set[str] = set()
 
     for path in target_paths:
         try:
@@ -340,17 +371,17 @@ def redirect_references(
                     result.frontmatter_links_updated -= 1
                 continue
 
-            _atomic_replace(path, new_content)
+            _atomic_write(path, new_content)
+            migrated_ids |= path_sources.get(path, set())
 
         except OSError as exc:
             result.errors.append(f"{path}: {exc}")
             logger.error("redirect failed for %s: %s", path, exc)
 
-    # 保留笔记的 backlinks 需要纳入新增来源，并清掉旧笔记残留
+    # 保留笔记的 backlinks 需要纳入新增来源，并清掉旧笔记残留；
+    # 只纳入实际改写成功的来源（conflict/unreadable 的不进，CR issue-8）
     if not dry_run and not result.errors:
-        result.backlinks_updated = _sync_keep_backlinks(
-            keep_id, old_id, report.referencing_ids(), cfg=cfg
-        )
+        result.backlinks_updated = _sync_keep_backlinks(keep_id, old_id, migrated_ids, cfg=cfg)
 
     if not dry_run:
         # 改写后索引缓存已过期，验证前必须重建
@@ -360,7 +391,15 @@ def redirect_references(
         verification = scan_references(old_id, cfg=cfg)
         result.verification_passed = not verification.has_references()
 
-    result.success = not result.errors and not result.conflicts
+    # success 必须涵盖全部失败面：errors / conflicts / unreadable_files，
+    # 且非 dry-run 时验证必须通过，否则 CLI 会出现 success:true +
+    # verification_passed:false 的矛盾输出（CR issue-5）
+    result.success = (
+        not result.errors
+        and not result.conflicts
+        and not result.unreadable_files
+        and (dry_run or result.verification_passed)
+    )
     return result
 
 
@@ -410,29 +449,8 @@ def _sync_keep_backlinks(
         new_fm_raw = yaml.dump(
             frontmatter, allow_unicode=True, sort_keys=False, default_flow_style=False
         )
-        _atomic_replace(path, f"---\n{new_fm_raw}---{separator}{rest}")
+        _atomic_write(path, f"---\n{new_fm_raw}---{separator}{rest}")
         return len(merged) - len(backlinks) if len(merged) != len(backlinks) else 1
     except (OSError, yaml.YAMLError) as exc:
         logger.error("failed to sync backlinks for %s: %s", keep_id, exc)
         return 0
-
-
-def _atomic_replace(path: Path, content: str) -> None:
-    """单文件原子写入（同目录临时文件 + os.replace）。
-
-    注意：这只保证单个文件不会写坏，不构成跨文件事务。
-    """
-    import os
-    import tempfile
-
-    directory = path.parent
-    fd, tmp_name = tempfile.mkstemp(dir=str(directory), prefix=".redirect-", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
-    except BaseException:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
