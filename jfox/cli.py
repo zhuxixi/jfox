@@ -648,13 +648,11 @@ def _add_note_impl(
         from .vector_store import get_vector_store
 
         if output_format == "json":
-            print(output_json(result))
-            import sys
-
             dim_warning = get_vector_store().last_dimension_warning
             if dim_warning:
-                # Keep stdout JSON purely structured
-                print(f"⚠ {dim_warning} 笔记已保存，但未进入向量索引。", file=sys.stderr)
+                # 并入 JSON 字段而非 stderr print：stderr 在 2>&1 管道里同样污染解析流
+                result["vector_dimension_warning"] = dim_warning
+            print(output_json(result))
         else:
             _print_action_table(
                 "created",
@@ -4135,10 +4133,32 @@ def redirect(
         raise typer.Exit(1)
 
 
+def _json_mode_requested(argv: List[str]) -> bool:
+    """检测 argv 是否请求 JSON 输出（--json / -f json / --format json / --format=json）。
+
+    日志 handler 本就走 stderr，但管道 `jfox ... --json 2>&1 | jq` 会把 stderr
+    合进被解析流——INFO 噪声（Saved note / 索引写入等）让对端 JSON 解析失败，
+    agent 误判失败后 fallback 重跑产生重复笔记（#383 根因 A）。JSON 模式下
+    把 root logger 提到 WARNING，保证正常成功路径合流后仍是纯 JSON。
+    """
+    if "--json" in argv or "--format=json" in argv:
+        return True
+    for flag in ("-f", "--format"):
+        if flag in argv:
+            i = argv.index(flag)
+            if i + 1 < len(argv) and argv[i + 1] == "json":
+                return True
+    return False
+
+
 # 入口点
 def main():
     """CLI 入口点"""
     import os
+
+    # JSON 模式抑制 INFO 日志（#383 根因 A）
+    if _json_mode_requested(sys.argv):
+        logging.getLogger().setLevel(logging.WARNING)
 
     # 离线模式：跳过 HuggingFace 网络请求，节省 0.5-2s
     # 仅在 CLI 入口设置，不影响测试环境
