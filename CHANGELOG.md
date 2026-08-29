@@ -2,6 +2,24 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.11.0] - 2026-08-29
+
+### Features
+
+- **embedding**: switch CPU default model to bge-small-zh-v1.5 with smooth migration (#442) (#453)
+- **redirect**: redirect 命令 + delete 入链保护（issue #435） (#449)
+- **scripts**: 添加 Louvain 验证脚本用于评估 MOC 聚类改进方案 (#441)
+
+### Fixes
+
+- **skill**: organize 提炼流程硬删改 archive 软删除 (#436) (#440)
+
+### Changes
+
+- **claude.md**: batch refresh — fold in pending auto/claude-md PRs (#450)
+
+[1.11.0]: https://github.com/zhuxixi/jfox/compare/v1.10.0...v1.11.0
+
 ## [1.10.0] - 2026-08-25
 
 ### Features
