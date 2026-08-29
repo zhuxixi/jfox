@@ -64,8 +64,7 @@ def _load_embeddings_impl() -> Tuple[List[str], List[str], np.ndarray]:
     """实际加载逻辑（在正确的 kb 上下文中执行）。"""
     config = ZKConfig()
     vector_store = VectorStore(config.chroma_dir)
-    vector_store.init()
-
+    # get_all_embeddings() 使用 VectorStore 的严格只读快照路径，不初始化或修改 live Chroma 数据。
     vector_ids, _, raw_embeddings = vector_store.get_all_embeddings("permanent")
 
     # 过滤磁盘存在的笔记
