@@ -92,6 +92,28 @@ def test_moc_diagnose_help_preserves_exact_baseline_contract():
     assert lines.count("诊断永久笔记的语义密度和 MOC 聚类建议。") == 1
 
 
+def test_moc_create_help_uses_louvain_default_threshold():
+    result = root_runner.invoke(app, ["moc", "create", "--help"])
+
+    assert result.exit_code == 0
+    assert "[default: 0.75]" in result.output
+
+
+def test_moc_update_help_uses_louvain_default_threshold():
+    result = root_runner.invoke(app, ["moc", "update", "--help"])
+
+    assert result.exit_code == 0
+    assert "[default: 0.75]" in result.output
+
+
+def test_moc_diagnose_help_uses_louvain_defaults():
+    result = root_runner.invoke(app, ["moc", "diagnose", "--help"])
+
+    assert result.exit_code == 0
+    assert "[default: 0.70,0.75,0.78,0.80]" in result.output
+    assert result.output.count("[default: 0.75]") == 1
+
+
 def test_import_root_cli_keeps_moc_registered_without_heavy_dependencies():
     script = """
 import json
