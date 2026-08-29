@@ -340,7 +340,7 @@ def _create_impl(
     help="从诊断主题簇生成 MOC 笔记草稿（dry-run 默认，--yes 落盘）。",
 )
 def create_cmd(
-    threshold: float = typer.Option(0.65, "--threshold"),
+    threshold: float = typer.Option(0.75, "--threshold"),
     cluster_index: int = typer.Option(0, "--cluster"),
     max_size: int = typer.Option(50, "--max-size"),
     title: Optional[str] = typer.Option(None, "--title"),
@@ -482,7 +482,7 @@ def _update_impl(
 )
 def update_cmd(
     moc_id: Optional[str] = typer.Option(None, "--id", help="MOC 笔记 id（缺省=全部 structure）"),
-    threshold: float = typer.Option(0.65, "--threshold"),
+    threshold: float = typer.Option(0.75, "--threshold"),
     yes: bool = typer.Option(False, "--yes"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k"),
     output_format: str = typer.Option("table", "--format", "-f"),
@@ -528,9 +528,9 @@ def update_cmd(
     help="诊断永久笔记的语义密度和 MOC 聚类建议。",
 )
 def diagnose_cmd(
-    thresholds: str = typer.Option("0.55,0.6,0.65,0.7", "--thresholds"),
+    thresholds: str = typer.Option("0.70,0.75,0.78,0.80", "--thresholds"),
     min_size: int = typer.Option(3, "--min-size"),
-    suggest_threshold: float = typer.Option(0.65, "--suggest-threshold"),
+    suggest_threshold: float = typer.Option(0.75, "--suggest-threshold"),
     top: int = typer.Option(10, "--top"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k"),
     output_format: str = typer.Option("table", "--format", "-f"),

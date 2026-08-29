@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Sequence
 
 import networkx as nx
 import numpy as np
+from networkx.algorithms import community
 
 from ..bm25_index import BM25Index
 from ..config import ZKConfig
@@ -122,10 +123,11 @@ def compute_similarity(embeddings: np.ndarray) -> np.ndarray:
 def find_clusters_at_threshold(
     similarity: np.ndarray, threshold: float, min_size: int
 ) -> List[List[int]]:
-    """用严格相似度阈值查找相连的语义聚类。
+    """在阈值化加权图中用 Louvain 社区发现查找语义聚类。
 
-    仅当 ``similarity > threshold`` 时建立边。连通分量成员数至少达到
-    ``min_size`` 才会报告，因此单节点分量会成为语义孤立点。
+    仅当 ``similarity > threshold`` 时建立边，相似度作为边权重参与模块度优化。
+    固定 ``seed=42`` 使相同输入的社区划分可复现。社区成员数至少达到 ``min_size``
+    才会报告，因此较小社区会成为语义孤儿。
     """
     if min_size < 2:
         raise ValueError("min_size must be at least 2")
@@ -137,15 +139,20 @@ def find_clusters_at_threshold(
     graph = nx.Graph()
     graph.add_nodes_from(range(matrix.shape[0]))
     rows, columns = np.where(np.triu(matrix > threshold, k=1))
-    graph.add_edges_from(zip(rows.tolist(), columns.tolist()))
+    weighted_edges = [
+        (int(row), int(column), float(matrix[row, column]))
+        for row, column in zip(rows.tolist(), columns.tolist())
+    ]
+    graph.add_weighted_edges_from(weighted_edges)
 
-    clusters = [sorted(component) for component in nx.connected_components(graph)]
+    communities = community.louvain_communities(graph, weight="weight", resolution=1.0, seed=42)
+    clusters = [sorted(members) for members in communities]
     clusters = [component for component in clusters if len(component) >= min_size]
     return sorted(clusters, key=lambda component: (-len(component), component[0]))
 
 
 def semantic_orphan_indices(node_count: int, clusters: Sequence[Sequence[int]]) -> List[int]:
-    """返回未出现在任何合格聚类中的已排序节点索引。"""
+    """返回未出现在任何合格 Louvain 社区中的已排序节点索引。"""
     if node_count < 0:
         raise ValueError("node_count must not be negative")
 

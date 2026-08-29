@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Louvain 社区发现验证脚本 —— MOC 聚类算法改进评估。
 
-对比当前的连通分量算法与 Louvain 社区发现在语义连续语料上的表现。
+对比旧版连通分量基线与生产 Louvain 社区发现在语义连续语料上的表现。
 验证 GitHub issue #439 提出的改进方案：用 Louvain 替代连通分量，解决巨簇问题。
 
 用法：
@@ -64,15 +64,12 @@ def _load_embeddings_impl() -> Tuple[List[str], List[str], np.ndarray]:
     """实际加载逻辑（在正确的 kb 上下文中执行）。"""
     config = ZKConfig()
     vector_store = VectorStore(config.chroma_dir)
-    vector_store.init()
-
+    # get_all_embeddings() 使用 VectorStore 的严格只读快照路径，不初始化或修改 live Chroma 数据。
     vector_ids, _, raw_embeddings = vector_store.get_all_embeddings("permanent")
 
     # 过滤磁盘存在的笔记
     note_index = get_note_index()
-    live_meta = {
-        m.id: m for m in note_index.get_all_meta() if m.type.value == "permanent"
-    }
+    live_meta = {m.id: m for m in note_index.get_all_meta() if m.type.value == "permanent"}
 
     records = []
     for index, note_id in enumerate(vector_ids):
@@ -84,6 +81,27 @@ def _load_embeddings_impl() -> Tuple[List[str], List[str], np.ndarray]:
     live_embeddings = np.asarray([r[2] for r in records], dtype=np.float32)
 
     return live_ids, live_titles, live_embeddings
+
+
+def run_connected_components(
+    similarity: np.ndarray,
+    threshold: float,
+    min_size: int,
+) -> List[List[int]]:
+    """仅为对比复现 #439 前的连通分量算法，不供生产代码使用。"""
+    graph = nx.Graph()
+    graph.add_nodes_from(range(similarity.shape[0]))
+    rows, columns = np.where(np.triu(similarity > threshold, k=1))
+    graph.add_edges_from(zip(rows.tolist(), columns.tolist()))
+    clusters = [sorted(component) for component in nx.connected_components(graph)]
+    clusters = [cluster for cluster in clusters if len(cluster) >= min_size]
+    return sorted(clusters, key=lambda cluster: (-len(cluster), cluster[0]))
+
+
+def qualifying_orphan_count(node_count: int, clusters: List[List[int]], min_size: int) -> int:
+    """统计未进入达到 ``min_size`` 的社区/簇的节点数。"""
+    qualifying = [cluster for cluster in clusters if len(cluster) >= min_size]
+    return node_count - sum(len(cluster) for cluster in qualifying)
 
 
 def run_louvain_on_cluster(
@@ -138,21 +156,11 @@ def extract_keywords(titles: List[str], min_count: int = 2) -> str:
 
 def main() -> None:
     """主函数：运行验证流程。"""
-    parser = argparse.ArgumentParser(
-        description="验证 Louvain 社区发现算法在 MOC 聚类上的效果"
-    )
-    parser.add_argument(
-        "--kb", type=str, default=None, help="知识库名称（默认使用当前知识库）"
-    )
-    parser.add_argument(
-        "--threshold", type=float, default=0.75, help="建边阈值（默认 0.75）"
-    )
-    parser.add_argument(
-        "--resolution", type=float, default=1.0, help="Louvain 分辨率（默认 1.0）"
-    )
-    parser.add_argument(
-        "--top", type=int, default=1, help="验证前 N 个最大簇（默认 1）"
-    )
+    parser = argparse.ArgumentParser(description="验证 Louvain 社区发现算法在 MOC 聚类上的效果")
+    parser.add_argument("--kb", type=str, default=None, help="知识库名称（默认使用当前知识库）")
+    parser.add_argument("--threshold", type=float, default=0.75, help="建边阈值（默认 0.75）")
+    parser.add_argument("--resolution", type=float, default=1.0, help="Louvain 分辨率（默认 1.0）")
+    parser.add_argument("--top", type=int, default=1, help="验证前 N 个最大簇（默认 1）")
     args = parser.parse_args()
 
     kb_display = args.kb if args.kb else "default"
@@ -163,40 +171,65 @@ def main() -> None:
     live_ids, live_titles, live_embeddings = load_permanent_embeddings(args.kb)
     print(f"  磁盘存在: {len(live_ids)} 条\n")
 
-    # Step 2: 连通分量聚类（当前算法）
-    print(f"Step 2: 连通分量聚类（阈值 {args.threshold}）")
     similarity = compute_similarity(live_embeddings)
-    clusters_cc = find_clusters_at_threshold(similarity, args.threshold, min_size=3)
+
+    # Step 2: 保留旧版连通分量作为可复现的比较基线。
+    print(f"Step 2: 旧版连通分量基线（阈值 {args.threshold}）")
+    clusters_cc = run_connected_components(similarity, args.threshold, min_size=3)
     print(f"  簇数: {len(clusters_cc)}")
+    print(f"  最大簇: {max((len(cluster) for cluster in clusters_cc), default=0)} 条")
+    cc_orphan_count = qualifying_orphan_count(len(live_ids), clusters_cc, min_size=3)
+    print(f"  孤儿数: {cc_orphan_count} 条")
 
-    if not clusters_cc:
-        print("  ERROR: 没有簇，无法继续")
-        return
-
-    # 显示前几个簇的规模
-    for i, cluster in enumerate(clusters_cc[: min(5, len(clusters_cc))]):
-        sample_title = live_titles[cluster[0]][:50]
-        print(f"    簇 {i}: {len(cluster)} 条 — {sample_title} ...")
+    # Step 3: 生产函数的全局 Louvain 结果，作为新算法指标。
+    clusters_louvain = find_clusters_at_threshold(similarity, args.threshold, min_size=3)
+    print(f"Step 3: 生产 Louvain 社区发现（阈值 {args.threshold}，seed=42）")
+    louvain_max_size = max((len(cluster) for cluster in clusters_louvain), default=0)
+    louvain_orphan_count = qualifying_orphan_count(len(live_ids), clusters_louvain, min_size=3)
+    print(f"  社区数: {len(clusters_louvain)}")
+    print(f"  最大社区: {louvain_max_size} 条")
+    print(f"  孤儿数: {louvain_orphan_count} 条")
     print()
 
-    # Step 3: 对前 N 个最大簇运行 Louvain
+    print("--- 全局算法对比（同一份相似度矩阵）---")
+    print("算法                         簇/社区数    最大规模    合格社区外孤儿数")
+    print(
+        f"旧版连通分量基线             {len(clusters_cc):>8}    "
+        f"{max((len(cluster) for cluster in clusters_cc), default=0):>6} 条    "
+        f"{cc_orphan_count:>10} 条"
+    )
+    print(
+        f"生产 Louvain                 {len(clusters_louvain):>8}    "
+        f"{louvain_max_size:>6} 条    {louvain_orphan_count:>10} 条"
+    )
+    print()
+
+    if not clusters_cc:
+        print("  ERROR: 旧版没有簇，无法展示旧最大簇的局部拆分")
+        return
+
+    # 显示前几个旧版簇的规模。
+    for i, cluster in enumerate(clusters_cc[: min(5, len(clusters_cc))]):
+        sample_title = live_titles[cluster[0]][:50]
+        print(f"    旧版簇 {i}: {len(cluster)} 条 — {sample_title} ...")
+    print()
+
+    # Step 4: 对旧版前 N 个最大簇运行 Louvain，展示主题样本。
     for cluster_idx in range(min(args.top, len(clusters_cc))):
         mega_cluster = clusters_cc[cluster_idx]
         if len(mega_cluster) <= 50:
-            print(
-                f"簇 {cluster_idx} 规模 {len(mega_cluster)} 已在 MOC 护栏内，跳过 Louvain"
-            )
+            print(f"旧版簇 {cluster_idx} 规模 {len(mega_cluster)} 已在 MOC 护栏内，跳过局部拆分")
             continue
 
         print(
-            f"Step 3.{cluster_idx + 1}: 对簇 {cluster_idx}"
-            f"（{len(mega_cluster)} 条）运行 Louvain"
+            f"Step 4.{cluster_idx + 1}: 对旧版最大簇 {cluster_idx}"
+            f"（{len(mega_cluster)} 条）运行 Louvain 主题拆分"
         )
         communities = run_louvain_on_cluster(
             mega_cluster, similarity, args.threshold, args.resolution
         )
 
-        print(f"  Louvain 输出: {len(communities)} 个社区\n")
+        print(f"  局部 Louvain 输出: {len(communities)} 个社区\n")
 
         # 显示每个社区
         for i, comm in enumerate(communities):
@@ -205,23 +238,25 @@ def main() -> None:
 
             print(f"  社区 {i}: {len(comm)} 条")
             print(f"    关键词: {keywords}")
-            print(f"    成员示例（前 3 条）:")
+            print("    成员示例（前 3 条）:")
             for title in titles[:3]:
                 print(f"      - {title[:70]}")
             if len(comm) > 3:
                 print(f"      ... 还有 {len(comm) - 3} 条")
             print()
 
-        # Step 4: 对比总结
-        print(f"--- 对比：簇 {cluster_idx} ---")
-        print(f"  连通分量（当前）: 1 个簇，{len(mega_cluster)} 条")
-        print(f"  Louvain 社区发现: {len(communities)} 个社区")
+        # Step 5: 输出旧版最大簇的局部拆分详情；全局指标已在 Step 3 输出。
+        print(f"--- 旧版最大簇局部拆分：簇 {cluster_idx} ---")
+        print(f"  旧版连通分量: 1 个簇，{len(mega_cluster)} 条")
+        print(f"  局部 Louvain 社区发现: {len(communities)} 个社区")
 
         sizes = sorted([len(c) for c in communities], reverse=True)
         moc_ready = [s for s in sizes if 5 <= s <= 50]
         print(f"    最大社区: {sizes[0]} 条")
         print(f"    可建 MOC 规模（5-50 条）: {len(moc_ready)} 个")
         print(f"    规模分布: {sizes[:10]}")
+        local_orphan_count = qualifying_orphan_count(len(mega_cluster), communities, min_size=3)
+        print(f"    局部拆分孤儿数（过滤 <3 条社区）: {local_orphan_count} 条")
         print()
 
 
