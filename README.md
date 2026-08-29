@@ -284,7 +284,7 @@ uv run jfox --help
 uv run jfox --version
 ```
 
-For upgrade, uninstall, Windows PATH setup, Hugging Face mirrors, and model-download troubleshooting, see [docs/installation.md](docs/installation.md). For pip-based development installation, see the [legacy pip instructions](docs/installation.md#legacy-pip). For common runtime issues, see [docs/troubleshooting.md](docs/troubleshooting.md).
+For upgrade, uninstall, Windows PATH setup, and Hugging Face mirrors, see [docs/installation.md](docs/installation.md). For model-download and other runtime issues, see [docs/troubleshooting.md](docs/troubleshooting.md). For pip-based development installation, see the [legacy pip instructions](docs/installation.md#legacy-pip).
 
 ### Run checks
 
