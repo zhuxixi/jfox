@@ -101,9 +101,12 @@ def run_connected_components(
     return sorted(clusters, key=lambda cluster: (-len(cluster), cluster[0]))
 
 
-def qualifying_orphan_count(node_count: int, clusters: List[List[int]]) -> int:
-    """统计未进入任何达到 min_size 的社区/簇的节点数。"""
-    return node_count - sum(len(cluster) for cluster in clusters)
+def qualifying_orphan_count(
+    node_count: int, clusters: List[List[int]], min_size: int
+) -> int:
+    """统计未进入达到 ``min_size`` 的社区/簇的节点数。"""
+    qualifying = [cluster for cluster in clusters if len(cluster) >= min_size]
+    return node_count - sum(len(cluster) for cluster in qualifying)
 
 
 def run_louvain_on_cluster(
@@ -190,14 +193,32 @@ def main() -> None:
     clusters_cc = run_connected_components(similarity, args.threshold, min_size=3)
     print(f"  簇数: {len(clusters_cc)}")
     print(f"  最大簇: {max((len(cluster) for cluster in clusters_cc), default=0)} 条")
-    print(f"  孤儿数: {qualifying_orphan_count(len(live_ids), clusters_cc)} 条")
+    cc_orphan_count = qualifying_orphan_count(len(live_ids), clusters_cc, min_size=3)
+    print(f"  孤儿数: {cc_orphan_count} 条")
 
     # Step 3: 生产函数的全局 Louvain 结果，作为新算法指标。
     clusters_louvain = find_clusters_at_threshold(similarity, args.threshold, min_size=3)
     print(f"Step 3: 生产 Louvain 社区发现（阈值 {args.threshold}，seed=42）")
+    louvain_max_size = max((len(cluster) for cluster in clusters_louvain), default=0)
+    louvain_orphan_count = qualifying_orphan_count(
+        len(live_ids), clusters_louvain, min_size=3
+    )
     print(f"  社区数: {len(clusters_louvain)}")
-    print(f"  最大社区: {max((len(cluster) for cluster in clusters_louvain), default=0)} 条")
-    print(f"  孤儿数: {qualifying_orphan_count(len(live_ids), clusters_louvain)} 条")
+    print(f"  最大社区: {louvain_max_size} 条")
+    print(f"  孤儿数: {louvain_orphan_count} 条")
+    print()
+
+    print("--- 全局算法对比（同一份相似度矩阵）---")
+    print("算法                         簇/社区数    最大规模    合格社区外孤儿数")
+    print(
+        f"旧版连通分量基线             {len(clusters_cc):>8}    "
+        f"{max((len(cluster) for cluster in clusters_cc), default=0):>6} 条    "
+        f"{cc_orphan_count:>10} 条"
+    )
+    print(
+        f"生产 Louvain                 {len(clusters_louvain):>8}    "
+        f"{louvain_max_size:>6} 条    {louvain_orphan_count:>10} 条"
+    )
     print()
 
     if not clusters_cc:
@@ -253,7 +274,10 @@ def main() -> None:
         print(f"    最大社区: {sizes[0]} 条")
         print(f"    可建 MOC 规模（5-50 条）: {len(moc_ready)} 个")
         print(f"    规模分布: {sizes[:10]}")
-        print(f"    局部拆分孤儿数: {qualifying_orphan_count(len(mega_cluster), communities)} 条")
+        local_orphan_count = qualifying_orphan_count(
+            len(mega_cluster), communities, min_size=3
+        )
+        print(f"    局部拆分孤儿数（过滤 <3 条社区）: {local_orphan_count} 条")
         print()
 
 
