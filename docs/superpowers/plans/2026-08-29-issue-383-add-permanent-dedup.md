@@ -23,10 +23,12 @@
 ### Task 1: NoteAddConfig 配置模型
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（GemSynthesisConfig 类之后、GlobalConfig 之前插入新类；GlobalConfig 加字段；manager 加方法）
 - Test: `tests/unit/test_note_add_config.py`
 
 **Interfaces:**
+
 - Consumes: 无（首个任务）
 - Produces: `NoteAddConfig`（字段 `dedup_enabled: bool = True`、`title_dedup: bool = True`、`embedding_dedup: bool = True`、`dedup_threshold: float = 0.95`；方法 `to_dict()`、`from_dict(data)`）；`GlobalConfig.note_add` 字段；`GlobalConfigManager.get_note_add_config() -> NoteAddConfig`、`update_note_add_config(**changes) -> bool`
 
@@ -183,10 +185,12 @@ git commit -m "feat(config): add NoteAddConfig for add-path dedup settings (#383
 ### Task 2: jfox/add_dedup.py 查重模块
 
 **Files:**
+
 - Create: `jfox/add_dedup.py`
 - Test: `tests/unit/test_add_dedup.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `NoteAddConfig`（经 `_load_note_add_config()` 间接读取）；`jfox.gem_synth.dedup` 的 `dedup_check(kb, content, threshold) -> Optional[DedupHit]`、`upsert_dedup(kb, note_id, note_type, content) -> bool`、`DedupStore(db_path)`、`set_store()`、`_resolve_kb_name(kb)`；`jfox.note_index.get_note_index(cfg) -> NoteIndex`（`get_all_meta() -> List[NoteMeta]`、`find_by_id(id) -> Optional[NoteMeta]`，NoteMeta 有 `.id/.title/.archived`）
 - Produces: `DuplicateNoteError(matched_id, matched_title, matched_by, score)`（`matched_by` 取 `"title"` 或 `"embedding"`）、`check_add_duplicate(title, content, *, cfg=None) -> None`（命中 raise，其余放行）、`record_added_permanent(note_id, content, *, cfg=None) -> None`、模块级可 monkeypatch 的 `_daemon_available()` / `_load_note_add_config()`、常量 `_EMBED_DEDUP_MIN_CHARS = 50`
 
@@ -538,10 +542,12 @@ git commit -m "feat(dedup): add add-path duplicate gate module (#383)"
 ### Task 3: cli.py add 命令集成
 
 **Files:**
+
 - Modify: `jfox/cli.py`（`add()` 约 692 行加 `--force`；`_add_note_impl()` 约 454 行加 `force` 形参 + 两处钩子；`add()` 异常分支加 DuplicateNoteError 处理）
 - Test: `tests/test_add_dedup_cli.py`
 
 **Interfaces:**
+
 - Consumes: Task 2 的 `DuplicateNoteError`（属性 `.matched_id/.matched_title/.matched_by/.score`）、`check_add_duplicate(title, content)`、`record_added_permanent(note_id, content)`
 - Produces: CLI 行为——`jfox add --type permanent` 命中防重时 JSON 输出 `{"success": false, "skipped": "duplicate", "duplicate": {"matched_id", "matched_title", "matched_by", "score"}}` 且退出码 1；`--force` 跳过查重强制落库
 
@@ -684,10 +690,12 @@ git commit -m "feat(add): duplicate gate for permanent notes with --force escape
 ### Task 4: --json 模式日志纯净化（根因 A）
 
 **Files:**
+
 - Modify: `jfox/cli.py`（`main()` 约 4104 行加 JSON 检测；`_add_note_impl()` JSON 分支的 dim_warning stderr print 改并入结果字段）
 - Test: `tests/unit/test_json_mode.py`（新建）+ `tests/test_add_dedup_cli.py` 追加 TestJsonPurity 类
 
 **Interfaces:**
+
 - Consumes: 无
 - Produces: `_json_mode_requested(argv: List[str]) -> bool`；CLI 行为——JSON 模式下 root logger 提到 WARNING，`--json 2>&1` 合流后正常成功路径为单段合法 JSON
 
@@ -834,10 +842,12 @@ git commit -m "fix(cli): pure JSON output in json mode by quieting INFO logs (#3
 ### Task 5: conftest 隔离 JFOX_SYNTHESIS_DB
 
 **Files:**
+
 - Modify: `tests/conftest.py`（顶部 ZK_KB_ROOT 设置之后加一行）
 - Test: `tests/unit/test_add_dedup.py` 追加一个测试
 
 **Interfaces:**
+
 - Consumes: `jfox.gem_synth.paths.default_synthesis_db_path()` 已支持 `JFOX_SYNTHESIS_DB` env 覆盖
 - Produces: 测试进程与 CLI 子进程的 DedupStore 默认路径都指向临时目录，不再写真实 `~/.zettelkasten/synthesis_log.db`
 
@@ -887,9 +897,11 @@ git commit -m "test: isolate JFOX_SYNTHESIS_DB to temp dir in conftest (#383)"
 ### Task 6: README 文档
 
 **Files:**
+
 - Modify: `README.md`（`jfox add` 命令文档节）
 
 **Interfaces:**
+
 - Consumes: Task 3/4 的最终行为
 - Produces: 用户可发现的 `--force` 与防重行为说明
 
