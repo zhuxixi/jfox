@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import networkx as nx
 import numpy as np
 import pytest
 
@@ -562,3 +563,57 @@ def test_diagnose_empty_vectors_raises_rebuild_hint():
                 suggest_threshold=0.9,
                 top=10,
             )
+
+
+def test_louvain_splits_dense_cores_with_weak_bridge():
+    """Louvain must split dense cores that a weak bridge only connects transitively."""
+    similarity = np.zeros((10, 10), dtype=np.float32)
+    for start in (0, 5):
+        for left in range(start, start + 5):
+            for right in range(left + 1, start + 5):
+                similarity[left, right] = 0.8
+                similarity[right, left] = 0.8
+    similarity[2, 7] = 0.66
+    similarity[7, 2] = 0.66
+
+    clusters = find_clusters_at_threshold(similarity, threshold=0.65, min_size=3)
+
+    assert clusters == [list(range(5)), list(range(5, 10))]
+
+
+def test_louvain_complete_graph_stays_one_cluster():
+    """A fully and strongly connected graph must not be over-split."""
+    similarity = np.full((6, 6), 0.85, dtype=np.float32)
+    np.fill_diagonal(similarity, 0.0)
+
+    clusters = find_clusters_at_threshold(similarity, threshold=0.65, min_size=3)
+
+    assert clusters == [list(range(6))]
+
+
+def test_louvain_is_deterministic_and_uses_fixed_parameters():
+    """The production call must be deterministic and use the selected Louvain settings."""
+    similarity = np.zeros((10, 10), dtype=np.float32)
+    for start in (0, 5):
+        for left in range(start, start + 5):
+            for right in range(left + 1, start + 5):
+                similarity[left, right] = 0.8
+                similarity[right, left] = 0.8
+    similarity[2, 7] = 0.66
+    similarity[7, 2] = 0.66
+
+    with patch(
+        "jfox.moc.cluster.community.louvain_communities",
+        wraps=nx.community.louvain_communities,
+    ) as louvain:
+        runs = [
+            find_clusters_at_threshold(similarity, threshold=0.65, min_size=3)
+            for _ in range(3)
+        ]
+
+    assert runs[0] == runs[1] == runs[2]
+    assert louvain.call_args.kwargs == {
+        "weight": "weight",
+        "resolution": 1.0,
+        "seed": 42,
+    }
