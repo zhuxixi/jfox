@@ -102,6 +102,9 @@ Connect notes with `[[Note Title]]` references rather than copying context betwe
 
 ### Search and navigate knowledge
 
+**Duplicate protection.** Before saving a `permanent` note, `jfox add` runs a duplicate gate with two channels: an exact title match against non-archived notes, and a body-similarity check (cosine >= 0.95, configurable via the global `note_add.dedup_threshold`) that runs only while the embedding daemon is up. On a hit the note is not saved: JSON output reports `{"success": false, "skipped": "duplicate", ...}` and the exit code is 1. Pass `--force` to bypass the gate (backfills or intentional duplicates). Seed the similarity channel for existing notes with `jfox gem-synth dedup-backfill`.
+
+
 Keyword search is useful when you know the exact words you want. Semantic search uses embeddings to find notes with related meaning even when the wording differs. Hybrid search combines both paths for a broader retrieval workflow.
 
 Use graph commands when the connection itself matters. Inspect references with `jfox refs`, view graph statistics with `jfox graph --stats`, explore a note's neighborhood with `jfox graph --note NOTE_ID --depth 2`, or combine search with graph traversal through `jfox query`.
