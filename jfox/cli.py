@@ -35,6 +35,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from . import __version__, note
+from .add_dedup import DuplicateNoteError
 from .config import config
 from .kb_manager import get_kb_manager
 from .models import NoteType
@@ -460,6 +461,7 @@ def _add_note_impl(
     output_format: str,
     template: Optional[str] = None,
     topic: Optional[str] = None,
+    force: bool = False,
 ):
     """添加笔记的内部实现"""
     # 如果指定了模板，使用模板渲染
@@ -505,6 +507,12 @@ def _add_note_impl(
     # session 类型必须提供 --topic
     if nt == NoteType.SESSION and not topic:
         raise ValueError("--type session 需要 --topic 参数")
+
+    # #383 permanent 落库前防重（--force 跳过；内部故障一律放行）
+    if nt == NoteType.PERMANENT and not force:
+        from .add_dedup import check_add_duplicate
+
+        check_add_duplicate(title, content)
 
     # 从内容中提取维基链接
     wiki_links = extract_wiki_links(content)
@@ -611,6 +619,12 @@ def _add_note_impl(
                 # 回滚内存中的 new_note.backlinks
                 new_note.backlinks = new_note.backlinks[:original_backlinks_count]
 
+        # #383 落库成功后灌 dedup 表（daemon 可用时），后续 add 与 gem_synth 都能查到
+        if nt == NoteType.PERMANENT:
+            from .add_dedup import record_added_permanent
+
+            record_added_permanent(new_note.id, content)
+
         result = {
             "success": True,
             "note": {
@@ -702,6 +716,9 @@ def add(
         None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
     ),
     topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型必填）"),
+    force: bool = typer.Option(
+        False, "--force", help="跳过防重检查，强制创建（迁移/回填/明确要重复时用）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -729,10 +746,28 @@ def add(
         from .config import use_kb
 
         with use_kb(kb):
-            _add_note_impl(content, title, note_type, tags, source, output_format, template, topic)
+            _add_note_impl(
+                content, title, note_type, tags, source, output_format, template, topic, force
+            )
 
     except typer.Exit:
         raise
+    except DuplicateNoteError as e:
+        dup_info = {
+            "matched_id": e.matched_id,
+            "matched_title": e.matched_title,
+            "matched_by": e.matched_by,
+            "score": e.score,
+        }
+        if output_format == "json":
+            print(output_json({"success": False, "skipped": "duplicate", "duplicate": dup_info}))
+        else:
+            console.print(
+                f"[yellow]⚠[/yellow] 已存在重复笔记（{e.matched_by}）："
+                f"[bold]{e.matched_title}[/bold]（id: {e.matched_id}），已跳过创建。"
+                "使用 --force 可强制创建。"
+            )
+        raise typer.Exit(1)
     except Exception as e:
         result = {
             "success": False,
