@@ -607,8 +607,7 @@ def test_louvain_is_deterministic_and_uses_fixed_parameters():
         wraps=nx.community.louvain_communities,
     ) as louvain:
         runs = [
-            find_clusters_at_threshold(similarity, threshold=0.65, min_size=3)
-            for _ in range(3)
+            find_clusters_at_threshold(similarity, threshold=0.65, min_size=3) for _ in range(3)
         ]
 
     assert runs[0] == runs[1] == runs[2]

@@ -145,9 +145,7 @@ def find_clusters_at_threshold(
     ]
     graph.add_weighted_edges_from(weighted_edges)
 
-    communities = community.louvain_communities(
-        graph, weight="weight", resolution=1.0, seed=42
-    )
+    communities = community.louvain_communities(graph, weight="weight", resolution=1.0, seed=42)
     clusters = [sorted(members) for members in communities]
     clusters = [component for component in clusters if len(component) >= min_size]
     return sorted(clusters, key=lambda component: (-len(component), component[0]))

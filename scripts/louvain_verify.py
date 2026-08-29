@@ -70,9 +70,7 @@ def _load_embeddings_impl() -> Tuple[List[str], List[str], np.ndarray]:
 
     # 过滤磁盘存在的笔记
     note_index = get_note_index()
-    live_meta = {
-        m.id: m for m in note_index.get_all_meta() if m.type.value == "permanent"
-    }
+    live_meta = {m.id: m for m in note_index.get_all_meta() if m.type.value == "permanent"}
 
     records = []
     for index, note_id in enumerate(vector_ids):
@@ -101,9 +99,7 @@ def run_connected_components(
     return sorted(clusters, key=lambda cluster: (-len(cluster), cluster[0]))
 
 
-def qualifying_orphan_count(
-    node_count: int, clusters: List[List[int]], min_size: int
-) -> int:
+def qualifying_orphan_count(node_count: int, clusters: List[List[int]], min_size: int) -> int:
     """统计未进入达到 ``min_size`` 的社区/簇的节点数。"""
     qualifying = [cluster for cluster in clusters if len(cluster) >= min_size]
     return node_count - sum(len(cluster) for cluster in qualifying)
@@ -161,21 +157,11 @@ def extract_keywords(titles: List[str], min_count: int = 2) -> str:
 
 def main() -> None:
     """主函数：运行验证流程。"""
-    parser = argparse.ArgumentParser(
-        description="验证 Louvain 社区发现算法在 MOC 聚类上的效果"
-    )
-    parser.add_argument(
-        "--kb", type=str, default=None, help="知识库名称（默认使用当前知识库）"
-    )
-    parser.add_argument(
-        "--threshold", type=float, default=0.75, help="建边阈值（默认 0.75）"
-    )
-    parser.add_argument(
-        "--resolution", type=float, default=1.0, help="Louvain 分辨率（默认 1.0）"
-    )
-    parser.add_argument(
-        "--top", type=int, default=1, help="验证前 N 个最大簇（默认 1）"
-    )
+    parser = argparse.ArgumentParser(description="验证 Louvain 社区发现算法在 MOC 聚类上的效果")
+    parser.add_argument("--kb", type=str, default=None, help="知识库名称（默认使用当前知识库）")
+    parser.add_argument("--threshold", type=float, default=0.75, help="建边阈值（默认 0.75）")
+    parser.add_argument("--resolution", type=float, default=1.0, help="Louvain 分辨率（默认 1.0）")
+    parser.add_argument("--top", type=int, default=1, help="验证前 N 个最大簇（默认 1）")
     args = parser.parse_args()
 
     kb_display = args.kb if args.kb else "default"
@@ -200,9 +186,7 @@ def main() -> None:
     clusters_louvain = find_clusters_at_threshold(similarity, args.threshold, min_size=3)
     print(f"Step 3: 生产 Louvain 社区发现（阈值 {args.threshold}，seed=42）")
     louvain_max_size = max((len(cluster) for cluster in clusters_louvain), default=0)
-    louvain_orphan_count = qualifying_orphan_count(
-        len(live_ids), clusters_louvain, min_size=3
-    )
+    louvain_orphan_count = qualifying_orphan_count(len(live_ids), clusters_louvain, min_size=3)
     print(f"  社区数: {len(clusters_louvain)}")
     print(f"  最大社区: {louvain_max_size} 条")
     print(f"  孤儿数: {louvain_orphan_count} 条")
@@ -235,9 +219,7 @@ def main() -> None:
     for cluster_idx in range(min(args.top, len(clusters_cc))):
         mega_cluster = clusters_cc[cluster_idx]
         if len(mega_cluster) <= 50:
-            print(
-                f"旧版簇 {cluster_idx} 规模 {len(mega_cluster)} 已在 MOC 护栏内，跳过局部拆分"
-            )
+            print(f"旧版簇 {cluster_idx} 规模 {len(mega_cluster)} 已在 MOC 护栏内，跳过局部拆分")
             continue
 
         print(
@@ -257,7 +239,7 @@ def main() -> None:
 
             print(f"  社区 {i}: {len(comm)} 条")
             print(f"    关键词: {keywords}")
-            print(f"    成员示例（前 3 条）:")
+            print("    成员示例（前 3 条）:")
             for title in titles[:3]:
                 print(f"      - {title[:70]}")
             if len(comm) > 3:
@@ -274,9 +256,7 @@ def main() -> None:
         print(f"    最大社区: {sizes[0]} 条")
         print(f"    可建 MOC 规模（5-50 条）: {len(moc_ready)} 个")
         print(f"    规模分布: {sizes[:10]}")
-        local_orphan_count = qualifying_orphan_count(
-            len(mega_cluster), communities, min_size=3
-        )
+        local_orphan_count = qualifying_orphan_count(len(mega_cluster), communities, min_size=3)
         print(f"    局部拆分孤儿数（过滤 <3 条社区）: {local_orphan_count} 条")
         print()
 
