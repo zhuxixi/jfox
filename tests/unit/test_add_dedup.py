@@ -195,3 +195,12 @@ class TestRecordAddedPermanent:
     def test_writes_to_store(self, kb_cfg, dedup_env):
         record_added_permanent("20260829001", _EXISTING_CONTENT, cfg=kb_cfg)
         assert dedup_env.count() == 1
+
+
+def test_synthesis_db_env_override(tmp_path, monkeypatch):
+    """JFOX_SYNTHESIS_DB 覆盖 synthesis db 路径（conftest 全局隔离的依据）。"""
+    from jfox.gem_synth.paths import default_synthesis_db_path
+
+    p = tmp_path / "s.db"
+    monkeypatch.setenv("JFOX_SYNTHESIS_DB", str(p))
+    assert default_synthesis_db_path() == p.resolve()

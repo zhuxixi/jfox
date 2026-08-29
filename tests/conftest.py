@@ -25,6 +25,10 @@ os.environ["ZK_KB_ROOT"] = str(_TEST_ROOT)
 # 隔离全局 KB 注册表；CLI 子进程会继承该环境变量，避免写入真实 ~/.zk_config.json。
 os.environ["ZK_CONFIG_PATH"] = str(_TEST_ROOT / "zk_config.json")
 
+# 隔离真实 synthesis db（#383 关联项）：测试进程与 CLI 子进程都指向临时路径，
+# 防 DedupStore 默认单例写真实 ~/.zettelkasten/synthesis_log.db
+os.environ.setdefault("JFOX_SYNTHESIS_DB", str(_TEST_ROOT / "synthesis_test.db"))
+
 import pytest
 
 # ============================================================================
