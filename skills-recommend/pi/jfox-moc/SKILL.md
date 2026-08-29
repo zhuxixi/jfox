@@ -35,7 +35,7 @@ jfox moc diagnose --json --top 10
 
 - `coverage`：三口径计数（filesystem / vector / bm25）+ `warnings`——口径不一致（如 `vector_orphans` 异常偏高）时先修复索引（见 jfox-common §5），别在 stale 索引上建 MOC
 - `threshold_sweep`：各阈值下的簇数与最大簇——用于调阈值
-- `suggest`：建议主题簇（`size` / `hub` / `members`，按语义相似度聚类）
+- `suggest`：建议主题簇（`size` / `hub` / `members`，按语义相似度聚类）；生产聚类使用带权 Louvain 社区发现，固定 `seed=42` 和 `resolution=1.0`，以保证结果可复现
 - `orphans`：无链接孤儿清单（MOC 收纳候选）
 
 向用户呈现：哪些主题簇已达建 MOC 规模、建议主题名、孤儿情况。
@@ -49,12 +49,12 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --json
 ```
 
 - `--cluster`：簇序号（从 0 起，对应 diagnose 输出顺序）
-- `--threshold`：默认 0.65；簇过大被拒时提高阈值（如 0.7）拆细子簇再建
+- `--threshold`：默认 0.75；簇过大被拒时提高阈值拆细子簇再建。显式传入其他阈值仍然有效
 - `--title`：MOC 标题（缺省自动从簇内归纳）
 
 展示草稿给用户确认（hub 置顶、按共享 tag 分组、成员清单）。**人工确认主题名与成员取舍**，需修改时用 `--title` / 换簇 / 换阈值重跑 dry-run。
 
-**规模护栏**：簇超过 `--max-size`（默认 50）时拒绝生成——这是特性不是 bug，提高 `--threshold` 拆细再建。
+**规模护栏**：簇超过 `--max-size`（默认 50）时拒绝生成——这是特性不是 bug，提高 `--threshold` 拆细再建。Louvain 能识别稠密社区，但不保证每个社区都小于护栏；纯链式语料也可能保持为一个社区。
 
 ## Step 3: 落盘
 
@@ -82,6 +82,8 @@ jfox moc update --id <moc_id> --json  # 单条 MOC
 维护节奏建议：每批次新笔记落库后跑一次，或随 organize 定期整理一起做。
 
 ## 关键原则
+
+- MOC 默认阈值与聚类算法只影响 `moc create`、`moc update`、`moc diagnose`；其他 jfox 命令不受影响。生产 Louvain 不通过 MOC CLI 暴露 `resolution` 参数。
 
 - MOC 稳定骨架只链接 permanent；session 不固化进骨架（近期活动动态引用，不入 links）
 - structure 类型默认可被 hybrid search 命中——检索到 MOC 即获主题鸟瞰图，顺 links 定位具体笔记
