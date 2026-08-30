@@ -115,8 +115,13 @@ def normalize_parameter(parameter: click.Parameter) -> NormalizedParameter:
 
 
 def _command_usage(command: click.Command, path: str) -> str:
-    options = any(isinstance(param, click.Option) for param in command.params)
-    arguments = [_metavar(param) for param in command.params if isinstance(param, click.Argument)]
+    parameters = tuple(normalize_parameter(param) for param in command.params)
+    options = any(parameter.kind == "option" for parameter in parameters)
+    arguments = [
+        parameter.syntax if parameter.required else f"[{parameter.syntax}]"
+        for parameter in parameters
+        if parameter.kind == "argument"
+    ]
     suffix: list[str] = []
     if options:
         suffix.append("[OPTIONS]")
@@ -267,7 +272,7 @@ def render_reference(commands: Sequence[NormalizedCommand], descriptions: Mappin
     ]
     for command in sorted(commands, key=lambda item: item.path.split()):
         lines.extend(["", f"## `{command.path}`", "", descriptions[command.description_key], ""])
-        lines.extend(["**Usage**:", "", "```console", f"$ {command.usage}", "```"])
+        lines.extend(["**Usage**:", "", "```text", command.usage, "```"])
         if command.parameters:
             lines.extend(["", *_parameter_table(command.parameters)])
     return "\n".join(lines) + "\n"

@@ -19,8 +19,8 @@ Manage a local-first Zettelkasten knowledge base.
 
 **Usage**:
 
-```console
-$ jfox [OPTIONS] COMMAND [ARGS]...
+```text
+jfox [OPTIONS] COMMAND [ARGS]...
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -33,8 +33,8 @@ Create a note and update its links and local indexes.
 
 **Usage**:
 
-```console
-$ jfox add [OPTIONS] CONTENT
+```text
+jfox add [OPTIONS] [CONTENT]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -57,8 +57,8 @@ Archive a note without permanently deleting its file.
 
 **Usage**:
 
-```console
-$ jfox archive [OPTIONS] NOTE_ID
+```text
+jfox archive [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -74,8 +74,8 @@ Manage automatic summaries of completed Claude Code sessions.
 
 **Usage**:
 
-```console
-$ jfox auto-summary COMMAND [ARGS]...
+```text
+jfox auto-summary COMMAND [ARGS]...
 ```
 
 ## `jfox auto-summary disable`
@@ -84,8 +84,8 @@ Disable the auto-summary background loop without clearing its ledger.
 
 **Usage**:
 
-```console
-$ jfox auto-summary disable [OPTIONS]
+```text
+jfox auto-summary disable [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -98,8 +98,8 @@ Enable auto-summary and optionally update its scheduling settings.
 
 **Usage**:
 
-```console
-$ jfox auto-summary enable [OPTIONS]
+```text
+jfox auto-summary enable [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -120,8 +120,8 @@ Remove a session from the auto-summary ledger so it can be processed again.
 
 **Usage**:
 
-```console
-$ jfox auto-summary forget [OPTIONS] SESSION_ID
+```text
+jfox auto-summary forget [OPTIONS] SESSION_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -135,8 +135,8 @@ Remove old entries from the auto-summary ledger without changing notes.
 
 **Usage**:
 
-```console
-$ jfox auto-summary prune [OPTIONS]
+```text
+jfox auto-summary prune [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -150,8 +150,8 @@ Run one auto-summary processing round manually.
 
 **Usage**:
 
-```console
-$ jfox auto-summary run [OPTIONS]
+```text
+jfox auto-summary run [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -166,8 +166,8 @@ List sessions that are currently eligible for auto-summary.
 
 **Usage**:
 
-```console
-$ jfox auto-summary scan [OPTIONS]
+```text
+jfox auto-summary scan [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -180,8 +180,8 @@ Show auto-summary configuration, ledger statistics, and progress.
 
 **Usage**:
 
-```console
-$ jfox auto-summary status [OPTIONS]
+```text
+jfox auto-summary status [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -194,8 +194,8 @@ Manage rolling knowledge-base backups and restoration.
 
 **Usage**:
 
-```console
-$ jfox backup COMMAND [ARGS]...
+```text
+jfox backup COMMAND [ARGS]...
 ```
 
 ## `jfox backup disable`
@@ -204,8 +204,8 @@ Disable scheduled knowledge-base backups.
 
 **Usage**:
 
-```console
-$ jfox backup disable
+```text
+jfox backup disable
 ```
 
 ## `jfox backup enable`
@@ -214,8 +214,8 @@ Enable scheduled rolling knowledge-base backups.
 
 **Usage**:
 
-```console
-$ jfox backup enable [OPTIONS]
+```text
+jfox backup enable [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -229,8 +229,8 @@ List available knowledge-base backup snapshots.
 
 **Usage**:
 
-```console
-$ jfox backup list [OPTIONS]
+```text
+jfox backup list [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -243,8 +243,8 @@ Restore knowledge-base data from a verified backup snapshot.
 
 **Usage**:
 
-```console
-$ jfox backup restore [OPTIONS] SNAPSHOT
+```text
+jfox backup restore [OPTIONS] SNAPSHOT
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -258,8 +258,8 @@ Create a knowledge-base backup snapshot immediately.
 
 **Usage**:
 
-```console
-$ jfox backup run [OPTIONS]
+```text
+jfox backup run [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -272,8 +272,8 @@ Show backup configuration and the latest run status.
 
 **Usage**:
 
-```console
-$ jfox backup status [OPTIONS]
+```text
+jfox backup status [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -286,8 +286,8 @@ Verify the integrity of a backup snapshot.
 
 **Usage**:
 
-```console
-$ jfox backup verify [OPTIONS] SNAPSHOT
+```text
+jfox backup verify [OPTIONS] SNAPSHOT
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -301,8 +301,8 @@ Manage local book assets, extracted bundles, and metadata.
 
 **Usage**:
 
-```console
-$ jfox bookshelf COMMAND [ARGS]...
+```text
+jfox bookshelf COMMAND [ARGS]...
 ```
 
 ## `jfox bookshelf add`
@@ -311,8 +311,8 @@ Add a book folder to the local bookshelf.
 
 **Usage**:
 
-```console
-$ jfox bookshelf add [OPTIONS] FOLDER
+```text
+jfox bookshelf add [OPTIONS] FOLDER
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -331,8 +331,8 @@ List books currently stored on the bookshelf.
 
 **Usage**:
 
-```console
-$ jfox bookshelf list [OPTIONS]
+```text
+jfox bookshelf list [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -347,8 +347,8 @@ Remove a book and its assets from the bookshelf.
 
 **Usage**:
 
-```console
-$ jfox bookshelf remove [OPTIONS] SLUG
+```text
+jfox bookshelf remove [OPTIONS] SLUG
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -365,8 +365,8 @@ Show book metadata or the contents of a selected page.
 
 **Usage**:
 
-```console
-$ jfox bookshelf show [OPTIONS] SLUG
+```text
+jfox bookshelf show [OPTIONS] SLUG
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -383,8 +383,8 @@ Import multiple notes from a JSON file using the batch pipeline.
 
 **Usage**:
 
-```console
-$ jfox bulk-import [OPTIONS] FILE_PATH
+```text
+jfox bulk-import [OPTIONS] FILE_PATH
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -401,8 +401,8 @@ Inspect candidate notes produced by knowledge-gem synthesis.
 
 **Usage**:
 
-```console
-$ jfox candidates COMMAND [ARGS]...
+```text
+jfox candidates COMMAND [ARGS]...
 ```
 
 ## `jfox candidates list`
@@ -411,8 +411,8 @@ List candidate notes awaiting review or matching a status filter.
 
 **Usage**:
 
-```console
-$ jfox candidates list [OPTIONS]
+```text
+jfox candidates list [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -429,8 +429,8 @@ Promote a reviewed candidate note to a permanent note.
 
 **Usage**:
 
-```console
-$ jfox candidates promote [OPTIONS] NOTE_ID
+```text
+jfox candidates promote [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -445,8 +445,8 @@ Reject and archive a candidate note, optionally recording a reason.
 
 **Usage**:
 
-```console
-$ jfox candidates reject [OPTIONS] NOTE_ID
+```text
+jfox candidates reject [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -462,8 +462,8 @@ Show the complete frontmatter and body of a candidate note.
 
 **Usage**:
 
-```console
-$ jfox candidates show [OPTIONS] NOTE_ID
+```text
+jfox candidates show [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -478,8 +478,8 @@ Check a knowledge base for empty or malformed note files.
 
 **Usage**:
 
-```console
-$ jfox check [OPTIONS]
+```text
+jfox check [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -495,8 +495,8 @@ View or update knowledge-base configuration.
 
 **Usage**:
 
-```console
-$ jfox config ACTION KEY VALUE
+```text
+jfox config ACTION [KEY] [VALUE]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -511,8 +511,8 @@ Manage the background embedding-model daemon.
 
 **Usage**:
 
-```console
-$ jfox daemon [OPTIONS] ACTION
+```text
+jfox daemon [OPTIONS] [ACTION]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -528,8 +528,8 @@ Show notes created on a specific day.
 
 **Usage**:
 
-```console
-$ jfox daily [OPTIONS]
+```text
+jfox daily [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -545,8 +545,8 @@ Delete a note after checking incoming references.
 
 **Usage**:
 
-```console
-$ jfox delete [OPTIONS] NOTE_ID
+```text
+jfox delete [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -564,8 +564,8 @@ Edit an existing note while preserving its identity and creation time.
 
 **Usage**:
 
-```console
-$ jfox edit [OPTIONS] NOTE_ID
+```text
+jfox edit [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -588,8 +588,8 @@ Inspect raw session fragments captured by an agent hook.
 
 **Usage**:
 
-```console
-$ jfox fragments COMMAND [ARGS]...
+```text
+jfox fragments COMMAND [ARGS]...
 ```
 
 ## `jfox fragments list`
@@ -598,8 +598,8 @@ List captured session fragments, newest first.
 
 **Usage**:
 
-```console
-$ jfox fragments list [OPTIONS]
+```text
+jfox fragments list [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -615,8 +615,8 @@ Show a fragment together with its complete original event.
 
 **Usage**:
 
-```console
-$ jfox fragments show FRAGMENT_ID
+```text
+jfox fragments show FRAGMENT_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -629,8 +629,8 @@ Inspect the progress of the L3 knowledge-gem synthesis loop.
 
 **Usage**:
 
-```console
-$ jfox gem-synth COMMAND [ARGS]...
+```text
+jfox gem-synth COMMAND [ARGS]...
 ```
 
 ## `jfox gem-synth dedup-backfill`
@@ -639,8 +639,8 @@ Backfill candidate and permanent note embeddings into the deduplication index.
 
 **Usage**:
 
-```console
-$ jfox gem-synth dedup-backfill [OPTIONS]
+```text
+jfox gem-synth dedup-backfill [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -654,8 +654,8 @@ Show pending, successful, failed, and skipped synthesis work.
 
 **Usage**:
 
-```console
-$ jfox gem-synth status [OPTIONS]
+```text
+jfox gem-synth status [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -669,8 +669,8 @@ Analyze and explore the knowledge graph built from note links.
 
 **Usage**:
 
-```console
-$ jfox graph [OPTIONS]
+```text
+jfox graph [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -689,8 +689,8 @@ Show fleeting notes and session notes that need attention.
 
 **Usage**:
 
-```console
-$ jfox inbox [OPTIONS]
+```text
+jfox inbox [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -706,8 +706,8 @@ Inspect, rebuild, or verify the local note indexes.
 
 **Usage**:
 
-```console
-$ jfox index [OPTIONS] ACTION
+```text
+jfox index [OPTIONS] [ACTION]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -724,8 +724,8 @@ Import Git commit history from a repository as notes.
 
 **Usage**:
 
-```console
-$ jfox ingest-log [OPTIONS] REPO_PATH
+```text
+jfox ingest-log [OPTIONS] REPO_PATH
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -744,8 +744,8 @@ Initialize and register a knowledge base.
 
 **Usage**:
 
-```console
-$ jfox init [OPTIONS]
+```text
+jfox init [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -763,8 +763,8 @@ List, create, switch, rename, or remove knowledge bases.
 
 **Usage**:
 
-```console
-$ jfox kb [OPTIONS] ACTION NAME NEW_NAME
+```text
+jfox kb [OPTIONS] [ACTION] [NAME] [NEW_NAME]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -785,8 +785,8 @@ List notes with optional type, tag, archive, and output filters.
 
 **Usage**:
 
-```console
-$ jfox list [OPTIONS]
+```text
+jfox list [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -806,8 +806,8 @@ Diagnose and maintain Map of Content structure notes.
 
 **Usage**:
 
-```console
-$ jfox moc COMMAND [ARGS]...
+```text
+jfox moc COMMAND [ARGS]...
 ```
 
 ## `jfox moc create`
@@ -816,8 +816,8 @@ Create a structure note draft from a diagnosed topic cluster.
 
 **Usage**:
 
-```console
-$ jfox moc create [OPTIONS]
+```text
+jfox moc create [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -838,8 +838,8 @@ Analyze permanent-note density and suggest MOC clusters.
 
 **Usage**:
 
-```console
-$ jfox moc diagnose [OPTIONS]
+```text
+jfox moc diagnose [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -858,8 +858,8 @@ Rescan topic clusters and update the members of an existing MOC.
 
 **Usage**:
 
-```console
-$ jfox moc update [OPTIONS]
+```text
+jfox moc update [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -877,8 +877,8 @@ Manage locally available embedding models.
 
 **Usage**:
 
-```console
-$ jfox model COMMAND [ARGS]...
+```text
+jfox model COMMAND [ARGS]...
 ```
 
 ## `jfox model download`
@@ -887,8 +887,8 @@ Download an embedding model using the configured fallback chain.
 
 **Usage**:
 
-```console
-$ jfox model download [OPTIONS]
+```text
+jfox model download [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -905,8 +905,8 @@ View performance metrics or clear the embedding cache.
 
 **Usage**:
 
-```console
-$ jfox perf ACTION
+```text
+jfox perf [ACTION]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -919,8 +919,8 @@ Combine semantic search with knowledge-graph traversal.
 
 **Usage**:
 
-```console
-$ jfox query [OPTIONS] QUERY_STR
+```text
+jfox query [OPTIONS] QUERY_STR
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -937,8 +937,8 @@ Replace references to one note ID with references to another note ID.
 
 **Usage**:
 
-```console
-$ jfox redirect [OPTIONS] OLD_ID KEEP_ID
+```text
+jfox redirect [OPTIONS] OLD_ID KEEP_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -956,8 +956,8 @@ Inspect incoming and outgoing note references.
 
 **Usage**:
 
-```console
-$ jfox refs [OPTIONS]
+```text
+jfox refs [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -974,8 +974,8 @@ Search notes by keyword, semantic meaning, or both.
 
 **Usage**:
 
-```console
-$ jfox search [OPTIONS] QUERY
+```text
+jfox search [OPTIONS] QUERY
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -996,8 +996,8 @@ Show the complete Markdown content of a note.
 
 **Usage**:
 
-```console
-$ jfox show [OPTIONS] NOTE_REF
+```text
+jfox show [OPTIONS] NOTE_REF
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1013,8 +1013,8 @@ Show knowledge-base and index status.
 
 **Usage**:
 
-```console
-$ jfox status [OPTIONS]
+```text
+jfox status [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1029,8 +1029,8 @@ Suggest existing notes that could be linked from new content.
 
 **Usage**:
 
-```console
-$ jfox suggest-links [OPTIONS] CONTENT
+```text
+jfox suggest-links [OPTIONS] CONTENT
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1048,8 +1048,8 @@ Manage reusable note templates.
 
 **Usage**:
 
-```console
-$ jfox template COMMAND [ARGS]...
+```text
+jfox template COMMAND [ARGS]...
 ```
 
 ## `jfox template create`
@@ -1058,8 +1058,8 @@ Create a custom note template.
 
 **Usage**:
 
-```console
-$ jfox template create [OPTIONS] NAME
+```text
+jfox template create [OPTIONS] NAME
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1080,8 +1080,8 @@ Edit an existing note template in the configured editor.
 
 **Usage**:
 
-```console
-$ jfox template edit [OPTIONS] NAME
+```text
+jfox template edit [OPTIONS] NAME
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1095,8 +1095,8 @@ List built-in and custom note templates.
 
 **Usage**:
 
-```console
-$ jfox template list [OPTIONS]
+```text
+jfox template list [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1111,8 +1111,8 @@ Remove a custom note template.
 
 **Usage**:
 
-```console
-$ jfox template remove [OPTIONS] NAME
+```text
+jfox template remove [OPTIONS] NAME
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1128,8 +1128,8 @@ Show the contents and metadata of a note template.
 
 **Usage**:
 
-```console
-$ jfox template show [OPTIONS] NAME
+```text
+jfox template show [OPTIONS] NAME
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1144,8 +1144,8 @@ Restore an archived note to the active workflow.
 
 **Usage**:
 
-```console
-$ jfox unarchive [OPTIONS] NOTE_ID
+```text
+jfox unarchive [OPTIONS] NOTE_ID
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
@@ -1161,8 +1161,8 @@ Upgrade the JFox installation using its detected package manager.
 
 **Usage**:
 
-```console
-$ jfox update [OPTIONS]
+```text
+jfox update [OPTIONS]
 ```
 
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |

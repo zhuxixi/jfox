@@ -124,6 +124,19 @@ def test_parameter_normalize_boolean_option_with_extra_aliases():
     assert normalized.is_flag is True
 
 
+def test_command_usage_marks_optional_positional_arguments():
+    @click.command()
+    @click.argument("required_arg", required=True, metavar="REQUIRED")
+    @click.argument("optional_arg", required=False, metavar="OPTIONAL")
+    def command(required_arg, optional_arg):
+        return required_arg, optional_arg
+
+    commands = extract_commands(click.Group("root", commands={"command": command}))
+
+    command_record = next(item for item in commands if item.path == "jfox command")
+    assert command_record.usage == "jfox command REQUIRED [OPTIONAL]"
+
+
 def test_description_load_reads_prose_only_catalog(tmp_path: Path):
     catalog = tmp_path / "descriptions.yaml"
     catalog.write_text(
@@ -262,6 +275,7 @@ def test_render_reference_is_english_and_deterministic():
     assert "# JFox CLI Reference" in first
     assert "## `jfox search`" in first
     assert "Search notes by keyword or meaning." in first
+    assert "```text\njfox search [OPTIONS] QUERY\n```" in first
     assert "| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |" in first
     assert (
         "| `mode` | `--mode, -m` | TEXT | no | `hybrid` | `hybrid`, `keyword` | no | no |" in first
