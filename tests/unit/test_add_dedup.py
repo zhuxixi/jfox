@@ -41,7 +41,8 @@ def _deterministic_encode(text: str) -> np.ndarray:
 class _StubBackend:
     """替换 embedding_backend.get_backend 的确定性桩（duck-typing encode_single）。"""
 
-    def encode_single(self, text: str):
+    def encode_single(self, text: str, *, daemon_only: bool = False):
+        # daemon_only 参数对齐 EmbeddingBackend 契约（#383 F2）；桩本身不区分
         return _deterministic_encode(text)
 
 
@@ -195,6 +196,75 @@ class TestRecordAddedPermanent:
     def test_writes_to_store(self, kb_cfg, dedup_env):
         record_added_permanent("20260829001", _EXISTING_CONTENT, cfg=kb_cfg)
         assert dedup_env.count() == 1
+
+
+class TestDaemonEncodeFailureDegradation:
+    """F2 回归：daemon 健康检查通过但 encode 失败时，闸门降级放行且不崩。"""
+
+    def test_encode_failure_passes_gate(self, kb_cfg, dedup_env, monkeypatch):
+        class _BoomBackend:
+            def encode_single(self, text: str, *, daemon_only: bool = False):
+                raise RuntimeError("daemon encode exploded")
+
+        monkeypatch.setattr("jfox.embedding_backend.get_backend", lambda: _BoomBackend())
+        record_added_permanent("20260829001", _EXISTING_CONTENT, cfg=kb_cfg)
+        # 闸门不是路障：embedding 通道内部异常 → 降级放行
+        check_add_duplicate("全新标题", _EXISTING_CONTENT, cfg=kb_cfg)
+
+
+class TestUntitledPermanentGate:
+    """F1 回归：无 --title 的短 permanent 两次落库，标题通道必须拦下第二次。
+
+    进程内 mock 三件套（仿 test_format_unify），不跑子进程、不碰真实全局配置。
+    """
+
+    def test_untitled_short_permanent_blocked_on_second_add(self, tmp_path, capsys, monkeypatch):
+        import json
+        from unittest.mock import patch
+
+        from jfox.cli import _add_note_impl
+
+        monkeypatch.setattr("jfox.add_dedup._load_note_add_config", lambda: NoteAddConfig())
+        cfg = ZKConfig(base_dir=tmp_path)
+        cfg.ensure_dirs()
+        short_content = "同一段短内容，两次都不带标题。"
+
+        with (
+            patch("jfox.vector_store.get_vector_store") as mock_vs,
+            patch("jfox.note.config") as mock_note_config,
+            patch("jfox.config.config") as mock_global_config,
+        ):
+            mock_vs.return_value.last_dimension_warning = None
+            mock_global_config.base_dir = cfg.base_dir
+            mock_global_config.notes_dir = cfg.notes_dir
+            mock_note_config.notes_dir = cfg.notes_dir
+
+            # 第一次：空库，正常落库
+            _add_note_impl(
+                content=short_content,
+                title=None,
+                note_type="permanent",
+                tags=None,
+                source=None,
+                output_format="json",
+            )
+            first = json.loads(capsys.readouterr().out)
+            assert first["success"] is True
+            # create_note 对无标题短内容直接用全文做标题 → 落库标题 == 内容
+            assert first["note"]["title"] == short_content
+
+            # 第二次：同内容同无标题 → 派生标题相同 → 标题通道拦截
+            with pytest.raises(DuplicateNoteError) as ei:
+                _add_note_impl(
+                    content=short_content,
+                    title=None,
+                    note_type="permanent",
+                    tags=None,
+                    source=None,
+                    output_format="json",
+                )
+            assert ei.value.matched_by == "title"
+            assert ei.value.matched_title == short_content
 
 
 def test_synthesis_db_env_override(tmp_path, monkeypatch):

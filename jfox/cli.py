@@ -508,11 +508,12 @@ def _add_note_impl(
     if nt == NoteType.SESSION and not topic:
         raise ValueError("--type session 需要 --topic 参数")
 
-    # #383 permanent 落库前防重（--force 跳过；内部故障一律放行）
+    # #383 permanent 落库前防重（--force 跳过；内部故障一律放行）。
+    # 无标题时用与 create_note 相同的规则先派生，防无标题短文绕过标题通道
     if nt == NoteType.PERMANENT and not force:
         from .add_dedup import check_add_duplicate
 
-        check_add_duplicate(title, content)
+        check_add_duplicate(note.derive_note_title(title, content), content)
 
     # 从内容中提取维基链接
     wiki_links = extract_wiki_links(content)
