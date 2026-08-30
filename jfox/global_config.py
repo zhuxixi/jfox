@@ -16,7 +16,8 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_CONFIG_PATH = Path.home() / ".zk_config.json"
+_config_path_env = os.environ.get("ZK_CONFIG_PATH", "").strip()
+DEFAULT_CONFIG_PATH = Path(_config_path_env or (Path.home() / ".zk_config.json")).expanduser()
 DEFAULT_KB_NAME = "default"
 DEFAULT_KB_PATH = Path(os.environ.get("ZK_KB_ROOT", str(Path.home() / ".zettelkasten")))
 

@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # 这样 DEFAULT_KB_PATH 会指向临时目录，路径验证在测试中自然通过
 _TEST_ROOT = Path(tempfile.mkdtemp(prefix="zk_test_root_"))
 os.environ["ZK_KB_ROOT"] = str(_TEST_ROOT)
+# 隔离全局 KB 注册表；CLI 子进程会继承该环境变量，避免写入真实 ~/.zk_config.json。
+os.environ["ZK_CONFIG_PATH"] = str(_TEST_ROOT / "zk_config.json")
 
 import pytest
 

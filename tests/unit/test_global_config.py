@@ -5,6 +5,10 @@
 依赖要求: 无外部依赖，使用 mock
 """
 
+import os
+import subprocess
+import sys
+
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
@@ -137,8 +141,123 @@ class TestGlobalConfig:
         assert config.knowledge_bases["my_kb"].path == "/path/to/my_kb"
 
 
+def _probe_default_config_path(env):
+    """Return DEFAULT_CONFIG_PATH from a fresh Python interpreter."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from jfox.global_config import DEFAULT_CONFIG_PATH; " "print(DEFAULT_CONFIG_PATH)",
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return Path(result.stdout.strip())
+
+
 class TestGlobalConfigManager:
     """测试 GlobalConfigManager 类"""
+
+    def test_pytest_bootstrap_uses_isolated_config_path(self):
+        """pytest bootstrap must point the default config path into its temp root."""
+        configured_path = os.environ.get("ZK_CONFIG_PATH")
+
+        assert configured_path
+        assert DEFAULT_CONFIG_PATH == Path(configured_path)
+        assert DEFAULT_CONFIG_PATH.name == "zk_config.json"
+        assert DEFAULT_CONFIG_PATH.parent.name.startswith("zk_test_root_")
+
+    def test_default_config_path_uses_environment_override_in_child_process(self, tmp_path):
+        """A CLI-like child process must resolve ZK_CONFIG_PATH instead of HOME."""
+        home = tmp_path / "home"
+        custom_config = tmp_path / "config" / "isolated.json"
+        env = os.environ.copy()
+        env.update(
+            {
+                "HOME": str(home),
+                "USERPROFILE": str(home),
+                "ZK_CONFIG_PATH": str(custom_config),
+            }
+        )
+
+        assert _probe_default_config_path(env) == custom_config
+
+    def test_default_config_path_falls_back_to_home_when_override_is_blank(self, tmp_path):
+        """A blank override must preserve the existing HOME-based default path."""
+        home = tmp_path / "home"
+        env = os.environ.copy()
+        env.update(
+            {
+                "HOME": str(home),
+                "USERPROFILE": str(home),
+                "ZK_CONFIG_PATH": "   ",
+            }
+        )
+
+        assert _probe_default_config_path(env) == home / ".zk_config.json"
+
+    def test_default_config_path_falls_back_to_home_when_override_is_unset(self, tmp_path):
+        """An unset override must preserve the existing HOME-based default path."""
+        home = tmp_path / "home"
+        env = os.environ.copy()
+        env.pop("ZK_CONFIG_PATH", None)
+        env.update(
+            {
+                "HOME": str(home),
+                "USERPROFILE": str(home),
+            }
+        )
+
+        assert _probe_default_config_path(env) == home / ".zk_config.json"
+
+    def test_cli_child_writes_only_to_environment_config_path(self, tmp_path):
+        """CLI KB registration must not create a config file under the child HOME."""
+        home = tmp_path / "home"
+        kb_root = tmp_path / "kb-root"
+        custom_config = tmp_path / "config" / "isolated.json"
+        kb_path = kb_root / "isolated"
+        kb_root.mkdir(parents=True)
+        env = os.environ.copy()
+        env.update(
+            {
+                "HOME": str(home),
+                "USERPROFILE": str(home),
+                "ZK_KB_ROOT": str(kb_root),
+                "ZK_CONFIG_PATH": str(custom_config),
+                "PYTHONUTF8": "1",
+            }
+        )
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "jfox",
+                "init",
+                "--name",
+                "isolated",
+                "--path",
+                str(kb_path),
+                "--no-default",
+                "--json",
+            ],
+            cwd=Path(__file__).resolve().parents[2],
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert custom_config.exists()
+        assert not (home / ".zk_config.json").exists()
+        assert '"isolated"' in custom_config.read_text(encoding="utf-8")
 
     @pytest.fixture
     def temp_config_path(self, tmp_path):
