@@ -2,6 +2,19 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.12.0] - 2026-08-30
+
+### Features
+
+- **moc**: replace connected components with Louvain clustering (#463)
+
+### Changes
+
+- **readme**: establish English README baseline (#461)
+- **claude.md**: 补 redirect/delete guard、embedding 迁移与默认模型切换（#449/#453） (#454)
+
+[1.12.0]: https://github.com/zhuxixi/jfox/compare/v1.11.0...v1.12.0
+
 ## [1.11.0] - 2026-08-29
 
 ### Features
