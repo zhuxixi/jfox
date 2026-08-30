@@ -1,0 +1,143 @@
+commands:
+  "jfox":
+    description: "Manage a local-first Zettelkasten knowledge base."
+  "jfox add":
+    description: "Create a note and update its links and local indexes."
+  "jfox archive":
+    description: "Archive a note without permanently deleting its file."
+  "jfox auto-summary":
+    description: "Manage automatic summaries of completed Claude Code sessions."
+  "jfox auto-summary disable":
+    description: "Disable the auto-summary background loop without clearing its ledger."
+  "jfox auto-summary enable":
+    description: "Enable auto-summary and optionally update its scheduling settings."
+  "jfox auto-summary forget":
+    description: "Remove a session from the auto-summary ledger so it can be processed again."
+  "jfox auto-summary prune":
+    description: "Remove old entries from the auto-summary ledger without changing notes."
+  "jfox auto-summary run":
+    description: "Run one auto-summary processing round manually."
+  "jfox auto-summary scan":
+    description: "List sessions that are currently eligible for auto-summary."
+  "jfox auto-summary status":
+    description: "Show auto-summary configuration, ledger statistics, and progress."
+  "jfox backup":
+    description: "Manage rolling knowledge-base backups and restoration."
+  "jfox backup disable":
+    description: "Disable scheduled knowledge-base backups."
+  "jfox backup enable":
+    description: "Enable scheduled rolling knowledge-base backups."
+  "jfox backup list":
+    description: "List available knowledge-base backup snapshots."
+  "jfox backup restore":
+    description: "Restore knowledge-base data from a verified backup snapshot."
+  "jfox backup run":
+    description: "Create a knowledge-base backup snapshot immediately."
+  "jfox backup status":
+    description: "Show backup configuration and the latest run status."
+  "jfox backup verify":
+    description: "Verify the integrity of a backup snapshot."
+  "jfox bookshelf":
+    description: "Manage local book assets, extracted bundles, and metadata."
+  "jfox bookshelf add":
+    description: "Add a book folder to the local bookshelf."
+  "jfox bookshelf list":
+    description: "List books currently stored on the bookshelf."
+  "jfox bookshelf remove":
+    description: "Remove a book and its assets from the bookshelf."
+  "jfox bookshelf show":
+    description: "Show book metadata or the contents of a selected page."
+  "jfox bulk-import":
+    description: "Import multiple notes from a JSON file using the batch pipeline."
+  "jfox candidates":
+    description: "Inspect candidate notes produced by knowledge-gem synthesis."
+  "jfox candidates list":
+    description: "List candidate notes awaiting review or matching a status filter."
+  "jfox candidates promote":
+    description: "Promote a reviewed candidate note to a permanent note."
+  "jfox candidates reject":
+    description: "Reject and archive a candidate note, optionally recording a reason."
+  "jfox candidates show":
+    description: "Show the complete frontmatter and body of a candidate note."
+  "jfox check":
+    description: "Check a knowledge base for empty or malformed note files."
+  "jfox config":
+    description: "View or update knowledge-base configuration."
+  "jfox daemon":
+    description: "Manage the background embedding-model daemon."
+  "jfox daily":
+    description: "Show notes created on a specific day."
+  "jfox delete":
+    description: "Delete a note after checking incoming references."
+  "jfox edit":
+    description: "Edit an existing note while preserving its identity and creation time."
+  "jfox fragments":
+    description: "Inspect raw session fragments captured by an agent hook."
+  "jfox fragments list":
+    description: "List captured session fragments, newest first."
+  "jfox fragments show":
+    description: "Show a fragment together with its complete original event."
+  "jfox gem-synth":
+    description: "Inspect the progress of the L3 knowledge-gem synthesis loop."
+  "jfox gem-synth dedup-backfill":
+    description: "Backfill candidate and permanent note embeddings into the deduplication index."
+  "jfox gem-synth status":
+    description: "Show pending, successful, failed, and skipped synthesis work."
+  "jfox graph":
+    description: "Analyze and explore the knowledge graph built from note links."
+  "jfox inbox":
+    description: "Show fleeting notes and session notes that need attention."
+  "jfox index":
+    description: "Inspect, rebuild, or verify the local note indexes."
+  "jfox ingest-log":
+    description: "Import Git commit history from a repository as notes."
+  "jfox init":
+    description: "Initialize and register a knowledge base."
+  "jfox kb":
+    description: "List, create, switch, rename, or remove knowledge bases."
+  "jfox list":
+    description: "List notes with optional type, tag, archive, and output filters."
+  "jfox moc":
+    description: "Diagnose and maintain Map of Content structure notes."
+  "jfox moc create":
+    description: "Create a structure note draft from a diagnosed topic cluster."
+  "jfox moc diagnose":
+    description: "Analyze permanent-note density and suggest MOC clusters."
+  "jfox moc update":
+    description: "Rescan topic clusters and update the members of an existing MOC."
+  "jfox model":
+    description: "Manage locally available embedding models."
+  "jfox model download":
+    description: "Download an embedding model using the configured fallback chain."
+  "jfox perf":
+    description: "View performance metrics or clear the embedding cache."
+  "jfox query":
+    description: "Combine semantic search with knowledge-graph traversal."
+  "jfox redirect":
+    description: "Replace references to one note ID with references to another note ID."
+  "jfox refs":
+    description: "Inspect incoming and outgoing note references."
+  "jfox search":
+    description: "Search notes by keyword, semantic meaning, or both."
+  "jfox show":
+    description: "Show the complete Markdown content of a note."
+  "jfox status":
+    description: "Show knowledge-base and index status."
+  "jfox suggest-links":
+    description: "Suggest existing notes that could be linked from new content."
+  "jfox template":
+    description: "Manage reusable note templates."
+  "jfox template create":
+    description: "Create a custom note template."
+  "jfox template edit":
+    description: "Edit an existing note template in the configured editor."
+  "jfox template list":
+    description: "List built-in and custom note templates."
+  "jfox template remove":
+    description: "Remove a custom note template."
+  "jfox template show":
+    description: "Show the contents and metadata of a note template."
+  "jfox unarchive":
+    description: "Restore an archived note to the active workflow."
+  "jfox update":
+    description: "Upgrade the JFox installation using its detected package manager."

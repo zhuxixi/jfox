@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Collection, Mapping, Sequence
@@ -279,6 +281,7 @@ def write_reference(path: Path, content: str) -> None:
 
 def generate_reference(output: Path, descriptions: Path) -> None:
     """Extract the real app and write its validated English reference."""
+    _ensure_isolated_config_environment()
     from typer.main import get_command
 
     from jfox.cli import app
@@ -287,6 +290,19 @@ def generate_reference(output: Path, descriptions: Path) -> None:
     catalog = load_descriptions(descriptions)
     validate_descriptions((command.path for command in commands), catalog)
     write_reference(output, render_reference(commands, catalog))
+
+
+_GENERATOR_TEMP_DIRS: list[tempfile.TemporaryDirectory[str]] = []
+
+
+def _ensure_isolated_config_environment() -> None:
+    """Keep app import side effects away from a user's global configuration."""
+    if os.environ.get("ZK_CONFIG_PATH", "").strip():
+        return
+    temp_dir = tempfile.TemporaryDirectory(prefix="jfox-docs-")
+    _GENERATOR_TEMP_DIRS.append(temp_dir)
+    os.environ["ZK_CONFIG_PATH"] = str(Path(temp_dir.name) / "zk_config.json")
+    os.environ.setdefault("ZK_KB_ROOT", str(Path(temp_dir.name) / ".zettelkasten"))
 
 
 def _repository_root() -> Path:
