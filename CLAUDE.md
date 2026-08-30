@@ -108,6 +108,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Version bump**: 发版时必须同时修改 `pyproject.toml`、`jfox/__init__.py` 和 `uv.lock` 三处版本号。先改前两个文件，再跑 `uv lock` 更新 lock 文件（曾有 #88 遗漏 `__init__.py` 的教训）
 - **Line length**: 100 chars (black + ruff configured in `pyproject.toml`)
 - **Comments/docs**: Chinese (中文)
+- **README**: 英文 baseline（#461 起重写），改 README 保持英文；其余项目文档/注释仍中文
 - **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
 - **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 gem_synth/backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
@@ -120,6 +121,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 - **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `cli_fast` (ZKCLI with mocked embeddings), `generator` (NoteGenerator), `mock_embedding_backend`
 - **Test utils** (`tests/utils/`): `temp_kb.py`, `jfox_cli.py` (CLI wrapper), `note_generator.py`
+- **全局配置隔离**: conftest 设 `ZK_CONFIG_PATH`（配合既有 `ZK_KB_ROOT`）指向临时目录，pytest 及其拉起的 CLI 子进程不读写真实 `~/.zk_config.json`（#469，`global_config.py` 的 `DEFAULT_CONFIG_PATH` 支持该 env 覆盖）
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
 - **Run single-process** to avoid ChromaDB/model loading conflicts
@@ -175,7 +177,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
 - `packages/cc-plugin/skills/` — 9 skills: `search`, `ingest`, `manage`, `organize`, `promote`, `session-summary`, `session-to-permanent`, `using-jfox`, `bookshelf`
 
-**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.4.
+**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.5.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 **Non-Claude-Code platforms**: `skills-recommend/`（`pi/` + `kimi-cli/`）是 pi / Kimi CLI 适配版 SKILL.md 集（如 `pi/jfox-moc`，#419）——CLI 语义或命令面变更时须与 cc-plugin skills 同步更新。
 **Skill 多副本同步**: skill 文案/行为改动须同步所有镜像副本——`packages/cc-plugin/skills/`、`packages/kimi-plugin/skills/`、`skills-recommend/kimi-cli/`、`skills-recommend/pi/`，只改一处会各端行为分叉（#440 踩过同步模式）
