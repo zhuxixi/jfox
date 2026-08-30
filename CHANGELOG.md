@@ -2,6 +2,14 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.12.1] - 2026-08-30
+
+### Fixes
+
+- **test**: isolate global config path in pytest (#469)
+
+[1.12.1]: https://github.com/zhuxixi/jfox/compare/v1.12.0...v1.12.1
+
 ## [1.12.0] - 2026-08-30
 
 ### Features
