@@ -8,10 +8,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from typer.main import get_command
-
-from jfox.cli import app
-from scripts.generate_docs import extract_commands, load_descriptions, validate_descriptions
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts" / "generate_docs.py"
@@ -73,6 +69,11 @@ def _run_generator(output: Path, tmp_path: Path) -> subprocess.CompletedProcess[
 
 def test_real_jfox_command_tree_coverage():
     """The live Typer app exposes every current command path in the reference catalog."""
+    from typer.main import get_command
+
+    from jfox.cli import app
+    from scripts.generate_docs import extract_commands, load_descriptions, validate_descriptions
+
     commands = extract_commands(get_command(app))
     paths = {command.path for command in commands}
 
@@ -86,7 +87,24 @@ def test_real_jfox_command_tree_coverage():
 
 def test_real_jfox_command_tree_does_not_invoke_callbacks():
     """Introspection of the real app does not execute a command callback."""
-    commands = extract_commands(get_command(app))
+    from typer.main import get_command
+
+    from jfox.cli import app
+    from scripts.generate_docs import extract_commands
+
+    root = get_command(app)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("command callback was invoked during introspection")
+
+    def guard_callbacks(command):
+        if getattr(command, "callback", None) is not None:
+            command.callback = fail_if_called
+        for child in getattr(command, "commands", {}).values():
+            guard_callbacks(child)
+
+    guard_callbacks(root)
+    commands = extract_commands(root)
 
     assert commands
     assert all(command.path.startswith("jfox") for command in commands)
@@ -147,15 +165,6 @@ def test_generator_config_safety(tmp_path: Path):
     assert not (REPO_ROOT / "config.json").exists()
 
 
-@pytest.fixture(scope="module", autouse=True)
-def generated_repository_reference():
-    """Ensure committed-reference assertions use freshly generated output."""
-    from scripts.generate_docs import generate_reference
-
-    generate_reference(REFERENCE, DESCRIPTIONS)
-    yield
-
-
 @pytest.mark.parametrize(
     "command_path",
     sorted(EXPECTED_NESTED_PATHS),
@@ -164,3 +173,83 @@ def test_reference_contains_each_required_nested_command(command_path: str):
     content = REFERENCE.read_text(encoding="utf-8")
 
     assert f"## `{command_path}`" in content
+
+
+def test_generator_rejects_partial_environment_without_using_real_paths(monkeypatch, tmp_path):
+    """A supplied config path must not allow the real KB root during app import."""
+    from scripts.generate_docs import _ensure_isolated_config_environment
+
+    monkeypatch.setenv("ZK_CONFIG_PATH", str(tmp_path / "config.json"))
+    monkeypatch.delenv("ZK_KB_ROOT", raising=False)
+
+    _ensure_isolated_config_environment()
+
+    assert os.environ["ZK_CONFIG_PATH"] == str(tmp_path / "config.json")
+    assert os.environ["ZK_KB_ROOT"] != str(Path.home() / ".zettelkasten")
+    assert Path(os.environ["ZK_KB_ROOT"]).parent != Path.home()
+
+
+def test_generator_rejects_missing_config_path_without_using_real_config(monkeypatch, tmp_path):
+    """A supplied KB root must not allow the real global config during app import."""
+    from scripts.generate_docs import _ensure_isolated_config_environment
+
+    monkeypatch.delenv("ZK_CONFIG_PATH", raising=False)
+    monkeypatch.setenv("ZK_KB_ROOT", str(tmp_path / "zettelkasten"))
+
+    _ensure_isolated_config_environment()
+
+    assert Path(os.environ["ZK_CONFIG_PATH"]).parent != Path.home()
+    assert os.environ["ZK_KB_ROOT"] == str(tmp_path / "zettelkasten")
+
+
+def test_generator_reports_catalog_remediation(tmp_path):
+    output = tmp_path / "reference.md"
+    missing_catalog = tmp_path / "missing.yaml"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--output",
+            str(output),
+            "--descriptions",
+            str(missing_catalog),
+        ],
+        cwd=REPO_ROOT,
+        env=_isolated_env(tmp_path / "catalog-home"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "update docs/cli-descriptions.yaml" in result.stderr
+    assert "rerun" in result.stderr.lower()
+
+
+def test_generator_reports_output_remediation(tmp_path):
+    output = tmp_path / "not-a-directory" / "reference.md"
+    output.parent.write_text("occupied", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(GENERATOR),
+            "--output",
+            str(output),
+            "--descriptions",
+            str(DESCRIPTIONS),
+        ],
+        cwd=REPO_ROOT,
+        env=_isolated_env(tmp_path / "output-home"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "output" in result.stderr.lower()
+    assert "permission" in result.stderr.lower() or "path" in result.stderr.lower()
+    assert "rerun" in result.stderr.lower()

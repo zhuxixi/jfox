@@ -275,8 +275,14 @@ def render_reference(commands: Sequence[NormalizedCommand], descriptions: Mappin
 
 def write_reference(path: Path, content: str) -> None:
     """Write generated content using stable UTF-8 Unix newlines."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content.replace("\r\n", "\n"), encoding="utf-8", newline="\n")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content.replace("\r\n", "\n"), encoding="utf-8", newline="\n")
+    except OSError as exc:
+        raise OSError(
+            f"could not write generated reference to {path}: {exc}; "
+            "check the output-directory permissions/path and rerun the generator"
+        ) from exc
 
 
 def generate_reference(output: Path, descriptions: Path) -> None:
@@ -297,12 +303,17 @@ _GENERATOR_TEMP_DIRS: list[tempfile.TemporaryDirectory[str]] = []
 
 def _ensure_isolated_config_environment() -> None:
     """Keep app import side effects away from a user's global configuration."""
-    if os.environ.get("ZK_CONFIG_PATH", "").strip():
+    config_path = os.environ.get("ZK_CONFIG_PATH", "").strip()
+    kb_root = os.environ.get("ZK_KB_ROOT", "").strip()
+    if config_path and kb_root:
         return
+
     temp_dir = tempfile.TemporaryDirectory(prefix="jfox-docs-")
     _GENERATOR_TEMP_DIRS.append(temp_dir)
-    os.environ["ZK_CONFIG_PATH"] = str(Path(temp_dir.name) / "zk_config.json")
-    os.environ.setdefault("ZK_KB_ROOT", str(Path(temp_dir.name) / ".zettelkasten"))
+    if not config_path:
+        os.environ["ZK_CONFIG_PATH"] = str(Path(temp_dir.name) / "zk_config.json")
+    if not kb_root:
+        os.environ["ZK_KB_ROOT"] = str(Path(temp_dir.name) / ".zettelkasten")
 
 
 def _repository_root() -> Path:
@@ -321,7 +332,11 @@ def main() -> int:
     )
     try:
         generate_reference(output, descriptions)
-    except (OSError, ValueError, ImportError) as exc:
+    except OSError as exc:
+        parser.error(str(exc))
+    except ValueError as exc:
+        parser.error(f"{exc}; update docs/cli-descriptions.yaml and rerun the generator")
+    except ImportError as exc:
         parser.error(str(exc))
     print(f"Generated {output}")
     return 0
