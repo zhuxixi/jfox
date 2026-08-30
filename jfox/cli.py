@@ -4135,21 +4135,35 @@ def redirect(
 
 
 def _json_mode_requested(argv: List[str]) -> bool:
-    """检测 argv 是否请求 JSON 输出（--json / -f json / --format json / --format=json）。
+    """检测 argv 是否请求 JSON 输出。
+
+    识别形式：--json / -f json / -fjson / --format json / --format=json。
+    Click 语义：同一 flag 重复出现时后者生效，故取最后一次 format 值；
+    --json 是独立的快捷开关，出现即强制 JSON（优先于 --format）。
 
     日志 handler 本就走 stderr，但管道 `jfox ... --json 2>&1 | jq` 会把 stderr
     合进被解析流——INFO 噪声（Saved note / 索引写入等）让对端 JSON 解析失败，
     agent 误判失败后 fallback 重跑产生重复笔记（#383 根因 A）。JSON 模式下
     把 root logger 提到 WARNING，保证正常成功路径合流后仍是纯 JSON。
     """
-    if "--json" in argv or "--format=json" in argv:
-        return True
-    for flag in ("-f", "--format"):
-        if flag in argv:
-            i = argv.index(flag)
-            if i + 1 < len(argv) and argv[i + 1] == "json":
-                return True
-    return False
+    last_format: Optional[str] = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--json":
+            return True
+        if arg.startswith("--format="):
+            last_format = arg.split("=", 1)[1]
+        elif arg in ("-f", "--format"):
+            # 空格分隔形式：取下一个 token（存在时）
+            if i + 1 < len(argv):
+                last_format = argv[i + 1]
+                i += 1
+        elif arg.startswith("-f") and len(arg) > 2 and not arg.startswith("--"):
+            # Click 短选项附着形式：-fjson
+            last_format = arg[2:]
+        i += 1
+    return last_format == "json"
 
 
 # 入口点
