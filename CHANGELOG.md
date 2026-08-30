@@ -12,6 +12,7 @@ All notable changes to jfox-cli will be documented in this file.
 
 - **readme**: establish English README baseline (#461)
 - **claude.md**: 补 redirect/delete guard、embedding 迁移与默认模型切换（#449/#453） (#454)
+- **claude.md**: moc 聚类换 Louvain 社区发现、默认阈值上调（#463） (#464)
 
 [1.12.0]: https://github.com/zhuxixi/jfox/compare/v1.11.0...v1.12.0
 
