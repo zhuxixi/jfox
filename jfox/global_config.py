@@ -406,7 +406,9 @@ class NoteAddConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "NoteAddConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险
+        if not isinstance(data, dict):
             return cls()
         # 只取已知键，忽略多余键（向前兼容）
         return cls(
