@@ -1,540 +1,326 @@
 # JFox
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](pyproject.toml)
+[![CI](https://github.com/zhuxixi/jfox/actions/workflows/integration-test.yml/badge.svg)](https://github.com/zhuxixi/jfox/actions/workflows/integration-test.yml)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)
 
 > A local-first Zettelkasten knowledge management CLI.
-> Bidirectional links, semantic search, knowledge graphs — all offline, all on CPU.
 
-**JFox** (**J** + **Fox** / "box") is a command-line tool that helps you build a personal knowledge base using the [Zettelkasten method](https://en.wikipedia.org/wiki/Zettelkasten). Notes live as plain Markdown files on your disk, connected by `[[wiki links]]` and indexed for instant semantic search.
-
----
+JFox keeps your knowledge in plain Markdown files, connects notes with `[[wiki links]]`, and makes the resulting knowledge base searchable and navigable through local indexes and graph analysis.
 
 ## Table of Contents
 
+- [What Is JFox?](#what-is-jfox)
 - [Features](#features)
-- [Architecture](#architecture)
-- [Data Flows](#data-flows)
 - [Quick Start](#quick-start)
-- [Command Reference](#command-reference)
-- [Note Format](#note-format)
-- [Contributing](#contributing)
-- [License](#license)
+- [Core Workflows](#core-workflows)
+- [Note Model](#note-model)
+- [Common Commands](#common-commands)
+- [Architecture](#architecture)
+- [Agent Integrations](#agent-integrations)
+- [Installation and Development](#installation-and-development)
+- [Privacy](#privacy)
+- [License and Acknowledgments](#license-and-acknowledgments)
 
----
+## What Is JFox?
+
+JFox applies the [Zettelkasten method](https://en.wikipedia.org/wiki/Zettelkasten) to a local knowledge base. Your notes remain ordinary Markdown files with YAML frontmatter, so you can inspect, edit, back up, and move them with standard file-system tools.
+
+Use `[[wiki links]]` to connect ideas. JFox resolves those links, maintains backlinks, and builds local indexes that support both exact-term and meaning-based retrieval. Knowledge graph and Map of Content (MOC) features help you navigate relationships instead of treating every note as an isolated document.
+
+JFox is designed to keep its core knowledge-management workflow local rather than turning your notes into a hosted service. Optional integrations that communicate with external services are described separately in [Privacy](#privacy).
 
 ## Features
 
-- **Three note types** — Fleeting (quick capture), Literature (reading notes), Permanent (refined knowledge)
-- **Bidirectional links** — Write `[[Note Title]]` to connect notes; backlinks are auto-generated
-- **Hybrid search** — BM25 keyword search + semantic vector search, fused with Reciprocal Rank Fusion
-- **Knowledge graph** — NetworkX-powered link analysis: clusters, orphans, hubs, shortest paths
-- **File watcher** — Real-time index updates when you edit notes with any editor
-- **Multi knowledge bases** — Manage separate KBs for work, personal, research, etc.
-
----
-
-## Architecture
-
-### Three-Layer Design
-
-```mermaid
-graph TB
-    subgraph CLI ["CLI Layer"]
-        cmd["jfox commands<br/>(Typer)"]
-    end
-    subgraph Storage ["Storage Layer"]
-        note[note.py]
-        models[models.py]
-        md[("Markdown Files<br/>YAML Frontmatter")]
-    end
-    subgraph Index ["Index Layer"]
-        se[search_engine.py<br/>HybridSearchEngine]
-        vs[vector_store.py<br/>ChromaDB]
-        bm[bm25_index.py<br/>BM25Okapi]
-        emb[embedding_backend.py<br/>bge-small-zh-v1.5]
-        daemon["daemon/<br/>HTTP Server"]
-    end
-    subgraph Analysis ["Analysis Layer"]
-        gph["graph.py<br/>NetworkX DiGraph"]
-    end
-    subgraph Watcher ["File Watcher"]
-        idx[indexer.py<br/>watchdog]
-    end
-
-    cmd --> note & se & gph
-    note --> models --> md
-    se --> vs & bm
-    vs --> emb
-    emb -.->|"preferred"| daemon
-    idx --> vs
-```
-
-### Module Map
-
-| Module | Role |
-|--------|------|
-| `cli.py` | All CLI commands (~2500 lines). Each command delegates to a `_xxx_impl()` helper |
-| `config.py` | Per-KB config (`ZKConfig`) + `use_kb()` context manager for KB switching |
-| `global_config.py` | Multi-KB registry in `~/.zk_config.json` |
-| `kb_manager.py` | KB lifecycle: create, rename, remove, switch |
-| `note.py` | CRUD on Markdown files with dual-index updates |
-| `models.py` | `Note` dataclass with YAML frontmatter serialization |
-| `search_engine.py` | `HybridSearchEngine` — dispatches to semantic/keyword/hybrid with RRF fusion |
-| `vector_store.py` | ChromaDB wrapper with cosine similarity search |
-| `bm25_index.py` | BM25 keyword index with Chinese/English tokenizer |
-| `embedding_backend.py` | Lazy-loaded SentenceTransformer (`BAAI/bge-small-zh-v1.5`, 512-dim vectors; GPU auto-switches to bge-m3) |
-| `daemon/` | Embedding HTTP 守护进程，常驻模型避免重复加载 |
-| `graph.py` | NetworkX DiGraph built from links + wiki links; BFS, clusters, hubs |
-| `indexer.py` | File watcher (watchdog) with debounce for incremental ChromaDB updates |
-| `formatters.py` | Output in JSON, CSV, YAML, Table, Paths, Tree formats |
-| `performance.py` | Batch processing, model caching, bulk import pipeline |
-
----
-
-## Data Flows
-
-### Note Creation
-
-When you run `jfox add`, the system parses wiki links, creates the Markdown file, updates both indexes, and propagates backlinks:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant CLI as cli.py
-    participant NM as note.py
-    participant MD as Filesystem
-    participant VS as VectorStore
-    participant BM as BM25Index
-    participant T as Target Note
-
-    U->>CLI: jfox add "content with [[Link]]"
-    CLI->>CLI: extract_wiki_links() → ["Link"]
-    CLI->>CLI: find_note_id_by_title_or_id()
-    Note over CLI: Match: exact ID → exact title → substring
-    CLI->>NM: create_note(content, links=[id1])
-    NM->>NM: generate_id() → timestamp + random
-    NM->>MD: write Markdown + YAML frontmatter
-    NM->>VS: add_note() → embed + store in ChromaDB
-    NM->>BM: add_document() → tokenize + update index
-    CLI->>T: load target → append backlink → save
-```
-
-### Index Rebuild
-
-`jfox index rebuild` reconstructs both the vector index and the keyword index from all Markdown files on disk:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant CLI as cli.py
-    participant IDX as Indexer
-    participant VS as VectorStore
-    participant BM as BM25Index
-    participant FS as Filesystem
-
-    U->>CLI: jfox index rebuild
-    CLI->>VS: clear() — wipe ChromaDB collection
-    CLI->>FS: rglob("*.md") — scan all notes
-    loop Each note file
-        FS-->>IDX: parse Markdown + frontmatter
-        IDX->>VS: add_or_update_note()
-        Note over VS: embed → store in ChromaDB
-    end
-    CLI->>FS: list all notes
-    CLI->>BM: rebuild_from_notes()
-    Note over BM: tokenize all → rebuild BM25Okapi → persist
-```
-
-### Hybrid Search (BM25 + Semantic → RRF)
-
-`jfox search` runs two independent search paths in parallel and fuses results using Reciprocal Rank Fusion:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant SE as HybridSearchEngine
-    participant VS as VectorStore
-    participant BM as BM25Index
-    participant EMB as EmbeddingBackend
-
-    U->>SE: search("knowledge management", mode=hybrid)
-    par Semantic Path
-        SE->>EMB: encode(query) → 384-dim vector
-        EMB-->>VS: cosine similarity search
-        VS-->>SE: ranked results with scores
-    and Keyword Path
-        SE->>BM: tokenize(query) → BM25 scoring
-        BM-->>SE: ranked results with scores
-    end
-    Note over SE: Graceful fallback if one path fails
-    SE->>SE: RRF Fusion: score = Σ 1/(k + rank), k=60
-    SE-->>U: merged, re-ranked results
-```
-
-### Query with Graph Traversal
-
-`jfox query` combines hybrid search with knowledge graph BFS to find semantically related notes and their neighbors:
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant CLI as cli.py
-    participant SE as SearchEngine
-    participant KG as KnowledgeGraph
-    participant NX as NetworkX
-
-    U->>CLI: jfox query "Luhmann's methodology" --depth 2
-    CLI->>SE: hybrid search → top results
-    SE-->>CLI: ranked search results
-    CLI->>KG: build() — 3-pass graph construction
-    Note over KG: Pass 1: nodes from files<br/>Pass 2: edges from frontmatter links<br/>Pass 3: edges from [[wiki links]]
-    loop For each search result
-        CLI->>KG: get_related(note_id, depth=2)
-        KG->>NX: BFS traversal (predecessors + successors)
-        NX-->>KG: neighbors grouped by depth
-    end
-    CLI-->>U: results enriched with graph context
-```
-
----
+- **Markdown-first notes** — Store knowledge as portable Markdown files instead of an opaque database.
+- **Distinct note types** — Capture quick ideas, reading notes, refined knowledge, agent sessions, reviewable candidates, and structure notes.
+- **Bidirectional links** — Write `[[Note Title]]` once and let JFox maintain the corresponding backlinks.
+- **Hybrid search** — Combine keyword matching with semantic search to find both exact terms and related ideas.
+- **Knowledge graph navigation** — Inspect references, find orphans and hubs, traverse related notes, and understand the shape of your knowledge base.
+- **MOCs and structure notes** — Organize dense topic clusters into navigable Maps of Content.
+- **Knowledge refinement** — Turn captured session fragments into synthesized candidate gems for human review.
+- **Local bookshelf assets** — Keep PDFs, extracted bundles, and book metadata together without mixing them into the note index.
+- **Multiple knowledge bases** — Separate work, personal, research, or project knowledge while keeping the same CLI.
+- **Operational safeguards** — Use an embedding daemon, rolling backups, archive/unarchive, and optional Claude Code session auto-summary when you need them.
 
 ## Quick Start
 
-### Install
+The shortest useful workflow is:
 
-```bash
-# Recommended
-uv tool install "git+https://github.com/zhuxixi/jfox.git"
-
-# Or with pip
-pip install -e ".[dev]"
+```text
+install → initialize → create a note → create a link → search
 ```
 
-See [Installation Guide](docs/installation.md) for details, Windows PATH setup, and uninstall instructions.
+### Install
 
-### Create Your First Note
+For a quick user installation with `uv`:
+
+```bash
+uv tool install "git+https://github.com/zhuxixi/jfox.git"
+```
+
+For local development, see [Installation and Development](#installation-and-development).
+
+### Initialize a knowledge base
 
 ```bash
 jfox init
-jfox add "The Zettelkasten method uses atomic notes connected by links" \
-    --title "Zettelkasten Introduction" --type permanent
 ```
 
-### Add Links
+### Create connected notes
 
 ```bash
-jfox add "[[Zettelkasten Introduction]] was invented by Niklas Luhmann" \
-    --title "Luhmann and the Card Box" --type permanent
+jfox add "Atomic notes become useful when they are connected." \
+  --title "Connected Notes" --type permanent
+
+jfox add "See [[Connected Notes]] for the starting principle." \
+  --title "A Linked Note" --type permanent
 ```
 
-The `[[Zettelkasten Introduction]]` syntax automatically creates a bidirectional link. Backlinks are propagated to the target note.
+The `[[Connected Notes]]` reference connects the second note to the first. JFox resolves the link and updates the target's backlinks.
 
-### Search
+### Search your notes
 
 ```bash
-# Semantic + keyword hybrid search
-jfox search "knowledge management method"
-
-# Hybrid search + graph traversal
-jfox query "Luhmann's methodology" --depth 2
+jfox search "connected notes"
 ```
 
----
+The default search combines keyword and semantic retrieval. Use [Common Commands](#common-commands) to find the commands for graph exploration, note organization, and advanced workflows.
 
-## Command Reference
+## Core Workflows
 
-### Knowledge Base
+### Capture and connect notes
 
-| Command | Description |
-|---------|-------------|
-| `jfox init` | Initialize a knowledge base |
-| `jfox init --name work --desc "Work notes"` | Initialize a named KB |
-| `jfox kb list` | List all knowledge bases |
-| `jfox kb use work` | Switch default KB |
-| `jfox kb info work` | Show KB details and stats |
-| `jfox kb rename old new` | Rename a KB |
-| `jfox kb remove name --force` | Delete a KB and its data |
+Start with a note type that matches the maturity of the material:
 
-### Notes
+- A `fleeting` note is a quick capture that may need further processing.
+- A `literature` note records ideas from a book, paper, or other source.
+- A `permanent` note expresses refined knowledge intended to remain useful.
 
-| Command | Description |
-|---------|-------------|
-| `jfox add "content" --title "Title" --type permanent` | Create a note |
-| `jfox add --content-file note.txt --title "Title"` | Create from file content |
-| `jfox list` | List all notes |
-| `jfox list --type permanent --limit 20` | Filter by type |
-| `jfox status` | Show knowledge base status |
-| `jfox edit NOTE_ID` | Edit note in `$EDITOR` |
-| `jfox delete NOTE_ID --force` | Delete a note (blocked if other notes reference it) |
-| `jfox delete NOTE_ID --allow-dangling` | Delete a referenced note anyway, leaving dangling links |
-| `jfox redirect OLD_ID KEEP_ID` | Migrate all references (frontmatter + body) from OLD to KEEP; `--dry-run` to preview |
-| `jfox daily` | Show today's notes |
-| `jfox daily --date 2026-03-20` | Show notes for a date |
-| `jfox inbox` | Show fleeting notes |
-| `jfox suggest-links "content"` | Suggest notes to link from content |
-| `jfox bulk-import notes.json` | Bulk import from JSON (optimized) |
-| `jfox ingest-log` | Import git commit history as notes |
-| `jfox show NOTE_ID` | View full note content (`--json` for structured fields) |
+Connect notes with `[[Note Title]]` references rather than copying context between files. JFox resolves each reference by note ID or title and maintains the corresponding backlink, so the connection can be followed in both directions.
 
-### Search & Analysis
+### Search and navigate knowledge
 
-| Command | Description |
-|---------|-------------|
-| `jfox search "query"` | Hybrid search (default) |
-| `jfox search "query" --mode semantic` | Semantic search only |
-| `jfox search "query" --mode keyword` | BM25 keyword search only |
-| `jfox query "concept" --depth 2` | Search + graph traversal |
-| `jfox refs` | Show link statistics for all notes |
-| `jfox refs --search "keyword"` | Filter refs by title |
-| `jfox refs --note NOTE_ID` | Show links for a specific note |
-| `jfox graph --stats` | Graph statistics |
-| `jfox graph --orphans` | Find isolated notes |
-| `jfox graph --note NOTE_ID --depth 2` | Subgraph around a note |
-| `jfox moc diagnose` | Diagnose permanent-note semantic density and MOC cluster suggestions |
-| `jfox moc create --yes` | Create a structure (MOC) note from a diagnosed cluster (dry-run by default) |
-| `jfox moc update` | Re-scan clusters and diff existing MOC members (add new, prune dead links) |
+Keyword search is useful when you know the exact words you want. Semantic search uses embeddings to find notes with related meaning even when the wording differs. Hybrid search combines both paths for a broader retrieval workflow.
 
-### Index Management
+Use graph commands when the connection itself matters. Inspect references with `jfox refs`, view graph statistics with `jfox graph --stats`, explore a note's neighborhood with `jfox graph --note NOTE_ID --depth 2`, or combine search with graph traversal through `jfox query`.
 
-| Command | Description |
-|---------|-------------|
-| `jfox index status` | Show index health |
-| `jfox index rebuild` | Rebuild vector + BM25 indexes |
-| `jfox index verify` | Cross-check note files vs vector store entries by frontmatter IDs |
+For dense topic clusters, a structure note acts as a Map of Content: it gives a human-readable entry point into related permanent notes without replacing those notes.
 
-### Templates
+### Refine knowledge with the gem pipeline
 
-| Command | Description |
-|---------|-------------|
-| `jfox template list` | List built-in and custom templates |
-| `jfox template show quick` | Display template content |
-| `jfox template create my-template` | Create a custom template |
-| `jfox template edit my-template` | Edit in `$EDITOR` |
-| `jfox template remove my-template` | Delete a custom template |
+JFox can support an assisted refinement path for material captured from AI-agent sessions:
 
-### Performance & Debug
+```text
+session fragments
+    → gem synthesis
+    → candidate notes
+    → human review
+    → permanent notes
+```
 
-| Command | Description |
-|---------|-------------|
-| `jfox perf report` | Show performance metrics |
-| `jfox perf clear-cache` | Clear embedding model cache |
+Session fragments are raw captures, not trusted knowledge. Gem synthesis produces a `candidate` note that can be inspected, promoted, or rejected. The current L3 synthesis output uses the `flawed` gem level. Promotion to `permanent` is a review decision; it is not an automatic guarantee that generated content is correct.
 
-### Daemon
-
-| Command | Description |
-|---------|-------------|
-| `jfox daemon start` | Start embedding daemon (background process) |
-| `jfox daemon stop` | Stop embedding daemon |
-| `jfox daemon status` | Show daemon PID, port, model info |
-
-### Auto-Summary
-
-Auto-summary runs inside the daemon to automatically archive Claude Code sessions into your knowledge base. It scans `~/.claude/projects/` for finished sessions, generates a structured summary via `claude -p`, and writes it as a `session` type note.
-
-A session is considered "finished" when its file has not been modified for `idle_threshold` minutes (default: 30).
-
-| Command | Description |
-|---------|-------------|
-| `jfox auto-summary enable` | Enable auto-summary in daemon |
-| `jfox auto-summary disable` | Disable auto-summary |
-| `jfox auto-summary status` | Show config and ledger statistics |
-| `jfox auto-summary scan` | List sessions that would be processed |
-| `jfox auto-summary run` | Manually trigger a summary round |
-| `jfox auto-summary run --dry-run` | Preview without writing |
-
-**Key options:**
-
-- `--interval` — Scan interval in minutes (default: 30)
-- `--idle-threshold` — Minutes of inactivity to consider a session finished (default: 30)
-- `--kb` — Target knowledge base for saved notes
-
-#### Schedule Window
-
-To avoid consuming local embedding model resources and API quota during working hours, you can configure auto-summary to run only during off-hours:
+The main command groups for this workflow are:
 
 ```bash
-jfox auto-summary enable --schedule-enabled \
-  --schedule-weekday-window 0-6 \
-  --schedule-weekend-window 0-8 \
-  --schedule-timezone Asia/Shanghai
+jfox fragments list
+jfox candidates list
+jfox gem-synth status
 ```
 
-- `--schedule-weekday-window` — allowed hour range on weekdays (default `0-6`)
-- `--schedule-weekend-window` — allowed hour range on weekends (default `0-8`)
-- `--schedule-timezone` — timezone used for window checks (default `Asia/Shanghai`)
+### Organize and preserve knowledge
 
-The end hour may be `24`, meaning the window includes all hours up to midnight (e.g., `22-24` is valid).
+Use `jfox archive` and `jfox unarchive` when a note should leave or return to the active workflow without being permanently deleted. Use multiple knowledge bases to keep unrelated contexts separate.
 
-Manual runs are not restricted by the schedule window:
+The backup system can create, verify, and restore rolling snapshots of your knowledge-base data. Use `jfox backup restore SNAPSHOT` to restore a knowledge-base state from a snapshot. The embedding daemon keeps the local model available between commands, while optional auto-summary can turn finished Claude Code sessions into `session` notes.
+
+These operational features are opt-in or explicit actions. Review [Privacy](#privacy) before enabling auto-summary, and review [Installation and Development](#installation-and-development) for troubleshooting and model-download details.
+
+### Manage books as local assets
+
+The bookshelf keeps a book's original file, extracted bundle, and JFox metadata together as local assets:
 
 ```bash
-jfox auto-summary run
+jfox bookshelf add BOOK_FOLDER
+jfox bookshelf list
+jfox bookshelf show BOOK_SLUG
 ```
 
-**How it works:**
+Bookshelf assets are intentionally separate from the note index. Adding a book to the shelf does not automatically make its pages searchable through `jfox search`.
 
-- Uses `claude -p` (non-interactive mode) to generate summaries from stdin/stdout
-- Runs with `--permission-mode bypassPermissions` so the daemon never blocks on permission prompts
-- Tracks processed sessions in `~/.zk_auto_summary_state.json` to avoid duplicates; transient failures are retried up to 3 times before giving up
-- A session is eligible only after its file has been idle for `idle_threshold` minutes (no new content)
+## Note Model
 
-> **Privacy note:** Auto-summary sends session text to Anthropic API via `claude -p` to generate summaries. Only session content is transmitted.
+Every note has a type that describes its role in the knowledge workflow.
 
-### Self-Update
+| Value | Meaning |
+|---|---|
+| `fleeting` | A quick capture or temporary idea. |
+| `literature` | Notes derived from reading or source material. |
+| `permanent` | Refined knowledge intended to remain useful. |
+| `session` | A record of an AI-agent session. |
+| `candidate` | A synthesized proposal awaiting human review. |
+| `structure` | A Map of Content (MOC) used to organize related notes. |
 
-| Command | Description |
-|---------|-------------|
-| `jfox update` | Upgrade jfox to the latest version (auto-detects pip/pipx/uv) |
-| `jfox update --json` | JSON output with before/after version info |
+Candidate notes can also carry a knowledge-gem level:
 
-### Global Options
-
-| Option | Description |
-|--------|-------------|
-| `--kb NAME` | Target a specific knowledge base |
-| `--format json\|table\|csv\|yaml\|paths\|tree` | Output format |
-| `--json` | Shortcut for `--format json` |
-| `--version` | Show version |
-
----
-
-## Agent Plugins
-
-JFox 提供主流 AI Agent 的插件/技能集成：
-
-### Claude Code
-
-- 插件目录：`packages/cc-plugin/`
-- 安装（marketplace 上架后）：`/plugin marketplace add zhuxixi/jfox`
-- 包含 5 个 skill：manage、search、ingest、organize、session-summary
-
-### Kimi Code CLI
-
-- 插件目录：`packages/kimi-plugin/`
-- 安装：在 Kimi Code CLI TUI 中执行 `/plugins install github:zhuxixi/jfox?path=packages/kimi-plugin`，或使用本地 zip
-- 包含 6 个 skill：`using-jfox`（会话启动自动加载）、`jfox-manage`、`jfox-search`、`jfox-ingest`、`jfox-organize`、`jfox-session-summary`
-- 详见：`packages/kimi-plugin/README.md`
-
-### 其他 Agent
-
-- `skills-recommend/pi/` 提供 pi coding agent 的技能包
-- `skills-recommend/kimi-cli/` 保留旧版 Kimi CLI 手动复制 skill（已弃用）
-
----
-
-## Note Format
-
-### Directory Structure
-
-```
-~/.zettelkasten/
-├── default/                # Default knowledge base
-│   ├── notes/
-│   │   ├── fleeting/       # Quick captures
-│   │   ├── literature/     # Reading notes
-│   │   └── permanent/      # Refined knowledge
-│   └── .zk/
-│       ├── chroma_db/      # Vector index
-│       ├── bm25_index.pkl  # Keyword index
-│       ├── templates/      # Jinja2 templates
-│       └── config.yaml     # KB config
-├── work/                   # Named KB example
-│   ├── notes/
-│   └── .zk/
-└── ~/.zk_config.json       # Global KB registry
+```text
+chipped → flawed → normal → flawless → perfect
 ```
 
-### File Format
+The levels describe increasing maturity:
 
-Each note is a Markdown file with YAML frontmatter:
+- `chipped` represents raw fragments and is not a note-file state.
+- `flawed` is the current L3 candidate output.
+- `normal`, `flawless`, and `perfect` represent progressively more mature knowledge.
+- Promotion to `permanent` remains a human review decision.
+
+### File format
+
+Notes are Markdown files with YAML frontmatter followed by a generated title heading and the note body:
 
 ```markdown
 ---
 id: '20260321011528'
-title: Machine Learning Overview
+title: Connected Notes
 type: permanent
 created: '2026-03-21T01:15:28'
 updated: '2026-03-21T01:15:28'
 tags:
-- ml
-- ai
+  - knowledge-management
 links:
-- 20260321011546
+  - '20260321011546'
 backlinks:
-- 20260321011550
+  - '20260321011550'
 ---
 
-# Machine Learning Overview
+# Connected Notes
 
-[[Deep Learning]] is a subfield of machine learning...
+Atomic notes become useful when they are connected.
 ```
 
-### Note Types
+Use standard Markdown editors to work with note files. JFox maintains the indexes and relationship metadata around those files.
 
-| Type | Purpose | Filename |
-|------|---------|----------|
-| `fleeting` | Quick ideas, temporary captures | `YYYYMMDD-HHMMSSNNNN.md` |
-| `literature` | Reading notes, paper summaries | `YYYYMMDDHHMMSSNNNN-slug.md` |
-| `permanent` | Refined, lasting knowledge | `YYYYMMDDHHMMSSNNNN-slug.md` |
+## Common Commands
 
-### Link Resolution
+This is a curated overview, not an exhaustive command reference. Use it to find the main entry points by task:
 
-`[[Link Text]]` matches notes by priority:
+| Task | Commands |
+|---|---|
+| Initialize and manage knowledge bases | `jfox init`, `jfox kb list`, `jfox kb info`, `jfox config` |
+| Create and inspect notes | `jfox add`, `jfox list`, `jfox show`, `jfox edit` |
+| Organize note lifecycle | `jfox archive`, `jfox unarchive`, `jfox delete`, `jfox redirect` |
+| Search and navigate | `jfox search`, `jfox query`, `jfox refs`, `jfox graph`, `jfox moc` |
+| Capture and review refinement | `jfox fragments`, `jfox candidates`, `jfox gem-synth` |
+| Manage books and indexes | `jfox bookshelf`, `jfox index` |
+| Run local services and safeguards | `jfox daemon`, `jfox backup`, `jfox auto-summary` |
+| Maintain the installation | `jfox model`, `jfox check`, `jfox update` |
 
-1. **Exact ID** — if text matches a note ID
-2. **Exact title** — case-insensitive title match
-3. **Substring** — title contains the link text
-
----
-
-## Backup & Restore
-
-JFox 自带 KB 滚动备份，由 jfox daemon 定时调度（默认关闭，opt-in）。
+For the complete current command and option list, run:
 
 ```bash
-# 启用：每天 08:00 自动备份，滚动保留 7 份
-jfox backup enable --time 08:00 --retain 7
-jfox backup disable               # 关闭定时调度
-jfox backup status                # 配置 + 上次运行情况（-f json 输出 JSON）
-jfox backup list                  # 列快照
-jfox backup verify <snapshot>     # 校验完整性（sha256 + tar）
-
-# 手动备份一份
-jfox backup run
-
-# 从快照恢复（可逆：当前态自动旁置为 .pre-restore-*）
-jfox backup restore <snapshot> [--yes]
+jfox --help
+jfox <command> --help
 ```
 
-备份内容：`~/.zettelkasten`（全部知识库）+ `~/.zk_config.json`，存于 `~/.jfox-backup/daily/`，每份带 sha256 清单。
+An exhaustive generated CLI reference is planned for a later documentation phase. The README intentionally keeps only stable, representative examples; command existence and option details are defined by the installed CLI.
 
-- **定时备份**由 daemon 内 `backup_loop` 跑；备份期间置 quiesce 标志让同进程的 gem-synth/auto-summary 跳过写 tick，ChromaDB 无并发写（SQLite WAL 崩溃一致兜底）。
-- **手动 `run` 与 `restore`**是独立进程，会短暂停 embedding daemon 拿干净快照（完成后自动重启）。
-- **恢复**可逆：当前态自动 `rename` 旁置为 `.pre-restore-*`，校验失败可手动挪回。
+## Architecture
 
----
+JFox keeps its core workflow local and separates durable storage from derived indexes and higher-level workflows:
 
-## Contributing
+```mermaid
+graph TD
+    U[Users and agent integrations]
+    C[CLI and workflow orchestration]
+    S[Markdown notes and bookshelf assets]
+    I[Local indexes and embedding services]
+    W[Search, graph, MOC, refinement, and preservation workflows]
+
+    U --> C
+    C --> S
+    S --> I
+    I --> W
+    S --> W
+```
+
+- **Durable storage** contains Markdown notes, YAML frontmatter, and bookshelf assets.
+- **Derived services** maintain keyword indexes, vector indexes, and optional embedding-daemon state.
+- **Knowledge workflows** build on those layers for search, graph navigation, MOCs, candidate refinement, backups, and integrations.
+
+The architecture description is intentionally conceptual. The complete implementation module map belongs in developer documentation rather than in this user-facing README.
+
+## Agent Integrations
+
+JFox can be used directly from the CLI or through agent-specific integrations:
+
+- **Claude Code** — The plugin in [`packages/cc-plugin/`](packages/cc-plugin/) provides knowledge-base management, search, ingest, organization, promotion, and session-related workflows.
+- **Kimi Code** — The maintained plugin package in [`packages/kimi-plugin/`](packages/kimi-plugin/) provides Kimi-compatible JFox skills and installation instructions.
+- **pi coding agent** — Recommended Agent Skills are available under [`skills-recommend/pi/`](skills-recommend/pi/) for knowledge-base management, search, organization, bookshelf operations, CI, and release workflows.
+
+The integration packages are adapters around the JFox CLI. Their installation and supported capabilities can evolve independently from the core command-line application.
+
+## Installation and Development
+
+### Requirements
+
+- Python 3.10 or later.
+- `uv` is recommended for installation and development.
+- The embedding model is downloaded on first use when it is not already cached.
+
+### Install for development
 
 ```bash
 git clone https://github.com/zhuxixi/jfox.git
 cd jfox
 uv sync --extra dev
-uv run pytest tests/ -v
 ```
 
-See [Troubleshooting](docs/troubleshooting.md) for common issues.
+Verify the installation:
 
-## License
+```bash
+uv run jfox --help
+uv run jfox --version
+```
 
-[MIT](LICENSE)
+For upgrade, uninstall, Windows PATH setup, and Hugging Face mirrors, see [docs/installation.md](docs/installation.md). For model-download and other runtime issues, see [docs/troubleshooting.md](docs/troubleshooting.md). For pip-based development installation, see the [legacy pip instructions](docs/installation.md#legacy-pip).
 
-## Acknowledgments
+### Run checks
 
-- [sentence-transformers](https://www.sbert.net/) — text embeddings
-- [ChromaDB](https://www.trychroma.com/) — vector database
-- [NetworkX](https://networkx.org/) — graph algorithms
-- [Typer](https://typer.tiangolo.com/) — CLI framework
-- [Rich](https://rich.readthedocs.io/) — terminal formatting
+The fast test suite skips embedding and slow tests:
+
+```bash
+uv run pytest tests/ -m "not embedding and not slow"
+```
+
+The repository also uses the following checks for code and documentation changes:
+
+```bash
+uv run ruff check jfox/ tests/
+uv run black --check jfox/ tests/
+npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#.venv"
+```
+
+## Privacy
+
+JFox is local-first, but not every optional integration is offline:
+
+- Notes, indexes, and core note, search, and graph operations run locally by default.
+- The embedding model may need to be downloaded the first time it is used. After that, it can be reused from the local cache.
+- The optional auto-summary feature invokes `claude -p` to summarize finished Claude Code sessions.
+- Auto-summary sends the selected session text to Anthropic through the Claude Code CLI. Enable it only when that data flow is acceptable to you.
+
+You control which optional services to enable. Services that support knowledge-base selection expose their own target-knowledge-base settings.
+
+## License and Acknowledgments
+
+JFox is released under the MIT License.
+
+JFox builds on:
+
+- [Typer](https://typer.tiangolo.com/) for the CLI framework.
+- [Rich](https://rich.readthedocs.io/) for terminal output.
+- [sentence-transformers](https://www.sbert.net/) for text embeddings.
+- [ChromaDB](https://www.trychroma.com/) for vector storage.
+- [NetworkX](https://networkx.org/) for graph algorithms.
