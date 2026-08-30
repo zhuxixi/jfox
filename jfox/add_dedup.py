@@ -4,7 +4,9 @@
     wiki-link 按标题解析，同标题笔记会导致链接分裂，所以不限笔记类型。
 通道二（embedding）：复用 gem_synth.dedup 的正文余弦查重，仅 embedding
     daemon 可用时生效——daemon 不在时 dedup._embed 会退回本地模型加载
-    （秒级延迟），必须用 is_daemon_running 前置闸门挡掉。
+    （秒级延迟），必须用 is_daemon_running 前置闸门挡掉；底层调用统一
+    daemon_only=True，即使闸门与 daemon 状态短暂不一致（掉线窗口），
+    编码失败也是上抛降级而非回退本地模型。
 
 设计原则：防重是闸门不是路障——除明确命中外，任何内部异常都放行。
 """
@@ -88,7 +90,9 @@ def check_add_duplicate(
                 from .gem_synth.dedup import _resolve_kb_name, dedup_check
 
                 kb_name = cfg.base_dir.name if cfg is not None else _resolve_kb_name(None)
-                hit = dedup_check(kb_name, content, threshold=conf.dedup_threshold)
+                hit = dedup_check(
+                    kb_name, content, threshold=conf.dedup_threshold, daemon_only=True
+                )
                 if hit is not None:
                     matched_meta = idx.find_by_id(hit.note_id)
                     matched_title = matched_meta.title if matched_meta else ""
@@ -113,6 +117,6 @@ def record_added_permanent(note_id: str, content: str, *, cfg=None) -> None:
         from .gem_synth.dedup import _resolve_kb_name, upsert_dedup
 
         kb_name = cfg.base_dir.name if cfg is not None else _resolve_kb_name(None)
-        upsert_dedup(kb_name, note_id, "permanent", content)
+        upsert_dedup(kb_name, note_id, "permanent", content, daemon_only=True)
     except Exception as e:
         logger.warning("add 后 dedup 灌表失败 note=%s: %s", note_id, e)

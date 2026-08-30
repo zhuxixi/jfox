@@ -13,7 +13,8 @@ class FakeBackend:
     def __init__(self, dim=64):
         self.dim = dim
 
-    def encode_single(self, text):
+    def encode_single(self, text, *, daemon_only: bool = False):
+        # daemon_only 参数对齐 EmbeddingBackend 契约（#383 F2）；fake 本身不区分
         import hashlib
 
         h = hashlib.sha1(text.encode("utf-8")).digest()

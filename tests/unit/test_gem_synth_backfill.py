@@ -28,7 +28,8 @@ def _mock_backend(monkeypatch, mock_embedding_backend, temp_kb):
     from jfox import embedding_backend
     from jfox.config import config
 
-    def _encode_single(text):
+    def _encode_single(text, *, daemon_only: bool = False):
+        # daemon_only 参数对齐 EmbeddingBackend 契约（#383 F2）；本实现不区分
         h = hashlib.sha1(text.encode("utf-8")).digest()
         vec = np.frombuffer((h * 8)[: 384 * 4], dtype=np.uint8)
         return (vec.astype(np.float32) % 16) / 16.0
