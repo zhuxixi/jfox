@@ -61,10 +61,7 @@ def _type_name(parameter: click.Parameter) -> str:
         return "BOOL"
     type_name = getattr(parameter.type, "name", None)
     if type_name:
-        type_name = str(type_name).lower()
-        if type_name == "choice":
-            return "TEXT"
-        return type_name.upper()
+        return str(type_name).upper()
     return type(parameter.type).__name__.upper()
 
 
@@ -79,9 +76,11 @@ def _metavar(parameter: click.Parameter) -> str:
 def _option_syntax(parameter: click.Option) -> str:
     opts = list(parameter.opts)
     secondary_opts = list(parameter.secondary_opts)
-    if secondary_opts and len(opts) == 1 and len(secondary_opts) == 1:
-        return f"{opts[0]} / {secondary_opts[0]}"
-    return ", ".join(opts + secondary_opts)
+    if secondary_opts:
+        primary = ", ".join(opts)
+        secondary = ", ".join(secondary_opts)
+        return f"{primary} / {secondary}"
+    return ", ".join(opts)
 
 
 def normalize_parameter(parameter: click.Parameter) -> NormalizedParameter:
@@ -178,6 +177,9 @@ def load_descriptions(path: Path) -> dict[str, str]:
 
     if not isinstance(data, dict) or not isinstance(data.get("commands"), dict):
         raise ValueError("descriptions file must contain a top-level 'commands' mapping")
+    unsupported_top_level = sorted(set(data) - {"commands"})
+    if unsupported_top_level:
+        raise ValueError("unsupported top-level fields: " + ", ".join(unsupported_top_level))
 
     descriptions: dict[str, str] = {}
     for command_path, entry in data["commands"].items():

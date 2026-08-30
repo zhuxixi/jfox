@@ -16,7 +16,7 @@ from scripts.generate_docs import (
 )
 
 
-def test_extract_commands_includes_nested_paths_and_never_runs_callbacks():
+def test_command_tree_extract_includes_nested_paths_and_never_runs_callbacks():
     callback_calls: list[str] = []
 
     @click.command()
@@ -44,7 +44,7 @@ def test_extract_commands_includes_nested_paths_and_never_runs_callbacks():
     assert callback_calls == []
 
 
-def test_normalize_argument_uses_metavar_and_required_status():
+def test_parameter_normalize_argument_uses_metavar_and_required_status():
     argument = click.Argument(["query"], required=True, metavar="QUERY")
 
     normalized = normalize_parameter(argument)
@@ -62,7 +62,7 @@ def test_normalize_argument_uses_metavar_and_required_status():
     )
 
 
-def test_normalize_option_preserves_aliases_type_default_and_choices():
+def test_parameter_normalize_option_preserves_aliases_type_default_and_choices():
     option = click.Option(
         ["--mode", "-m"],
         type=click.Choice(["fast", "slow"]),
@@ -76,7 +76,7 @@ def test_normalize_option_preserves_aliases_type_default_and_choices():
     assert normalized.name == "mode"
     assert normalized.kind == "option"
     assert normalized.syntax == "--mode, -m"
-    assert normalized.type_name == "TEXT"
+    assert normalized.type_name == "CHOICE"
     assert normalized.required is True
     assert normalized.default == "fast"
     assert normalized.choices == ("fast", "slow")
@@ -84,7 +84,7 @@ def test_normalize_option_preserves_aliases_type_default_and_choices():
     assert normalized.is_flag is False
 
 
-def test_normalize_boolean_option_renders_secondary_flag_and_boolean_default():
+def test_parameter_normalize_boolean_option_renders_secondary_flag_and_boolean_default():
     option = click.Option(["--color/--no-color"], default=False)
 
     normalized = normalize_parameter(option)
@@ -95,7 +95,7 @@ def test_normalize_boolean_option_renders_secondary_flag_and_boolean_default():
     assert normalized.is_flag is True
 
 
-def test_normalize_multiple_option_marks_multiple_values():
+def test_parameter_normalize_multiple_option_marks_multiple_values():
     option = click.Option(["--tag"], multiple=True, type=str)
 
     normalized = normalize_parameter(option)
@@ -105,7 +105,26 @@ def test_normalize_multiple_option_marks_multiple_values():
     assert normalized.type_name == "TEXT"
 
 
-def test_load_descriptions_reads_prose_only_catalog(tmp_path: Path):
+def test_parameter_normalize_integer_default():
+    option = click.Option(["--top"], type=int, default=5)
+
+    normalized = normalize_parameter(option)
+
+    assert normalized.type_name == "INTEGER"
+    assert normalized.default == "5"
+
+
+def test_parameter_normalize_boolean_option_with_extra_aliases():
+    option = click.Option(["--color/--no-color", "-c"], default=False)
+
+    normalized = normalize_parameter(option)
+
+    assert normalized.syntax == "--color, -c / --no-color"
+    assert normalized.type_name == "BOOL"
+    assert normalized.is_flag is True
+
+
+def test_description_load_reads_prose_only_catalog(tmp_path: Path):
     catalog = tmp_path / "descriptions.yaml"
     catalog.write_text(
         """commands:\n  jfox:\n    description: Manage notes.\n  jfox add:\n    description: Create a note.\n""",
@@ -118,7 +137,7 @@ def test_load_descriptions_reads_prose_only_catalog(tmp_path: Path):
     }
 
 
-def test_load_descriptions_rejects_duplicate_command_keys(tmp_path: Path):
+def test_description_load_rejects_duplicate_command_keys(tmp_path: Path):
     catalog = tmp_path / "descriptions.yaml"
     catalog.write_text(
         """commands:\n  jfox:\n    description: First.\n  jfox:\n    description: Second.\n""",
@@ -129,7 +148,7 @@ def test_load_descriptions_rejects_duplicate_command_keys(tmp_path: Path):
         load_descriptions(catalog)
 
 
-def test_load_descriptions_rejects_malformed_or_non_prose_schema(tmp_path: Path):
+def test_description_load_rejects_malformed_or_non_prose_schema(tmp_path: Path):
     malformed = tmp_path / "malformed.yaml"
     malformed.write_text("commands: [", encoding="utf-8")
     with pytest.raises(ValueError, match="failed to parse"):
@@ -144,7 +163,7 @@ def test_load_descriptions_rejects_malformed_or_non_prose_schema(tmp_path: Path)
         load_descriptions(extra_field)
 
 
-def test_load_descriptions_rejects_missing_or_invalid_descriptions(tmp_path: Path):
+def test_description_load_rejects_missing_or_invalid_descriptions(tmp_path: Path):
     missing_root = tmp_path / "missing-root.yaml"
     missing_root.write_text("other: {}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="top-level 'commands'"):
@@ -159,7 +178,7 @@ def test_load_descriptions_rejects_missing_or_invalid_descriptions(tmp_path: Pat
         load_descriptions(invalid)
 
 
-def test_validate_descriptions_reports_missing_and_unknown_paths():
+def test_description_validate_reports_missing_and_unknown_paths():
     with pytest.raises(ValueError, match="Missing English CLI descriptions: jfox add"):
         validate_descriptions(["jfox", "jfox add"], {"jfox": "Manage notes."})
 
@@ -167,11 +186,22 @@ def test_validate_descriptions_reports_missing_and_unknown_paths():
         validate_descriptions(["jfox"], {"jfox": "Manage notes.", "jfox old": "Old."})
 
 
-def test_validate_descriptions_accepts_complete_catalog():
+def test_description_validate_accepts_complete_catalog():
     validate_descriptions(
         ["jfox", "jfox add"],
         {"jfox": "Manage notes.", "jfox add": "Create a note."},
     )
+
+
+def test_description_load_rejects_unknown_top_level_keys(tmp_path: Path):
+    catalog = tmp_path / "unknown-top-level.yaml"
+    catalog.write_text(
+        """commands:\n  jfox:\n    description: Manage notes.\nmetadata: {}\n""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported top-level fields.*metadata"):
+        load_descriptions(catalog)
 
 
 def _sample_commands() -> tuple[NormalizedCommand, ...]:
