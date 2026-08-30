@@ -26,8 +26,10 @@ os.environ["ZK_KB_ROOT"] = str(_TEST_ROOT)
 os.environ["ZK_CONFIG_PATH"] = str(_TEST_ROOT / "zk_config.json")
 
 # 隔离真实 synthesis db（#383 关联项）：测试进程与 CLI 子进程都指向临时路径，
-# 防 DedupStore 默认单例写真实 ~/.zettelkasten/synthesis_log.db
-os.environ.setdefault("JFOX_SYNTHESIS_DB", str(_TEST_ROOT / "synthesis_test.db"))
+# 防 DedupStore 默认单例写真实 ~/.zettelkasten/synthesis_log.db。
+# 无条件赋值（同 ZK_KB_ROOT）：保证任何环境跑测试都写临时路径——
+# 预设值语义仅在 nightly 脚本层（换假 HOME）有意义，conftest 层一律覆盖
+os.environ["JFOX_SYNTHESIS_DB"] = str(_TEST_ROOT / "synthesis_test.db")
 
 import pytest
 
