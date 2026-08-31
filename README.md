@@ -224,7 +224,7 @@ jfox --help
 jfox <command> --help
 ```
 
-An exhaustive generated CLI reference is planned for a later documentation phase. The README intentionally keeps only stable, representative examples; command existence and option details are defined by the installed CLI.
+For the complete command and option reference, see the [CLI Reference](docs/cli-reference.md). You can also run `jfox --help` or `jfox <command> --help` for the installed CLI's runtime help. The README intentionally keeps only stable, representative examples; command existence and option details are defined by the installed CLI.
 
 ## Architecture
 
