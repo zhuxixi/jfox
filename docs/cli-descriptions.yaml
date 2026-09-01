@@ -141,3 +141,5 @@ commands:
     description: "Restore an archived note to the active workflow."
   "jfox update":
     description: "Upgrade the JFox installation using its detected package manager."
+
+# Trigger check for the Phase 3 drift-gate path filter.
