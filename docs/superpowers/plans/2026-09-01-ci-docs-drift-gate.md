@@ -36,9 +36,11 @@
 ### Task 1: Drift gate step and path filters in integration-test.yml
 
 **Files:**
+
 - Modify: `.github/workflows/integration-test.yml`
 
 **Interfaces:**
+
 - Consumes: nothing new; relies on the existing `lint` job environment (`uv sync --extra dev` already installs everything `generate_docs.py` needs).
 - Produces: the gate step consumed by CI on every matching PR/push; path filters consumed by GitHub's workflow trigger engine.
 
@@ -108,9 +110,11 @@ git commit -m "ci: add generated-docs drift gate to lint job (#476)"
 ### Task 2: README maintenance note
 
 **Files:**
+
 - Modify: `README.md` (extend the `### Run checks` section, no new heading)
 
 **Interfaces:**
+
 - Consumes: the generator command contract from Phase 2A (`uv run python scripts/generate_docs.py`).
 - Produces: contributor-facing documentation consumed by humans only.
 
@@ -165,11 +169,13 @@ git commit -m "docs: document CLI reference regeneration under Run checks (#476)
 ### Task 3: Red/green self-proof commit sequence
 
 **Files:**
+
 - Modify (temporarily): `docs/cli-reference.md` — red commit
 - Modify: `docs/cli-reference.md` — green commit (regenerated)
 - Modify (comment only): `docs/cli-descriptions.yaml` — filter-proof commit
 
 **Interfaces:**
+
 - Consumes: the gate step built in Task 1; the generator as-is.
 - Produces: three commits in PR history that serve as A1/A2/A3 evidence once pushed; the working tree ends fresh and clean.
 
@@ -256,6 +262,7 @@ Expected: latest five commits are the four plan commits (Task 1, Task 2, red, gr
 **Files:** none (verification only)
 
 **Interfaces:**
+
 - Consumes: all commits from Tasks 1–3.
 - Produces: a verification record in the PR description (written at push time, outside this plan).
 
