@@ -33,6 +33,9 @@ uv run black jfox/ tests/
 uv run ruff check jfox/ tests/
 npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#node_modules" "#.venv"  # Markdown lint（配置 .markdownlint-cli2.jsonc，#418）
 
+# Regenerate CLI reference（docs/cli-reference.md 是生成文件，勿手改）
+uv run python scripts/generate_docs.py
+
 # Build
 uv build
 
@@ -109,7 +112,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Line length**: 100 chars (black + ruff configured in `pyproject.toml`)
 - **Comments/docs**: Chinese (中文)
 - **README**: 英文 baseline（#461 起重写），改 README 保持英文；其余项目文档/注释仍中文
-- **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）
+- **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）；命令面有任何增删改还须补 `docs/cli-descriptions.yaml` 英文描述并跑 `uv run python scripts/generate_docs.py` 重新生成 `docs/cli-reference.md`，否则 CI lint drift gate 挂（#474/#476）
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
 - **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 gem_synth/backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
 - **Modifying data models**: Update `Note` class in `models.py`, update `to_markdown()`/`from_markdown()`, consider backward compat
@@ -141,7 +144,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
 
-**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint）；`packages/` 下非 md 文件（cc/kimi-plugin 发版 bump 的 json 等）改动仍**不触发 CI**。后果：`packages/` 下版本 bump 不跑测试，release-helper 测试须按当前版本动态算「下一版」（勿硬编码），否则只在后续触达 `tests/` 的 PR 才暴露（#382 踩过）。
+**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`scripts/**`/`docs/cli-descriptions.yaml`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint，并跑生成文档 drift gate：重跑 `scripts/generate_docs.py` 后 `git diff` 须为空，#476）；`packages/` 下非 md 文件（cc/kimi-plugin 发版 bump 的 json 等）改动仍**不触发 CI**。后果：`packages/` 下版本 bump 不跑测试，release-helper 测试须按当前版本动态算「下一版」（勿硬编码），否则只在后续触达 `tests/` 的 PR 才暴露（#382 踩过）。
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
