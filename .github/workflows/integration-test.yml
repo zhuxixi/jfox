@@ -8,6 +8,8 @@ on:
       - 'tests/**'
       - 'pyproject.toml'
       - '**/*.md'
+      - 'scripts/**'
+      - 'docs/cli-descriptions.yaml'
       - '.markdownlint-cli2.jsonc'
       - '.github/workflows/integration-test.yml'
   pull_request:
@@ -17,6 +19,8 @@ on:
       - 'tests/**'
       - 'pyproject.toml'
       - '**/*.md'
+      - 'scripts/**'
+      - 'docs/cli-descriptions.yaml'
       - '.markdownlint-cli2.jsonc'
       - '.github/workflows/integration-test.yml'
   # 允许手动触发
@@ -71,6 +75,17 @@ jobs:
 
     - name: Run markdownlint
       run: npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#node_modules" "#.venv"
+
+    - name: Check generated docs are up to date
+      run: |
+        uv run python scripts/generate_docs.py
+        if ! git diff --exit-code; then
+          echo "::error::Generated docs are stale. Regenerate locally with:"
+          echo "::error::  uv run python scripts/generate_docs.py"
+          echo "--- Changed files ---"
+          git diff --name-only
+          exit 1
+        fi
 
   # ============ 快速测试（PR 和 push 触发）============
   test-fast:
