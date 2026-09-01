@@ -302,6 +302,17 @@ uv run black --check jfox/ tests/
 npx --yes markdownlint-cli2 "**/*.md" "#node_modules" "#.venv"
 ```
 
+The CLI reference at [docs/cli-reference.md](docs/cli-reference.md) is generated
+from the live Typer command tree and `docs/cli-descriptions.yaml`. After
+changing CLI commands or command descriptions, regenerate it and commit the
+result:
+
+```bash
+uv run python scripts/generate_docs.py
+```
+
+CI fails when the committed reference is stale.
+
 ## Privacy
 
 JFox is local-first, but not every optional integration is offline:
