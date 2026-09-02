@@ -398,7 +398,7 @@ jfox bulk-import [OPTIONS] FILE_PATH
 
 ## `jfox candidates`
 
-Inspect candidate notes produced by knowledge-gem synthesis.
+Inspect candidate notes awaiting human review.
 
 **Usage**:
 
@@ -585,7 +585,7 @@ jfox edit [OPTIONS] NOTE_ID
 
 ## `jfox fragments`
 
-Inspect raw session fragments captured by an agent hook.
+Inspect historical session fragments (read-only after capture retirement).
 
 **Usage**:
 
@@ -623,46 +623,6 @@ jfox fragments show FRAGMENT_ID
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
 |---|---|---|---|---|---|---|---|
 | `fragment_id` | `FRAGMENT_ID` | INTEGER | yes | — | — | no | no |
-
-## `jfox gem-synth`
-
-Inspect the progress of the L3 knowledge-gem synthesis loop.
-
-**Usage**:
-
-```text
-jfox gem-synth COMMAND [ARGS]...
-```
-
-## `jfox gem-synth dedup-backfill`
-
-Backfill candidate and permanent note embeddings into the deduplication index.
-
-**Usage**:
-
-```text
-jfox gem-synth dedup-backfill [OPTIONS]
-```
-
-| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
-|---|---|---|---|---|---|---|---|
-| `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
-| `output_format` | `--format, -f` | TEXT | no | `text` | — | no | no |
-
-## `jfox gem-synth status`
-
-Show pending, successful, failed, and skipped synthesis work.
-
-**Usage**:
-
-```text
-jfox gem-synth status [OPTIONS]
-```
-
-| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
-|---|---|---|---|---|---|---|---|
-| `failed_only` | `--failed` | BOOL | no | `false` | — | no | yes |
-| `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
 
 ## `jfox graph`
 
@@ -913,6 +873,210 @@ jfox perf [ACTION]
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
 |---|---|---|---|---|---|---|---|
 | `action` | `ACTION` | TEXT | no | `report` | — | no | no |
+
+## `jfox prompts`
+
+Record and judge user prompts captured from coding agents.
+
+**Usage**:
+
+```text
+jfox prompts COMMAND [ARGS]...
+```
+
+## `jfox prompts backfill`
+
+Import historical UserPromptSubmit events into the prompt store.
+
+**Usage**:
+
+```text
+jfox prompts backfill [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `dry_run` | `--dry-run` | BOOL | no | `false` | — | no | yes |
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts config`
+
+Show or update prompt capture and judgment configuration.
+
+**Usage**:
+
+```text
+jfox prompts config [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `set_key` | `--set` | TEXT | no | — | — | no | no |
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+
+## `jfox prompts drain`
+
+Deliver queued local spool prompts into the prompt store.
+
+**Usage**:
+
+```text
+jfox prompts drain [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts ignore`
+
+Dismiss a judged prompt, optionally rejecting its candidate note.
+
+**Usage**:
+
+```text
+jfox prompts ignore [OPTIONS] PROMPT_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `prompt_id` | `PROMPT_ID` | INTEGER | yes | — | — | no | no |
+| `reject_candidate` | `--reject-candidate` | BOOL | no | `false` | — | no | yes |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts judge`
+
+Classify pending prompts in batches with an external judge runner.
+
+**Usage**:
+
+```text
+jfox prompts judge [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `limit` | `--limit, -n` | INTEGER | no | — | — | no | no |
+| `session` | `--session` | TEXT | no | — | — | no | no |
+| `all_items` | `--all` | BOOL | no | `false` | — | no | yes |
+| `retry_failed` | `--retry-failed` | BOOL | no | `false` | — | no | yes |
+| `allow_remote` | `--allow-remote` | BOOL | no | `false` | — | no | yes |
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts list`
+
+List recorded prompts with truncated previews.
+
+**Usage**:
+
+```text
+jfox prompts list [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `session` | `--session` | TEXT | no | — | — | no | no |
+| `limit` | `--limit, -n` | INTEGER | no | `20` | — | no | no |
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts promote`
+
+Promote the candidate note created for a judged prompt.
+
+**Usage**:
+
+```text
+jfox prompts promote [OPTIONS] PROMPT_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `prompt_id` | `PROMPT_ID` | INTEGER | yes | — | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts resolve-unresolved`
+
+Mark a previously unresolved prompt as resolved.
+
+**Usage**:
+
+```text
+jfox prompts resolve-unresolved [OPTIONS] PROMPT_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `prompt_id` | `PROMPT_ID` | INTEGER | yes | — | — | no | no |
+| `reason` | `--reason` | TEXT | no | — | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts retry`
+
+Reset a failed or needs-review judgment for reprocessing.
+
+**Usage**:
+
+```text
+jfox prompts retry [OPTIONS] PROMPT_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `prompt_id` | `PROMPT_ID` | INTEGER | yes | — | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts show`
+
+Show one recorded prompt and its judgment details.
+
+**Usage**:
+
+```text
+jfox prompts show [OPTIONS] PROMPT_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `prompt_id` | `PROMPT_ID` | INTEGER | yes | — | — | no | no |
+| `full` | `--full` | BOOL | no | `false` | — | no | yes |
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts status`
+
+Summarize prompt counts by judgment and disposition state.
+
+**Usage**:
+
+```text
+jfox prompts status [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
+
+## `jfox prompts unresolved`
+
+Mark a repeated prompt as an open problem in the aggregate note.
+
+**Usage**:
+
+```text
+jfox prompts unresolved [OPTIONS] PROMPT_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `prompt_id` | `PROMPT_ID` | INTEGER | yes | — | — | no | no |
+| `force` | `--force` | BOOL | no | `false` | — | no | yes |
+| `reason` | `--reason` | TEXT | no | — | — | no | no |
+| `kb` | `--kb` | TEXT | no | — | — | no | no |
 
 ## `jfox query`
 

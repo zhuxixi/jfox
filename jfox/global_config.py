@@ -6,6 +6,7 @@
 
 import json
 import logging
+import math
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -341,8 +342,6 @@ class PromptCaptureConfig:
         )
 
 
-
-
 @dataclass
 class PromptJudgeConfig:
     """prompt 判断外部 runner 配置。
@@ -445,6 +444,48 @@ class PromptJudgeConfig:
 
 
 @dataclass
+class NoteAddConfig:
+    """jfox add 落库防重配置（#383：permanent 双通道查重）"""
+
+    dedup_enabled: bool = True  # 总开关；False 时 add 完全跳过防重
+    title_dedup: bool = True  # 标题通道：非 archived 同标题（大小写不敏感）拦截
+    embedding_dedup: bool = True  # 正文通道：仅 embedding daemon 可用时生效
+    dedup_threshold: float = 0.95  # 近逐字级（add 是二值拒绝，严于 gem_synth 的 0.88）
+
+    def __post_init__(self) -> None:
+        # 同 GemSynthesisConfig 的 sanitize：非法值回默认，合法值钳到 [0, 1]
+        # （NaN 与任何数比较返回 False → cosine >= NaN 永假 → dedup 永不触发，必须挡）
+        val = self.dedup_threshold
+        if (
+            val is None
+            or isinstance(val, bool)
+            or not isinstance(val, (int, float))
+            or math.isnan(val)
+            or math.isinf(val)
+        ):
+            self.dedup_threshold = 0.95
+        else:
+            self.dedup_threshold = max(0.0, min(1.0, float(val)))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "NoteAddConfig":
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险
+        if not isinstance(data, dict):
+            return cls()
+        # 只取已知键，忽略多余键（向前兼容）
+        return cls(
+            dedup_enabled=data.get("dedup_enabled", True),
+            title_dedup=data.get("title_dedup", True),
+            embedding_dedup=data.get("embedding_dedup", True),
+            dedup_threshold=data.get("dedup_threshold", 0.95),
+        )
+
+
+@dataclass
 class GlobalConfig:
     """全局配置"""
 
@@ -453,6 +494,7 @@ class GlobalConfig:
     auto_summary: AutoSummaryConfig = field(default_factory=AutoSummaryConfig)
     fragment_capture: FragmentCaptureConfig = field(default_factory=FragmentCaptureConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    note_add: NoteAddConfig = field(default_factory=NoteAddConfig)
     prompt_capture: PromptCaptureConfig = field(default_factory=PromptCaptureConfig)
     prompt_judge: PromptJudgeConfig = field(default_factory=PromptJudgeConfig)
 
@@ -463,6 +505,7 @@ class GlobalConfig:
             "auto_summary": self.auto_summary.to_dict(),
             "fragment_capture": self.fragment_capture.to_dict(),
             "backup": self.backup.to_dict(),
+            "note_add": self.note_add.to_dict(),
             "prompt_capture": self.prompt_capture.to_dict(),
             "prompt_judge": self.prompt_judge.to_dict(),
         }
@@ -479,6 +522,7 @@ class GlobalConfig:
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
             fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
             backup=BackupConfig.from_dict(data.get("backup")),
+            note_add=NoteAddConfig.from_dict(data.get("note_add")),
             prompt_capture=PromptCaptureConfig.from_dict(
                 data.get("prompt_capture")
                 if data.get("prompt_capture") is not None
@@ -827,6 +871,19 @@ class GlobalConfigManager:
         current = asdict(config.prompt_judge)
         current.update({k: v for k, v in changes.items() if k in current})
         config.prompt_judge = PromptJudgeConfig.from_dict(current)
+        self._config = config
+        return self._save()
+
+    def get_note_add_config(self) -> NoteAddConfig:
+        """获取 add 防重配置"""
+        return self._load().note_add
+
+    def update_note_add_config(self, **changes: Any) -> bool:
+        """更新 add 防重配置"""
+        config = self._load()
+        current = asdict(config.note_add)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.note_add = NoteAddConfig.from_dict(current)
         self._config = config
         return self._save()
 

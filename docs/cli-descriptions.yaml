@@ -50,7 +50,7 @@ commands:
   "jfox bulk-import":
     description: "Import multiple notes from a JSON file using the batch pipeline."
   "jfox candidates":
-    description: "Inspect candidate notes produced by knowledge-gem synthesis."
+    description: "Inspect candidate notes awaiting human review."
   "jfox candidates list":
     description: "List candidate notes awaiting review or matching a status filter."
   "jfox candidates promote":
@@ -72,17 +72,11 @@ commands:
   "jfox edit":
     description: "Edit an existing note while preserving its identity and creation time."
   "jfox fragments":
-    description: "Inspect raw session fragments captured by an agent hook."
+    description: "Inspect historical session fragments (read-only after capture retirement)."
   "jfox fragments list":
     description: "List captured session fragments, newest first."
   "jfox fragments show":
     description: "Show a fragment together with its complete original event."
-  "jfox gem-synth":
-    description: "Inspect the progress of the L3 knowledge-gem synthesis loop."
-  "jfox gem-synth dedup-backfill":
-    description: "Backfill candidate and permanent note embeddings into the deduplication index."
-  "jfox gem-synth status":
-    description: "Show pending, successful, failed, and skipped synthesis work."
   "jfox graph":
     description: "Analyze and explore the knowledge graph built from note links."
   "jfox inbox":
@@ -105,6 +99,32 @@ commands:
     description: "Analyze permanent-note density and suggest MOC clusters."
   "jfox moc update":
     description: "Rescan topic clusters and update the members of an existing MOC."
+  "jfox prompts":
+    description: "Record and judge user prompts captured from coding agents."
+  "jfox prompts backfill":
+    description: "Import historical UserPromptSubmit events into the prompt store."
+  "jfox prompts config":
+    description: "Show or update prompt capture and judgment configuration."
+  "jfox prompts drain":
+    description: "Deliver queued local spool prompts into the prompt store."
+  "jfox prompts ignore":
+    description: "Dismiss a judged prompt, optionally rejecting its candidate note."
+  "jfox prompts judge":
+    description: "Classify pending prompts in batches with an external judge runner."
+  "jfox prompts list":
+    description: "List recorded prompts with truncated previews."
+  "jfox prompts promote":
+    description: "Promote the candidate note created for a judged prompt."
+  "jfox prompts resolve-unresolved":
+    description: "Mark a previously unresolved prompt as resolved."
+  "jfox prompts retry":
+    description: "Reset a failed or needs-review judgment for reprocessing."
+  "jfox prompts show":
+    description: "Show one recorded prompt and its judgment details."
+  "jfox prompts status":
+    description: "Summarize prompt counts by judgment and disposition state."
+  "jfox prompts unresolved":
+    description: "Mark a repeated prompt as an open problem in the aggregate note."
   "jfox model":
     description: "Manage locally available embedding models."
   "jfox model download":
