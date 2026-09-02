@@ -10,6 +10,7 @@ on:
       - '**/*.md'
       - 'scripts/**'
       - 'docs/cli-descriptions.yaml'
+      - 'packages/**'
       - '.markdownlint-cli2.jsonc'
       - '.github/workflows/integration-test.yml'
   pull_request:
@@ -21,6 +22,7 @@ on:
       - '**/*.md'
       - 'scripts/**'
       - 'docs/cli-descriptions.yaml'
+      - 'packages/**'
       - '.markdownlint-cli2.jsonc'
       - '.github/workflows/integration-test.yml'
   # 允许手动触发
@@ -79,11 +81,22 @@ jobs:
     - name: Check generated docs are up to date
       run: |
         uv run python scripts/generate_docs.py
+        untracked_generated="$(git ls-files --others --exclude-standard -- \
+          docs/cli-reference.md docs/plugin-inventory.md)"
         if ! git diff --exit-code; then
-          echo "::error::Generated docs are stale. Regenerate locally with:"
+          tracked_drift=1
+        else
+          tracked_drift=0
+        fi
+        if [ "$tracked_drift" -ne 0 ] || [ -n "$untracked_generated" ]; then
+          echo "::error::Generated documentation is stale or untracked. Regenerate locally with:"
           echo "::error::  uv run python scripts/generate_docs.py"
-          echo "--- Changed files ---"
+          echo "--- Tracked changes ---"
           git diff --name-only
+          if [ -n "$untracked_generated" ]; then
+            echo "--- Untracked generated files ---"
+            printf '%s\n' "$untracked_generated"
+          fi
           exit 1
         fi
 
