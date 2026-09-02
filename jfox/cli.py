@@ -4179,6 +4179,12 @@ def main():
         # `--json 2>&1` 合并流（CI Fast 实测，PR #483）；错误经退出码与 JSON
         # 字段传达，不依赖日志行。
         logging.disable(logging.CRITICAL)
+        # tqdm 进度条（模型下载/权重加载 "Loading weights"）不走 logging，直写
+        # stderr，必须用环境变量关掉；tqdm 的 envwrap 在实例化时读 env，需在
+        # 其惰性 import 前设置（CI Fast 实测，PR #483 第二轮）。
+        os.environ["TQDM_DISABLE"] = "1"
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
     # 离线模式：跳过 HuggingFace 网络请求，节省 0.5-2s
     # 仅在 CLI 入口设置，不影响测试环境
