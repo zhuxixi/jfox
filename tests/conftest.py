@@ -25,6 +25,12 @@ os.environ["ZK_KB_ROOT"] = str(_TEST_ROOT)
 # 隔离全局 KB 注册表；CLI 子进程会继承该环境变量，避免写入真实 ~/.zk_config.json。
 os.environ["ZK_CONFIG_PATH"] = str(_TEST_ROOT / "zk_config.json")
 
+# 隔离真实 synthesis db（#383 关联项）：测试进程与 CLI 子进程都指向临时路径，
+# 防 DedupStore 默认单例写真实 ~/.zettelkasten/synthesis_log.db。
+# 无条件赋值（同 ZK_KB_ROOT）：保证任何环境跑测试都写临时路径——
+# 预设值语义仅在 nightly 脚本层（换假 HOME）有意义，conftest 层一律覆盖
+os.environ["JFOX_SYNTHESIS_DB"] = str(_TEST_ROOT / "synthesis_test.db")
+
 import pytest
 
 # ============================================================================
@@ -83,8 +89,8 @@ def mock_embedding_backend():
             """批量编码"""
             return self.encode(texts)
 
-        def encode_single(self, text: str):
-            """单条编码（vector_store.add_note 调用）"""
+        def encode_single(self, text: str, *, daemon_only: bool = False):
+            """单条编码（vector_store.add_note / dedup._embed 调用）"""
             return self.encode([text])[0]
 
         def _resolve_device(self):

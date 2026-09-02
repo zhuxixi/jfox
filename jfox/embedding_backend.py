@@ -133,15 +133,25 @@ class EmbeddingBackend:
             logger.error(f"加载模型失败: {e}")
             raise
 
-    def encode(self, texts: List[str], batch_size: int = 32) -> np.ndarray:
-        """文本编码（优先使用 daemon）"""
+    def encode(
+        self, texts: List[str], batch_size: int = 32, *, daemon_only: bool = False
+    ) -> np.ndarray:
+        """文本编码（优先使用 daemon）。
+
+        daemon_only=True（#383 add 防重路径）：daemon 不可用或编码失败时直接抛异常，
+        绝不回退本地模型加载（秒级延迟红线），由调用方闸门层降级。
+        默认 False：既有行为不变（daemon 失败回退本地）。"""
         # 优先使用 daemon
         if self._check_daemon() and self._daemon_client is not None:
             try:
                 return self._daemon_client.encode(texts, batch_size=batch_size)
             except Exception as e:
+                if daemon_only:
+                    raise
                 logger.warning(f"Daemon 编码失败，回退到本地: {e}")
                 self._use_daemon = False
+        elif daemon_only:
+            raise RuntimeError("embedding daemon 不可用（daemon_only 模式不回退本地模型）")
 
         if self.model is None:
             self.load()
@@ -154,9 +164,9 @@ class EmbeddingBackend:
             logger.error(f"编码失败: {e}")
             raise
 
-    def encode_single(self, text: str) -> np.ndarray:
+    def encode_single(self, text: str, *, daemon_only: bool = False) -> np.ndarray:
         """单文本编码"""
-        return self.encode([text])[0]
+        return self.encode([text], daemon_only=daemon_only)[0]
 
     @property
     def dimension(self) -> int:
