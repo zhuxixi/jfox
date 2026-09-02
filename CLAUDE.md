@@ -139,7 +139,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
 
-**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint）；`packages/` 下非 md 文件（cc/kimi-plugin 发版 bump 的 json 等）改动仍**不触发 CI**。后果：`packages/` 下版本 bump 不跑测试，release-helper 测试须按当前版本动态算「下一版」（勿硬编码），否则只在后续触达 `tests/` 的 PR 才暴露（#382 踩过）。
+**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`scripts/**`/`docs/cli-descriptions.yaml`/`packages/**`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint）；#480 起 `packages/**`（含 cc/kimi-plugin 发版 bump 的 json）改动也触发 CI。发版 bump PR 因此会跑测试；release-helper 测试仍须按当前版本动态算「下一版」（勿硬编码）——这是测试正确性要求，与 CI 触发范围无关（#382 的教训保留）。
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 

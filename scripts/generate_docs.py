@@ -305,19 +305,6 @@ def write_reference(path: Path, content: str) -> None:
         ) from exc
 
 
-def generate_reference(output: Path, descriptions: Path) -> None:
-    """Extract the real app and write its validated English reference."""
-    _ensure_isolated_config_environment()
-    from typer.main import get_command
-
-    from jfox.cli import app
-
-    commands = extract_commands(get_command(app), root_name="jfox")
-    catalog = load_descriptions(descriptions)
-    validate_descriptions((command.path for command in commands), catalog)
-    write_reference(output, render_reference(commands, catalog))
-
-
 def generate_all(
     cli_output: Path,
     descriptions: Path,
