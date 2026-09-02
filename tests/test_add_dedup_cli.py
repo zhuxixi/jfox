@@ -76,6 +76,15 @@ class TestJsonPurity:
             cwd=str(REPO_ROOT),
         )
         assert r.returncode == 0
-        data = json.loads(r.stdout)  # 混入任何 INFO 行都会在这里抛 JSONDecodeError
+        try:
+            data = json.loads(r.stdout)
+        except json.JSONDecodeError as e:
+            # 诊断信息永久保留：污染源随环境变化（daemon 有无/网络可达性），
+            # 失败时必须能看到合流输出的真实内容才能定位
+            pytest.fail(
+                f"--json 2>&1 输出不是纯 JSON ({e}):\n"
+                f"--- merged stdout+stderr repr ---\n{r.stdout!r}\n"
+                f"--- returncode: {r.returncode} ---"
+            )
         assert data["success"] is True
         assert "Saved note" not in r.stdout
