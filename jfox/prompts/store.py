@@ -612,6 +612,20 @@ class PromptStore:
             logger.exception("update_disposition 数据库错误: %s", e)
             return False
 
+    def reset_judgment(self, kb_name: str, prompt_id: int) -> bool:
+        """删除 judgment 行，让下次 judge 重新选择（retry 用）。"""
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "DELETE FROM prompt_judgments WHERE kb_name = ? AND prompt_id = ?",
+                    (kb_name, prompt_id),
+                )
+                self._conn.commit()
+            return cur.rowcount > 0
+        except sqlite3.Error as e:
+            logger.exception("reset_judgment 数据库错误: %s", e)
+            return False
+
     def list_judgments(
         self,
         kb_name: str,
