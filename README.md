@@ -39,7 +39,7 @@ JFox is designed to keep its core knowledge-management workflow local rather tha
 - **Hybrid search** — Combine keyword matching with semantic search to find both exact terms and related ideas.
 - **Knowledge graph navigation** — Inspect references, find orphans and hubs, traverse related notes, and understand the shape of your knowledge base.
 - **MOCs and structure notes** — Organize dense topic clusters into navigable Maps of Content.
-- **Knowledge refinement** — Turn captured session fragments into synthesized candidate gems for human review.
+- **Knowledge refinement** — Record user prompts verbatim, classify them on demand with a configurable judge, and promote candidates into permanent notes.
 - **Local bookshelf assets** — Keep PDFs, extracted bundles, and book metadata together without mixing them into the note index.
 - **Multiple knowledge bases** — Separate work, personal, research, or project knowledge while keeping the same CLI.
 - **Operational safeguards** — Use an embedding daemon, rolling backups, archive/unarchive, and optional Claude Code session auto-summary when you need them.
@@ -110,27 +110,30 @@ Use graph commands when the connection itself matters. Inspect references with `
 
 For dense topic clusters, a structure note acts as a Map of Content: it gives a human-readable entry point into related permanent notes without replacing those notes.
 
-### Refine knowledge with the gem pipeline
+### Record prompts and judge them on demand
 
-JFox can support an assisted refinement path for material captured from AI-agent sessions:
+JFox captures every Claude Code user prompt verbatim and lets you classify them manually with an external judge (no background synthesis loop):
 
 ```text
-session fragments
-    → gem synthesis
-    → candidate notes
-    → human review
-    → permanent notes
+user prompts (spool → daemon → user_prompts table)
+    → jfox prompts judge (manual, external runner)
+    → new: candidate note → human promote/reject
+    → repeated: unresolved marker → explicit resolve
+    → recorded / needs_review
 ```
-
-Session fragments are raw captures, not trusted knowledge. Gem synthesis produces a `candidate` note that can be inspected, promoted, or rejected. The current L3 synthesis output uses the `flawed` gem level. Promotion to `permanent` is a review decision; it is not an automatic guarantee that generated content is correct.
 
 The main command groups for this workflow are:
 
 ```bash
-jfox fragments list
-jfox candidates list
-jfox gem-synth status
+jfox prompts status                  # capture/judgment/pending counts
+jfox prompts list / show ID          # browse recorded prompts
+jfox prompts judge                   # classify pending prompts (manual)
+jfox prompts promote ID              # promote a candidate
+jfox prompts unresolved ID           # mark as an open problem
+jfox candidates list                 # review candidates (three modes)
 ```
+
+Judge execution is explicit: it runs only when you invoke `jfox prompts judge`. By default the judge runs a local `pi` binary with tools, sessions, extensions, and skills disabled; a remote runner requires explicit `--allow-remote` consent because full transcript context may leave the machine. The `gem-synth` background loop, anchor mining, dedup merges, and fragment classification were retired; historical `session_fragments` data remains readable via `jfox fragments list/show`, and `jfox prompts backfill --dry-run` previews importing old UserPromptSubmit events. Claude Code capture is covered here; pi-side capture is tracked in #462.
 
 ### Organize and preserve knowledge
 
@@ -214,7 +217,7 @@ This is a curated overview, not an exhaustive command reference. Use it to find 
 | Create and inspect notes | `jfox add`, `jfox list`, `jfox show`, `jfox edit` |
 | Organize note lifecycle | `jfox archive`, `jfox unarchive`, `jfox delete`, `jfox redirect` |
 | Search and navigate | `jfox search`, `jfox query`, `jfox refs`, `jfox graph`, `jfox moc` |
-| Capture and review refinement | `jfox fragments`, `jfox candidates`, `jfox gem-synth` |
+| Capture and review refinement | `jfox prompts`, `jfox candidates`, `jfox fragments` |
 | Manage books and indexes | `jfox bookshelf`, `jfox index` |
 | Run local services and safeguards | `jfox daemon`, `jfox backup`, `jfox auto-summary` |
 | Maintain the installation | `jfox model`, `jfox check`, `jfox update` |
