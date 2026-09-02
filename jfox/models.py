@@ -81,6 +81,7 @@ class Note:
     gem_level: Optional[str] = None
     confidence: Optional[float] = None
     source_fragments: List[int] = field(default_factory=list)  # 碎片溯源（跨类型保留）
+    source_prompts: List[int] = field(default_factory=list)  # prompt 溯源（跨类型保留，#399）
     grounded_by: List[str] = field(default_factory=list)  # 参考笔记溯源（跨类型保留）
     knowledge_type: Optional[str] = None  # factual/procedural/preference/constraint
     status: Optional[str] = None  # pending → (L5) promoted/rejected
@@ -154,6 +155,8 @@ class Note:
         # 溯源字段（跨类型保留：candidate 合成产出 + promoted permanent 都可追溯到来源碎片，#249）
         if self.source_fragments:
             frontmatter["source_fragments"] = self.source_fragments
+        if self.source_prompts:
+            frontmatter["source_prompts"] = self.source_prompts
         if self.grounded_by:
             frontmatter["grounded_by"] = self.grounded_by
 
@@ -210,6 +213,11 @@ class Note:
             gem_level=fm.get("gem_level"),
             confidence=_to_float(fm.get("confidence")),
             source_fragments=fm.get("source_fragments", []),
+            source_prompts=(
+                list(fm.get("source_prompts", []))
+                if isinstance(fm.get("source_prompts"), list)
+                else []
+            ),
             grounded_by=fm.get("grounded_by", []),
             knowledge_type=fm.get("knowledge_type"),
             status=fm.get("status"),
@@ -246,6 +254,8 @@ class Note:
         # 溯源字段（跨类型输出，与 to_markdown 保持一致）
         if self.source_fragments:
             d["source_fragments"] = self.source_fragments
+        if self.source_prompts:
+            d["source_prompts"] = self.source_prompts
         if self.grounded_by:
             d["grounded_by"] = self.grounded_by
         return d
@@ -298,6 +308,8 @@ class Note:
         # 溯源字段（跨类型输出，与 to_dict/to_markdown 保持一致）
         if self.source_fragments:
             d["source_fragments"] = self.source_fragments
+        if self.source_prompts:
+            d["source_prompts"] = self.source_prompts
         if self.grounded_by:
             d["grounded_by"] = self.grounded_by
         return d
