@@ -123,10 +123,10 @@ from .prompts.cli import prompts_app  # noqa: E402
 
 app.add_typer(prompts_app, name="prompts", help="记录与判断用户 prompt（gem-synth 重构）")
 
-# Candidates 子命令组（查看 L3 合成的候选知识宝石）
-from .gem_synth.cli import candidates_app  # noqa: E402
+# Candidates 子命令组（候选知识宝石，#399 已从 gem_synth 解耦）
+from .candidates.cli import candidates_app  # noqa: E402
 
-app.add_typer(candidates_app, name="candidates", help="查看 L3 合成的候选知识宝石")
+app.add_typer(candidates_app, name="candidates", help="查看候选知识宝石（待 L5 审阅）")
 
 # gem-synth 子命令组（查看 L3 合成进度：pending/success/failed + 失败复核）
 from .gem_synth.cli import gem_synth_app  # noqa: E402
