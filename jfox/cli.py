@@ -4144,7 +4144,8 @@ def _json_mode_requested(argv: List[str]) -> bool:
     日志 handler 本就走 stderr，但管道 `jfox ... --json 2>&1 | jq` 会把 stderr
     合进被解析流——INFO 噪声（Saved note / 索引写入等）让对端 JSON 解析失败，
     agent 误判失败后 fallback 重跑产生重复笔记（#383 根因 A）。JSON 模式下
-    把 root logger 提到 WARNING，保证正常成功路径合流后仍是纯 JSON。
+    用 logging.disable 全静默（含 WARNING/ERROR），保证任何环境（含无 daemon
+    的本地模型加载链日志）合流后仍是纯 JSON；错误经退出码与 JSON 字段传达。
     """
     last_format: Optional[str] = None
     i = 0
@@ -4173,7 +4174,11 @@ def main():
 
     # JSON 模式抑制 INFO 日志（#383 根因 A）
     if _json_mode_requested(sys.argv):
-        logging.getLogger().setLevel(logging.WARNING)
+        # 全静默而非 setLevel(WARNING)：无 daemon 机器上 add 的向量路径会走本地
+        # 模型加载链（model_downloader 的 WARNING/ERROR），穿透 WARNING 线污染
+        # `--json 2>&1` 合并流（CI Fast 实测，PR #483）；错误经退出码与 JSON
+        # 字段传达，不依赖日志行。
+        logging.disable(logging.CRITICAL)
 
     # 离线模式：跳过 HuggingFace 网络请求，节省 0.5-2s
     # 仅在 CLI 入口设置，不影响测试环境
