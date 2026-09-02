@@ -118,6 +118,11 @@ from .fragment.cli import fragments_app  # noqa: E402
 
 app.add_typer(fragments_app, name="fragments", help="查看 Hook 采集的 session 碎片")
 
+# Prompts 子命令组（记录与判断用户 prompt，#399）
+from .prompts.cli import prompts_app  # noqa: E402
+
+app.add_typer(prompts_app, name="prompts", help="记录与判断用户 prompt（gem-synth 重构）")
+
 # Candidates 子命令组（查看 L3 合成的候选知识宝石）
 from .gem_synth.cli import candidates_app  # noqa: E402
 
