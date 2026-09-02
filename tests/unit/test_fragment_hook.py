@@ -65,8 +65,11 @@ def mock_daemon():
         server.shutdown()
 
 
-def test_hook_injects_source_for_internal_session(mock_daemon):
-    """JFOX_INTERNAL_SESSION 为内部来源时，hook 脚本应在 payload 中注入 source 字段。"""
+def test_hook_skips_internal_session_entirely(mock_daemon):
+    """内部 session（JFOX_INTERNAL_SESSION 命中）hook 直接本地跳过，不 POST。
+
+    #399 后新 hook 在本地 case 分支 exit，不再"注入 source 交 daemon 过滤"。
+    """
     received, daemon_url = mock_daemon
     payload = json.dumps(
         {"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "hi"}
@@ -76,10 +79,7 @@ def test_hook_injects_source_for_internal_session(mock_daemon):
         [BASH, str(HOOK)], input=payload, capture_output=True, text=True, timeout=5, env=env
     )
     assert proc.returncode == 0
-    assert len(received) == 1
-    assert received[0].get("source") == "auto-summary"
-    # 原事件字段保留
-    assert received[0].get("hook_event_name") == "UserPromptSubmit"
+    assert len(received) == 0  # 本地跳过，无请求
 
 
 def test_hook_no_source_for_normal_session(mock_daemon):

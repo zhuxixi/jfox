@@ -6,7 +6,6 @@
 
 import json
 import logging
-import math
 import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -292,132 +291,6 @@ class FragmentCaptureConfig:
 
 
 @dataclass
-class GemSynthesisConfig:
-    """L3 宝石合成配置（opt-in，默认关闭）"""
-
-    enabled: bool = False
-    interval_minutes: int = 30  # daemon 循环周期
-    anchor_types: List[str] = field(
-        default_factory=lambda: ["correction", "decision", "ask_user_question"]
-    )
-    grounding_top_k: int = 5  # 检索多少条 permanent 笔记做基准
-    target_kb: Optional[str] = None  # candidate 写入哪个 KB；None 用 default
-    claude_timeout_seconds: int = 180
-    claude_binary: Optional[str] = None  # None → 从 PATH 解析
-    dedup_enabled: bool = True  # 存盘前用正文 embedding 余弦查重
-    dedup_threshold: float = 0.88  # 同事实重复阈值（高）；link-suggest 0.6 是"相关"，dedup 要"同一"
-    dedup_merge_enabled: bool = (
-        True  # 命中 candidate 时提取增量补入（#309）；False 回 #308 二值跳过
-    )
-
-    def __post_init__(self) -> None:
-        if self.interval_minutes < 1:
-            self.interval_minutes = 30
-        if self.grounding_top_k < 1:
-            self.grounding_top_k = 5
-        if self.claude_timeout_seconds < 30:
-            self.claude_timeout_seconds = 180
-        # dedup_threshold 是余弦相似度，合法区间 [0, 1]；越界值（>1 永不命中 / <0 无意义）钳到边界。
-        # NaN/inf/非数值需先 sanitize：max/min 与 NaN 比较返回 NaN → cosine >= NaN 永假 → dedup 永不触发。
-        val = self.dedup_threshold
-        if (
-            val is None
-            or isinstance(val, bool)
-            or not isinstance(val, (int, float))
-            or math.isnan(val)
-            or math.isinf(val)
-        ):
-            self.dedup_threshold = 0.88
-        else:
-            self.dedup_threshold = max(0.0, min(1.0, float(val)))
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "GemSynthesisConfig":
-        if not data:
-            return cls()
-
-        # 安全 int：非数字字符串不应抛 ValueError（否则 GlobalConfigManager._load 的 except
-        # 会吞掉异常并重置整份全局配置——auto_summary、KB 列表、默认 KB 全失效）。
-        # 与 FragmentCaptureConfig / AutoSummaryConfig 保持一致的防御性解析。
-        def _safe_int(v, default):
-            try:
-                return int(v)
-            except (TypeError, ValueError):
-                return default
-
-        def _safe_float(v, default):
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return default
-
-        return cls(
-            enabled=bool(data.get("enabled", False)),
-            interval_minutes=_safe_int(data.get("interval_minutes"), 30),
-            anchor_types=(
-                list(data["anchor_types"])
-                if isinstance(data.get("anchor_types"), list)
-                else cls().anchor_types
-            ),
-            grounding_top_k=_safe_int(data.get("grounding_top_k"), 5),
-            target_kb=data.get("target_kb"),
-            claude_timeout_seconds=_safe_int(data.get("claude_timeout_seconds"), 180),
-            claude_binary=data.get("claude_binary"),
-            dedup_enabled=bool(data.get("dedup_enabled", True)),
-            dedup_threshold=(
-                # bool 先于 _safe_float 拦截（float(True)=1.0 会静默成合法阈值，绕过 __post_init__ 的 bool 守卫）
-                0.88
-                if isinstance(data.get("dedup_threshold"), bool)
-                else _safe_float(data.get("dedup_threshold"), 0.88)
-            ),
-            dedup_merge_enabled=bool(data.get("dedup_merge_enabled", True)),
-        )
-
-
-@dataclass
-class NoteAddConfig:
-    """jfox add 落库防重配置（#383：permanent 双通道查重）"""
-
-    dedup_enabled: bool = True  # 总开关；False 时 add 完全跳过防重
-    title_dedup: bool = True  # 标题通道：非 archived 同标题（大小写不敏感）拦截
-    embedding_dedup: bool = True  # 正文通道：仅 embedding daemon 可用时生效
-    dedup_threshold: float = 0.95  # 近逐字级（add 是二值拒绝，严于 gem_synth 的 0.88）
-
-    def __post_init__(self) -> None:
-        # 同 GemSynthesisConfig 的 sanitize：非法值回默认，合法值钳到 [0, 1]
-        # （NaN 与任何数比较返回 False → cosine >= NaN 永假 → dedup 永不触发，必须挡）
-        val = self.dedup_threshold
-        if (
-            val is None
-            or isinstance(val, bool)
-            or not isinstance(val, (int, float))
-            or math.isnan(val)
-            or math.isinf(val)
-        ):
-            self.dedup_threshold = 0.95
-        else:
-            self.dedup_threshold = max(0.0, min(1.0, float(val)))
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "NoteAddConfig":
-        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
-        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险
-        if not isinstance(data, dict):
-            return cls()
-        # 只取已知键，忽略多余键（向前兼容）
-        return cls(
-            dedup_enabled=data.get("dedup_enabled", True),
-            title_dedup=data.get("title_dedup", True),
-            embedding_dedup=data.get("embedding_dedup", True),
-            dedup_threshold=data.get("dedup_threshold", 0.95),
-        )
-@dataclass
 class PromptCaptureConfig:
     """Claude Code UserPromptSubmit 全量记录配置（默认启用）。
 
@@ -579,8 +452,6 @@ class GlobalConfig:
     knowledge_bases: Dict[str, KnowledgeBaseEntry] = field(default_factory=dict)
     auto_summary: AutoSummaryConfig = field(default_factory=AutoSummaryConfig)
     fragment_capture: FragmentCaptureConfig = field(default_factory=FragmentCaptureConfig)
-    gem_synthesis: GemSynthesisConfig = field(default_factory=GemSynthesisConfig)
-    note_add: NoteAddConfig = field(default_factory=NoteAddConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
     prompt_capture: PromptCaptureConfig = field(default_factory=PromptCaptureConfig)
     prompt_judge: PromptJudgeConfig = field(default_factory=PromptJudgeConfig)
@@ -591,8 +462,6 @@ class GlobalConfig:
             "knowledge_bases": {name: kb.to_dict() for name, kb in self.knowledge_bases.items()},
             "auto_summary": self.auto_summary.to_dict(),
             "fragment_capture": self.fragment_capture.to_dict(),
-            "gem_synthesis": self.gem_synthesis.to_dict(),
-            "note_add": self.note_add.to_dict(),
             "backup": self.backup.to_dict(),
             "prompt_capture": self.prompt_capture.to_dict(),
             "prompt_judge": self.prompt_judge.to_dict(),
@@ -609,8 +478,6 @@ class GlobalConfig:
             knowledge_bases=kbs,
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
             fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
-            gem_synthesis=GemSynthesisConfig.from_dict(data.get("gem_synthesis")),
-            note_add=NoteAddConfig.from_dict(data.get("note_add")),
             backup=BackupConfig.from_dict(data.get("backup")),
             prompt_capture=PromptCaptureConfig.from_dict(
                 data.get("prompt_capture")
@@ -921,32 +788,6 @@ class GlobalConfigManager:
         current = asdict(config.fragment_capture)
         current.update({k: v for k, v in changes.items() if k in current})
         config.fragment_capture = FragmentCaptureConfig.from_dict(current)
-        self._config = config
-        return self._save()
-
-    def get_gem_synthesis_config(self) -> GemSynthesisConfig:
-        """获取 L3 宝石合成配置"""
-        return self._load().gem_synthesis
-
-    def update_gem_synthesis_config(self, **changes: Any) -> bool:
-        """更新宝石合成配置中的若干字段，未传入的字段保持原样"""
-        config = self._load()
-        current = asdict(config.gem_synthesis)
-        current.update({k: v for k, v in changes.items() if k in current})
-        config.gem_synthesis = GemSynthesisConfig.from_dict(current)
-        self._config = config
-        return self._save()
-
-    def get_note_add_config(self) -> NoteAddConfig:
-        """读取 add 防重配置"""
-        return self._load().note_add
-
-    def update_note_add_config(self, **changes: Any) -> bool:
-        """更新 add 防重配置中的若干字段，未传入的字段保持原样"""
-        config = self._load()
-        current = asdict(config.note_add)
-        current.update({k: v for k, v in changes.items() if k in current})
-        config.note_add = NoteAddConfig.from_dict(current)
         self._config = config
         return self._save()
 
