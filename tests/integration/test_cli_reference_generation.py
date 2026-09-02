@@ -58,6 +58,8 @@ def _run_generator(output: Path, tmp_path: Path) -> subprocess.CompletedProcess[
             str(output),
             "--descriptions",
             str(DESCRIPTIONS),
+            "--inventory-output",
+            str(tmp_path / "plugin-inventory.md"),
         ],
         cwd=REPO_ROOT,
         env=_isolated_env(tmp_path),
