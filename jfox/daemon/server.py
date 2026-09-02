@@ -38,7 +38,11 @@ _backup_stop_event: Optional[threading.Event] = None
 
 
 def _load_model():
-    """启动时加载模型（标记为 daemon 进程，防止自引用）"""
+    """启动时加载模型（标记为 daemon 进程，防止自引用）。
+
+    embedding 加载失败时降级为 None（prompt API / drain 仍可用），
+    embedding 相关 endpoint 单独返回 degraded/503——不再 os._exit。
+    """
     global _backend
     os.environ["JFOX_DAEMON_PROCESS"] = "1"
     from ..config import config
@@ -53,8 +57,9 @@ def _load_model():
             f"(device={_backend._resolved_device}, dimension={_backend._resolved_dim})"
         )
     except Exception as e:
-        logger.error(f"Daemon: 模型加载失败，进程退出: {e}")
-        os._exit(1)
+        # 模型加载失败：降级（记录层可用），不退出进程
+        _backend = None
+        logger.error(f"Daemon: embedding 模型加载失败（降级运行，prompt API 可用）: {e}")
 
 
 def _maybe_init_fragment_store() -> None:
@@ -232,11 +237,13 @@ async def _maybe_stop_backup() -> None:
 
 @asynccontextmanager
 async def lifespan(app):
+    # prompt/fragment store 先于 embedding 模型初始化：
+    # embedding 加载失败时 prompt API 和 CLI drain 仍可用（记录层不依赖模型）
+    _maybe_init_fragment_store()
     _load_model()
     _maybe_start_auto_summary()
     _maybe_start_gem_synth()
     _maybe_start_backup()
-    _maybe_init_fragment_store()
     try:
         yield
     finally:
@@ -366,10 +373,30 @@ def capture_fragment(event: dict):
     """接收 CC hook POST 的原始事件 JSON，分类后写入 SQLite。
 
     请求体即 CC 事件的 stdin JSON（UserPromptSubmit / PostToolUse / Stop）。
+    兼容窗口：UserPromptSubmit 转发到新 /api/prompt 路径；PostToolUse/Stop 返回 retired。
     """
     from ..fragment import ingest_event
 
+    hook_event = event.get("hook_event_name") if isinstance(event, dict) else None
+    if hook_event == "UserPromptSubmit":
+        # 旧插件发的 UserPromptSubmit → 转发到新 prompt 记录路径
+        return capture_prompt(event)
+    if hook_event in ("PostToolUse", "Stop"):
+        # 旧采集事件已退役，不再写新 session_fragments
+        return {"status": "retired", "reason": f"{hook_event} capture is retired"}
+    # 其他事件保持旧行为（兼容窗口内的未知事件）
     return ingest_event(event)
+
+
+@app.post("/api/prompt")
+def capture_prompt(event: dict):
+    """接收 CC hook POST 的 UserPromptSubmit，全量写入 user_prompts。
+
+    请求体为 CC 原始 event + jfox_capture_id（hook 生成）。
+    """
+    from ..prompts.service import ingest_prompt
+
+    return ingest_prompt(event)
 
 
 @app.get("/api/fragments")

@@ -417,6 +417,57 @@ class NoteAddConfig:
             embedding_dedup=data.get("embedding_dedup", True),
             dedup_threshold=data.get("dedup_threshold", 0.95),
         )
+@dataclass
+class PromptCaptureConfig:
+    """Claude Code UserPromptSubmit 全量记录配置（默认启用）。
+
+    与旧 FragmentCaptureConfig 的区别：不截断、不分类，prompt 原文全量落盘。
+    """
+
+    enabled: bool = True
+    spool_dir: Optional[str] = None  # None → ~/.zettelkasten/prompt-spool/
+    endpoint_url: str = "http://127.0.0.1:18700/api/prompt"
+    endpoint_timeout_seconds: int = 1
+    max_payload_bytes: int = 16777216  # 16 MiB：单请求上限
+    max_spool_bytes: int = 1073741824  # 1 GiB：spool 总量上限
+    retain_raw_event: bool = True  # metadata_json 保存完整原始 event
+    transcript_roots: List[str] = field(default_factory=lambda: ["~/.claude/projects"])
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptCaptureConfig":
+        if not data:
+            return cls()
+        raw_enabled = data.get("enabled", True)
+        if isinstance(raw_enabled, str):
+            enabled = raw_enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        else:
+            enabled = bool(raw_enabled)
+
+        def _safe_int(key, default):
+            try:
+                return int(data.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        return cls(
+            enabled=enabled,
+            spool_dir=data.get("spool_dir"),
+            endpoint_url=data.get("endpoint_url") or cls().endpoint_url,
+            endpoint_timeout_seconds=_safe_int("endpoint_timeout_seconds", 1),
+            max_payload_bytes=_safe_int("max_payload_bytes", 16777216),
+            max_spool_bytes=_safe_int("max_spool_bytes", 1073741824),
+            retain_raw_event=bool(data.get("retain_raw_event", True)),
+            transcript_roots=(
+                list(data["transcript_roots"])
+                if isinstance(data.get("transcript_roots"), list)
+                else cls().transcript_roots
+            ),
+        )
+
+
 
 
 @dataclass
