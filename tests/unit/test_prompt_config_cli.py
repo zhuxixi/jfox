@@ -31,9 +31,7 @@ def test_config_set_simple_field(tmp_path, monkeypatch):
     assert result.exit_code == 0
     # 验证已持久化
     data2 = json.loads(
-        _invoke(
-            "config", "--format", "json", tmp_path=tmp_path, monkeypatch=monkeypatch
-        ).output
+        _invoke("config", "--format", "json", tmp_path=tmp_path, monkeypatch=monkeypatch).output
     )
     assert data2["judge"]["default_limit"] == 10
 
@@ -44,30 +42,27 @@ def test_config_set_bool_field(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0
     data2 = json.loads(
-        _invoke(
-            "config", "--format", "json", tmp_path=tmp_path, monkeypatch=monkeypatch
-        ).output
+        _invoke("config", "--format", "json", tmp_path=tmp_path, monkeypatch=monkeypatch).output
     )
     assert data2["judge"]["allow_remote"] is True
 
 
 def test_config_set_bad_format_rejected(tmp_path, monkeypatch):
-    result = _invoke(
-        "config", "--set", "noequals", tmp_path=tmp_path, monkeypatch=monkeypatch
-    )
+    result = _invoke("config", "--set", "noequals", tmp_path=tmp_path, monkeypatch=monkeypatch)
     assert result.exit_code != 0
 
 
 def test_config_set_capture_field(tmp_path, monkeypatch):
     result = _invoke(
-        "config", "--set", "endpoint_timeout_seconds=2",
-        tmp_path=tmp_path, monkeypatch=monkeypatch,
+        "config",
+        "--set",
+        "endpoint_timeout_seconds=2",
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
     )
     assert result.exit_code == 0
     data2 = json.loads(
-        _invoke(
-            "config", "--format", "json", tmp_path=tmp_path, monkeypatch=monkeypatch
-        ).output
+        _invoke("config", "--format", "json", tmp_path=tmp_path, monkeypatch=monkeypatch).output
     )
     assert data2["capture"]["endpoint_timeout_seconds"] == 2
 
@@ -78,8 +73,18 @@ def test_help_lists_all_commands():
     result = CliRunner().invoke(prompts_app, ["--help"])
     assert result.exit_code == 0
     for cmd in (
-        "list", "show", "status", "drain", "backfill", "judge",
-        "promote", "unresolved", "resolve-unresolved", "ignore", "retry", "config",
+        "list",
+        "show",
+        "status",
+        "drain",
+        "backfill",
+        "judge",
+        "promote",
+        "unresolved",
+        "resolve-unresolved",
+        "ignore",
+        "retry",
+        "config",
     ):
         assert cmd in result.output, f"help 缺少命令 {cmd}"
 

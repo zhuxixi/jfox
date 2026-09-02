@@ -164,15 +164,17 @@ def drain_spool(
 def backfill_from_fragments(
     store: Optional[PromptStore] = None,
     fragments_db_path: Optional[Path] = None,
+    dry_run: bool = False,
 ) -> Dict[str, Any]:
     """从旧 session_fragments 回填 UserPromptSubmit 到 user_prompts。
 
     - 只读 source_event='UserPromptSubmit' 的行（不论旧 fragment_type）；
     - 从 metadata_json.prompt 读完整原文（不用截断 content）；
     - source_key = fragment:<fragment_id>，幂等可重跑；
-    - 不调用 LLM、不创建 judgment、不创建 candidate。
+    - 不调用 LLM、不创建 judgment、不创建 candidate；
+    - dry_run=True 只统计不写入。
 
-    返回 {imported, duplicates, invalid, empty}。
+    返回 {found, imported, duplicates, invalid, empty}（dry_run 时 imported=0）。
     """
     import sqlite3
 
@@ -222,6 +224,10 @@ def backfill_from_fragments(
             if md.get(key):
                 event[key] = md[key]
 
+        if dry_run:
+            # 只统计，不写入
+            imported += 1
+            continue
         result = store.insert_prompt(
             event,
             source_key=f"fragment:{fid}",
@@ -237,7 +243,9 @@ def backfill_from_fragments(
             invalid += 1
 
     return {
-        "imported": imported,
+        "found": imported + duplicates + invalid + empty,
+        "imported": 0 if dry_run else imported,
+        "dry_run": dry_run,
         "duplicates": duplicates,
         "invalid": invalid,
         "empty": empty,

@@ -258,10 +258,15 @@ def test_judge_retry_failed_reselects_failed(tmp_path):
 
 
 def test_judge_remote_without_consent_fails(tmp_path):
+    from jfox.global_config import PromptJudgeConfig
+
     store = _store_with_prompts(tmp_path, n=1)
+    # 显式传默认配置（runner_scope=remote），不依赖可能被其他测试污染的全局配置单例
+    cfg = PromptJudgeConfig()
+    assert cfg.runner_scope == "remote" and cfg.allow_remote is False
     with patch("jfox.prompts.judge.fetch_judgment_grounding") as mock_ground:
         mock_ground.return_value = MagicMock(evidence=[], unavailable=False)
-        report = judge_prompts("default", store=store, allow_remote=False)
+        report = judge_prompts("default", store=store, allow_remote=False, cfg=cfg)
 
     assert report.failed == 1
     j = store.get_judgment("default", 1)
