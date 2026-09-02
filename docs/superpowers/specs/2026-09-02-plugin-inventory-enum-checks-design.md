@@ -92,22 +92,22 @@ This inventory is generated from plugin manifests and discoverable skill directo
 
 ## `cc-plugin`
 
-Source root: `packages/cc-plugin/skills/`
+Source root: `cc-plugin/skills/`
 
 | Skill | Source |
 |---|---|
-| `bookshelf` | `packages/cc-plugin/skills/bookshelf/` |
+| `bookshelf` | `cc-plugin/skills/bookshelf/` |
 
 ## `kimi-plugin`
 
-Source root: `packages/kimi-plugin/skills/`
+Source root: `kimi-plugin/skills/`
 
 | Skill | Source |
 |---|---|
-| `jfox-search` | `packages/kimi-plugin/skills/jfox-search/` |
+| `jfox-search` | `kimi-plugin/skills/jfox-search/` |
 ```
 
-The example rows are illustrative; the committed document must contain every discovered skill. Package sections use the fixed package order above, skill rows use lexical order by directory name, source paths always use repository-relative POSIX separators, and the writer uses UTF-8 Unix newlines. The output contains no timestamps, absolute paths, frontmatter descriptions, or machine-specific data.
+The example rows are illustrative; the committed document must contain every discovered skill. Package sections use the fixed package order above, skill rows use lexical order by directory name, source paths are repository-relative POSIX separators expressed relative to the repository's `packages/` directory (packages-root relative), and the writer uses UTF-8 Unix newlines. The output contains no timestamps, absolute paths, frontmatter descriptions, or machine-specific data.
 
 The generated marker must reuse the existing `GENERATED_MARKER` value from `scripts/generate_docs.py`. The inventory renderer is pure with respect to its normalized entries and must not inspect the environment, current time, or global JFox configuration.
 

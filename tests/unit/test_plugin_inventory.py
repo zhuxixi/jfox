@@ -145,6 +145,8 @@ def test_render_inventory_structure_and_order(tmp_path: Path):
     assert rendered.index("## `cc-plugin`") < rendered.index("## `kimi-plugin`")
     assert "| Skill | Source |" in rendered
     assert "| `jfox-alpha` | `kimi-plugin/skills/jfox-alpha/` |" in rendered
+    assert "Source root: `cc-plugin/skills/`" in rendered
+    assert "//" not in rendered
     assert "not-a-skill" not in rendered
     assert "\r" not in rendered and rendered.endswith("\n")
 

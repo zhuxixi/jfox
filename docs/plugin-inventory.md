@@ -12,7 +12,7 @@ This inventory is generated from plugin manifests and discoverable skill directo
 
 ## `cc-plugin`
 
-Source root: `cc-plugin/skills//`
+Source root: `cc-plugin/skills/`
 
 | Skill | Source |
 |---|---|
@@ -28,7 +28,7 @@ Source root: `cc-plugin/skills//`
 
 ## `kimi-plugin`
 
-Source root: `kimi-plugin/skills//`
+Source root: `kimi-plugin/skills/`
 
 | Skill | Source |
 |---|---|

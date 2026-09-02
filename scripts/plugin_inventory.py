@@ -126,7 +126,7 @@ def render_inventory(entries: Sequence[SkillEntry]) -> str:
         if not package_entries:
             continue
         rel_root = package_entries[0].relative_source
-        rel_root = rel_root[: -len(package_entries[0].name) - 1]
+        rel_root = rel_root[: -len(package_entries[0].name) - 2]
         lines.extend(
             [
                 "",
