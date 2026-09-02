@@ -6,7 +6,8 @@ description: |
   structure notes from clusters, and keep members in sync as notes evolve.
   Triggers on: "建 MOC", "MOC", "知识地图", "地图", "structure note",
   "主题导航", "主题簇", "生成地图", "moc create", "moc update",
-  "moc diagnose".
+  "moc diagnose", "批量建 MOC", "MOC 冷启动", "MOC 重构",
+  "MOC 覆盖度", "MOC 合并", "MOC 归档".
 ---
 
 # JFox MOC 地图层
@@ -40,6 +41,8 @@ jfox moc diagnose --json --top 10
 
 向用户呈现：哪些主题簇已达建 MOC 规模、建议主题名、孤儿情况。
 
+**簇序号时效**：`seed=42` 只保证同一知识库状态下的结果可复现；库一变动（新建/归档 MOC、改笔记标题）Louvain 重跑结果即变，旧簇序号全部失效。每次 create 前重新 diagnose，用 hub 标题确认目标簇，不认旧序号（实测：知识库变动后差点把 CR 簇当 skill 簇建）。
+
 ## Step 2: 草稿与确认
 
 选定簇后 dry-run 生成草稿（默认不落盘）：
@@ -54,6 +57,8 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --json
 
 展示草稿给用户确认（hub 置顶、按共享 tag 分组、成员清单）。**人工确认主题名与成员取舍**，需修改时用 `--title` / 换簇 / 换阈值重跑 dry-run。
 
+**审成员时效性**：确认草稿前先读成员笔记全文，识别失效/过时笔记——先归档或更新成员，再落盘。直接建 MOC 会把过时结论固化进地图（实测：双 bot 时代的笔记在单 bot 化后已失效）。
+
 **规模护栏**：簇超过 `--max-size`（默认 50）时拒绝生成——这是特性不是 bug，提高 `--threshold` 拆细再建。Louvain 能识别稠密社区，但不保证每个社区都小于护栏；纯链式语料也可能保持为一个社区。
 
 ## Step 3: 落盘
@@ -65,6 +70,13 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --yes
 ```
 
 自动完成：生成 structure note + 成员 backlinks 回填。孤儿可收纳：加 `--include-orphans`（并入「待归类」小节，孤儿 id 同样进 links）。
+
+**管道语法铁律**：MOC 正文一律用 `[[ID|标题]]`（管道左侧 ID 是解析目标，右侧标题仅作显示）。一条规则挡两个坑：
+
+- **同名标题歧义**：`[[标题]]` 解析走「精确标题 → 标题包含」fallback，同名笔记（session-to-permanent 重复产出是主因）会解析到非预期的那条
+- **标题含 `#` 截断**：`#` 是锚点分隔符，标题含 issue 号的笔记会被截断，静默丢成员（实测丢 #158/#195 两条）
+
+\#458 修复前，`moc create` 产物正文仍是 `[[标题]]`——`--yes` 落盘前检查成员清单，把标题含 `#` 或有同名风险的成员改写为 `[[ID|标题]]`；#458 修复后 create 产物自动免疫，手写正文仍须遵守。
 
 ## Step 4: 维护
 
