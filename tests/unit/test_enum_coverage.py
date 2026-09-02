@@ -22,7 +22,12 @@ def _documented(note: tuple[str, ...], gem: tuple[str, ...]) -> DocumentedEnums:
 
 
 CURRENT_NOTE = (
-    "fleeting", "literature", "permanent", "session", "candidate", "structure",
+    "fleeting",
+    "literature",
+    "permanent",
+    "session",
+    "candidate",
+    "structure",
 )
 CURRENT_GEM = ("chipped", "flawed", "normal", "flawless", "perfect")
 
@@ -48,9 +53,7 @@ def test_parse_readme_rejects_malformed_sections():
     with pytest.raises(EnumCoverageError, match="no GemLevel arrow chain"):
         parse_readme_enums("## Note Model\n\n| Value |\n|---|\n| `a` |\n")
     with pytest.raises(EnumCoverageError, match="malformed Note Model table row"):
-        parse_readme_enums(
-            "## Note Model\n\n| Value |\n|---|\n| plain |\n\n```text\na → b\n```\n"
-        )
+        parse_readme_enums("## Note Model\n\n| Value |\n|---|\n| plain |\n\n```text\na → b\n```\n")
     assert parse_readme_enums(good_table) == _documented(
         ("fleeting", "permanent"), ("chipped", "flawed")
     )
@@ -89,8 +92,7 @@ def test_extract_enum_values_from_ast_rejects_non_string_members():
 
 def test_extract_enum_values_from_ast_preserves_source_order():
     tree = ast.parse(
-        "class NoteType:\n    SECOND = 'b'\n    FIRST = 'a'\n"
-        "class GemLevel:\n    X = 'x'\n"
+        "class NoteType:\n    SECOND = 'b'\n    FIRST = 'a'\n" "class GemLevel:\n    X = 'x'\n"
     )
 
     values = extract_enum_values_from_ast(tree)

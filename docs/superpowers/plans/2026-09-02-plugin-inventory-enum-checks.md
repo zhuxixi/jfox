@@ -45,10 +45,12 @@
 ### Task 1: Enum coverage module (`scripts/enum_coverage.py`)
 
 **Files:**
+
 - Create: `scripts/enum_coverage.py`
 - Test: `tests/unit/test_enum_coverage.py`
 
 **Interfaces:**
+
 - Consumes: nothing new (stdlib only).
 - Produces: `DocumentedEnums`, `EnumCoverageError(ValueError)`, `extract_enum_values_from_ast(tree) -> dict[str, tuple[str, ...]]`, `extract_model_enums(path) -> DocumentedEnums`, `parse_readme_enums(text) -> DocumentedEnums`, `validate_enum_coverage(model_values, documented_values) -> None`. Later tasks import these names verbatim.
 
@@ -431,10 +433,12 @@ git commit -m "feat(docs): add enum coverage checker module (#480)"
 ### Task 2: Plugin inventory module (`scripts/plugin_inventory.py`)
 
 **Files:**
+
 - Create: `scripts/plugin_inventory.py`
 - Test: `tests/unit/test_plugin_inventory.py`
 
 **Interfaces:**
+
 - Consumes: `GENERATED_MARKER` imported from `scripts.generate_docs` (no cycle — `generate_docs` does not import this module at top level).
 - Produces: `PLUGIN_PACKAGES`, `PluginInventoryError(ValueError)`, `SkillEntry(package, name, relative_source)`, `load_plugin_manifests(packages_root)`, `resolve_manifest_skill_roots(manifest_data, package_root)`, `discover_skill_paths(skill_root)`, `extract_skill_inventory(packages_root)`, `render_inventory(entries)`. Task 3 imports these verbatim.
 
@@ -781,11 +785,13 @@ git commit -m "feat(docs): add plugin inventory module (#480)"
 ### Task 3: Orchestration in `generate_docs.py` + regenerate outputs + update existing tests
 
 **Files:**
+
 - Modify: `scripts/generate_docs.py`
 - Create: `docs/plugin-inventory.md` (generated, committed)
 - Modify: `tests/integration/test_cli_reference_generation.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 `enum_coverage` names; Task 2 `plugin_inventory` names; existing `extract_commands`/`load_descriptions`/`validate_descriptions`/`render_reference`/`write_reference`.
 - Produces: `generate_all(cli_output, descriptions, inventory_output, readme_path, models_path, packages_root)`; CLI options `--inventory-output`, `--readme`, `--models`, `--packages-root`. Task 5's subprocess tests call these flags.
 
@@ -795,7 +801,7 @@ git commit -m "feat(docs): add plugin inventory module (#480)"
 
 In `scripts/generate_docs.py`:
 
-1. Add top-level imports after the existing ones:
+First, add top-level imports after the existing ones:
 
 ```python
 from scripts.enum_coverage import (
@@ -811,7 +817,7 @@ from scripts.plugin_inventory import (
 )
 ```
 
-2. Add `generate_all` after `generate_reference`:
+Then, add `generate_all` after `generate_reference`:
 
 ```python
 def generate_all(
@@ -844,7 +850,7 @@ def generate_all(
     write_reference(inventory_output, inventory_markdown)
 ```
 
-3. Replace `main()` with the extended version (keep `generate_reference` intact for existing callers):
+Finally, replace `main()` with the extended version (keep `generate_reference` intact for existing callers):
 
 ```python
 def main() -> int:
@@ -942,10 +948,12 @@ git commit -m "feat(docs): generate plugin inventory and check enum coverage (#4
 ### Task 4: Gate extension, path filters, README link
 
 **Files:**
+
 - Modify: `.github/workflows/integration-test.yml`
 - Modify: `README.md`
 
 **Interfaces:**
+
 - Consumes: the gate contract from spec §4.5 and the README line from spec §4.6 (verbatim below).
 - Produces: the workflow/gate state that Task 5's static tests assert against.
 
@@ -993,7 +1001,7 @@ Expected: `YAML syntax OK`.
 
 - [ ] **Step 4: Add the README link line**
 
-In `README.md`, under `## Agent Integrations`, immediately after the paragraph ending with `...can evolve independently from the core command-line application.` (before the next `## ` heading), add:
+In `README.md`, under `## Agent Integrations`, immediately after the paragraph ending with `...can evolve independently from the core command-line application.` (before the next level-2 heading), add:
 
 ```markdown
 
@@ -1020,9 +1028,11 @@ git commit -m "ci: harden docs gate and cover packages paths (#480)"
 ### Task 5: Integration tests (`tests/integration/test_plugin_inventory.py`)
 
 **Files:**
+
 - Create: `tests/integration/test_plugin_inventory.py`
 
 **Interfaces:**
+
 - Consumes: `generate_all` via subprocess CLI flags; real repo files read-only; temp git repos for gate proofs.
 - Produces: the automated evidence for A2/A3/E2E/A4/A8/A9/A11/A12.
 
@@ -1212,6 +1222,7 @@ git commit -m "test(docs): integration coverage for inventory and gate checks (#
 **Files:** none (verification only).
 
 **Interfaces:**
+
 - Consumes: all commits from Tasks 1-5.
 - Produces: verification record for the PR body (written at push time, outside this plan).
 

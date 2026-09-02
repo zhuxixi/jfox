@@ -72,8 +72,10 @@ def test_current_enum_coverage(tmp_path: Path):
     """Current models.py and README pass the full generator end to end."""
     result = _run(
         tmp_path,
-        "--output", str(tmp_path / "cli.md"),
-        "--inventory-output", str(tmp_path / "inv.md"),
+        "--output",
+        str(tmp_path / "cli.md"),
+        "--inventory-output",
+        str(tmp_path / "inv.md"),
     )
     assert result.returncode == 0, result.stderr
 
@@ -84,8 +86,10 @@ def test_full_generation_is_deterministic(tmp_path: Path):
     for run, out in (("a", first), ("b", second)):
         result = _run(
             tmp_path / run,
-            "--output", str(out / "cli.md"),
-            "--inventory-output", str(out / "inv.md"),
+            "--output",
+            str(out / "cli.md"),
+            "--inventory-output",
+            str(out / "inv.md"),
         )
         assert result.returncode == 0, result.stderr
     assert (first / "cli.md").read_bytes() == (second / "cli.md").read_bytes()
@@ -110,8 +114,14 @@ def _make_gate_repo(tmp_path: Path) -> Path:
     (repo / "docs" / "plugin-inventory.md").write_text("inv\n", encoding="utf-8")
     _git(repo, "init", "-q")
     _git(
-        repo, "-c", "user.email=t@t", "-c", "user.name=t", "add",
-        "docs/cli-reference.md", "docs/plugin-inventory.md",
+        repo,
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "add",
+        "docs/cli-reference.md",
+        "docs/plugin-inventory.md",
     )
     _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
     return repo
@@ -132,14 +142,24 @@ def test_deleted_inventory_is_detected_as_untracked(tmp_path: Path):
     (repo / "docs" / "plugin-inventory.md").unlink()
     assert _git(repo, "diff", "--exit-code").returncode != 0  # deletion is tracked drift
     _git(
-        repo, "-c", "user.email=t@t", "-c", "user.name=t", "add",
+        repo,
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "add",
         "docs/plugin-inventory.md",
     )
     _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "delete inventory")
     (repo / "docs" / "plugin-inventory.md").write_text("inv-regenerated\n", encoding="utf-8")
     result = _git(
-        repo, "ls-files", "--others", "--exclude-standard",
-        "--", "docs/cli-reference.md", "docs/plugin-inventory.md",
+        repo,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "docs/cli-reference.md",
+        "docs/plugin-inventory.md",
     )
     assert result.stdout.strip() == "docs/plugin-inventory.md"
     assert result.stdout  # non-empty => the gate would fail

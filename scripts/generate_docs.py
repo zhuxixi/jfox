@@ -332,7 +332,6 @@ def generate_all(
     # Lazy import: plugin_inventory imports GENERATED_MARKER from this module at
     # top level, so a top-level import here would be circular.
     from scripts.plugin_inventory import (
-        PluginInventoryError,
         extract_skill_inventory,
         render_inventory,
     )
@@ -382,9 +381,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate the JFox English docs")
     parser.add_argument("--output", type=Path, default=Path("docs/cli-reference.md"))
     parser.add_argument("--descriptions", type=Path, default=Path("docs/cli-descriptions.yaml"))
-    parser.add_argument(
-        "--inventory-output", type=Path, default=Path("docs/plugin-inventory.md")
-    )
+    parser.add_argument("--inventory-output", type=Path, default=Path("docs/plugin-inventory.md"))
     parser.add_argument("--readme", type=Path, default=Path("README.md"))
     parser.add_argument("--models", type=Path, default=Path("jfox/models.py"))
     parser.add_argument("--packages-root", type=Path, default=Path("packages"))

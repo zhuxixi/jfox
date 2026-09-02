@@ -40,10 +40,7 @@ def extract_enum_values_from_ast(tree: ast.Module) -> dict[str, tuple[str, ...]]
             for target in stmt.targets:
                 if not (isinstance(target, ast.Name) and target.id.isupper()):
                     continue
-                if not (
-                    isinstance(stmt.value, ast.Constant)
-                    and isinstance(stmt.value.value, str)
-                ):
+                if not (isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)):
                     raise EnumCoverageError(
                         f"models source: {node.name}.{target.id} must be a string literal"
                     )
@@ -51,9 +48,7 @@ def extract_enum_values_from_ast(tree: ast.Module) -> dict[str, tuple[str, ...]]
         result[node.name] = tuple(values)
     missing = sorted(set(wanted) - set(result))
     if missing:
-        raise EnumCoverageError(
-            "models source: missing enum class(es): " + ", ".join(missing)
-        )
+        raise EnumCoverageError("models source: missing enum class(es): " + ", ".join(missing))
     return result
 
 
@@ -155,17 +150,14 @@ def validate_enum_coverage(
         for value in documented:
             if value in seen:
                 raise EnumCoverageError(
-                    f"{enum_name}: duplicate documented value {value!r} in README "
-                    f"Note Model"
+                    f"{enum_name}: duplicate documented value {value!r} in README " f"Note Model"
                 )
             seen.add(value)
         errors: list[str] = []
         missing = [value for value in model if value not in seen]
         stale = [value for value in documented if value not in set(model)]
         if missing:
-            errors.append(
-                f"{enum_name}: add {', '.join(missing)} to the README Note Model section"
-            )
+            errors.append(f"{enum_name}: add {', '.join(missing)} to the README Note Model section")
         if stale:
             errors.append(
                 f"{enum_name}: remove stale value(s) {', '.join(stale)} from the README "

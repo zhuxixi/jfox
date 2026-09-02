@@ -37,17 +37,11 @@ def load_plugin_manifests(packages_root: Path) -> dict[str, dict]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except OSError as exc:
-            raise PluginInventoryError(
-                f"could not read plugin manifest {path}: {exc}"
-            ) from exc
+            raise PluginInventoryError(f"could not read plugin manifest {path}: {exc}") from exc
         except json.JSONDecodeError as exc:
-            raise PluginInventoryError(
-                f"invalid JSON in plugin manifest {path}: {exc}"
-            ) from exc
+            raise PluginInventoryError(f"invalid JSON in plugin manifest {path}: {exc}") from exc
         if not isinstance(data, dict):
-            raise PluginInventoryError(
-                f"plugin manifest must be a JSON object: {path}"
-            )
+            raise PluginInventoryError(f"plugin manifest must be a JSON object: {path}")
         manifests[package] = data
     return manifests
 
@@ -89,9 +83,7 @@ def extract_skill_inventory(packages_root: Path) -> tuple[SkillEntry, ...]:
     root_resolved = packages_root.resolve()
     entries: list[SkillEntry] = []
     for package in PLUGIN_PACKAGES:
-        skill_root = resolve_manifest_skill_roots(
-            manifests[package], packages_root / package
-        )
+        skill_root = resolve_manifest_skill_roots(manifests[package], packages_root / package)
         try:
             rel_root = skill_root.resolve().relative_to(root_resolved).as_posix()
         except ValueError as exc:
