@@ -471,6 +471,107 @@ class PromptCaptureConfig:
 
 
 @dataclass
+class PromptJudgeConfig:
+    """prompt 判断外部 runner 配置。
+
+    安全约束：extra_args 不能覆盖保留安全参数；custom_command 必须是 argv 数组。
+    """
+
+    runner: str = "pi"  # "pi" | "argv"
+    binary: str = "pi"
+    model: str = "ollama/deepseek-v4-pro:0813-cloud"
+    thinking: str = "off"
+    extra_args: List[str] = field(default_factory=list)
+    custom_command: Optional[List[str]] = None  # runner=argv 时必填
+    runner_scope: str = "remote"  # "local" | "remote"
+    allow_remote: bool = False
+    timeout_seconds: int = 300
+    max_output_chars: int = 1_500_000
+    max_stderr_chars: int = 20_000
+    max_batch_input_chars: int = 6_000_000
+    max_transcript_chars: int = 4_000_000
+    max_grounding_chars: int = 4000
+    default_limit: int = 50
+    session_batch_limit: int = 20
+    history_limit: int = 20
+    context_turns_before: int = 3
+    context_turns_after: int = 3
+    claim_timeout_seconds: int = 420
+    working_dir: str = "~/.jfox-prompt-judge-runs"
+
+    def __post_init__(self) -> None:
+        if self.runner not in ("pi", "argv"):
+            raise ValueError(f"runner 必须是 'pi' 或 'argv'，得到 {self.runner!r}")
+        if self.timeout_seconds < 30:
+            self.timeout_seconds = 300
+        if self.claim_timeout_seconds <= self.timeout_seconds + 60:
+            raise ValueError(
+                f"claim_timeout_seconds ({self.claim_timeout_seconds}) 必须大于 "
+                f"timeout_seconds + 60 ({self.timeout_seconds + 60})"
+            )
+        if self.runner == "argv":
+            if not self.custom_command or not isinstance(self.custom_command, list):
+                raise ValueError("runner=argv 时 custom_command 必须是非空 argv 数组")
+        for limit_field in (
+            "max_output_chars",
+            "max_stderr_chars",
+            "max_batch_input_chars",
+            "max_transcript_chars",
+            "max_grounding_chars",
+            "default_limit",
+            "session_batch_limit",
+            "history_limit",
+        ):
+            val = getattr(self, limit_field)
+            if not isinstance(val, int) or val < 1:
+                setattr(self, limit_field, getattr(type(self), limit_field))
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptJudgeConfig":
+        if not data:
+            return cls()
+
+        def _safe_int(key, default):
+            try:
+                return int(data.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        return cls(
+            runner=data.get("runner") or "pi",
+            binary=data.get("binary") or "pi",
+            model=data.get("model") or cls().model,
+            thinking=data.get("thinking") or "off",
+            extra_args=(
+                list(data["extra_args"]) if isinstance(data.get("extra_args"), list) else []
+            ),
+            custom_command=(
+                list(data["custom_command"])
+                if isinstance(data.get("custom_command"), list)
+                else None
+            ),
+            runner_scope=data.get("runner_scope") or "remote",
+            allow_remote=bool(data.get("allow_remote", False)),
+            timeout_seconds=_safe_int("timeout_seconds", 300),
+            max_output_chars=_safe_int("max_output_chars", 1_500_000),
+            max_stderr_chars=_safe_int("max_stderr_chars", 20_000),
+            max_batch_input_chars=_safe_int("max_batch_input_chars", 6_000_000),
+            max_transcript_chars=_safe_int("max_transcript_chars", 4_000_000),
+            max_grounding_chars=_safe_int("max_grounding_chars", 4000),
+            default_limit=_safe_int("default_limit", 50),
+            session_batch_limit=_safe_int("session_batch_limit", 20),
+            history_limit=_safe_int("history_limit", 20),
+            context_turns_before=_safe_int("context_turns_before", 3),
+            context_turns_after=_safe_int("context_turns_after", 3),
+            claim_timeout_seconds=_safe_int("claim_timeout_seconds", 420),
+            working_dir=data.get("working_dir") or "~/.jfox-prompt-judge-runs",
+        )
+
+
+@dataclass
 class GlobalConfig:
     """全局配置"""
 
@@ -481,6 +582,8 @@ class GlobalConfig:
     gem_synthesis: GemSynthesisConfig = field(default_factory=GemSynthesisConfig)
     note_add: NoteAddConfig = field(default_factory=NoteAddConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    prompt_capture: PromptCaptureConfig = field(default_factory=PromptCaptureConfig)
+    prompt_judge: PromptJudgeConfig = field(default_factory=PromptJudgeConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -491,6 +594,8 @@ class GlobalConfig:
             "gem_synthesis": self.gem_synthesis.to_dict(),
             "note_add": self.note_add.to_dict(),
             "backup": self.backup.to_dict(),
+            "prompt_capture": self.prompt_capture.to_dict(),
+            "prompt_judge": self.prompt_judge.to_dict(),
         }
 
     @classmethod
@@ -507,6 +612,15 @@ class GlobalConfig:
             gem_synthesis=GemSynthesisConfig.from_dict(data.get("gem_synthesis")),
             note_add=NoteAddConfig.from_dict(data.get("note_add")),
             backup=BackupConfig.from_dict(data.get("backup")),
+            prompt_capture=PromptCaptureConfig.from_dict(
+                data.get("prompt_capture")
+                if data.get("prompt_capture") is not None
+                # 兼容：无新 section 时从旧 fragment_capture.enabled 继承
+                else {
+                    "enabled": FragmentCaptureConfig.from_dict(data.get("fragment_capture")).enabled
+                }
+            ),
+            prompt_judge=PromptJudgeConfig.from_dict(data.get("prompt_judge")),
         )
 
 
