@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 import sys
@@ -58,7 +57,7 @@ def test_real_inventory_matches_skill_directories():
             if skill_dir.is_dir() and (skill_dir / "SKILL.md").is_file():
                 rel = skill_dir.resolve().relative_to(REPO_ROOT / "packages").as_posix()
                 discovered.add((package, skill_dir.name, rel + "/"))
-    counts = {pkg: sum(1 for e in discovered if e[0] == pkg) for pkg in discovered}
+    counts = {pkg: sum(1 for e in discovered if e[0] == pkg) for pkg in {e[0] for e in discovered}}
     print(f"diagnostic counts: {counts}")
 
     content = INVENTORY.read_text(encoding="utf-8")
@@ -94,7 +93,6 @@ def test_full_generation_is_deterministic(tmp_path: Path):
         assert result.returncode == 0, result.stderr
     assert (first / "cli.md").read_bytes() == (second / "cli.md").read_bytes()
     assert (first / "inv.md").read_bytes() == (second / "inv.md").read_bytes()
-    assert hashlib.sha256((first / "inv.md").read_bytes()).hexdigest()
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -162,7 +160,6 @@ def test_deleted_inventory_is_detected_as_untracked(tmp_path: Path):
         "docs/plugin-inventory.md",
     )
     assert result.stdout.strip() == "docs/plugin-inventory.md"
-    assert result.stdout  # non-empty => the gate would fail
 
 
 def test_workflow_paths_include_packages():
