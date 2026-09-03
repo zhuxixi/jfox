@@ -481,6 +481,7 @@ class GlobalConfig:
     gem_synthesis: GemSynthesisConfig = field(default_factory=GemSynthesisConfig)
     note_add: NoteAddConfig = field(default_factory=NoteAddConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    prompt_capture: PromptCaptureConfig = field(default_factory=PromptCaptureConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -491,6 +492,7 @@ class GlobalConfig:
             "gem_synthesis": self.gem_synthesis.to_dict(),
             "note_add": self.note_add.to_dict(),
             "backup": self.backup.to_dict(),
+            "prompt_capture": self.prompt_capture.to_dict(),
         }
 
     @classmethod
@@ -507,6 +509,14 @@ class GlobalConfig:
             gem_synthesis=GemSynthesisConfig.from_dict(data.get("gem_synthesis")),
             note_add=NoteAddConfig.from_dict(data.get("note_add")),
             backup=BackupConfig.from_dict(data.get("backup")),
+            prompt_capture=PromptCaptureConfig.from_dict(
+                data.get("prompt_capture")
+                if data.get("prompt_capture") is not None
+                # 兼容：无新 section 时从旧 fragment_capture.enabled 继承
+                else {
+                    "enabled": FragmentCaptureConfig.from_dict(data.get("fragment_capture")).enabled
+                }
+            ),
         )
 
 
@@ -839,6 +849,20 @@ class GlobalConfigManager:
     def get_backup_config(self) -> BackupConfig:
         """获取 KB 备份配置"""
         return self._load().backup
+
+    def get_prompt_capture_config(self) -> PromptCaptureConfig:
+        """获取 prompt 记录配置"""
+        return self._load().prompt_capture
+
+    def update_prompt_capture_config(self, **changes: Any) -> bool:
+        """更新 prompt 记录配置中的若干字段，未传入的字段保持原样"""
+        config = self._load()
+        current = asdict(config.prompt_capture)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.prompt_capture = PromptCaptureConfig.from_dict(current)
+        self._config = config
+        return self._save()
+
 
     def update_backup_config(self, **changes: Any) -> bool:
         """更新备份配置中的若干字段，未传入的字段保持原样"""

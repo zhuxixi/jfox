@@ -10,7 +10,7 @@ HOOK = REPO_ROOT / "packages" / "cc-plugin" / "hooks" / "fragment-capture.sh"
 
 
 def test_internal_sources_expected_values():
-    assert INTERNAL_SOURCES == {"auto-summary", "gem-synth"}
+    assert INTERNAL_SOURCES == {"auto-summary", "gem-synth", "prompt-judge"}
 
 
 def test_hook_script_matches_internal_sources():
