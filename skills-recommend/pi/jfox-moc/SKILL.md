@@ -93,6 +93,40 @@ jfox moc update --id <moc_id> --json  # 单条 MOC
 
 维护节奏建议：每批次新笔记落库后跑一次，或随 organize 定期整理一起做。
 
+## 批量建设与成员质量审查（冷启动/重构）
+
+适用场景：从 0 批量建多个 MOC，或大规模重构现有地图层（归档/合并旧 MOC）。单 MOC 日常生命周期走 Step 1-4；批量场景在每一步上多一道质量闸。
+
+### 批量主流程
+
+diagnose → 逐簇 dry-run + 审成员时效性（Step 2 规则）→ 落盘并执行管道铁律（Step 3 规则）→ 覆盖度核查 →（可选）合并/归档。每建完一个 MOC 立即做覆盖度核查，不要攒到全部建完。
+
+### 无独立簇时：手动建 MOC
+
+语义聚类聚不出簇的主题（平台层笔记被大簇吸收、provider 配置散落各簇等）走手动路径：
+
+1. 关键词搜索收集候选成员（多组关键词覆盖同义表述）
+2. 与现有 MOC 成员做差集，排除已归属笔记
+3. 分组呈现给用户确认主题名与成员取舍
+4. 确认后落盘：`jfox add --type structure --tag moc --title "<主题名>" --content-file <草稿.md>`，正文成员一律 `[[ID|标题]]`（Step 3 铁律）
+
+手动建的 MOC 与 create 产物同受 `moc update` 管理（update 按 type=structure 扫描，与创建方式无关）。#484（moc add-member 命令）落地后手动补成员可简化；落地前手动加成员会踩 #470（edit 用正文解析结果覆盖 frontmatter links 且不去重）——正文 wiki-links 与 frontmatter links 必须同步维护。
+
+### 覆盖度核查
+
+语义聚类会漏掉主题相关笔记（实测：CR MOC 初版漏 16 条，含 2 条核心根笔记）。每个 MOC 建完后必做：
+
+1. 主题关键词 `jfox search "<关键词>" --mode hybrid --type permanent`，多组关键词各取 top 20-50
+2. 搜索结果与 MOC 成员 links 做差集
+3. 差集中确实属于主题的，按手动路径补入
+
+附：`jfox list --type structure` 默认 limit 10 会漏 MOC，盘点全量 MOC 时 `--limit 20` 起步。
+
+### 合并与归档处置
+
+- **旧 MOC 无意义 → 归档**：`jfox archive <moc_id>`。structure note 归档不影响成员笔记（实测：2026-08-27 测试批次 7 个 MOC 全部归档）
+- **两 MOC 主题重叠 → 合并**：保留主题更准确的 MOC，把另一 MOC 的独有成员按手动路径补入，然后归档被并者（实测：TUI MOC 并入 pi-agent-board 大 MOC）
+
 ## 关键原则
 
 - MOC 默认阈值与聚类算法只影响 `moc create`、`moc update`、`moc diagnose`；其他 jfox 命令不受影响。生产 Louvain 不通过 MOC CLI 暴露 `resolution` 参数。
