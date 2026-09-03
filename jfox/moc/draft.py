@@ -95,24 +95,36 @@ def build_moc_draft(
     )
 
 
+def _member_link(note_id: str, title: str) -> str:
+    """渲染成员 wiki 链接：ID 为目标、标题为别名；标题不安全时只写 ID。
+
+    标题含换行或 `]]` 时无法安全作为管道别名（会截断/破坏链接语法），
+    退化为 `[[ID]]` 形式，规避 #458（标题含 # 被截断）与 #470（同名歧义）。
+    """
+    if "\n" in title or "\r" in title or "]]" in title:
+        return f"[[{note_id}]]"
+    return f"[[{note_id}|{title}]]"
+
+
 def render_moc_content(draft: MocCreateDraft) -> str:
     """渲染 MOC 正文（不含 frontmatter 与标题行，create_note 负责补全）。
 
     小节顺序：各 tag 分组 → 「待归类」（孤儿）→ 「近期活动」占位。
+    成员链接使用 ID canonical 形式（[[ID|标题]]），标题不安全时退化为 [[ID]]。
     """
     lines: List[str] = []
     for group in draft.groups:
         lines.append(f"## {group.name}")
         lines.append("")
         for member in group.members:
-            lines.append(f"- [[{member.title}]] — {member.link_degree} links")
+            lines.append(f"- {_member_link(member.id, member.title)} — {member.link_degree} links")
         lines.append("")
 
     if draft.orphan_bucket:
         lines.append(f"## {_ORPHAN_SECTION}")
         lines.append("")
         for orphan in draft.orphan_bucket:
-            lines.append(f"- [[{orphan.title}]] — {orphan.link_degree} links")
+            lines.append(f"- {_member_link(orphan.id, orphan.title)} — {orphan.link_degree} links")
         lines.append("")
 
     lines.append(f"## {_RECENT_SECTION}")

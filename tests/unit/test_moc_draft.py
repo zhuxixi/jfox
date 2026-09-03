@@ -6,6 +6,8 @@ import pytest
 
 from jfox.moc.cluster import ClusterMember, ClusterSummary, OrphanNote
 from jfox.moc.draft import (
+    DraftGroup,
+    MocCreateDraft,
     build_moc_draft,
     build_update_diff,
     filter_live_members,
@@ -78,11 +80,29 @@ def test_render_content_has_groups_orphans_and_recent_section():
     content = render_moc_content(draft)
 
     assert "## zima" in content
-    assert "- [[Zima Hub]] — 10 links" in content
+    assert "- [[1|Zima Hub]] — 10 links" in content
     assert "## 其他" in content
     assert "## 待归类" in content
-    assert "- [[Orphan A]] — 0 links" in content
+    assert "- [[9|Orphan A]] — 0 links" in content
     assert "## 近期活动" in content
+
+
+def test_render_content_uses_id_canonical_member_links():
+    draft = build_moc_draft(_cluster(), _tags(), max_size=50)
+    content = render_moc_content(draft)
+
+    assert "- [[1|Zima Hub]] — 10 links" in content
+    assert "- [[Zima Hub]] — 10 links" not in content
+
+
+def test_render_content_uses_id_only_for_unsafe_titles():
+    member = ClusterMember(id="1", title="Unsafe ]] title", link_degree=1, mean_similarity=0.8)
+    draft = MocCreateDraft(title="Unsafe MOC", groups=[DraftGroup("misc", [member])])
+
+    content = render_moc_content(draft)
+
+    assert "- [[1]] — 1 links" in content
+    assert "Unsafe ]] title" not in content
 
 
 def test_update_diff_adds_new_and_removes_dead_links():
