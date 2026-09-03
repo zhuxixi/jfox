@@ -35,6 +35,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from . import __version__, note
+from .add_dedup import DuplicateNoteError
 from .config import config
 from .kb_manager import get_kb_manager
 from .models import NoteType
@@ -460,6 +461,7 @@ def _add_note_impl(
     output_format: str,
     template: Optional[str] = None,
     topic: Optional[str] = None,
+    force: bool = False,
 ):
     """添加笔记的内部实现"""
     # 如果指定了模板，使用模板渲染
@@ -505,6 +507,13 @@ def _add_note_impl(
     # session 类型必须提供 --topic
     if nt == NoteType.SESSION and not topic:
         raise ValueError("--type session 需要 --topic 参数")
+
+    # #383 permanent 落库前防重（--force 跳过；内部故障一律放行）。
+    # 无标题时用与 create_note 相同的规则先派生，防无标题短文绕过标题通道
+    if nt == NoteType.PERMANENT and not force:
+        from .add_dedup import check_add_duplicate
+
+        check_add_duplicate(note.derive_note_title(title, content), content)
 
     # 从内容中提取维基链接
     wiki_links = extract_wiki_links(content)
@@ -611,6 +620,12 @@ def _add_note_impl(
                 # 回滚内存中的 new_note.backlinks
                 new_note.backlinks = new_note.backlinks[:original_backlinks_count]
 
+        # #383 落库成功后灌 dedup 表（daemon 可用时），后续 add 与 gem_synth 都能查到
+        if nt == NoteType.PERMANENT:
+            from .add_dedup import record_added_permanent
+
+            record_added_permanent(new_note.id, content)
+
         result = {
             "success": True,
             "note": {
@@ -634,13 +649,11 @@ def _add_note_impl(
         from .vector_store import get_vector_store
 
         if output_format == "json":
-            print(output_json(result))
-            import sys
-
             dim_warning = get_vector_store().last_dimension_warning
             if dim_warning:
-                # Keep stdout JSON purely structured
-                print(f"⚠ {dim_warning} 笔记已保存，但未进入向量索引。", file=sys.stderr)
+                # 并入 JSON 字段而非 stderr print：stderr 在 2>&1 管道里同样污染解析流
+                result["vector_dimension_warning"] = dim_warning
+            print(output_json(result))
         else:
             _print_action_table(
                 "created",
@@ -702,6 +715,9 @@ def add(
         None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
     ),
     topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型必填）"),
+    force: bool = typer.Option(
+        False, "--force", help="跳过防重检查，强制创建（迁移/回填/明确要重复时用）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb", "-k", help="目标知识库名称"),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
@@ -729,10 +745,28 @@ def add(
         from .config import use_kb
 
         with use_kb(kb):
-            _add_note_impl(content, title, note_type, tags, source, output_format, template, topic)
+            _add_note_impl(
+                content, title, note_type, tags, source, output_format, template, topic, force
+            )
 
     except typer.Exit:
         raise
+    except DuplicateNoteError as e:
+        dup_info = {
+            "matched_id": e.matched_id,
+            "matched_title": e.matched_title,
+            "matched_by": e.matched_by,
+            "score": e.score,
+        }
+        if output_format == "json":
+            print(output_json({"success": False, "skipped": "duplicate", "duplicate": dup_info}))
+        else:
+            console.print(
+                f"[yellow]⚠[/yellow] 已存在重复笔记（{e.matched_by}）："
+                f"[bold]{e.matched_title}[/bold]（id: {e.matched_id}），已跳过创建。"
+                "使用 --force 可强制创建。"
+            )
+        raise typer.Exit(1)
     except Exception as e:
         result = {
             "success": False,
@@ -4100,10 +4134,57 @@ def redirect(
         raise typer.Exit(1)
 
 
+def _json_mode_requested(argv: List[str]) -> bool:
+    """检测 argv 是否请求 JSON 输出。
+
+    识别形式：--json / -f json / -fjson / --format json / --format=json。
+    Click 语义：同一 flag 重复出现时后者生效，故取最后一次 format 值；
+    --json 是独立的快捷开关，出现即强制 JSON（优先于 --format）。
+
+    日志 handler 本就走 stderr，但管道 `jfox ... --json 2>&1 | jq` 会把 stderr
+    合进被解析流——INFO 噪声（Saved note / 索引写入等）让对端 JSON 解析失败，
+    agent 误判失败后 fallback 重跑产生重复笔记（#383 根因 A）。JSON 模式下
+    用 logging.disable 全静默（含 WARNING/ERROR），保证任何环境（含无 daemon
+    的本地模型加载链日志）合流后仍是纯 JSON；错误经退出码与 JSON 字段传达。
+    """
+    last_format: Optional[str] = None
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--json":
+            return True
+        if arg.startswith("--format="):
+            last_format = arg.split("=", 1)[1]
+        elif arg in ("-f", "--format"):
+            # 空格分隔形式：取下一个 token（存在时）
+            if i + 1 < len(argv):
+                last_format = argv[i + 1]
+                i += 1
+        elif arg.startswith("-f") and len(arg) > 2 and not arg.startswith("--"):
+            # Click 短选项附着形式：-fjson
+            last_format = arg[2:]
+        i += 1
+    return last_format == "json"
+
+
 # 入口点
 def main():
     """CLI 入口点"""
     import os
+
+    # JSON 模式抑制 INFO 日志（#383 根因 A）
+    if _json_mode_requested(sys.argv):
+        # 全静默而非 setLevel(WARNING)：无 daemon 机器上 add 的向量路径会走本地
+        # 模型加载链（model_downloader 的 WARNING/ERROR），穿透 WARNING 线污染
+        # `--json 2>&1` 合并流（CI Fast 实测，PR #483）；错误经退出码与 JSON
+        # 字段传达，不依赖日志行。
+        logging.disable(logging.CRITICAL)
+        # tqdm 进度条（模型下载/权重加载 "Loading weights"）不走 logging，直写
+        # stderr，必须用环境变量关掉；tqdm 的 envwrap 在实例化时读 env，需在
+        # 其惰性 import 前设置（CI Fast 实测，PR #483 第二轮）。
+        os.environ["TQDM_DISABLE"] = "1"
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
     # 离线模式：跳过 HuggingFace 网络请求，节省 0.5-2s
     # 仅在 CLI 入口设置，不影响测试环境

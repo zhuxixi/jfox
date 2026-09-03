@@ -196,15 +196,19 @@ def _content_hash(content: str) -> str:
     return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
 
-def _embed(text: str) -> Optional[np.ndarray]:
-    """经 embedding daemon 取向量。daemon 不可用返回 None（调用方降级）。"""
+def _embed(text: str, daemon_only: bool = False) -> Optional[np.ndarray]:
+    """经 embedding daemon 取向量。daemon 不可用返回 None（调用方降级）。
+
+    daemon_only=True 时绝不触发本地模型加载（#383 add 防重路径红线）。"""
     from ..embedding_backend import get_backend
 
-    vec = get_backend().encode_single(text)
+    vec = get_backend().encode_single(text, daemon_only=daemon_only)
     return np.asarray(vec, dtype=np.float32)
 
 
-def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[DedupHit]:
+def dedup_check(
+    kb: str, content: str, threshold: float = 0.88, daemon_only: bool = False
+) -> Optional[DedupHit]:
     """返回与已有 candidate/permanent 最相似的 DedupHit；无重复或降级时返回 None。
 
     daemon 不可用 / 空内容 / 表空 → 返回 None（降级放行，不阻塞合成）。
@@ -214,7 +218,7 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[Dedu
         cleaned = _clean_candidate_content(content)
         if not cleaned:
             return None
-        emb = _embed(cleaned)
+        emb = _embed(cleaned, daemon_only=daemon_only)
         if emb is None:
             return None
         rows = _get_store().all_embeddings(kb, ("candidate", "permanent"))
@@ -235,7 +239,9 @@ def dedup_check(kb: str, content: str, threshold: float = 0.88) -> Optional[Dedu
     return None
 
 
-def upsert_dedup(kb: str, note_id: str, note_type: str, content: str) -> bool:
+def upsert_dedup(
+    kb: str, note_id: str, note_type: str, content: str, daemon_only: bool = False
+) -> bool:
     """算 embedding 入表。content_hash 命中（内容没变）则跳过省 daemon 调用。失败仅 warning。
 
     返回 True 表示实际写入了 dedup_embeddings；False 表示跳过（内容空/hash 命中/embed 失败/异常）。
@@ -252,7 +258,7 @@ def upsert_dedup(kb: str, note_id: str, note_type: str, content: str) -> bool:
         ch = _content_hash(cleaned)
         if store.get_hash(kb, note_id) == ch:
             return False
-        emb = _embed(cleaned)
+        emb = _embed(cleaned, daemon_only=daemon_only)
         if emb is None:
             return False
         store.upsert(kb, note_id, note_type, ch, emb.tobytes())

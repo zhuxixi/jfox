@@ -33,6 +33,9 @@ uv run black jfox/ tests/
 uv run ruff check jfox/ tests/
 npx --yes markdownlint-cli2@0.23.2 "**/*.md" "#node_modules" "#.venv"  # Markdown lint（配置 .markdownlint-cli2.jsonc，#418）
 
+# Regenerate CLI reference（docs/cli-reference.md 是生成文件，勿手改）
+uv run python scripts/generate_docs.py
+
 # Build
 uv build
 
@@ -57,7 +60,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 | Module | Role |
 |--------|------|
-| `cli.py` | All CLI commands (~4100 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
+| `cli.py` | All CLI commands (~4200 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
 | `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
 | `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json` |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
@@ -68,6 +71,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `indexer.py` | File monitoring (watchdog) + incremental indexing |
 | `note.py` | Markdown file CRUD with YAML frontmatter |
 | `models.py` | `Note` data model with frontmatter serialization |
+| `add_dedup.py` | `jfox add` permanent 落库前双通道防重（#383）：标题通道（非 archived 同标题、大小写不敏感、不限类型）+ 正文余弦 ≥0.95 通道（复用 `gem_synth/dedup`，`daemon_only=True` 绝不回退本地模型加载、仅 daemon 在跑时启用）；闸门自身故障一律放行，非路障 |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
 | `bm25_index.py` | BM25 keyword search index；写路径 filelock + 原子写 + `write_version` 乐观并发控制，多进程并发写安全（#391/#396） |
 | `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理）；CPU 默认模型 `BAAI/bge-small-zh-v1.5`（512 维，#442），本地模型目录未命中时先走 ModelDownloader 下载链再兜底加载（#374） |
@@ -108,18 +112,21 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Version bump**: 发版时必须同时修改 `pyproject.toml`、`jfox/__init__.py` 和 `uv.lock` 三处版本号。先改前两个文件，再跑 `uv lock` 更新 lock 文件（曾有 #88 遗漏 `__init__.py` 的教训）
 - **Line length**: 100 chars (black + ruff configured in `pyproject.toml`)
 - **Comments/docs**: Chinese (中文)
-- **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）
+- **README**: 英文 baseline（#461 起重写），改 README 保持英文；其余项目文档/注释仍中文
+- **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）；命令面有任何增删改还须补 `docs/cli-descriptions.yaml` 英文描述并跑 `uv run python scripts/generate_docs.py` 重新生成 `docs/cli-reference.md`，否则 CI lint drift gate 挂（#474/#476）
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
 - **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 gem_synth/backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
 - **Modifying data models**: Update `Note` class in `models.py`, update `to_markdown()`/`from_markdown()`, consider backward compat
 - **Viewing note content**: `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，默认输出完整 Markdown（`--json` / `--format json` 输出结构化字段）
 - **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `gem_synth/lifecycle.py` 同步 dedup 表）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
 - **源笔记清理统一 archive**: skill 整理/提炼后清理源笔记用 `jfox archive`（软删除，`jfox unarchive` 可回滚误判），不用 `delete --force` 硬删（#436）
+- **`jfox add` permanent 防重**（#383/#483）: 默认开启，标题或正文余弦 ≥0.95 命中即拒绝创建（exit 1，JSON 输出 `skipped: "duplicate"`），`--force` 跳过（迁移/回填用）；开关与阈值在 `~/.zk_config.json` 的 `note_add` 节（`NoteAddConfig`）；embedding 通道仅 daemon 在跑时生效，落库后回灌 dedup 表供后续 add 与 gem_synth 共查
 
 ## Test Infrastructure
 
 - **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `cli_fast` (ZKCLI with mocked embeddings), `generator` (NoteGenerator), `mock_embedding_backend`
 - **Test utils** (`tests/utils/`): `temp_kb.py`, `jfox_cli.py` (CLI wrapper), `note_generator.py`
+- **全局配置隔离**: conftest 设 `ZK_CONFIG_PATH`（配合既有 `ZK_KB_ROOT`）指向临时目录，pytest 及其拉起的 CLI 子进程不读写真实 `~/.zk_config.json`（#469，`global_config.py` 的 `DEFAULT_CONFIG_PATH` 支持该 env 覆盖）；`JFOX_SYNTHESIS_DB` 同样无条件指临时路径，防 DedupStore 单例写真实 `~/.zettelkasten/synthesis_log.db`（#483）
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
 - **Run single-process** to avoid ChromaDB/model loading conflicts
@@ -139,7 +146,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
 
-**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`scripts/**`/`docs/cli-descriptions.yaml`/`packages/**`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint）；#480 起 `packages/**`（含 cc/kimi-plugin 发版 bump 的 json）改动也触发 CI。发版 bump PR 因此会跑测试；release-helper 测试仍须按当前版本动态算「下一版」（勿硬编码）——这是测试正确性要求，与 CI 触发范围无关（#382 的教训保留）。
+**CI 触发受 `paths` 限制**：`integration-test.yml` 的 `paths` 含 `jfox/**`/`tests/**`/`pyproject.toml`/`**/*.md`/`scripts/**`/`docs/cli-descriptions.yaml`/`packages/**`/`.markdownlint-cli2.jsonc`/自身——#418 起 Markdown 文件改动也触发 CI（lint job 跑 markdownlint，并跑生成文档 drift gate：重跑 `scripts/generate_docs.py` 后 `git diff` 须为空且无 untracked 生成文件，#476/#480）；#480 起 `packages/**`（含 cc/kimi-plugin 发版 bump 的 json）改动也触发 CI。发版 bump PR 因此会跑测试；release-helper 测试仍须按当前版本动态算「下一版」（勿硬编码）——这是测试正确性要求，与 CI 触发范围无关（#382 的教训保留）。
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
@@ -175,7 +182,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
 - `packages/cc-plugin/skills/` — 9 skills: `search`, `ingest`, `manage`, `organize`, `promote`, `session-summary`, `session-to-permanent`, `using-jfox`, `bookshelf`
 
-**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.4.
+**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.5.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 **Non-Claude-Code platforms**: `skills-recommend/`（`pi/` + `kimi-cli/`）是 pi / Kimi CLI 适配版 SKILL.md 集（如 `pi/jfox-moc`，#419）——CLI 语义或命令面变更时须与 cc-plugin skills 同步更新。
 **Skill 多副本同步**: skill 文案/行为改动须同步所有镜像副本——`packages/cc-plugin/skills/`、`packages/kimi-plugin/skills/`、`skills-recommend/kimi-cli/`、`skills-recommend/pi/`，只改一处会各端行为分叉（#440 踩过同步模式）
@@ -190,6 +197,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - Test directory migration mostly complete; root-level `test_config_unit.py` and `test_config_set_unit.py` remain but test different things from `tests/unit/`
 - 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `gem_synth/lifecycle.py`
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
+- JSON 模式（`cli.py` `_json_mode_requested` 兼容 `--json`/`-f json`/`-fjson`/`--format=json`，重复 flag 取后者）下 CLI 入口统一 `logging.disable(CRITICAL)` + `TQDM_DISABLE=1`，保证 `--json 2>&1 | jq` 合流后仍是纯 JSON（#383 根因 A：INFO/tqdm 噪声曾令调用方解析失败、误判后重跑产生重复笔记）；命令内告警并入 JSON 字段（如 add 的 `vector_dimension_warning`）而非 stderr print——stderr 在 2>&1 管道同样污染解析流
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：写盘前按真实磁盘路径 re-read-and-merge——重读 fresh 再合并写回，文件名发散不产生同 id 双文件、与常驻 daemon 并发写不丢更新（#392/#422）；单 target 写盘失败仅 warning 不中断，悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
