@@ -263,6 +263,8 @@ JFox can be used directly from the CLI or through agent-specific integrations:
 
 The integration packages are adapters around the JFox CLI. Their installation and supported capabilities can evolve independently from the core command-line application.
 
+For the current per-skill directory inventory, see the [generated plugin skill inventory](docs/plugin-inventory.md).
+
 ## Installation and Development
 
 ### Requirements

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,20 @@ from typing import Collection, Mapping, Sequence
 
 import click
 import yaml
+
+# Enable direct execution (`python scripts/generate_docs.py`, as the CI gate
+# and subprocess tests do): make the repo root importable so the `scripts.*`
+# sibling modules resolve.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.enum_coverage import (
+    EnumCoverageError,
+    extract_model_enums,
+    parse_readme_enums,
+    validate_enum_coverage,
+)
 
 MISSING_VALUE = "—"
 GENERATED_MARKER = """<!--
@@ -290,9 +305,30 @@ def write_reference(path: Path, content: str) -> None:
         ) from exc
 
 
-def generate_reference(output: Path, descriptions: Path) -> None:
-    """Extract the real app and write its validated English reference."""
+def generate_all(
+    cli_output: Path,
+    descriptions: Path,
+    inventory_output: Path,
+    readme_path: Path,
+    models_path: Path,
+    packages_root: Path,
+) -> None:
+    """Validate every source, then write both generated documents."""
     _ensure_isolated_config_environment()
+
+    # Lazy import: plugin_inventory imports GENERATED_MARKER from this module at
+    # top level, so a top-level import here would be circular.
+    from scripts.plugin_inventory import (
+        extract_skill_inventory,
+        render_inventory,
+    )
+
+    inventory_entries = extract_skill_inventory(packages_root)
+    inventory_markdown = render_inventory(inventory_entries)
+    model_values = extract_model_enums(models_path)
+    documented_values = parse_readme_enums(readme_path.read_text(encoding="utf-8"))
+    validate_enum_coverage(model_values, documented_values)
+
     from typer.main import get_command
 
     from jfox.cli import app
@@ -300,7 +336,10 @@ def generate_reference(output: Path, descriptions: Path) -> None:
     commands = extract_commands(get_command(app), root_name="jfox")
     catalog = load_descriptions(descriptions)
     validate_descriptions((command.path for command in commands), catalog)
-    write_reference(output, render_reference(commands, catalog))
+    cli_markdown = render_reference(commands, catalog)
+
+    write_reference(cli_output, cli_markdown)
+    write_reference(inventory_output, inventory_markdown)
 
 
 _GENERATOR_TEMP_DIRS: list[tempfile.TemporaryDirectory[str]] = []
@@ -326,24 +365,44 @@ def _repository_root() -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate the JFox English CLI reference")
+    parser = argparse.ArgumentParser(description="Generate the JFox English docs")
     parser.add_argument("--output", type=Path, default=Path("docs/cli-reference.md"))
     parser.add_argument("--descriptions", type=Path, default=Path("docs/cli-descriptions.yaml"))
+    parser.add_argument("--inventory-output", type=Path, default=Path("docs/plugin-inventory.md"))
+    parser.add_argument("--readme", type=Path, default=Path("README.md"))
+    parser.add_argument("--models", type=Path, default=Path("jfox/models.py"))
+    parser.add_argument("--packages-root", type=Path, default=Path("packages"))
     args = parser.parse_args()
     root = _repository_root()
-    output = args.output if args.output.is_absolute() else root / args.output
-    descriptions = (
-        args.descriptions if args.descriptions.is_absolute() else root / args.descriptions
-    )
+
+    # Lazy import inside main(): plugin_inventory imports GENERATED_MARKER from
+    # this module, so importing that name at module top level would be circular.
+    from scripts.plugin_inventory import PluginInventoryError
+
+    def resolve(value: Path) -> Path:
+        return value if value.is_absolute() else root / value
+
     try:
-        generate_reference(output, descriptions)
+        generate_all(
+            cli_output=resolve(args.output),
+            descriptions=resolve(args.descriptions),
+            inventory_output=resolve(args.inventory_output),
+            readme_path=resolve(args.readme),
+            models_path=resolve(args.models),
+            packages_root=resolve(args.packages_root),
+        )
+    except EnumCoverageError as exc:
+        parser.error(str(exc))
+    except PluginInventoryError as exc:
+        parser.error(str(exc))
     except OSError as exc:
         parser.error(str(exc))
     except ValueError as exc:
         parser.error(f"{exc}; update docs/cli-descriptions.yaml and rerun the generator")
     except ImportError as exc:
         parser.error(str(exc))
-    print(f"Generated {output}")
+    print(f"Generated {resolve(args.output)}")
+    print(f"Generated {resolve(args.inventory_output)}")
     return 0
 
 
