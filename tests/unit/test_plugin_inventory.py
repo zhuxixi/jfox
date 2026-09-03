@@ -43,11 +43,15 @@ def _make_tree(root: Path):
     )
 
 
-def test_resolve_manifest_skill_roots():
-    pkg = Path("/tmp/pkg")
+def test_resolve_manifest_skill_roots(tmp_path: Path):
+    # tmp_path is guaranteed resolved by pytest, keeping both sides of the
+    # comparison normalization-stable on every platform (a literal "/tmp/pkg"
+    # resolves to "D:/tmp/pkg" on Windows and breaks the assertion).
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
 
     assert resolve_manifest_skill_roots({}, pkg) == pkg / "skills"
-    assert resolve_manifest_skill_roots({"skills": "./skills/"}, pkg) == pkg / "skills"
+    assert resolve_manifest_skill_roots({"skills": "./skills/"}, pkg) == (pkg / "skills").resolve()
     with pytest.raises(PluginInventoryError, match="non-empty relative string"):
         resolve_manifest_skill_roots({"skills": ""}, pkg)
     with pytest.raises(PluginInventoryError, match="non-empty relative string"):
