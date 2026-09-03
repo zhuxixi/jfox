@@ -26,9 +26,11 @@
 对应 spec 验收 ID：A2（issue 条目 1/3/4/5）、A3（规则全文单点出现）
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-moc/SKILL.md`（frontmatter description 尾部；Step 1 尾部；Step 2「展示草稿」段后；Step 3 尾部）
 
 **Interfaces:**
+
 - Produces: Task 2 新章节将引用的两个规则锚点——「Step 2 审成员时效性」「Step 3 管道语法铁律」。锚点短语（`不认旧序号`、`标题包含`）全文件各只出现一次，Task 2 不得重复。
 
 - [ ] **Step 1: frontmatter description 追加触发词**
@@ -122,9 +124,11 @@ git -C "$WT" commit -m "docs(skill): hoist MOC quality rules into lifecycle step
 对应 spec 验收 ID：A2（issue 条目 2/6/7 + bonus limit 坑）、A3（章节内仅引用规则）
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-moc/SKILL.md`（Step 4 维护之后、「## 关键原则」之前）
 
 **Interfaces:**
+
 - Consumes: Task 1 产出的规则锚点「Step 2 审成员时效性」「Step 3 管道语法铁律」——本章节只引用，不重复机制解释。
 
 - [ ] **Step 1: 插入新章节**
@@ -218,9 +222,11 @@ git -C "$WT" commit -m "docs(skill): add batch cold-start and quality review cha
 对应 spec 验收 ID：A1/A2/A3（终验）；U1/U2（标记 pending，转用户实测）
 
 **Files:**
+
 - 只读：`skills-recommend/pi/jfox-moc/SKILL.md`（本 task 正常无文件改动；若终验失败，回到 Task 1/2 修复）
 
 **Interfaces:**
+
 - Consumes: Task 1/2 完成的 SKILL.md。
 - Produces: 验收对账结果（写入 PR body / issue 评论，供 github-issue-driven Step 9 使用）。
 
