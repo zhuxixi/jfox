@@ -8,4 +8,4 @@
 中的同步测试。
 """
 
-INTERNAL_SOURCES = frozenset({"auto-summary", "gem-synth"})
+INTERNAL_SOURCES = frozenset({"auto-summary", "gem-synth", "prompt-judge"})
