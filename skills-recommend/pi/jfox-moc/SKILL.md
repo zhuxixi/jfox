@@ -116,7 +116,7 @@ diagnose → 逐簇 dry-run + 审成员时效性（Step 2 规则）→ 落盘并
 
 语义聚类会漏掉主题相关笔记（实测：CR MOC 初版漏 16 条，含 2 条核心根笔记）。每个 MOC 建完后必做：
 
-1. 主题关键词 `jfox search "<关键词>" --mode hybrid --type permanent`，多组关键词各取 top 20-50
+1. 主题关键词 `jfox search "<关键词>" --mode hybrid --type permanent --top 50`，多组关键词各取 top 20-50
 2. 搜索结果与 MOC 成员 links 做差集
 3. 差集中确实属于主题的，按手动路径补入
 
