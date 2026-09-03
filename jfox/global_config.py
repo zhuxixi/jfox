@@ -976,19 +976,6 @@ class GlobalConfigManager:
         self._config = config
         return self._save()
 
-    def get_prompt_capture_config(self) -> PromptCaptureConfig:
-        """获取 prompt 记录配置"""
-        return self._load().prompt_capture
-
-    def update_prompt_capture_config(self, **changes: Any) -> bool:
-        """更新 prompt 记录配置中的若干字段，未传入的字段保持原样"""
-        config = self._load()
-        current = asdict(config.prompt_capture)
-        current.update({k: v for k, v in changes.items() if k in current})
-        config.prompt_capture = PromptCaptureConfig.from_dict(current)
-        self._config = config
-        return self._save()
-
     def get_prompt_judge_config(self) -> PromptJudgeConfig:
         """获取 prompt 判断 runner 配置"""
         return self._load().prompt_judge

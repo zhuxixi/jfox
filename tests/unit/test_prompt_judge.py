@@ -25,7 +25,7 @@ def _store_with_prompts(tmp_path, n=3, session_id="s1", transcript_path="/tmp/t.
     return store
 
 
-def _mock_runner_output(prompt_ids, classification="new"):
+def _mock_runner_output(prompt_ids, classification="recorded"):
     """构造合法 runner 输出。"""
     items = []
     for pid in prompt_ids:
@@ -54,18 +54,30 @@ def _mock_runner_output(prompt_ids, classification="new"):
 # ---------------------------------------------------------------------------
 
 
-def test_judge_creates_judgments_for_all_prompts(tmp_path):
+def _isolated_env(tmp_path, monkeypatch):
+    """隔离 spool drain，防真实 spool 残留文件灌入测试 store。"""
+    monkeypatch.setattr(
+        "jfox.prompts.service.drain_spool",
+        lambda **kw: {"imported": 0, "duplicates": 0, "failed": 0, "remaining": 0},
+    )
+
+
+def test_judge_creates_judgments_for_all_prompts(tmp_path, monkeypatch):
+    _isolated_env(tmp_path, monkeypatch)
     store = _store_with_prompts(tmp_path, n=3)
     with (
         patch("jfox.prompts.judge.run_runner") as mock_runner,
         patch("jfox.prompts.judge.fetch_judgment_grounding") as mock_ground,
         patch("jfox.prompts.judge.read_transcript_safe") as mock_transcript,
+        patch("jfox.prompts.judge._create_candidate_from_draft") as mock_create,
     ):
-        mock_runner.return_value = _mock_runner_output([1, 2, 3])
+        mock_runner.return_value = _mock_runner_output([1, 2, 3], classification="new")
         mock_ground.return_value = MagicMock(evidence=[], unavailable=False)
         mock_transcript.return_value = MagicMock(
             total_messages=0, messages=[], user_texts=[], user_indices=[]
         )
+        # 拦截 candidate 落盘（防写入共享测试 KB 污染其他测试）
+        mock_create.side_effect = lambda draft, pid: f"fake-cand-{pid}"
         report = judge_prompts("default", store=store, allow_remote=True)
 
     assert report.total == 3
