@@ -6,6 +6,7 @@ create/update 命令共享这些函数，便于单元测试。
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set
@@ -117,14 +118,16 @@ def render_moc_content(draft: MocCreateDraft) -> str:
         lines.append(f"## {group.name}")
         lines.append("")
         for member in group.members:
-            lines.append(f"- {_member_link(member.id, member.title)} — {member.link_degree} links")
+            link = _member_link(member.id, member.title)
+            lines.append(f"- {link} — {member.link_degree} links")
         lines.append("")
 
     if draft.orphan_bucket:
         lines.append(f"## {_ORPHAN_SECTION}")
         lines.append("")
         for orphan in draft.orphan_bucket:
-            lines.append(f"- {_member_link(orphan.id, orphan.title)} — {orphan.link_degree} links")
+            link = _member_link(orphan.id, orphan.title)
+            lines.append(f"- {link} — {orphan.link_degree} links")
         lines.append("")
 
     lines.append(f"## {_RECENT_SECTION}")
@@ -203,3 +206,352 @@ def build_update_diff(
     add = [m for m in cluster_members if m.id not in current and m.id in existing_ids]
     kept = len(current & member_ids)
     return MocUpdateDiff(add=add, remove=remove, kept=kept)
+
+
+# ---------------------------------------------------------------------------
+# 单成员正文行管理（add-member / remove-member 的纯函数层，spec §3.5）
+# ---------------------------------------------------------------------------
+
+# 系统区段：不参与 tag 匹配，不允许作为显式 --group，标题永不因删行而删除
+_SYSTEM_SECTIONS = frozenset({_ORPHAN_SECTION, _RECENT_SECTION})
+# tag 匹配额外排除「其他」：它是 fallback 组，不作普通 tag 命中目标（spec §3.5）
+_TAG_MATCH_EXCLUDED = frozenset({_OTHER_GROUP, *_SYSTEM_SECTIONS})
+
+# 成员行：可选缩进的短横线列表项，且首个 wiki 链接 token 紧随其后
+_MEMBER_ROW_RE = re.compile(r"^\s*-\s+\[\[(?P<token>[^\]]*)\]\]")
+
+
+@dataclass(frozen=True)
+class MemberUpsertResult:
+    """upsert_member_line 的结果契约（spec §3.5）。"""
+
+    content: str
+    resolved_group: Optional[str]
+    changed: bool
+    rows_added: int
+    rows_canonicalized: int
+    had_existing_row: bool
+    matched_groups: tuple[str, ...]
+    ambiguous_legacy: bool
+
+
+@dataclass(frozen=True)
+class MemberRemovalResult:
+    """remove_member_lines 的结果契约（spec §3.5）。"""
+
+    content: str
+    changed: bool
+    removed_rows: int
+    removed_groups: tuple[str, ...]
+    ambiguous_legacy: bool
+
+
+@dataclass
+class _Section:
+    """扫描出的顶层 H2 区段（内部结构，不对外）。"""
+
+    name: str
+    heading_index: int
+    end_index: int  # 不含；下一个顶层标题行号或总行数
+
+    @property
+    def is_system(self) -> bool:
+        return self.name in _SYSTEM_SECTIONS
+
+
+@dataclass
+class _BodyRow:
+    """识别到的成员行（内部结构，不对外）。"""
+
+    line_index: int
+    section: _Section
+    target: str  # token 中 | 左侧的精确目标
+    alias: Optional[str]  # | 右侧别名；无 | 时 None
+    has_pipe: bool
+
+
+def _detect_ending(lines: List[str]) -> str:
+    """取正文首个换行风格，供新插入行复用。"""
+    for raw in lines:
+        if raw.endswith("\r\n"):
+            return "\r\n"
+        if raw.endswith("\n"):
+            return "\n"
+    return "\n"
+
+
+def _scan_body(lines: List[str]) -> tuple[List[_Section], List[_BodyRow]]:
+    """逐行扫描正文：顶层 H2 区段 + 区段内成员行。
+
+    - fenced code block（``` 围栏）内的行不参与识别；围栏行本身跳过。
+    - 只有顶层 `## ` 开头的行开启区段；H3 不开新组。
+    - 成员行 = 可选缩进的短横线列表项，首个 wiki 链接 token 结构化解析成功；
+      token 按 | 首次出现拆分目标与别名，不使用 ID 前缀匹配。
+    - 任何区段之外的成员行不归属区段，不参与匹配。
+    """
+    sections: List[_Section] = []
+    rows: List[_BodyRow] = []
+    in_fence = False
+    current: Optional[_Section] = None
+    for idx, raw in enumerate(lines):
+        text = raw.rstrip("\r\n")
+        if text.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if text.startswith("## "):
+            if current is not None:
+                current.end_index = idx
+            current = _Section(name=text[3:].strip(), heading_index=idx, end_index=len(lines))
+            sections.append(current)
+            continue
+        if current is None:
+            continue
+        match = _MEMBER_ROW_RE.match(text)
+        if not match:
+            continue
+        token = match.group("token")
+        if "|" in token:
+            target, alias = token.split("|", 1)
+            has_pipe = True
+        else:
+            target, alias, has_pipe = token, None, False
+        rows.append(
+            _BodyRow(
+                line_index=idx,
+                section=current,
+                target=target,
+                alias=alias,
+                has_pipe=has_pipe,
+            )
+        )
+    return sections, rows
+
+
+def _validate_explicit_group(group: str) -> None:
+    """显式组名必须是单行非空，且不得是系统区段名（CLI 层负责映射错误文案）。"""
+    if not group.strip() or "\n" in group or "\r" in group:
+        raise ValueError("group name must be a non-empty single-line name")
+    if group in _SYSTEM_SECTIONS:
+        raise ValueError(f"group name must not be the reserved section: {group}")
+
+
+def _insert_into_section(lines: List[str], section: _Section, row_text: str, ending: str) -> None:
+    """组内追加：插在区段最后一个非空行之后；区段体全空白时插在标题后空行之后。"""
+    start = section.heading_index + 1
+    end = section.end_index
+    insert_at: Optional[int] = None
+    for i in range(start, end):
+        if lines[i].strip():
+            insert_at = i + 1
+    if insert_at is not None:
+        lines.insert(insert_at, row_text + ending)
+        return
+    if start < end:
+        # 体全空白：紧跟标题后的空行之后追加，保留原有空行
+        lines.insert(start + 1, row_text + ending)
+    else:
+        # 体为空（标题直接挨下一个标题）：补一个空行再追加
+        lines.insert(start, ending)
+        lines.insert(start + 1, row_text + ending)
+
+
+def _append_new_group(
+    lines: List[str], name: str, row_text: str, ending: str, before_system: Optional[int]
+) -> None:
+    """新建组：有系统区段时插在其前，否则追加到正文末尾并保持空行分隔。"""
+    if before_system is not None:
+        block = [f"## {name}{ending}", ending, row_text + ending, ending]
+        if before_system > 0 and lines[before_system - 1].strip():
+            block.insert(0, ending)
+        lines[before_system:before_system] = block
+        return
+    block = [f"## {name}{ending}", ending, row_text + ending]
+    if lines and lines[-1].strip():
+        block.insert(0, ending)
+    lines[len(lines) :] = block
+
+
+def _legacy_rows_for(rows: List[_BodyRow], title: Optional[str]) -> List[_BodyRow]:
+    """legacy [[标题]] 行：无管道、目标与标题逐字符相等（不截断、不子串）。"""
+    if not title:
+        return []
+    return [row for row in rows if not row.has_pipe and row.target == title]
+
+
+def _dedup_names(rows: List[_BodyRow]) -> tuple[str, ...]:
+    """按正文出现顺序收集行所属组名并去重。"""
+    names: List[str] = []
+    for row in rows:
+        if row.section.name not in names:
+            names.append(row.section.name)
+    return tuple(names)
+
+
+def upsert_member_line(
+    content: str,
+    note_id: str,
+    title: str,
+    tags: Sequence[str],
+    group: Optional[str],
+    *,
+    legacy_title_unique: bool,
+) -> MemberUpsertResult:
+    """插入、认领或修复一个 MOC 成员正文行；纯函数（spec §3.5）。
+
+    - 已有 canonical 行（[[ID]] / [[ID|别名]]）：不搬组、不改别名、不重复插入；
+      同时存在的 legacy 行原样保留。
+    - 无 canonical 行且有唯一 legacy [[标题]] 行：原地改写为 canonical 目标，
+      保留原组与行后缀，不额外插入。
+    - 无 canonical 行且 legacy 标题歧义：不改写旧行，按选组规则追加一条
+      canonical 行，ambiguous_legacy=True。
+    - 选组：显式 group 精确匹配已有普通组（不存在则新建，插在第一个系统区段
+      之前）；缺省按正文顺序用 tags 匹配普通组名（排除其他/待归类/近期活动），
+      未命中用/建「其他」。
+    """
+    if group is not None:
+        _validate_explicit_group(group)
+
+    lines = content.splitlines(keepends=True)
+    ending = _detect_ending(lines)
+    sections, rows = _scan_body(lines)
+
+    canonical_rows = [row for row in rows if row.target == note_id]
+    legacy_rows = _legacy_rows_for(rows, title)
+
+    if canonical_rows:
+        return MemberUpsertResult(
+            content=content,
+            resolved_group=canonical_rows[0].section.name,
+            changed=False,
+            rows_added=0,
+            rows_canonicalized=0,
+            had_existing_row=True,
+            matched_groups=_dedup_names(canonical_rows),
+            ambiguous_legacy=False,
+        )
+
+    if legacy_rows and legacy_title_unique:
+        old_token = f"[[{title}]]"
+        new_token = _member_link(note_id, title)
+        for row in legacy_rows:
+            lines[row.line_index] = lines[row.line_index].replace(old_token, new_token, 1)
+        return MemberUpsertResult(
+            content="".join(lines),
+            resolved_group=legacy_rows[0].section.name,
+            changed=True,
+            rows_added=0,
+            rows_canonicalized=len(legacy_rows),
+            had_existing_row=True,
+            matched_groups=_dedup_names(legacy_rows),
+            ambiguous_legacy=False,
+        )
+
+    ambiguous = bool(legacy_rows) and not legacy_title_unique
+
+    target_section: Optional[_Section] = None
+    new_group_name: Optional[str] = None
+    if group is not None:
+        for section in sections:
+            if not section.is_system and section.name == group:
+                target_section = section
+                break
+        if target_section is None:
+            new_group_name = group
+    else:
+        for section in sections:
+            if section.name not in _TAG_MATCH_EXCLUDED and section.name in tags:
+                target_section = section
+                break
+        if target_section is None:
+            for section in sections:
+                if not section.is_system and section.name == _OTHER_GROUP:
+                    target_section = section
+                    break
+        if target_section is None:
+            new_group_name = _OTHER_GROUP
+
+    row_text = f"- {_member_link(note_id, title)}"
+    if new_group_name is not None:
+        first_system = next((s.heading_index for s in sections if s.is_system), None)
+        _append_new_group(lines, new_group_name, row_text, ending, first_system)
+        resolved = new_group_name
+    else:
+        assert target_section is not None  # 选组逻辑保证二者必有其一
+        _insert_into_section(lines, target_section, row_text, ending)
+        resolved = target_section.name
+
+    return MemberUpsertResult(
+        content="".join(lines),
+        resolved_group=resolved,
+        changed=True,
+        rows_added=1,
+        rows_canonicalized=0,
+        had_existing_row=False,
+        matched_groups=(resolved,),
+        ambiguous_legacy=ambiguous,
+    )
+
+
+def remove_member_lines(
+    content: str,
+    note_id: str,
+    title: Optional[str],
+    *,
+    legacy_title_unique: bool,
+) -> MemberRemovalResult:
+    """删除一个成员在所有区段中的正文行；纯函数（spec §3.5）。
+
+    - 删除所有精确匹配 NOTE_ID 的 canonical 行（[[ID]] / [[ID|别名]]，跨所有
+      区段，含系统区段内的行）。
+    - title 存在且全库唯一时，同时删除精确匹配的 legacy [[标题]] 行；
+      title 存在但歧义时保留旧行并置 ambiguous_legacy=True；title=None 时
+      不动任何标题行。
+    - 删行后只剩空白的普通组连同标题删除；含说明文字、子标题、代码或其他
+      Markdown 的组保留标题；系统区段标题永不删除。
+    """
+    lines = content.splitlines(keepends=True)
+    _sections, rows = _scan_body(lines)
+
+    canonical_rows = [row for row in rows if row.target == note_id]
+    legacy_rows = _legacy_rows_for(rows, title)
+    ambiguous = bool(legacy_rows) and not legacy_title_unique
+    remove_rows = canonical_rows + legacy_rows if legacy_title_unique else canonical_rows
+
+    if not remove_rows:
+        return MemberRemovalResult(
+            content=content,
+            changed=False,
+            removed_rows=0,
+            removed_groups=(),
+            ambiguous_legacy=ambiguous,
+        )
+
+    removed_from = _dedup_names(remove_rows)
+    for idx in sorted({row.line_index for row in remove_rows}, reverse=True):
+        del lines[idx]
+        # 删行后若与前行连成连续空行，吸收紧随其后的那个空行（避免双空行残留）
+        if idx < len(lines) and not lines[idx].strip():
+            if idx > 0 and not lines[idx - 1].strip():
+                del lines[idx]
+
+    # 删行后行号已变：重扫后清理只剩空白的普通组（系统区段标题永不删除）
+    sections_after, _rows_after = _scan_body(lines)
+    spans: List[tuple[int, int]] = []
+    for section in sections_after:
+        if section.is_system or section.name not in removed_from:
+            continue
+        body = lines[section.heading_index + 1 : section.end_index]
+        if not any(raw.strip() for raw in body):
+            spans.append((section.heading_index, section.end_index))
+    for start, end in sorted(spans, reverse=True):
+        del lines[start:end]
+
+    return MemberRemovalResult(
+        content="".join(lines),
+        changed=True,
+        removed_rows=len(remove_rows),
+        removed_groups=removed_from,
+        ambiguous_legacy=ambiguous,
+    )
