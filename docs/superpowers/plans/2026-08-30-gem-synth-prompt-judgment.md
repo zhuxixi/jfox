@@ -30,8 +30,8 @@
 | Area | Files to create | Files to modify | Files to remove or migrate |
 |---|---|---|---|
 | Prompt domain | `jfox/prompts/__init__.py`, `store.py`, `transcript.py`, `grounding.py`, `runner.py`, `judge.py`, `lifecycle.py`, `cli.py` | `jfox/cli.py`, `jfox/global_config.py`, `jfox/daemon/server.py` | None until final cutover |
-| Candidate domain | `jfox/candidates/__init__.py`, `service.py`, `cli.py` | `jfox/cli.py`, `jfox/models.py`, existing note lifecycle wiring | Candidate code is extracted from `jfox/gem_synth/cli.py`; the old module is removed in Task 8 (Task 10 is verification-only) |
-| Capture integration | None | `packages/cc-plugin/hooks/hooks.json`, `packages/cc-plugin/hooks/fragment-capture.sh`, `jfox/fragment/store.py`, `jfox/fragment/service.py`, `jfox/fragment/__init__.py`, `jfox/fragment/internal_sources.py` | `jfox/fragment/detector.py` after legacy compatibility is removed |
+| Candidate domain | `jfox/candidates/__init__.py`, `service.py`, `cli.py` | `jfox/cli.py`, `jfox/models.py`, existing note lifecycle wiring | Candidate code is extracted from `jfox/gem_synth/cli.py`; the entire `jfox/gem_synth/` directory (including `cli.py` and `__init__.py`) is removed in Task 8 (Task 10 is verification-only) |
+| Capture integration | None | `packages/cc-plugin/hooks/hooks.json`, `packages/cc-plugin/hooks/fragment-capture.sh`, `jfox/fragment/store.py`, `jfox/fragment/service.py`, `jfox/fragment/__init__.py`, `jfox/fragment/internal_sources.py` | `jfox/fragment/detector.py` is removed in Task 8 Step 4 together with detector-based collection (historical rows stay readable) |
 | Tests | New focused `tests/unit/test_prompts_*.py`, `tests/unit/test_prompt_*.py`, and integration coverage | Existing fragment/gem-synth/candidate tests | Obsolete auto-synthesis tests only after replacement coverage exists |
 | Docs | `docs/superpowers/specs/2026-08-30-gem-synth-prompt-judgment-design.md` already committed | README/skill help only where command behavior changes | Old plan/spec history remains as historical documentation |
 
@@ -413,6 +413,7 @@ All new Python public objects use type hints and focused responsibilities. Exist
 - Modify: `jfox/cli.py`
 - Modify: `jfox/global_config.py`
 - Modify: `jfox/__init__.py`
+- Modify: `jfox/add_dedup.py` (repoint imports to the extracted `jfox/dedup.py`) and `tests/unit/test_add_dedup.py`
 - Modify: `packages/cc-plugin/hooks/hooks.json`, `packages/cc-plugin/hooks/fragment-capture.sh`
 - Create: `jfox/dedup.py` (extracted from `jfox/gem_synth/dedup.py` BEFORE deletion — `jfox/add_dedup.py` (#383) imports `dedup_check`/`upsert_dedup`/`_resolve_kb_name` from it, so the module must survive retirement as a standalone note-dedup utility; inline `default_synthesis_db_path` from `gem_synth/paths.py`, drop the anchor-release helper that depended on `SynthesisLog`)
 - Delete: `jfox/gem_synth/anchors.py`, `jfox/gem_synth/dedup.py`, `jfox/gem_synth/lifecycle.py`, `jfox/gem_synth/llm.py`, `jfox/gem_synth/loop.py`, `jfox/gem_synth/paths.py`, `jfox/gem_synth/store.py`, `jfox/gem_synth/synthesizer.py`, and the old gem-synth CLI/status-only code after candidate extraction
@@ -435,7 +436,7 @@ All new Python public objects use type hints and focused responsibilities. Exist
 
 - [ ] **Step 3: Extract dedup, then remove old runtime imports and tasks**
 
-  First extract `jfox/dedup.py` from `gem_synth/dedup.py` and repoint `jfox/add_dedup.py` imports (the #383 add-gate depends on it; `tests/unit/test_add_dedup.py` stays green). Then delete daemon `_maybe_start_gem_synth`/`_maybe_stop_gem_synth` wiring and the package-level old lifecycle registration. Remove old anchor/synthesis execution paths and obsolete `gem_synthesis` runtime configuration while preserving backward-compatible config loading and historical DB files.
+  First extract `jfox/dedup.py` from `gem_synth/dedup.py` and repoint `jfox/add_dedup.py` imports (the #383 add-gate depends on it; `tests/unit/test_add_dedup.py` stays green). The extract must also take over the dedup-table lifecycle hooks the old `gem_synth/lifecycle.py` owned: register `post_delete`/`post_archive` → `delete_dedup` and `post_promote` → `update_dedup_type("permanent")` subscriptions (wired from `jfox/__init__.py`), otherwise deleted/archived notes leave stale embeddings and `jfox add` would false-positive on re-adding removed content. Then delete daemon `_maybe_start_gem_synth`/`_maybe_stop_gem_synth` wiring and the package-level old lifecycle registration. Remove old anchor/synthesis execution paths and obsolete `gem_synthesis` runtime configuration while preserving backward-compatible config loading and historical DB files.
 
 - [ ] **Step 4: Stop obsolete collection without deleting history**
 
@@ -454,7 +455,7 @@ All new Python public objects use type hints and focused responsibilities. Exist
 - [ ] **Step 7: Commit**
 
   ```bash
-  git add jfox/daemon/server.py jfox/fragment/service.py jfox/fragment/__init__.py jfox/fragment/internal_sources.py jfox/cli.py jfox/global_config.py jfox/__init__.py packages/cc-plugin/hooks/hooks.json packages/cc-plugin/hooks/fragment-capture.sh tests/unit/test_prompt_retirement.py
+  git add jfox/dedup.py jfox/add_dedup.py tests/unit/test_add_dedup.py jfox/daemon/server.py jfox/fragment/service.py jfox/fragment/__init__.py jfox/fragment/internal_sources.py jfox/cli.py jfox/global_config.py jfox/__init__.py packages/cc-plugin/hooks/hooks.json packages/cc-plugin/hooks/fragment-capture.sh tests/unit/test_prompt_retirement.py
   git rm jfox/gem_synth/anchors.py jfox/gem_synth/dedup.py jfox/gem_synth/lifecycle.py jfox/gem_synth/llm.py jfox/gem_synth/loop.py jfox/gem_synth/paths.py jfox/gem_synth/store.py jfox/gem_synth/synthesizer.py
   git commit -m "refactor: retire daemon gem synth"
   ```
