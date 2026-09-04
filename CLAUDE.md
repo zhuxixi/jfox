@@ -202,3 +202,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
 - CPU 默认 embedding 模型已从 `all-MiniLM-L6-v2`（384 维）切到 `BAAI/bge-small-zh-v1.5`（512 维，#442）：旧 KB 向量库维度不匹配时 search/add 显式告警不静默失败（`vector_store.last_dimension_warning`），按提示 `jfox index rebuild` 重建该 KB；CI 模型缓存 key 也随模型名（#453）
+- Chroma `collection.peek()/get()` 返回的 `embeddings` 在 chromadb ≥1.5.x 是 numpy ndarray，`if not x` 真值判断直接抛 `ValueError`——判空统一用 `x is None or len(x) == 0`（#475，`embedding_migration.py` 踩过；`vector_store.py` 本就安全；依赖地板 `chromadb>=0.5.0` 无上界，两种形态都可能遇到）
