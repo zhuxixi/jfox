@@ -209,7 +209,7 @@ AskUserQuestion(questions=[{
     "header": "MOC 归属",
     "options": [
         {"label": "MOC 标题", "description": "ID 与匹配分放这里"},
-        {"label": "不挂", "description": "本次不归入任何 MOC"},
+        {"label": "不挂", "description": "本次不归入任何 MOC；与 MOC 选项互斥，选了它就不再选 MOC"},
     ],
     "multiSelect": true,
 }])
