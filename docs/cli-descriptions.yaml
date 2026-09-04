@@ -105,6 +105,10 @@ commands:
     description: "Analyze permanent-note density and suggest MOC clusters."
   "jfox moc update":
     description: "Rescan topic clusters and update the members of an existing MOC."
+  "jfox moc add-member":
+    description: "Add a single member note to an existing MOC, updating its body, links, and backlinks."
+  "jfox moc remove-member":
+    description: "Remove a single member note from an existing MOC, cleaning up its body, links, and backlinks."
   "jfox model":
     description: "Manage locally available embedding models."
   "jfox model download":

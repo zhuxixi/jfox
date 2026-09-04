@@ -79,7 +79,26 @@ jfox moc update --id <moc_id> --json  # 单条 MOC
 - **只摘死链，语义漂移不自动摘除**——笔记偏离主题不自动移除，交人工判断
 - 确认 diff 后加 `--yes` 应用
 
-维护节奏建议：每批次新笔记落库后跑一次，或随 organize 定期整理一起做。
+维护节奏建议：每批次新笔记落库后跑一次，或随 organize 定期整理一起做。注意：新笔记的 MOC 归属主路径是沉淀时确认（session-to-permanent + `jfox moc add-member`，见下节），本命令是批量兜底。
+
+## 单成员增删：add-member / remove-member
+
+对单个成员做精准增删（也承接 session-to-permanent 沉淀时的归属挂载）：
+
+```bash
+jfox moc add-member <moc_id> <note_id> --json                   # 挂入成员（默认按成员 tags 匹配既有分组）
+jfox moc add-member <moc_id> <note_id> --group "<组名>" --json  # 显式指定落位分组
+jfox moc remove-member <moc_id> <note_id> --json                # 摘除成员（正文行 + links + backlinks 对称清理）
+```
+
+- **参数只用笔记 ID**，不解析标题（规避同名标题歧义）；`--group` 不能用「近期活动」「待归类」两个保留区段。
+- **幂等且自修复**：重复 add 不产生重复行；frontmatter links、正文成员行、成员 backlinks 三处缺哪补哪，已一致时返回 no-op。
+- **正文成员行一律 `[[ID|标题]]`**——ID 是链接目标，标题只是显示别名，规避标题含 `#` 被截断、同名标题解析歧义两类死链。不要新写只有标题的 `[[标题]]` 成员链接。
+- **存量旧标题行安全处理**：标题全库唯一时可被 add 原地改写为 ID 形式、被 remove 删除；同名歧义时不猜测，保留旧行并返回 warning（`partial: true`）。不做全库自动迁移。
+- **归档与自链**：已归档的 MOC 或成员拒绝 add；remove 允许清理死链（成员已删除时只清 links 与正文 ID 行）。
+- `partial: true` 表示主操作已成功但仍有未收敛状态，`warnings` 会给出具体 ID 和重试命令。
+
+**职责定位**：session-to-permanent 沉淀新笔记时的归属确认是主路径——新笔记落库即入图；`moc update` 是批量兜底，负责漏挂的存量笔记与语义漂移的 diff 审阅，不承担单条精准操作。
 
 ## 关键原则
 
