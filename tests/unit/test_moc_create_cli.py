@@ -91,7 +91,7 @@ def test_create_dry_run_prints_draft_without_writing():
     assert "Cluster size 2; hub: Zima Hub" in output
     assert "MOC title: Zima Hub MOC" in output
     assert "## zima" in output
-    assert "- [[Zima Hub]] — 10 links" in output
+    assert "- [[1|Zima Hub]] — 10 links" in output
 
 
 def test_create_yes_writes_moc():
