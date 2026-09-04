@@ -1,5 +1,8 @@
 """Dimension mismatch detection across all KBs (#442)."""
 
+import numpy as np
+import pytest
+
 from jfox.embedding_migration import (
     DimensionMismatchReport,
     check_dimension_mismatch,
@@ -20,6 +23,26 @@ class _FakeCollection:
         return {"embeddings": [[0.0] * self._dim]}
 
 
+class _NumpyPeekCollection(_FakeCollection):
+    """peek() returns numpy.ndarray — chromadb >=1.5 behavior (#475)."""
+
+    def peek(self, limit=1):
+        if self._dim is None:
+            return {"embeddings": None}
+        return {"embeddings": np.array([[0.0] * self._dim])}
+
+
+class _EmptyPeekCollection(_FakeCollection):
+    """peek() returns an explicit empty embeddings value (#475)."""
+
+    def __init__(self, value, count=0):
+        super().__init__(dim=1, count=count)
+        self._value = value
+
+    def peek(self, limit=1):
+        return {"embeddings": self._value}
+
+
 class _FakeClient:
     def __init__(self, collections):
         self._collections = collections
@@ -32,6 +55,9 @@ class _FakeClient:
 
 def _patch_env(monkeypatch, tmp_path, health_dim, kb_specs):
     """kb_specs: list of (kb_name, exists, dim_or_None, count[, unregistered]).
+
+    dim may also be a prebuilt _FakeCollection subclass instance (injects it
+    directly).
 
     unregistered=True: chroma dir exists on disk but is NOT registered in
     chroma_roots, so FakeChroma.PersistentClient raises (corrupt-dir path).
@@ -51,7 +77,12 @@ def _patch_env(monkeypatch, tmp_path, health_dim, kb_specs):
             chroma_root = kb_path / ".zk" / "chroma_db"
             chroma_root.mkdir(parents=True)
             if not unregistered:
-                chroma_roots[str(chroma_root)] = _FakeCollection(dim=dim, count=count)
+                collection = (
+                    dim
+                    if isinstance(dim, _FakeCollection)
+                    else _FakeCollection(dim=dim, count=count)
+                )
+                chroma_roots[str(chroma_root)] = collection
 
     class FakeGlobalConfigManager:
         def list_knowledge_bases(self):
@@ -95,6 +126,44 @@ class TestCheckDimensionMismatch:
         assert report.model_dimension == 512
         assert report.affected_kbs == ["default"]
         assert report.kb_dimensions == {"default": 384}
+
+    def test_mismatch_detected_with_ndarray_peek(self, monkeypatch, tmp_path):
+        # chromadb >=1.5 peek() returns numpy.ndarray; the old truthiness
+        # check raised ValueError inside the broad except and silently
+        # skipped the KB (#475)
+        _patch_env(
+            monkeypatch,
+            tmp_path,
+            health_dim=512,
+            kb_specs=[
+                ("default", True, _NumpyPeekCollection(dim=384, count=100), 100),
+                ("work", True, 512, 5),
+            ],
+        )
+        report = check_dimension_mismatch()
+        assert report is not None
+        assert report.model_dimension == 512
+        assert report.affected_kbs == ["default"]
+        assert report.kb_dimensions == {"default": 384}
+
+    @pytest.mark.parametrize(
+        "empty_value",
+        [None, np.empty((0, 384)), []],
+        ids=["none", "empty-ndarray", "empty-list"],
+    )
+    def test_empty_embeddings_peek_safe_skip(self, monkeypatch, tmp_path, empty_value):
+        # regression guards: empty peek values must skip the KB silently,
+        # never raise (covers old-chromadb list and >=1.5 ndarray shapes)
+        _patch_env(
+            monkeypatch,
+            tmp_path,
+            health_dim=512,
+            kb_specs=[
+                ("default", True, _EmptyPeekCollection(value=empty_value, count=3), 3)
+            ],
+        )
+        report = check_dimension_mismatch()
+        assert report is None
 
     def test_all_match_returns_none(self, monkeypatch, tmp_path):
         _patch_env(
