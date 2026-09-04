@@ -158,9 +158,7 @@ class TestCheckDimensionMismatch:
             monkeypatch,
             tmp_path,
             health_dim=512,
-            kb_specs=[
-                ("default", True, _EmptyPeekCollection(value=empty_value, count=3), 3)
-            ],
+            kb_specs=[("default", True, _EmptyPeekCollection(value=empty_value, count=3), 3)],
         )
         report = check_dimension_mismatch()
         assert report is None
