@@ -76,7 +76,9 @@ def check_dimension_mismatch() -> Optional[DimensionMismatchReport]:
                 continue
             peek = collection.peek(limit=1)
             embeddings = peek.get("embeddings")
-            if not embeddings:
+            # ndarray (chromadb >=1.5) raises ValueError under truthiness
+            # testing; len() is safe for both list and ndarray (#475)
+            if embeddings is None or len(embeddings) == 0:
                 continue
             kb_dim = len(embeddings[0])
         except Exception as e:
