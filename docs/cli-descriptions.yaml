@@ -132,7 +132,6 @@ commands:
   "jfox prompts unresolved":
     description: "Mark a repeated prompt as an open problem in the aggregate note."
   "jfox model":
-  "jfox model":
     description: "Manage locally available embedding models."
   "jfox model download":
     description: "Download an embedding model using the configured fallback chain."
