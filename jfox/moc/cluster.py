@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Literal, Mapping, Optional, Sequence
 
 import networkx as nx
 import numpy as np
@@ -13,7 +13,7 @@ from ..bm25_index import BM25Index
 from ..config import ZKConfig
 from ..graph import KnowledgeGraph
 from ..models import NoteType
-from ..note_index import get_note_index
+from ..note_index import NoteMeta, get_note_index
 from ..vector_store import VectorStore, VectorStoreReadError
 from . import MocDiagnoseError
 
@@ -158,6 +158,24 @@ def semantic_orphan_indices(node_count: int, clusters: Sequence[Sequence[int]]) 
 
     clustered = {index for cluster in clusters for index in cluster}
     return [index for index in range(node_count) if index not in clustered]
+
+
+def classify_vector_id(
+    note_id: str, permanent_meta: Mapping[str, NoteMeta]
+) -> Literal["ghost", "archived", "live"]:
+    """将一条 permanent vector 索引条目分类为 ghost / archived / live。
+
+    ghost：磁盘上不存在对应 permanent 笔记（索引死条目，真孤儿）；
+    archived：磁盘上存在但 frontmatter 标记归档（正常状态，不计入孤儿）；
+    live：活跃的 permanent 笔记。
+    duplicate（重复条目）不在此函数判定——它依赖循环内的 seen 状态。
+    """
+    meta = permanent_meta.get(note_id)
+    if meta is None:
+        return "ghost"
+    if meta.archived:
+        return "archived"
+    return "live"
 
 
 def build_threshold_summary(
