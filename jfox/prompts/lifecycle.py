@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _current_kb_name() -> str:
-    """当前 KB 名：--kb 上下文之外按 JFOX_KB > config.base_dir.name 解析。"""
+    """当前 KB 名：按 use_kb 同链解析（JFOX_KB env > config.base_dir.name）。"""
     import os
 
     from ..config import get_config

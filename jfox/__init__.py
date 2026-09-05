@@ -13,3 +13,9 @@ __email__ = "user@example.com"
 from .gem_synth.lifecycle import register as _register_gem_synth_lifecycle
 
 _register_gem_synth_lifecycle()
+
+# prompt 判断生命周期（#399）：candidate 直接 promote/reject → judgment 同步。
+# 放包 __init__ 与上同理由：任何 import jfox.* 都先注册（幂等）。
+from .prompts.lifecycle import register_hooks as _register_prompt_hooks
+
+_register_prompt_hooks()

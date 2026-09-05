@@ -25,7 +25,7 @@ def _get_store(kb: Optional[str] = None):
 
 
 def _current_kb_name() -> str:
-    """当前 KB 名：--kb 上下文之外按 JFOX_KB > config.base_dir.name 解析。"""
+    """当前 KB 名：按 use_kb 同链解析（JFOX_KB env > config.base_dir.name）。"""
     import os
 
     from ..config import get_config
@@ -105,7 +105,15 @@ def show_cmd(
     store = _get_store(kb)
     p = store.get_prompt(prompt_id)
     if p is None:
-        console.print(f"[red]prompt {prompt_id} 不存在[/red]")
+        if output_format == "json":
+            print(
+                json.dumps(
+                    {"success": False, "error": f"prompt {prompt_id} not found"},
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            console.print(f"[red]prompt {prompt_id} 不存在[/red]")
         raise typer.Exit(1)
     j = store.get_judgment(_current_kb_name() if not kb else kb, prompt_id)
     if format == "json":
@@ -310,7 +318,7 @@ def promote_cmd(
 
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-    ok = promote_prompt(kb_name, prompt_id, store=store)
+        ok = promote_prompt(kb_name, prompt_id, store=store)
     if not ok:
         if output_format == "json":
             print(
@@ -350,7 +358,7 @@ def unresolved_cmd(
 
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-    ok = unresolved_prompt(kb_name, prompt_id, store=store, force=force, reason=reason)
+        ok = unresolved_prompt(kb_name, prompt_id, store=store, force=force, reason=reason)
     if not ok:
         if output_format == "json":
             print(
@@ -389,7 +397,7 @@ def resolve_unresolved_cmd(
 
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-    ok = resolve_unresolved_prompt(kb_name, prompt_id, reason=reason, store=store)
+        ok = resolve_unresolved_prompt(kb_name, prompt_id, reason=reason, store=store)
     if not ok:
         if output_format == "json":
             print(
@@ -430,7 +438,7 @@ def ignore_cmd(
 
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-    ok = ignore_prompt(kb_name, prompt_id, store=store, reject_candidate=reject_candidate)
+        ok = ignore_prompt(kb_name, prompt_id, store=store, reject_candidate=reject_candidate)
     if not ok:
         if output_format == "json":
             print(
@@ -468,7 +476,7 @@ def retry_cmd(
 
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-    ok = retry_prompt(kb_name, prompt_id, store=store)
+        ok = retry_prompt(kb_name, prompt_id, store=store)
     if not ok:
         if output_format == "json":
             print(
@@ -513,10 +521,14 @@ def config_cmd(
             value = int(value)
         elif value.lower() in ("true", "false"):
             value = value.lower() == "true"
-        # 尝试 judge 配置，再尝试 capture 配置
-        judge_fields = {
-            f.name for f in __import__("dataclasses").fields(type(gm.get_prompt_judge_config()))
-        }
+        # 未知 key 显式拒绝（judge/capture 双字段集，防拼写错误静默"成功"）
+        import dataclasses
+
+        judge_fields = {f.name for f in dataclasses.fields(type(gm.get_prompt_judge_config()))}
+        capture_fields = {f.name for f in dataclasses.fields(type(gm.get_prompt_capture_config()))}
+        if key not in judge_fields and key not in capture_fields:
+            console.print(f"[red]未知配置项：{key}[/red]（合法字段见 jfox prompts config 输出）")
+            raise typer.Exit(1)
         if key in judge_fields:
             ok = gm.update_prompt_judge_config(**{key: value})
         else:
