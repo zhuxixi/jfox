@@ -154,6 +154,7 @@ def report_to_dict(report: "MocDiagnoseReport", kb: Optional[str] = None) -> dic
             "filesystem": coverage.filesystem,
             "vector": coverage.vector,
             "vector_orphans": coverage.vector_orphans,
+            "archived_in_index": coverage.archived_in_index,
             "bm25": coverage.bm25,
             "bm25_coverage_ratio": coverage.bm25_coverage_ratio,
             "warnings": list(coverage.warnings),
@@ -221,6 +222,12 @@ def _render_table(report: MocDiagnoseReport, top: int) -> None:
         str(report.coverage.bm25) if report.coverage.bm25 is not None else "N/A",
     )
     _console.print(coverage_table)
+    # archived 笔记是正常状态而非索引异常，仅在非零时显示一行提示，避免噪音（#499）
+    if report.coverage.archived_in_index:
+        _console.print(
+            f"Note: vector index includes {report.coverage.archived_in_index} "
+            "archived permanent note(s) (normal; excluded from filesystem count)"
+        )
     for warning in report.coverage.warnings:
         _console.print(f"Warning: {warning}")
 
