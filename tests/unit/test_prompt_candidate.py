@@ -77,7 +77,6 @@ def test_note_promote_semantics_preserves_source_prompts():
     """promote 语义验证：type 改 PERMANENT 后 source_prompts 保留并序列化。"""
     from datetime import datetime
 
-
     now = datetime.now()
     n = Note(
         id="20260902000000-000001",
