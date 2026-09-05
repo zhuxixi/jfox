@@ -105,7 +105,7 @@ def show_cmd(
     store = _get_store(kb)
     p = store.get_prompt(prompt_id)
     if p is None:
-        if output_format == "json":
+        if format == "json":
             print(
                 json.dumps(
                     {"success": False, "error": f"prompt {prompt_id} not found"},
