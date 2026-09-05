@@ -25,9 +25,16 @@ def _get_store(kb: Optional[str] = None):
 
 
 def _current_kb_name() -> str:
+    """当前 KB 名：--kb 上下文之外按 JFOX_KB > config.base_dir.name 解析。"""
+    import os
+
     from ..config import get_config
 
-    return getattr(get_config(), "kb_name", "default")
+    env = os.environ.get("JFOX_KB", "").strip()
+    if env:
+        return env
+    cfg = get_config()
+    return cfg.base_dir.name
 
 
 def _kb_wrap(kb: Optional[str]):
@@ -54,9 +61,14 @@ def list_cmd(
     session: Optional[str] = typer.Option(None, "--session", help="按 session 过滤"),
     limit: int = typer.Option(20, "--limit", "-n"),
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb"),
 ):
     """列出已记录的 prompt（table 模式只显示截断预览）。"""
+    if json_output:
+        format = "json"
     store = _get_store(kb)
     rows = store.list_prompts(session_id=session, limit=limit)
     if format == "json":
@@ -82,9 +94,14 @@ def show_cmd(
     prompt_id: int = typer.Argument(..., help="prompt ID"),
     full: bool = typer.Option(False, "--full", help="显示完整 prompt 文本"),
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb"),
 ):
     """查看单条 prompt 与其 judgment 详情。"""
+    if json_output:
+        format = "json"
     store = _get_store(kb)
     p = store.get_prompt(prompt_id)
     if p is None:
@@ -110,9 +127,14 @@ def show_cmd(
 @prompts_app.command("status")
 def status_cmd(
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb"),
 ):
     """统计：总 prompt / 未判断 / 处理中 / 失败 / 待处置 / active unresolved。"""
+    if json_output:
+        format = "json"
     store = _get_store(kb)
     kb_name = kb or _current_kb_name()
     total = store.count_prompts()
@@ -153,9 +175,14 @@ def status_cmd(
 @prompts_app.command("drain")
 def drain_cmd(
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb"),
 ):
     """把本地 spool 中未送达的 prompt 灌入数据库。"""
+    if json_output:
+        format = "json"
     from .service import drain_spool
 
     store = _get_store(kb)
@@ -164,8 +191,8 @@ def drain_cmd(
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     console.print(
-        f"drain 完成：送达 {result.get('delivered', 0)} 条，"
-        f"残留 {result.get('remaining', 0)} 条"
+        f"drain 完成：导入 {result.get('imported', 0)} 条，"
+        f"重复 {result.get('duplicates', 0)} 条，残留 {result.get('remaining', 0)} 条"
     )
 
 
@@ -173,9 +200,14 @@ def drain_cmd(
 def backfill_cmd(
     dry_run: bool = typer.Option(False, "--dry-run"),
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb"),
 ):
     """从旧 session_fragments 表回填 UserPromptSubmit 历史记录。"""
+    if json_output:
+        format = "json"
     from .service import backfill_from_fragments
 
     store = _get_store(kb)
@@ -203,9 +235,14 @@ def judge_cmd(
     retry_failed: bool = typer.Option(False, "--retry-failed"),
     allow_remote: bool = typer.Option(False, "--allow-remote"),
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
     kb: Optional[str] = typer.Option(None, "--kb"),
 ):
     """批量判断未处理 prompt（调用外部 runner，手动触发）。"""
+    if json_output:
+        format = "json"
     from .judge import judge_prompts
 
     kb_name, ctx = _kb_wrap(kb)
@@ -257,6 +294,10 @@ def judge_cmd(
 def promote_cmd(
     prompt_id: int = typer.Argument(...),
     kb: Optional[str] = typer.Option(None, "--kb"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """promote 该 prompt 的 candidate（仅 new/pending）。"""
     from .actions import promote_prompt
@@ -264,10 +305,25 @@ def promote_cmd(
     kb_name, ctx = _kb_wrap(kb)
     import contextlib
 
+    if json_output:
+        output_format = "json"
+
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-        ok = promote_prompt(kb_name, prompt_id, store=store)
+    ok = promote_prompt(kb_name, prompt_id, store=store)
     if not ok:
+        if output_format == "json":
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "prompt {pid} promote failed (precondition or candidate)".replace(
+                            "{pid}", str(prompt_id)
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
         raise typer.Exit(1)
     console.print(f"[green]prompt {prompt_id} → promoted[/green]")
 
@@ -278,6 +334,10 @@ def unresolved_cmd(
     force: bool = typer.Option(False, "--force"),
     reason: Optional[str] = typer.Option(None, "--reason"),
     kb: Optional[str] = typer.Option(None, "--kb"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """标记为待解决问题（写入清单笔记；仅 repeated，--force 可覆盖）。"""
     from .actions import unresolved_prompt
@@ -285,10 +345,25 @@ def unresolved_cmd(
     kb_name, ctx = _kb_wrap(kb)
     import contextlib
 
+    if json_output:
+        output_format = "json"
+
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-        ok = unresolved_prompt(kb_name, prompt_id, store=store, force=force, reason=reason)
+    ok = unresolved_prompt(kb_name, prompt_id, store=store, force=force, reason=reason)
     if not ok:
+        if output_format == "json":
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "prompt {pid} unresolved failed (precondition)".replace(
+                            "{pid}", str(prompt_id)
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
         raise typer.Exit(1)
     console.print(f"[yellow]prompt {prompt_id} → unresolved[/yellow]")
 
@@ -298,6 +373,10 @@ def resolve_unresolved_cmd(
     prompt_id: int = typer.Argument(...),
     reason: Optional[str] = typer.Option(None, "--reason"),
     kb: Optional[str] = typer.Option(None, "--kb"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """解决一个待解决问题（移除清单标记）。"""
     from .actions import resolve_unresolved_prompt
@@ -305,10 +384,25 @@ def resolve_unresolved_cmd(
     kb_name, ctx = _kb_wrap(kb)
     import contextlib
 
+    if json_output:
+        output_format = "json"
+
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-        ok = resolve_unresolved_prompt(kb_name, prompt_id, reason=reason, store=store)
+    ok = resolve_unresolved_prompt(kb_name, prompt_id, reason=reason, store=store)
     if not ok:
+        if output_format == "json":
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "prompt {pid} resolve failed (no active unresolved)".replace(
+                            "{pid}", str(prompt_id)
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
         raise typer.Exit(1)
     console.print(f"[green]prompt {prompt_id} → resolved[/green]")
 
@@ -320,6 +414,10 @@ def ignore_cmd(
         False, "--reject-candidate", help="同时 reject 已有 candidate"
     ),
     kb: Optional[str] = typer.Option(None, "--kb"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """忽略该 prompt（有 candidate 时需 --reject-candidate）。"""
     from .actions import ignore_prompt
@@ -327,10 +425,25 @@ def ignore_cmd(
     kb_name, ctx = _kb_wrap(kb)
     import contextlib
 
+    if json_output:
+        output_format = "json"
+
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-        ok = ignore_prompt(kb_name, prompt_id, store=store, reject_candidate=reject_candidate)
+    ok = ignore_prompt(kb_name, prompt_id, store=store, reject_candidate=reject_candidate)
     if not ok:
+        if output_format == "json":
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "prompt {pid} ignore failed (precondition or candidate reject)".replace(
+                            "{pid}", str(prompt_id)
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
         raise typer.Exit(1)
     console.print(f"[dim]prompt {prompt_id} → ignored[/dim]")
 
@@ -339,6 +452,10 @@ def ignore_cmd(
 def retry_cmd(
     prompt_id: int = typer.Argument(...),
     kb: Optional[str] = typer.Option(None, "--kb"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """重置 failed/needs_review judgment，允许重新判断。"""
     from .actions import retry_prompt
@@ -346,10 +463,25 @@ def retry_cmd(
     kb_name, ctx = _kb_wrap(kb)
     import contextlib
 
+    if json_output:
+        output_format = "json"
+
     with ctx or contextlib.nullcontext():
         store = _get_store(kb)
-        ok = retry_prompt(kb_name, prompt_id, store=store)
+    ok = retry_prompt(kb_name, prompt_id, store=store)
     if not ok:
+        if output_format == "json":
+            print(
+                json.dumps(
+                    {
+                        "success": False,
+                        "error": "prompt {pid} retry failed (state not retryable)".replace(
+                            "{pid}", str(prompt_id)
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
         raise typer.Exit(1)
     console.print(f"prompt {prompt_id} 已重置，下次 judge 将重新处理")
 
@@ -363,8 +495,13 @@ def retry_cmd(
 def config_cmd(
     set_key: Optional[str] = typer.Option(None, "--set", help="设置配置项 key=value"),
     format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
 ):
     """查看/设置 prompt 采集与判断配置。"""
+    if json_output:
+        format = "json"
     gm = get_global_config_manager()
     if set_key:
         if "=" not in set_key:

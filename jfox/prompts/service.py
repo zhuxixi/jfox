@@ -193,6 +193,7 @@ def drain_spool(
 def backfill_from_fragments(
     store: Optional[PromptStore] = None,
     fragments_db_path: Optional[Path] = None,
+    dry_run: bool = False,
 ) -> Dict[str, Any]:
     """从旧 session_fragments 回填 UserPromptSubmit 到 user_prompts。
 
@@ -251,6 +252,9 @@ def backfill_from_fragments(
             if md.get(key):
                 event[key] = md[key]
 
+        if dry_run:
+            imported += 1  # 只统计不写入
+            continue
         result = store.insert_prompt(
             event,
             source_key=f"fragment:{fid}",
@@ -266,7 +270,9 @@ def backfill_from_fragments(
             invalid += 1
 
     return {
-        "imported": imported,
+        "found": imported + duplicates + invalid + empty,
+        "imported": 0 if dry_run else imported,
+        "dry_run": dry_run,
         "duplicates": duplicates,
         "invalid": invalid,
         "empty": empty,

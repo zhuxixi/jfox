@@ -14,10 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 def _current_kb_name() -> str:
+    """当前 KB 名：--kb 上下文之外按 JFOX_KB > config.base_dir.name 解析。"""
+    import os
+
     from ..config import get_config
 
+    env = os.environ.get("JFOX_KB", "").strip()
+    if env:
+        return env
     cfg = get_config()
-    return cfg.kb_name if hasattr(cfg, "kb_name") else cfg.name
+    return cfg.base_dir.name
 
 
 def on_post_promote(
