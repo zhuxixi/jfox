@@ -14,6 +14,7 @@ All notable changes to jfox-cli will be documented in this file.
 
 ### Changes
 
+- **docs**: prompt judgment redesign spec and plan (#399) (#491)
 - plugin inventory and enum coverage checks (Phase 2B) (#480) (#488)
 - **claude.md**: add 防重闸门 + JSON 纯净输出 + JFOX_SYNTHESIS_DB 隔离（#483/#383） (#487)
 - **claude.md**: CLI 参考文档生成器 + CI drift gate 约定（#474/#476） (#479)
