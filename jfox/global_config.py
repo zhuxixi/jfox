@@ -420,6 +420,57 @@ class NoteAddConfig:
 
 
 @dataclass
+class PromptCaptureConfig:
+    """Claude Code UserPromptSubmit 全量记录配置（默认启用）。
+
+    与旧 FragmentCaptureConfig 的区别：不截断、不分类，prompt 原文全量落盘。
+    """
+
+    enabled: bool = True
+    spool_dir: Optional[str] = None  # None → ~/.zettelkasten/prompt-spool/
+    endpoint_url: str = "http://127.0.0.1:18700/api/prompt"
+    endpoint_timeout_seconds: int = 1
+    max_payload_bytes: int = 16777216  # 16 MiB：单请求上限
+    max_spool_bytes: int = 1073741824  # 1 GiB：spool 总量上限
+    retain_raw_event: bool = True  # metadata_json 保存完整原始 event
+    transcript_roots: List[str] = field(default_factory=lambda: ["~/.claude/projects"])
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptCaptureConfig":
+        if not data:
+            return cls()
+        raw_enabled = data.get("enabled", True)
+        if isinstance(raw_enabled, str):
+            enabled = raw_enabled.strip().lower() not in ("false", "0", "no", "off", "")
+        else:
+            enabled = bool(raw_enabled)
+
+        def _safe_int(key, default):
+            try:
+                return int(data.get(key, default))
+            except (TypeError, ValueError):
+                return default
+
+        return cls(
+            enabled=enabled,
+            spool_dir=data.get("spool_dir"),
+            endpoint_url=data.get("endpoint_url") or cls().endpoint_url,
+            endpoint_timeout_seconds=_safe_int("endpoint_timeout_seconds", 1),
+            max_payload_bytes=_safe_int("max_payload_bytes", 16777216),
+            max_spool_bytes=_safe_int("max_spool_bytes", 1073741824),
+            retain_raw_event=bool(data.get("retain_raw_event", True)),
+            transcript_roots=(
+                list(data["transcript_roots"])
+                if isinstance(data.get("transcript_roots"), list)
+                else cls().transcript_roots
+            ),
+        )
+
+
+@dataclass
 class GlobalConfig:
     """全局配置"""
 
@@ -430,6 +481,7 @@ class GlobalConfig:
     gem_synthesis: GemSynthesisConfig = field(default_factory=GemSynthesisConfig)
     note_add: NoteAddConfig = field(default_factory=NoteAddConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
+    prompt_capture: PromptCaptureConfig = field(default_factory=PromptCaptureConfig)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -440,6 +492,7 @@ class GlobalConfig:
             "gem_synthesis": self.gem_synthesis.to_dict(),
             "note_add": self.note_add.to_dict(),
             "backup": self.backup.to_dict(),
+            "prompt_capture": self.prompt_capture.to_dict(),
         }
 
     @classmethod
@@ -456,6 +509,14 @@ class GlobalConfig:
             gem_synthesis=GemSynthesisConfig.from_dict(data.get("gem_synthesis")),
             note_add=NoteAddConfig.from_dict(data.get("note_add")),
             backup=BackupConfig.from_dict(data.get("backup")),
+            prompt_capture=PromptCaptureConfig.from_dict(
+                data.get("prompt_capture")
+                if data.get("prompt_capture") is not None
+                # 兼容：无新 section 时从旧 fragment_capture.enabled 继承
+                else {
+                    "enabled": FragmentCaptureConfig.from_dict(data.get("fragment_capture")).enabled
+                }
+            ),
         )
 
 
@@ -788,6 +849,19 @@ class GlobalConfigManager:
     def get_backup_config(self) -> BackupConfig:
         """获取 KB 备份配置"""
         return self._load().backup
+
+    def get_prompt_capture_config(self) -> PromptCaptureConfig:
+        """获取 prompt 记录配置"""
+        return self._load().prompt_capture
+
+    def update_prompt_capture_config(self, **changes: Any) -> bool:
+        """更新 prompt 记录配置中的若干字段，未传入的字段保持原样"""
+        config = self._load()
+        current = asdict(config.prompt_capture)
+        current.update({k: v for k, v in changes.items() if k in current})
+        config.prompt_capture = PromptCaptureConfig.from_dict(current)
+        self._config = config
+        return self._save()
 
     def update_backup_config(self, **changes: Any) -> bool:
         """更新备份配置中的若干字段，未传入的字段保持原样"""
