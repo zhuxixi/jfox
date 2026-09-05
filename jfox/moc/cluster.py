@@ -58,6 +58,7 @@ class CoverageReport:
     filesystem: Optional[int] = 0
     vector: Optional[int] = 0
     vector_orphans: int = 0
+    archived_in_index: int = 0
     bm25: Optional[int] = 0
     bm25_coverage_ratio: Optional[float] = None
     warnings: List[str] = field(default_factory=list)
@@ -249,13 +250,13 @@ def diagnose_moc_density(
     warnings: List[str] = []
     try:
         note_index = get_note_index(config)
-        live_meta = {
-            meta.id: meta
-            for meta in note_index.get_all_meta()
-            if meta.type == NoteType.PERMANENT and not meta.archived
+        permanent_meta = {
+            meta.id: meta for meta in note_index.get_all_meta() if meta.type == NoteType.PERMANENT
         }
+        live_meta = {note_id: meta for note_id, meta in permanent_meta.items() if not meta.archived}
         filesystem_count: Optional[int] = len(live_meta)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        permanent_meta = {}
         live_meta = {}
         filesystem_count = None
         warnings.append(f"Filesystem coverage unavailable: {exc}")
@@ -283,6 +284,7 @@ def diagnose_moc_density(
     records = []
     seen_live_ids = set()
     orphan_count = 0
+    archived_count = 0
     if filesystem_count is None:
         warnings.append("Permanent scope unavailable; semantic clustering was skipped")
         warnings.append(
@@ -297,7 +299,11 @@ def diagnose_moc_density(
                 raise MocDiagnoseError(
                     f"Corrupt permanent vector metadata for {note_id}: expected an object"
                 )
-            if note_id not in live_meta or note_id in seen_live_ids:
+            classification = classify_vector_id(note_id, permanent_meta)
+            if classification == "archived":
+                archived_count += 1
+                continue
+            if classification == "ghost" or note_id in seen_live_ids:
                 orphan_count += 1
                 continue
             seen_live_ids.add(note_id)
@@ -308,6 +314,7 @@ def diagnose_moc_density(
     title_by_id = {note_id: meta.title for note_id, meta in live_meta.items()}
     live_embeddings = [record[2] for record in records]
     coverage.vector_orphans = orphan_count
+    coverage.archived_in_index = archived_count
 
     live_note_count = len(live_embeddings)
     if live_note_count > MAX_DENSE_CLUSTER_NOTES:
