@@ -54,16 +54,17 @@ def _mock_runner_output(prompt_ids, classification="recorded"):
 # ---------------------------------------------------------------------------
 
 
-def _isolated_env(tmp_path, monkeypatch):
-    """隔离 spool drain，防真实 spool 残留文件灌入测试 store。"""
+@pytest.fixture(autouse=True)
+def _isolated_env(monkeypatch):
+    """autouse：隔离 spool drain，防真实 ~/.zettelkasten/prompt-spool/ 残留
+    文件被任何 judge 测试灌入测试 store（judge_prompts 开头会 drain）。"""
     monkeypatch.setattr(
         "jfox.prompts.service.drain_spool",
         lambda **kw: {"imported": 0, "duplicates": 0, "failed": 0, "remaining": 0},
     )
 
 
-def test_judge_creates_judgments_for_all_prompts(tmp_path, monkeypatch):
-    _isolated_env(tmp_path, monkeypatch)
+def test_judge_creates_judgments_for_all_prompts(tmp_path):
     store = _store_with_prompts(tmp_path, n=3)
     with (
         patch("jfox.prompts.judge.run_runner") as mock_runner,

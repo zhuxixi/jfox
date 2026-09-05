@@ -86,7 +86,9 @@ def _create_candidate_from_draft(
 
     try:
         now = datetime.now()
-        note_id = now.strftime("%Y%m%d%H%M%S") + "-" + now.strftime("%f")[:3]
+        # 时间戳 + 完整微秒：candidate 不进 note_index，14 位 ID 约定不适用；
+        # 批量循环同毫秒创建概率高，微秒全位防碰撞（synthesizer 固化约定）
+        note_id = now.strftime("%Y%m%d%H%M%S") + "-" + now.strftime("%f")
 
         grounded_by = draft.get("grounded_by") or []
         if isinstance(grounded_by, str):
@@ -203,11 +205,14 @@ def judge_prompts(
 
     report.total = len(all_claimed)
 
+    # 只处理实际 claim 到的 prompt（并发下部分可能被活跃 lease 跳过）
+    claimed_set = set(all_claimed)
+
     # transcript 缓存（同 session 只读一次）
     transcript_cache: Dict[str, TranscriptDocument] = {}
 
     for sid, pids in session_groups.items():
-        s_pids = [p for p in pids if p in prompt_rows]
+        s_pids = [p for p in pids if p in prompt_rows and p in claimed_set]
         if not s_pids:
             continue
 
@@ -274,7 +279,11 @@ def judge_prompts(
             task_items = []
             for pid in batch_pids:
                 history = build_prompt_history(
-                    store, pid, prompt_rows[pid]["session_id"], cfg.history_limit
+                    store,
+                    pid,
+                    prompt_rows[pid]["session_id"],
+                    cfg.history_limit,
+                    kb_name=kb_name,
                 )
                 task_items.append(
                     _build_task_item(prompt_rows[pid], context, grounding, history, unresolved)
@@ -311,7 +320,15 @@ def judge_prompts(
 
                 candidate_id = None
                 if item["classification"] == "new" and item.get("draft"):
-                    candidate_id = _create_candidate_from_draft(item["draft"], pid)
+                    # 幂等恢复（D17）：崩溃前 candidate 已落盘但 judgment 未记账时，
+                    # 复用已有 candidate，不重复创建
+                    existing_j = store.get_judgment(kb_name, pid)
+                    existing_cand = (
+                        existing_j.get("candidate_note_id")
+                        if existing_j and existing_j.get("judgment_state") == "succeeded"
+                        else None
+                    )
+                    candidate_id = existing_cand or _create_candidate_from_draft(item["draft"], pid)
                     if candidate_id is None:
                         store.fail_judgment(kb_name, pid, "candidate creation failed")
                         report.failed += 1
