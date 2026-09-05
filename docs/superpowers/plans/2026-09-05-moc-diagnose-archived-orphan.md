@@ -41,17 +41,17 @@
 class TestClassifyVectorId:
     """classify_vector_id 的三分判定（ghost / archived / live）。"""
 
-    def test_ghost_when_id_not_in_permanent_meta(self):
+    def test_classify_vector_id_ghost_when_id_not_in_permanent_meta(self):
         assert classify_vector_id("missing", {}) == "ghost"
 
-    def test_ghost_when_permanent_meta_empty(self):
+    def test_classify_vector_id_ghost_when_permanent_meta_empty(self):
         assert classify_vector_id("p0", {}) == "ghost"
 
-    def test_archived_when_meta_marked_archived(self):
+    def test_classify_vector_id_archived_when_meta_marked_archived(self):
         meta = _permanent_meta("a1", "A1", archived=True)
         assert classify_vector_id("a1", {"a1": meta}) == "archived"
 
-    def test_live_when_meta_not_archived(self):
+    def test_classify_vector_id_live_when_meta_not_archived(self):
         meta = _permanent_meta("p0", "P0")
         assert classify_vector_id("p0", {"p0": meta}) == "live"
 ```
