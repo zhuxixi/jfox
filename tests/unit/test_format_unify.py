@@ -32,6 +32,10 @@ class TestAddFormat:
         """add 命令 output_format='json' 应输出 JSON"""
         from jfox.cli import _add_note_impl
 
+        # Task 4 (#383) 把 last_dimension_warning 并入 JSON 结果字段后，truthy
+        # MagicMock 无法被 json.dumps 序列化；真实值是 None 或 str，对齐 mock。
+        mock_vs.return_value.last_dimension_warning = None
+
         cfg = self._make_config(tmp_path)
         mock_global_config.notes_dir = cfg.notes_dir
         mock_note_config.notes_dir = cfg.notes_dir

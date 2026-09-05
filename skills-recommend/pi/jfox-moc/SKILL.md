@@ -6,7 +6,8 @@ description: |
   structure notes from clusters, and keep members in sync as notes evolve.
   Triggers on: "建 MOC", "MOC", "知识地图", "地图", "structure note",
   "主题导航", "主题簇", "生成地图", "moc create", "moc update",
-  "moc diagnose".
+  "moc diagnose", "批量建 MOC", "MOC 冷启动", "MOC 重构",
+  "MOC 覆盖度", "MOC 合并", "MOC 归档".
 ---
 
 # JFox MOC 地图层
@@ -40,6 +41,8 @@ jfox moc diagnose --json --top 10
 
 向用户呈现：哪些主题簇已达建 MOC 规模、建议主题名、孤儿情况。
 
+**簇序号时效**：`seed=42` 只保证同一知识库状态下的结果可复现；库一变动（新建/归档 MOC、改笔记标题）Louvain 重跑结果即变，旧簇序号全部失效。每次 create 前重新 diagnose，用 hub 标题确认目标簇，不认旧序号（实测：知识库变动后差点把 CR 簇当 skill 簇建）。
+
 ## Step 2: 草稿与确认
 
 选定簇后 dry-run 生成草稿（默认不落盘）：
@@ -54,6 +57,8 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --json
 
 展示草稿给用户确认（hub 置顶、按共享 tag 分组、成员清单）。**人工确认主题名与成员取舍**，需修改时用 `--title` / 换簇 / 换阈值重跑 dry-run。
 
+**审成员时效性**：确认草稿前先读成员笔记全文，识别失效/过时笔记——先归档或更新成员，再落盘。直接建 MOC 会把过时结论固化进地图（实测：双 bot 时代的笔记在单 bot 化后已失效）。
+
 **规模护栏**：簇超过 `--max-size`（默认 50）时拒绝生成——这是特性不是 bug，提高 `--threshold` 拆细再建。Louvain 能识别稠密社区，但不保证每个社区都小于护栏；纯链式语料也可能保持为一个社区。
 
 ## Step 3: 落盘
@@ -65,6 +70,13 @@ jfox moc create --cluster <i> --threshold <t> --title "<主题名>" --yes
 ```
 
 自动完成：生成 structure note + 成员 backlinks 回填。孤儿可收纳：加 `--include-orphans`（并入「待归类」小节，孤儿 id 同样进 links）。
+
+**管道语法铁律**：MOC 正文一律用 `[[ID|标题]]`（管道左侧 ID 是解析目标，右侧标题仅作显示）。一条规则挡两个坑：
+
+- **同名标题歧义**：`[[标题]]` 解析走「精确标题 → 标题包含」fallback，同名笔记（session-to-permanent 重复产出是主因）会解析到非预期的那条
+- **标题含 `#` 截断**：`#` 是锚点分隔符，标题含 issue 号的笔记会被截断，静默丢成员（实测丢 #158/#195 两条）
+
+\#458 修复前，`moc create` 产物正文仍是 `[[标题]]`——`--yes` 落盘前检查成员清单，把标题含 `#` 或有同名风险的成员改写为 `[[ID|标题]]`；#458 修复后 create 产物自动免疫，手写正文仍须遵守。
 
 ## Step 4: 维护
 
@@ -99,6 +111,40 @@ jfox moc remove-member <moc_id> <note_id> --json                # 摘除成员�
 - `partial: true` 表示主操作已成功但仍有未收敛状态，`warnings` 会给出具体 ID 和重试命令。
 
 **职责定位**：session-to-permanent 沉淀新笔记时的归属确认是主路径——新笔记落库即入图；`moc update` 是批量兜底，负责漏挂的存量笔记与语义漂移的 diff 审阅，不承担单条精准操作。
+
+## 批量建设与成员质量审查（冷启动/重构）
+
+适用场景：从 0 批量建多个 MOC，或大规模重构现有地图层（归档/合并旧 MOC）。单 MOC 日常生命周期走 Step 1-4；批量场景在每一步上多一道质量闸。
+
+### 批量主流程
+
+diagnose → 逐簇 dry-run + 审成员时效性（Step 2 规则）→ 落盘并执行管道铁律（Step 3 规则）→ 覆盖度核查 →（可选）合并/归档。每建完一个 MOC 立即做覆盖度核查，不要攒到全部建完。
+
+### 无独立簇时：手动建 MOC
+
+语义聚类聚不出簇的主题（平台层笔记被大簇吸收、provider 配置散落各簇等）走手动路径：
+
+1. 关键词搜索收集候选成员（多组关键词覆盖同义表述）
+2. 与现有 MOC 成员做差集，排除已归属笔记
+3. 分组呈现给用户确认主题名与成员取舍
+4. 确认后落盘：`jfox add --type structure --tag moc --title "<主题名>" --content-file <草稿.md>`，正文成员一律 `[[ID|标题]]`（Step 3 铁律）
+
+手动建的 MOC 与 create 产物同受 `moc update` 管理（update 按 type=structure 扫描，与创建方式无关）。#484（moc add-member 命令）落地后手动补成员可简化；落地前手动加成员会踩 #470（edit 用正文解析结果覆盖 frontmatter links 且不去重）——正文 wiki-links 与 frontmatter links 必须同步维护。
+
+### 覆盖度核查
+
+语义聚类会漏掉主题相关笔记（实测：CR MOC 初版漏 16 条，含 2 条核心根笔记）。每个 MOC 建完后必做：
+
+1. 主题关键词 `jfox search "<关键词>" --mode hybrid --type permanent --top 50`，多组关键词各取 top 20-50
+2. 搜索结果与 MOC 成员 links 做差集
+3. 差集中确实属于主题的，按手动路径补入
+
+附：`jfox list --type structure` 默认 limit 10 会漏 MOC，盘点全量 MOC 时 `--limit 20` 起步。
+
+### 合并与归档处置
+
+- **旧 MOC 无意义 → 归档**：`jfox archive <moc_id>`。structure note 归档不影响成员笔记（实测：2026-08-27 测试批次 7 个 MOC 全部归档）
+- **两 MOC 主题重叠 → 合并**：保留主题更准确的 MOC，把另一 MOC 的独有成员按手动路径补入，然后归档被并者（实测：TUI MOC 并入 pi-agent-board 大 MOC）
 
 ## 关键原则
 

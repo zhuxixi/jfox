@@ -2,6 +2,29 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.13.0] - 2026-09-05
+
+### Features
+
+- **add**: permanent 防重双通道闸门 + --force 逃生舱 + JSON 纯净输出 (#383) (#483)
+
+### Fixes
+
+- **embedding**: make dimension-migration check ndarray-safe for chromadb 1.5.x (#475) (#503)
+
+### Changes
+
+- **docs**: prompt judgment redesign spec and plan (#399) (#491)
+- plugin inventory and enum coverage checks (Phase 2B) (#480) (#488)
+- **claude.md**: add 防重闸门 + JSON 纯净输出 + JFOX_SYNTHESIS_DB 隔离（#483/#383） (#487)
+- **claude.md**: CLI 参考文档生成器 + CI drift gate 约定（#474/#476） (#479)
+- **skill**: jfox-moc 补充「批量建设与成员质量审查」章节 (#485) (#490)
+- **claude.md**: 测试全局配置隔离 ZK_CONFIG_PATH、英文 README baseline、cc-plugin 版本刷新（#469/#461/#466） (#473)
+- ci: add generated-docs drift gate to lint job (#476) (#477) (#476)
+- add deterministic English CLI reference generation (#474)
+
+[1.13.0]: https://github.com/zhuxixi/jfox/compare/v1.12.1...v1.13.0
+
 ## [1.12.1] - 2026-08-30
 
 ### Fixes

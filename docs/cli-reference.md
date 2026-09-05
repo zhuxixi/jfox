@@ -47,6 +47,7 @@ jfox add [OPTIONS] [CONTENT]
 | `template` | `--template, -T` | TEXT | no | — | — | no | no |
 | `content_file` | `--content-file` | TEXT | no | — | — | no | no |
 | `topic` | `--topic` | TEXT | no | — | — | no | no |
+| `force` | `--force` | BOOL | no | `false` | — | no | yes |
 | `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
 | `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
 | `json_output` | `--json` | BOOL | no | `false` | — | no | yes |

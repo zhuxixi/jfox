@@ -75,6 +75,15 @@ def generate_id() -> str:
     return f"{timestamp}{random_suffix:04d}"
 
 
+def derive_note_title(title: Optional[str], content: str) -> str:
+    """标题派生规则：无标题时从内容提取（截断 50 字符加省略号）。
+
+    create_note 与 add 防重闸门（#383）共用，防两处口径漂移。"""
+    if title is None:
+        return content[:50] + "..." if len(content) > 50 else content
+    return title
+
+
 def create_note(
     content: str,
     title: Optional[str] = None,
@@ -88,9 +97,8 @@ def create_note(
     note_id = generate_id()
     now = datetime.now()
 
-    # 如果没有标题，从内容提取
-    if title is None:
-        title = content[:50] + "..." if len(content) > 50 else content
+    # 无标题时从内容派生（规则单一来源：derive_note_title）
+    title = derive_note_title(title, content)
 
     note = Note(
         id=note_id,
