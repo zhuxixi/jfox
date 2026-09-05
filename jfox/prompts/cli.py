@@ -25,16 +25,17 @@ def _get_store(kb: Optional[str] = None):
 
 
 def _current_kb_name() -> str:
-    """当前 KB 名：按 use_kb 同链解析（JFOX_KB env > config.base_dir.name）。"""
+    """当前 KB 名：读模块级 config 单例（use_kb 原地改写其 base_dir；get_config()
+    会重新解析全局默认、看不到 with use_kb(kb) 的切换）。dedup 同模式。
+    """
     import os
 
-    from ..config import get_config
+    from ..config import config as _zk_config
 
     env = os.environ.get("JFOX_KB", "").strip()
     if env:
         return env
-    cfg = get_config()
-    return cfg.base_dir.name
+    return _zk_config.base_dir.name
 
 
 def _kb_wrap(kb: Optional[str]):
