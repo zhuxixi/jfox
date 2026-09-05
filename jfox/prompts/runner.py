@@ -19,20 +19,46 @@ from ..global_config import PromptJudgeConfig
 
 logger = logging.getLogger(__name__)
 
-# 保留参数：extra_args 不能覆盖（安全边界）
+# 保留参数：extra_args 不能覆盖（安全边界）。
+# 含 pi 已知短 flag 别名（-t=--tools 等）与会话恢复类 flag（--session-id/--fork/
+# --resume/--continue 可绕过 --no-session 恢复历史上下文）。
 RESERVED_FLAGS = frozenset(
     {
+        # 判断链路固定位
         "--print",
         "--model",
         "--thinking",
         "--tools",
         "--session",
+        "--session-id",
+        "--fork",
+        "--resume",
+        "--continue",
         "--extension",
         "--skill",
+        "--prompt-template",
+        "--exclude-tools",
         "--context-files",
         "--approve",
+        "--mode",
+        "--api-key",
         "--system-prompt",
         "--append-system-prompt",
+        # 短 flag 别名（与上面长 flag 等价，防黑名单绕过）
+        "-p",
+        "-c",
+        "-r",
+        "-t",
+        "-xt",
+        "-nt",
+        "-nbt",
+        "-e",
+        "-ne",
+        "-ns",
+        "-nc",
+        "-a",
+        "-n",
+        "-np",
     }
 )
 
@@ -104,10 +130,13 @@ def build_pi_argv(config: PromptJudgeConfig) -> List[str]:
     return argv
 
 
+_HAS_KILLPG = hasattr(os, "killpg") and hasattr(os, "getpgid")
+
+
 def _kill_process_group(proc: subprocess.Popen, pgid: Optional[int]) -> None:
-    """清理整个进程组（SIGTERM → SIGKILL 兜底）。"""
+    """清理整个进程组（SIGTERM → SIGKILL 兜底）；Windows 无 killpg 时降级 proc.kill。"""
     killed = False
-    if pgid is not None:
+    if pgid is not None and _HAS_KILLPG:
         try:
             os.killpg(pgid, signal.SIGTERM)
             killed = True
@@ -119,7 +148,7 @@ def _kill_process_group(proc: subprocess.Popen, pgid: Optional[int]) -> None:
         except Exception:
             pass
     time.sleep(0.3)
-    if pgid is not None:
+    if pgid is not None and _HAS_KILLPG:
         try:
             os.killpg(pgid, getattr(signal, "SIGKILL", signal.SIGTERM))
         except (ProcessLookupError, PermissionError):
@@ -185,15 +214,25 @@ def _invoke_subprocess(
 
     pgid: Optional[int] = None
     try:
-        try:
-            pgid = os.getpgid(proc.pid)
-        except (ProcessLookupError, OSError):
-            pgid = None
-        try:
-            proc.stdin.write(stdin_data)
-            proc.stdin.close()
-        except (BrokenPipeError, OSError):
-            pass  # 进程可能已退出
+        if _HAS_KILLPG:
+            try:
+                pgid = os.getpgid(proc.pid)
+            except (ProcessLookupError, OSError, AttributeError):
+                pgid = None
+        else:
+            pgid = None  # Windows：无进程组语义，直接 proc.kill
+
+        # stdin 写放后台线程：stdin_data 可达数 MB（超 pipe buffer ~64KB），主线程
+        # 单次阻塞写在子进程不读 stdin 时会永久卡住、绕过下方 deadline 轮询
+        def _feed_stdin():
+            try:
+                proc.stdin.write(stdin_data)
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass  # 进程可能已退出
+
+        stdin_thread = threading.Thread(target=_feed_stdin, daemon=True)
+        stdin_thread.start()
 
         deadline = time.monotonic() + config.timeout_seconds
         while True:
@@ -225,6 +264,8 @@ def _invoke_subprocess(
 def validate_runner_output(
     output: Dict[str, Any],
     expected_ids: List[int],
+    evidence_note_ids: Optional[set] = None,
+    evidence_prompt_ids: Optional[set] = None,
 ) -> RunnerResult:
     """严格校验 runner 返回的 JSON items。
 
@@ -232,7 +273,8 @@ def validate_runner_output(
     - classification 必须是四种之一；
     - confidence 必须是有限 [0,1]；
     - new 必须有完整 draft，其他分类不得有 draft；
-    - needs_review 即使带 draft 也丢弃。
+    - needs_review 即使带 draft 也丢弃；
+    - matched_*_ids 给定时校验值域（只能引用实际提供的 evidence ID，防幻觉引用）。
     """
     if not isinstance(output, dict) or "items" not in output:
         return RunnerResult(ok=False, error="输出缺少 items 字段")
@@ -277,14 +319,34 @@ def validate_runner_output(
         if len(str(reason)) > MAX_REASON_CHARS:
             return RunnerResult(ok=False, error=f"reason 超长（>{MAX_REASON_CHARS}）")
 
+        matched_note_ids = item.get("matched_note_ids") or []
+        matched_prompt_ids = item.get("matched_prompt_ids") or []
+        matched_unresolved = item.get("matched_unresolved_prompt_ids") or []
+
+        # 值域校验（evidence 集合给定时）：防 runner 幻觉引用不存在的证据
+        if evidence_note_ids is not None:
+            bad = [x for x in matched_note_ids if str(x) not in evidence_note_ids]
+            if bad:
+                return RunnerResult(
+                    ok=False,
+                    error=f"prompt {pid}: matched_note_ids 引用了未提供的 evidence: {bad[:3]}",
+                )
+        if evidence_prompt_ids is not None:
+            bad = [x for x in matched_prompt_ids if x not in evidence_prompt_ids]
+            if bad:
+                return RunnerResult(
+                    ok=False,
+                    error=f"prompt {pid}: matched_prompt_ids 引用了未提供的 evidence: {bad[:3]}",
+                )
+
         v_item = {
             "prompt_id": pid,
             "classification": classification,
             "reason": str(reason),
             "confidence": float(confidence),
-            "matched_note_ids": item.get("matched_note_ids") or [],
-            "matched_prompt_ids": item.get("matched_prompt_ids") or [],
-            "matched_unresolved_prompt_ids": item.get("matched_unresolved_prompt_ids") or [],
+            "matched_note_ids": matched_note_ids,
+            "matched_prompt_ids": matched_prompt_ids,
+            "matched_unresolved_prompt_ids": matched_unresolved,
         }
 
         draft = item.get("draft")

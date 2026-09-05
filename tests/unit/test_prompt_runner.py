@@ -254,3 +254,51 @@ def test_runner_sets_internal_session_env():
     # 用真实子进程（echo 空输出）验证 env 传递
     stdout, stderr = _invoke_subprocess(["sh", "-c", 'echo "$JFOX_INTERNAL_SESSION"'], "{}", cfg)
     assert stdout.strip() == "prompt-judge"
+
+
+def test_short_flag_aliases_cannot_bypass_reserved_flags():
+    """-t/-e/-a 等 pi 短 flag 别名不得绕过保留参数黑名单。"""
+    for bad in (
+        ["-t", "bash"],
+        ["-e", "/tmp/evil.py"],
+        ["-a"],
+        ["--session-id", "x"],
+        ["--fork", "s"],
+    ):
+        with pytest.raises(ValueError, match="保留安全参数"):
+            build_pi_argv(PromptJudgeConfig(extra_args=list(bad)))
+
+
+def test_validate_runner_output_rejects_phantom_evidence_ids():
+    """matched_note_ids 引用未提供的 evidence 时拒绝（防幻觉引用）。"""
+    output = {
+        "items": [
+            {
+                "prompt_id": 1,
+                "classification": "repeated",
+                "reason": "r",
+                "confidence": 0.9,
+                "matched_note_ids": ["ghost-note"],
+            }
+        ]
+    }
+    result = validate_runner_output(output, [1], evidence_note_ids={"real-note"})
+    assert result.ok is False
+    assert "未提供" in result.error
+
+
+def test_validate_runner_output_accepts_real_evidence_ids():
+    output = {
+        "items": [
+            {
+                "prompt_id": 1,
+                "classification": "repeated",
+                "reason": "r",
+                "confidence": 0.9,
+                "matched_note_ids": ["real-note"],
+            }
+        ]
+    }
+    result = validate_runner_output(output, [1], evidence_note_ids={"real-note"})
+    assert result.ok is True
+    assert result.items[0]["matched_note_ids"] == ["real-note"]

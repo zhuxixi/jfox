@@ -104,6 +104,7 @@ def build_prompt_history(
     prompt_id: int,
     session_id: str,
     limit: int = 20,
+    kb_name: str = "default",
 ) -> List[Dict[str, Any]]:
     """为目标 prompt 构建有界历史证据。
 
@@ -127,7 +128,7 @@ def build_prompt_history(
         if row["prompt_id"] in seen_ids:
             continue
         seen_ids.add(row["prompt_id"])
-        history.append(_history_item(row, store))
+        history.append(_history_item(row, store, kb_name))
         if len(history) >= limit:
             return history
 
@@ -140,14 +141,14 @@ def build_prompt_history(
         if row["prompt_hash"] != prompt_hash:
             continue
         seen_ids.add(row["prompt_id"])
-        history.append(_history_item(row, store))
+        history.append(_history_item(row, store, kb_name))
         if len(history) >= limit:
             break
 
     return history
 
 
-def _history_item(row: Dict[str, Any], store) -> Dict[str, Any]:
+def _history_item(row: Dict[str, Any], store, kb_name: str = "default") -> Dict[str, Any]:
     """构造一条历史证据 dict（含已有 judgment disposition，如果有）。"""
     item = {
         "id": row["prompt_id"],
@@ -156,9 +157,9 @@ def _history_item(row: Dict[str, Any], store) -> Dict[str, Any]:
         "captured_at": row.get("captured_at", ""),
         "disposition": None,
     }
-    # 查已有 judgment 的 disposition（当前 KB 上下文由调用方保证）
+    # 查已有 judgment 的 disposition（按 (kb_name, prompt_id) 复合键，调用方传真实 KB）
     try:
-        j = store.get_judgment("default", row["prompt_id"])
+        j = store.get_judgment(kb_name, row["prompt_id"])
         if j and j.get("disposition"):
             item["disposition"] = j["disposition"]
     except Exception:
