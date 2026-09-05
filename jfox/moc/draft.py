@@ -99,10 +99,11 @@ def build_moc_draft(
 def _member_link(note_id: str, title: str) -> str:
     """渲染成员 wiki 链接：ID 为目标、标题为别名；标题不安全时只写 ID。
 
-    标题含换行或 `]]` 时无法安全作为管道别名（会截断/破坏链接语法），
-    退化为 `[[ID]]` 形式，规避 #458（标题含 # 被截断）与 #470（同名歧义）。
+    标题含换行或 `]`（含 `]]`）时无法安全作为管道别名——单 `]` 会提前截断
+    `[[token]]` 语法，导致 _MEMBER_ROW_RE 无法再识别该行（重复 add 会不断追加、
+    remove 删不掉）。退化为 `[[ID]]` 形式，规避 #458/#470。
     """
-    if "\n" in title or "\r" in title or "]]" in title:
+    if "\n" in title or "\r" in title or "]" in title:
         return f"[[{note_id}]]"
     return f"[[{note_id}|{title}]]"
 

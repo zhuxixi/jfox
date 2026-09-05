@@ -561,7 +561,7 @@ def _validate_member_ids(moc_id: str, note_id: str) -> None:
     for value, label in ((moc_id, "MOC"), (note_id, "note")):
         if not _MEMBER_ID_RE.match(value):
             raise ValueError(
-                f"Invalid note id: {value!r} " "(must match ^[A-Za-z0-9][A-Za-z0-9_-]*$)"
+                f"Invalid {label} id: {value!r} " "(must match ^[A-Za-z0-9][A-Za-z0-9_-]*$)"
             )
 
 
@@ -574,7 +574,13 @@ def _exact_load(idx: "NoteIndex", note_id: str) -> Optional[Note]:
     if meta is None:
         return None
     note = load_note(Path(meta.filepath))
-    if note is None or note.id != note_id or not note.filepath.exists():
+    if note is None or note.id != note_id:
+        return None
+    # from_markdown 不回填 _filepath，filepath 属性按当前标题现算；对 legacy 文件名
+    # （#407/#408 时间戳-微秒-slug 等与标题派生名不一致的文件）会算出不存在的路径，
+    # 把真实笔记误判成 ghost。钉住索引命中的真实磁盘路径后再校验存在性。
+    note.set_filepath(Path(meta.filepath))
+    if not note.filepath.exists():
         return None
     return note
 
@@ -624,10 +630,10 @@ def _add_member_impl(
         warnings.append(f"member note {note_id} is not permanent (type={member.type.value})")
         if member.type == NoteType.STRUCTURE:
             warnings.append(f"nested structure member: {note_id}")
-    if "\n" in member.title or "\r" in member.title or "]]" in member.title:
+    if "\n" in member.title or "\r" in member.title or "]" in member.title:
         warnings.append(
             f"unsafe member title: canonical row uses [[{note_id}]] "
-            "(title contains newline or ]])"
+            "(title contains newline or ])"
         )
 
     legacy_title_unique = _title_unique(idx, member.title)

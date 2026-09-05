@@ -109,6 +109,37 @@ def test_render_content_uses_id_only_for_unsafe_titles():
     assert "Unsafe ]] title" not in content
 
 
+def test_render_content_uses_id_only_for_single_bracket_title():
+    """单 `]`（非 `]]`）也会截断行识别：必须回退 [[ID]]（#505 CR issue-2）。"""
+    member = ClusterMember(id="1", title="foo]bar", link_degree=2, mean_similarity=0.8)
+    draft = MocCreateDraft(title="Bracket MOC", groups=[DraftGroup("misc", [member])])
+
+    content = render_moc_content(draft)
+
+    assert "- [[1]] — 2 links" in content
+    assert "foo]bar" not in content
+
+
+def test_member_row_roundtrip_with_single_bracket_title():
+    """单 `]` 标题写入后：重复 upsert 不追加、remove 能删（幂等/自修复契约）。"""
+    base = "## zima\n\n## 近期活动\n"
+
+    first = upsert_member_line(base, "1", "foo]bar", ["zima"], None, legacy_title_unique=True)
+    assert "[[1]]" in first.content
+    assert "foo]bar" not in first.content
+
+    second = upsert_member_line(
+        first.content, "1", "foo]bar", ["zima"], None, legacy_title_unique=True
+    )
+    assert second.changed is False
+    assert second.rows_added == 0
+    assert second.had_existing_row is True
+
+    removed = remove_member_lines(second.content, "1", "foo]bar", legacy_title_unique=True)
+    assert removed.removed_rows == 1
+    assert "[[1]]" not in removed.content
+
+
 def test_update_diff_adds_new_and_removes_dead_links():
     cluster = _cluster()
     diff = build_update_diff(

@@ -190,10 +190,38 @@ def test_add_member_non_permanent_warns_but_applies(seeded_kb):
     assert any("not permanent" in w for w in payload["warnings"])
 
 
+def test_add_member_loads_note_with_legacy_filename(seeded_kb):
+    """#407/#408 legacy 文件名（与标题派生名不一致）：不得误判 ghost（#505 CR issue-1）。
+
+    from_markdown 不回填 _filepath，filepath 属性按标题现算
+    `20260820000003-zima-three.md`；真实文件用 legacy 名落盘时现算路径不存在，
+    修复前 add-member 会误报 "Member note not found"。
+    """
+    member_three = Note(
+        id="20260820000003",
+        title="Zima Three",
+        content="content of Zima Three",
+        type=NoteType.PERMANENT,
+        created=dt(2026, 8, 20),
+        updated=dt(2026, 8, 20),
+        tags=["zima"],
+    )
+    legacy_name = "202608200000031234-5678901-zima-three.md"  # 时间戳-微秒-slug
+    member_three.set_filepath(seeded_kb.notes_dir / "permanent" / legacy_name)
+    _atomic_write(member_three.filepath, member_three.to_markdown())
+    assert not (seeded_kb.notes_dir / "permanent" / "20260820000003-zima-three.md").exists()
+
+    payload = _add_member_impl(seeded_kb, MOC_ID, member_three.id, None)
+
+    assert payload["success"] is True
+    assert payload["applied"] is True
+    assert "[[20260820000003|Zima Three]]" in _reload(seeded_kb).content
+
+
 def test_add_member_invalid_ids_rejected(seeded_kb):
     with pytest.raises(ValueError, match="Invalid note id"):
         _add_member_impl(seeded_kb, MOC_ID, "bad/id", None)
-    with pytest.raises(ValueError, match="Invalid note id"):
+    with pytest.raises(ValueError, match="Invalid MOC id"):
         _add_member_impl(seeded_kb, "x*y", MEMBER_TWO, None)
 
 

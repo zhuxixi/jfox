@@ -204,7 +204,7 @@ def test_add_rejects_invalid_moc_id(tmp_path):
     assert result.exit_code == 1
     payload = json.loads(_strip_ansi(result.output))
     assert payload["success"] is False
-    assert "Invalid note id" in payload["error"]
+    assert "Invalid MOC id" in payload["error"]
     mock_update.assert_not_called()
 
 
@@ -399,6 +399,19 @@ def test_add_structure_member_gets_nested_warning(tmp_path):
 def test_add_unsafe_title_warns_id_only_link(tmp_path):
     moc = _note(tmp_path, MOC_ID, title="Zima MOC", note_type=NoteType.STRUCTURE)
     member = _note(tmp_path, title="Bad ]] Title")
+    upsert = MagicMock(return_value=_upsert_result())
+    backfill = MagicMock(return_value=BacklinkUpdateResult((NOTE_ID,), ()))
+
+    result = _invoke_add_full(tmp_path, moc, member, upsert, backfill, MOC_ID, NOTE_ID)
+
+    payload = json.loads(_strip_ansi(result.output))
+    assert any("unsafe" in w and NOTE_ID in w for w in payload["warnings"])
+
+
+def test_add_unsafe_single_bracket_title_warns_id_only_link(tmp_path):
+    """单 `]`（非 `]]`）同样触发 unsafe warning（#505 CR issue-2）。"""
+    moc = _note(tmp_path, MOC_ID, title="Zima MOC", note_type=NoteType.STRUCTURE)
+    member = _note(tmp_path, title="foo]bar")
     upsert = MagicMock(return_value=_upsert_result())
     backfill = MagicMock(return_value=BacklinkUpdateResult((NOTE_ID,), ()))
 
