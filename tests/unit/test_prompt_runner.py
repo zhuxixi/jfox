@@ -1,8 +1,7 @@
 """外部 runner 安全测试：argv 构建、保留参数拒绝、stdin 传入、进程组清理。"""
 
-from unittest.mock import patch
-
 import sys
+from unittest.mock import patch
 
 import pytest
 
