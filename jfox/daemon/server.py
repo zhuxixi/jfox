@@ -13,7 +13,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -297,9 +297,17 @@ class EncodeSingleResponse(BaseModel):
 # =============================================================================
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 def health():
-    """健康检查"""
+    """健康检查（embedding 降级时返回 degraded，不抛 AttributeError）"""
+    if _backend is None:
+        return {
+            "status": "degraded",
+            "model": "unavailable",
+            "dimension": 0,
+            "device": "none",
+            "pid": os.getpid(),
+        }
     return HealthResponse(
         status="ok",
         model=_backend.model_name,
@@ -317,9 +325,11 @@ def shutdown():
     return ShutdownResponse(status="shutting_down")
 
 
-@app.post("/encode", response_model=EncodeResponse)
+@app.post("/encode")
 def encode(req: EncodeRequest):
-    """批量文本编码"""
+    """批量文本编码（模型不可用时返回结构化 503，不崩）"""
+    if _backend is None:
+        raise HTTPException(status_code=503, detail="embedding model unavailable")
     embeddings = _backend.encode(req.texts, batch_size=req.batch_size)
     return EncodeResponse(
         embeddings=embeddings.tolist(),
@@ -327,9 +337,11 @@ def encode(req: EncodeRequest):
     )
 
 
-@app.post("/encode_single", response_model=EncodeSingleResponse)
+@app.post("/encode_single")
 def encode_single(req: EncodeSingleRequest):
-    """单文本编码"""
+    """单文本编码（模型不可用时返回结构化 503，不崩）"""
+    if _backend is None:
+        raise HTTPException(status_code=503, detail="embedding model unavailable")
     embedding = _backend.encode_single(req.text)
     return EncodeSingleResponse(
         embedding=embedding.tolist(),

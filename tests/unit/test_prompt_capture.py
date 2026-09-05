@@ -165,3 +165,59 @@ def test_global_config_from_dict_keeps_prompt_capture():
 
     gc = GlobalConfig.from_dict({"prompt_capture": {"enabled": False}, "knowledge_bases": {}})
     assert gc.prompt_capture.enabled is False
+
+
+def test_ingest_prompt_rejects_oversized_payload(tmp_path):
+    """payload 超过 max_payload_bytes 时拒绝（spec §5.2 执行点）。"""
+    from jfox.global_config import PromptCaptureConfig
+    from jfox.prompts.service import ingest_prompt
+    from jfox.prompts.store import PromptStore
+
+    store = PromptStore(db_path=tmp_path / "fragments.db")
+    cfg = PromptCaptureConfig(max_payload_bytes=100)  # 100 字节小上限
+    result = ingest_prompt(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "x" * 500},
+        store=store,
+        config=cfg,
+    )
+    assert result["status"] == "error"
+    assert "max_payload_bytes" in result["error"]
+
+
+def test_drain_spool_stops_on_total_size_cap(tmp_path, monkeypatch):
+    """spool 总量超过 max_spool_bytes 时 drain 停止导入并报告。"""
+    import json as _json
+
+    from jfox.prompts import service as svc
+    from jfox.prompts.store import PromptStore
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    for i in range(3):
+        (spool / f"f{i}.json").write_text(
+            _json.dumps({"prompt": "x" * 400, "session_id": "s"}), encoding="utf-8"
+        )
+    monkeypatch.setattr(
+        svc,
+        "get_global_config_manager",
+        lambda: type(
+            "M",
+            (),
+            {
+                "get_prompt_capture_config": lambda self: type(
+                    "C",
+                    (),
+                    {
+                        "spool_dir": None,
+                        "max_spool_bytes": 500,
+                        "max_payload_bytes": 16 * 1024 * 1024,
+                    },
+                )()
+            },
+        )(),
+    )
+    store = PromptStore(db_path=tmp_path / "fragments.db")
+    result = svc.drain_spool(spool_dir=spool, store=store)
+    assert result["imported"] == 0
+    assert "max_spool_bytes" in result.get("error", "")
+    assert len(list(spool.glob("*.json"))) == 3  # 文件原样保留

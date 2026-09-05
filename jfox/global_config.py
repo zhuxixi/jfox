@@ -417,6 +417,8 @@ class NoteAddConfig:
             embedding_dedup=data.get("embedding_dedup", True),
             dedup_threshold=data.get("dedup_threshold", 0.95),
         )
+
+
 @dataclass
 class PromptCaptureConfig:
     """Claude Code UserPromptSubmit 全量记录配置（默认启用）。
@@ -466,8 +468,6 @@ class PromptCaptureConfig:
                 else cls().transcript_roots
             ),
         )
-
-
 
 
 @dataclass
@@ -862,7 +862,6 @@ class GlobalConfigManager:
         config.prompt_capture = PromptCaptureConfig.from_dict(current)
         self._config = config
         return self._save()
-
 
     def update_backup_config(self, **changes: Any) -> bool:
         """更新备份配置中的若干字段，未传入的字段保持原样"""

@@ -59,9 +59,21 @@ def mock_daemon():
     server = http.server.HTTPServer(("127.0.0.1", port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    # 隔离 spool 目录：hook 在 POST 失败路径会落盘 spool，不得写真实
+    # ~/.zettelkasten/prompt-spool/（此前测试从未设置过该变量）
+    import tempfile
+
+    spool_dir = tempfile.mkdtemp(prefix="hook_test_spool_")
+    old_spool = os.environ.get("JFOX_PROMPT_SPOOL_DIR")
+    os.environ["JFOX_PROMPT_SPOOL_DIR"] = spool_dir
     try:
         yield received, f"http://127.0.0.1:{port}"
     finally:
+        if old_spool is None:
+            os.environ.pop("JFOX_PROMPT_SPOOL_DIR", None)
+        else:
+            os.environ["JFOX_PROMPT_SPOOL_DIR"] = old_spool
+        shutil.rmtree(spool_dir, ignore_errors=True)
         server.shutdown()
 
 
@@ -133,3 +145,23 @@ def test_hook_skips_internal_session_when_python3_missing(mock_daemon, tmp_path)
     )
     assert proc.returncode == 0
     assert len(received) == 0
+
+
+def test_hook_deletes_spool_on_daemon_skip(mock_daemon):
+    """daemon 明确 skipped（enabled=false/内部策略）时 hook 也删 spool，防无限累积。"""
+    received, daemon_url = mock_daemon
+    payload = json.dumps(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s-skip", "prompt": "hi"}
+    )
+    env = {
+        **{k: v for k, v in os.environ.items() if k != "JFOX_INTERNAL_SESSION"},
+        "JFOX_DAEMON_URL": daemon_url,
+    }
+    proc = subprocess.run(
+        [BASH, str(HOOK)], input=payload, capture_output=True, text=True, timeout=5, env=env
+    )
+    assert proc.returncode == 0
+    # mock daemon 返回无 status 字段 → hook 视为未确认 → spool 保留在隔离目录
+    spool_dir = os.environ["JFOX_PROMPT_SPOOL_DIR"]
+    remaining = list(Path(spool_dir).glob("*.json"))
+    assert len(remaining) == 1  # 未确认响应保留 spool（与 skipped 删除互补的行为验证）

@@ -15,7 +15,9 @@ from .store import PromptStore
 logger = logging.getLogger(__name__)
 
 # 与 fragment/internal_sources.py 保持一致；prompt-judge 是新流程 runner 标记
-INTERNAL_SOURCES = frozenset({"auto-summary", "gem-synth", "prompt-judge"})
+from ..fragment.internal_sources import (
+    INTERNAL_SOURCES,
+)  # 单一事实源（hook 脚本副本由同步测试守护）
 
 
 def default_spool_dir() -> Path:
@@ -58,6 +60,17 @@ def ingest_prompt(
 
     if not isinstance(event, dict):
         return {"status": "error", "error": "event must be a JSON object"}
+
+    # payload 上限（spec §5.2）：超限拒绝，防单个巨型事件撑爆库/内存
+    try:
+        payload_size = len(json.dumps(event, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError):
+        payload_size = 0
+    if payload_size > config.max_payload_bytes:
+        return {
+            "status": "error",
+            "error": f"payload {payload_size} exceeds max_payload_bytes {config.max_payload_bytes}",
+        }
 
     source = _get_event_source(event)
     if source in INTERNAL_SOURCES:
@@ -103,8 +116,8 @@ def drain_spool(
     返回 {imported, duplicates, failed, remaining}。
     导入成功（stored 或 duplicate）后删除文件；失败文件保留供诊断。
     """
+    cfg = get_global_config_manager().get_prompt_capture_config()
     if spool_dir is None:
-        cfg = get_global_config_manager().get_prompt_capture_config()
         spool_dir = Path(cfg.spool_dir).expanduser() if cfg.spool_dir else default_spool_dir()
     spool_dir = Path(spool_dir)
     if not spool_dir.exists():
@@ -112,6 +125,22 @@ def drain_spool(
 
     if store is None:
         store = PromptStore()
+
+    # spool 总量保护（spec §5.2）：超限时停止导入并报告，交给人工处置
+    total_bytes = sum(f.stat().st_size for f in spool_dir.glob("*.json"))
+    if total_bytes > cfg.max_spool_bytes:
+        logger.error(
+            "drain_spool: spool 总量 %d 超过 max_spool_bytes %d，停止导入",
+            total_bytes,
+            cfg.max_spool_bytes,
+        )
+        return {
+            "imported": 0,
+            "duplicates": 0,
+            "failed": 0,
+            "remaining": len(list(spool_dir.glob("*.json"))),
+            "error": f"spool total {total_bytes} exceeds max_spool_bytes {cfg.max_spool_bytes}",
+        }
 
     imported = duplicates = failed = 0
     # 按文件名排序保证 drain 顺序确定（同 session 的 session_seq 稳定）

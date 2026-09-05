@@ -93,13 +93,14 @@ RESP="$(printf '%s' "$PAYLOAD" | curl -s -m 2 -X POST \
     -H 'Content-Type: application/json' \
     --data-binary @- 2>/dev/null || true)"
 
-# 权威解析响应：stored/duplicate → 删除 spool；其他（超时/错误/daemon 不可用）→ 保留
+# 权威解析响应：stored/duplicate/skipped → 删除 spool（skipped 是 daemon 明确
+# 表态不要——enabled=false/内部来源，保留只会无限累积）；error/超时/不可用 → 保留
 if command -v python3 >/dev/null 2>&1; then
     python3 -c '
 import sys, json
 try:
     resp = json.loads(sys.argv[1])
-    if resp.get("status") in ("stored", "duplicate"):
+    if resp.get("status") in ("stored", "duplicate", "skipped"):
         sys.exit(0)
     else:
         sys.exit(1)
