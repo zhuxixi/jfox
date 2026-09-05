@@ -495,7 +495,21 @@ Expected（按 issue 实测数据）：`"vector_orphans": 0`、`"archived_in_ind
 
 ## U1 验收记录
 
-（待 Task 5 执行后填写）
+执行于 2026-09-05，本机无 office_hour 库（issue 实测环境在另一台机器），改用本机 default 库（721 permanent，其中 archived 5 条）验收，bug 条件完整覆盖（向量索引内含 archived permanent）：
+
+```json
+{
+  "filesystem": 716,
+  "vector": 111,
+  "vector_orphans": 0,
+  "archived_in_index": 1,
+  "warnings": []
+}
+```
+
+交叉验证：磁盘上 5 条 archived permanent；chroma 索引 111 条 permanent 中恰好 1 条 archived（id `202608122126292583`）——与 `archived_in_index: 1` 完全一致。修复前该条目会被计为 `vector_orphans: 1` 并触发假警告；现在正确归类、无警告。该库向量覆盖率低（111/721）是独立的既有现象，与本 issue 无关。
+
+结论：U1 通过（替代库）。office_hour 库的 10 条 archived 场景可在该库所在机器上同样验证，预期 `vector_orphans: 0`、`archived_in_index: 10`。
 
 ---
 
