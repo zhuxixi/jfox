@@ -38,6 +38,8 @@ RESERVED_FLAGS = frozenset(
         "--skill",
         "--prompt-template",
         "--exclude-tools",
+        "--mcp-config",
+        "--provider",
         "--context-files",
         "--approve",
         "--mode",
@@ -266,6 +268,7 @@ def validate_runner_output(
     expected_ids: List[int],
     evidence_note_ids: Optional[set] = None,
     evidence_prompt_ids: Optional[set] = None,
+    evidence_unresolved_ids: Optional[set] = None,
 ) -> RunnerResult:
     """严格校验 runner 返回的 JSON items。
 
@@ -337,6 +340,13 @@ def validate_runner_output(
                 return RunnerResult(
                     ok=False,
                     error=f"prompt {pid}: matched_prompt_ids 引用了未提供的 evidence: {bad[:3]}",
+                )
+        if evidence_unresolved_ids is not None:
+            bad = [x for x in matched_unresolved if x not in evidence_unresolved_ids]
+            if bad:
+                return RunnerResult(
+                    ok=False,
+                    error=f"prompt {pid}: matched_unresolved_prompt_ids 引用了未提供的 evidence: {bad[:3]}",
                 )
 
         v_item = {

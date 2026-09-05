@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import sys
+
 import pytest
 
 from jfox.global_config import PromptJudgeConfig
@@ -235,6 +237,7 @@ def test_validate_output_json_with_surrounding_text():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sleep/sh 进程组测试依赖 POSIX")
 def test_runner_timeout_kills_process_group():
     """runner 超时后进程组被清理，不留孤儿。"""
     from jfox.prompts.runner import _invoke_subprocess
@@ -246,6 +249,7 @@ def test_runner_timeout_kills_process_group():
         _invoke_subprocess(["sleep", "60"], "{}", cfg)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="sh -c 子进程测试依赖 POSIX")
 def test_runner_sets_internal_session_env():
     """runner 子进程设置 JFOX_INTERNAL_SESSION=prompt-judge。"""
     from jfox.prompts.runner import _invoke_subprocess
