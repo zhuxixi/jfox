@@ -78,6 +78,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `daemon/` | Embedding 模型 HTTP 守护进程 (`server.py`/`client.py`/`process.py`)，`jfox daemon start/stop/status` |
 | `embedding_migration.py` | 全 KB 向量维度不匹配检测（#442）：daemon start/restart 时比对各 KB Chroma 集合维度与 daemon 服务维度，发现旧模型建库则交互式逐 KB 提示 rebuild，单 KB 失败不阻断其余 |
 | `fragment/` | 碎片采集：detector 分类 + store SQLite(WAL) + service 编排 |
+| `prompts/` | Prompt 记录与按需判断（#399，已合 parts 2-5）：记录层全量保存 CC UserPromptSubmit 到 `user_prompts`（与 fragment 共用 fragments.db、`JFOX_FRAGMENTS_DB` 可覆盖，幂等靠 source_key/capture_id；cc-plugin hook 只挂 UserPromptSubmit——先原子写 spool `~/.zettelkasten/prompt-spool/` 再尽力 POST daemon `/api/prompt`，失败留 spool 待 `drain_spool` 导入，`backfill_from_fragments` 从旧 session_fragments 回填）；判断层 `judge.py` session 批量编排（claim 租约 → `transcript.py` 三模式上下文 → `runner.py` 外部 runner → `grounding.py` strict grounding → 存 candidate 带 `source_prompts` 溯源），judgment 按 `(kb_name, prompt_id)` 隔离、成功只写 pending 留人工 disposition；runner 安全边界：argv + shell=False、prompt 只走 stdin、reserved flags 不被 `extra_args` 覆盖；配置在 `~/.zk_config.json` 的 `prompt_capture`（默认启用，无该节时继承旧 `fragment_capture.enabled`）与 `prompt_judge` 两节 |
 | `bookshelf/` | 好书资产管理：store 文件夹 CRUD + meta jfox 自有元数据（wrap scan2book manifest）+ cli sub-app；纯文件管理不进索引 |
 | `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重，命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补进已有草稿，#309；permanent 仍跳过）；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
 | `auto_summary/` | 自动总结子系统：daemon 内扫描 `~/.claude/projects/` 已结束的 Claude Code session，经 `claude -p` 生成摘要写入 `session` 笔记；CLI `jfox auto-summary run/scan/status/enable/disable`，ledger 去重 + schedule time window |
@@ -121,6 +122,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `gem_synth/lifecycle.py` 同步 dedup 表）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
 - **源笔记清理统一 archive**: skill 整理/提炼后清理源笔记用 `jfox archive`（软删除，`jfox unarchive` 可回滚误判），不用 `delete --force` 硬删（#436）
 - **`jfox add` permanent 防重**（#383/#483）: 默认开启，标题或正文余弦 ≥0.95 命中即拒绝创建（exit 1，JSON 输出 `skipped: "duplicate"`），`--force` 跳过（迁移/回填用）；开关与阈值在 `~/.zk_config.json` 的 `note_add` 节（`NoteAddConfig`）；embedding 通道仅 daemon 在跑时生效，落库后回灌 dedup 表供后续 add 与 gem_synth 共查
+- **内部 session 来源过滤**: `fragment/internal_sources.py` 的 `INTERNAL_SOURCES`（auto-summary/gem-synth/prompt-judge）是单一事实源，`packages/cc-plugin/hooks/fragment-capture.sh` 内嵌同名 case 分支由 `tests/unit/test_fragment_internal_sources.py` 同步测试守护——新增内部 runner 须两处同改（#493）
 
 ## Test Infrastructure
 
@@ -202,3 +204,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
 - CPU 默认 embedding 模型已从 `all-MiniLM-L6-v2`（384 维）切到 `BAAI/bge-small-zh-v1.5`（512 维，#442）：旧 KB 向量库维度不匹配时 search/add 显式告警不静默失败（`vector_store.last_dimension_warning`），按提示 `jfox index rebuild` 重建该 KB；CI 模型缓存 key 也随模型名（#453）
+- daemon `_load_model` 失败不再 `os._exit(1)`：降级运行——`/health` 返回 `degraded`、`/encode*` 返回结构化 503；fragment/prompt store 初始化提前到 embedding 之前，记录层无模型也可用（#493）。daemon 进程存活 ≠ embedding 可用，排查先打 `/health`；旧版插件 POST 的 UserPromptSubmit 由 `/api/fragment` 兼容转发到 `/api/prompt`，PostToolUse/Stop 返回 retired
