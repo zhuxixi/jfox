@@ -432,3 +432,42 @@ def test_default_path_respects_env(tmp_path, monkeypatch):
     assert r["status"] == "stored"
     assert (tmp_path / "env.db").exists()
     store.close()
+
+
+def test_claim_prompts_db_error_returns_empty_not_partial(tmp_path):
+    """回归：批处理中途 sqlite 错误（已 rollback）不得返回部分 claimed 列表（幻影 claim）。"""
+    import jfox.prompts.store as store_mod
+
+    store = store_mod.PromptStore(db_path=tmp_path / "fragments.db")
+    store.insert_prompt(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "q1"},
+        source_key="c:1",
+    )
+    store.insert_prompt(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "q2"},
+        source_key="c:2",
+    )
+
+    real_conn = store._conn
+    calls = {"n": 0}
+
+    class FlakyConn:
+        """委托真实连接；第二个 judgment UPDATE 时抛 OperationalError。"""
+
+        def execute(self, sql, *args):
+            if "INSERT INTO prompt_judgments" in sql:
+                calls["n"] += 1
+                if calls["n"] >= 2:
+                    raise store_mod.sqlite3.OperationalError("disk full")
+            return real_conn.execute(sql, *args)
+
+        def __getattr__(self, name):
+            return getattr(real_conn, name)
+
+    store._conn = FlakyConn()
+    try:
+        claimed = store.claim_prompts("kb", [1, 2], "tok", "2026-01-01T00:00:00Z")
+    finally:
+        store._conn = real_conn
+
+    assert claimed == []  # 幻影 claim 回归：rollback 后必须返回空列表

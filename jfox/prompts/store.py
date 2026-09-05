@@ -244,9 +244,12 @@ class PromptStore:
                     captured_at=captured_at,
                 )
         except sqlite3.IntegrityError as e:
-            # 并发下唯一键竞态：重查已有行
+            # 并发下唯一键竞态：重查已有行（异常退出 with self._lock 后须重新持锁，
+            # _find_by_idempotency 内部自带 self._lock）
             logger.debug("insert_prompt IntegrityError（并发竞态）: %s", e)
-            existing = self._find_by_idempotency(source_key, capture_id, tp, tui)
+            # with 块因异常退出已释放锁；_find_by_idempotency 约定调用方持锁，重新获取
+            with self._lock:
+                existing = self._find_by_idempotency(source_key, capture_id, tp, tui)
             if existing is not None:
                 return {"status": "duplicate", "prompt_id": existing, "prompt": prompt}
             return {"status": "error", "error": f"integrity error: {e}"}
@@ -457,7 +460,9 @@ class PromptStore:
                     self._conn.rollback()
                     raise
         except sqlite3.Error as e:
+            # 事务已整体 rollback，claimed 里的部分行并未落库——返回空列表防幻影 claim
             logger.exception("claim_prompts 数据库错误: %s", e)
+            return []
         return claimed
 
     def finish_judgment(
@@ -649,31 +654,35 @@ class PromptStore:
     ) -> Dict[str, Any]:
         """幂等写入 active unresolved 条目；重复调用只刷新 last_seen。"""
         ts = now or _utc_now()
-        with self._lock:
-            existing = self._conn.execute(
-                "SELECT * FROM unresolved_items WHERE kb_name = ? AND prompt_id = ?",
-                (kb_name, prompt_id),
-            ).fetchone()
-            if existing is None:
-                self._conn.execute(
-                    "INSERT INTO unresolved_items "
-                    "(kb_name, prompt_id, note_id, state, first_seen, last_seen) "
-                    "VALUES (?, ?, ?, 'active', ?, ?)",
-                    (kb_name, prompt_id, note_id, ts, ts),
-                )
-            else:
-                self._conn.execute(
-                    "UPDATE unresolved_items SET state = 'active', last_seen = ?, "
-                    "resolved_at = NULL, resolution_reason = NULL "
-                    "WHERE kb_name = ? AND prompt_id = ?",
-                    (ts, kb_name, prompt_id),
-                )
-            self._conn.commit()
-            row = self._conn.execute(
-                "SELECT * FROM unresolved_items WHERE kb_name = ? AND prompt_id = ?",
-                (kb_name, prompt_id),
-            ).fetchone()
-        return dict(row)
+        try:
+            with self._lock:
+                existing = self._conn.execute(
+                    "SELECT * FROM unresolved_items WHERE kb_name = ? AND prompt_id = ?",
+                    (kb_name, prompt_id),
+                ).fetchone()
+                if existing is None:
+                    self._conn.execute(
+                        "INSERT INTO unresolved_items "
+                        "(kb_name, prompt_id, note_id, state, first_seen, last_seen) "
+                        "VALUES (?, ?, ?, 'active', ?, ?)",
+                        (kb_name, prompt_id, note_id, ts, ts),
+                    )
+                else:
+                    self._conn.execute(
+                        "UPDATE unresolved_items SET state = 'active', last_seen = ?, "
+                        "resolved_at = NULL, resolution_reason = NULL "
+                        "WHERE kb_name = ? AND prompt_id = ?",
+                        (ts, kb_name, prompt_id),
+                    )
+                self._conn.commit()
+                row = self._conn.execute(
+                    "SELECT * FROM unresolved_items WHERE kb_name = ? AND prompt_id = ?",
+                    (kb_name, prompt_id),
+                ).fetchone()
+            return dict(row)
+        except sqlite3.Error as e:
+            logger.exception("upsert_unresolved 数据库错误: %s", e)
+            raise
 
     def resolve_unresolved(
         self,
