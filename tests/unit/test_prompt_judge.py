@@ -267,3 +267,84 @@ def test_judge_remote_without_consent_fails(tmp_path):
     assert report.failed == 1
     j = store.get_judgment("default", 1)
     assert "consent" in (j["last_error"] or "").lower()
+
+
+def test_candidate_idempotent_recovery_after_crash(tmp_path):
+    """崩溃恢复（D17）：processing 行已有两阶段记账的 candidate_note_id 时复用，不重建。"""
+    from jfox.prompts.store import PromptStore
+
+    # 手工构造崩溃现场：prompt 落库 → claim（processing）→ candidate 两阶段记账
+    # → finish_judgment 前崩溃。claim 时间戳设过去使 lease 过期可回收。
+    store = PromptStore(db_path=tmp_path / "fragments.db")
+    store.insert_prompt(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "q"},
+        source_key="c:1",
+    )
+    store.claim_prompts("default", [1], "old-tok", "2020-01-01T00:00:00Z")
+    store.record_candidate_note("default", 1, "cand-crashed-001")
+
+    created = []
+
+    def fake_create(draft, pid):
+        created.append(pid)
+        return f"cand-new-{pid}"
+
+    with (
+        patch("jfox.prompts.judge.run_runner") as mock_runner,
+        patch("jfox.prompts.judge.fetch_judgment_grounding") as mock_ground,
+        patch("jfox.prompts.judge.read_transcript_safe") as mock_transcript,
+        patch("jfox.prompts.judge._create_candidate_from_draft", side_effect=fake_create),
+    ):
+        mock_runner.return_value = _mock_runner_output([1], classification="new")
+        mock_ground.return_value = MagicMock(evidence=[], unavailable=False)
+        mock_transcript.return_value = MagicMock(
+            total_messages=0, messages=[], user_texts=[], user_indices=[]
+        )
+        report = judge_prompts("default", store=store, allow_remote=True)
+
+    assert report.succeeded == 1
+    assert created == []  # 未重建，复用 cand-crashed-001
+    j = store.get_judgment("default", 1)
+    assert j["candidate_note_id"] == "cand-crashed-001"
+
+
+def test_retry_needs_review_is_live_path(tmp_path):
+    """retry_needs_review 不再是死路径：needs_review+pending 的 succeeded 行可重判。"""
+    from jfox.prompts.store import PromptStore
+
+    store = PromptStore(db_path=tmp_path / "fragments.db")
+    store.insert_prompt(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s", "prompt": "q"},
+        source_key="c:1",
+    )
+    store.claim_prompts("default", [1], "t0", "2026-01-01T00:00:00Z")
+    store.finish_judgment(
+        "default",
+        1,
+        classification="needs_review",
+        reason="r",
+        confidence=0.5,
+        matched_note_ids=[],
+        matched_prompt_ids=[],
+        matched_unresolved_prompt_ids=[],
+        context_mode="prompt_only",
+        runner_id="pi",
+        model_id="m",
+    )
+
+    with (
+        patch("jfox.prompts.judge.run_runner") as mock_runner,
+        patch("jfox.prompts.judge.fetch_judgment_grounding") as mock_ground,
+        patch("jfox.prompts.judge.read_transcript_safe") as mock_transcript,
+    ):
+        mock_runner.return_value = _mock_runner_output([1], classification="recorded")
+        mock_ground.return_value = MagicMock(evidence=[], unavailable=False)
+        mock_transcript.return_value = MagicMock(
+            total_messages=0, messages=[], user_texts=[], user_indices=[]
+        )
+        report = judge_prompts("default", store=store, retry_needs_review=True, allow_remote=True)
+
+    assert report.total == 1  # claim 到了（此前是死路径恒 0）
+    assert report.succeeded == 1
+    j = store.get_judgment("default", 1)
+    assert j["classification"] == "recorded"

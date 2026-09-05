@@ -46,6 +46,20 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _lease_expired(j: Dict[str, Any], timeout_seconds: int = 420) -> bool:
+    """判断 processing judgment 的 claim lease 是否已过期（claimed_at 距今超时）。"""
+    claimed_at = j.get("claimed_at")
+    if not claimed_at:
+        return True  # 无时间戳视为过期（可回收）
+    try:
+        from .store import _parse_ts
+
+        elapsed = (datetime.now(timezone.utc) - _parse_ts(claimed_at)).total_seconds()
+        return elapsed >= timeout_seconds
+    except (ValueError, TypeError):
+        return True  # 坏时间戳视为过期
+
+
 def _select_prompt_ids(
     store: PromptStore,
     kb_name: str,
@@ -65,9 +79,14 @@ def _select_prompt_ids(
         judgments = store.list_judgments(kb_name, judgment_state="failed")
         return [j["prompt_id"] for j in judgments][: limit or 10000]
 
-    # 默认：无 judgment 行的 prompt
+    # 默认：无 judgment 行的 prompt；processing 且 lease 已过期的行视为未判断
+    # （崩溃恢复：judge 中途死掉后重跑要能重新选中它们）
     all_prompts = store.list_prompts(session_id=session_id, limit=limit or 10000)
-    judged = {j["prompt_id"] for j in store.list_judgments(kb_name, limit=100000)}
+    judged = set()
+    for j in store.list_judgments(kb_name, limit=100000):
+        if j["judgment_state"] == "processing" and _lease_expired(j):
+            continue  # 过期 lease：可回收重判，不算已判断
+        judged.add(j["prompt_id"])
     unjudged = [p["prompt_id"] for p in all_prompts if p["prompt_id"] not in judged]
     return unjudged[:limit] if limit else unjudged
 
@@ -79,7 +98,7 @@ def _create_candidate_from_draft(
     """把 runner draft 落成 pending candidate 笔记，返回 note id。
 
     不执行 dedup、不执行 confidence 过滤、不调用增量 merge。
-    candidate 创建前检查已有 candidate（幂等恢复）。
+    幂等恢复由调用方负责：先查两阶段记账的 candidate_note_id（见 judge_prompts）。
     """
     from ..models import GemLevel, Note, NoteType
     from ..note import save_note
@@ -198,7 +217,13 @@ def judge_prompts(
     # 4) 逐 session 处理
     claim_token = str(uuid.uuid4())
     now = _utc_now()
-    all_claimed = store.claim_prompts(kb_name, prompt_ids, claim_token, now)
+    all_claimed = store.claim_prompts(
+        kb_name,
+        prompt_ids,
+        claim_token,
+        now,
+        allow_needs_review_reclaim=retry_needs_review,
+    )
     if not all_claimed:
         logger.warning("claim 全部失败（并发 judge？）")
         return report
@@ -320,15 +345,18 @@ def judge_prompts(
 
                 candidate_id = None
                 if item["classification"] == "new" and item.get("draft"):
-                    # 幂等恢复（D17）：崩溃前 candidate 已落盘但 judgment 未记账时，
-                    # 复用已有 candidate，不重复创建
+                    # 幂等恢复（D17）：崩溃前 candidate 已落盘（两阶段记账留下
+                    # candidate_note_id）但 finish_judgment 未执行时，复用已有
+                    # candidate——不限制 judgment_state（processing 崩溃正是要恢复的场景）
                     existing_j = store.get_judgment(kb_name, pid)
-                    existing_cand = (
-                        existing_j.get("candidate_note_id")
-                        if existing_j and existing_j.get("judgment_state") == "succeeded"
-                        else None
-                    )
-                    candidate_id = existing_cand or _create_candidate_from_draft(item["draft"], pid)
+                    existing_cand = existing_j.get("candidate_note_id") if existing_j else None
+                    if existing_cand:
+                        candidate_id = existing_cand
+                    else:
+                        candidate_id = _create_candidate_from_draft(item["draft"], pid)
+                        if candidate_id:
+                            # 两阶段记账：立即落 note_id，收窄“落盘成功但未记账”窗口
+                            store.record_candidate_note(kb_name, pid, candidate_id)
                     if candidate_id is None:
                         store.fail_judgment(kb_name, pid, "candidate creation failed")
                         report.failed += 1

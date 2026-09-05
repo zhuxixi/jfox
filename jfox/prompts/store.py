@@ -395,6 +395,7 @@ class PromptStore:
         claim_token: str,
         now: str,
         claim_timeout_seconds: int = DEFAULT_CLAIM_TIMEOUT_SECONDS,
+        allow_needs_review_reclaim: bool = False,
     ) -> List[int]:
         """尝试 claim 一批 prompt。返回成功 claim 的 prompt_id 列表。
 
@@ -443,7 +444,14 @@ class PromptStore:
                                     continue  # lease 未过期，skip
                             # 过期 → 回收
                         elif state == "succeeded":
-                            continue  # 成功的不重判
+                            # 成功的不重判——唯一例外：needs_review + 待处置 +
+                            # 显式重判请求（judge --retry-needs-review 入口）
+                            if not (
+                                allow_needs_review_reclaim
+                                and row["classification"] == "needs_review"
+                                and row["disposition"] == "pending"
+                            ):
+                                continue
                         # failed / processing+空claim → 可 claim
 
                         self._conn.execute(
@@ -648,6 +656,25 @@ class PromptStore:
     # ------------------------------------------------------------------
     # unresolved_items 索引
     # ------------------------------------------------------------------
+
+    def record_candidate_note(self, kb_name: str, prompt_id: int, note_id: str) -> bool:
+        """两阶段记账：candidate 落盘后立即记录 note_id（不改变 judgment 状态）。
+
+        崩溃恢复：save_note 成功但 finish_judgment 未执行时，重试方靠本字段
+        复用已有 candidate，不重复创建（D17 幂等）。
+        """
+        try:
+            with self._lock:
+                cur = self._conn.execute(
+                    "UPDATE prompt_judgments SET candidate_note_id = ? "
+                    "WHERE kb_name = ? AND prompt_id = ?",
+                    (note_id, kb_name, prompt_id),
+                )
+                self._conn.commit()
+            return cur.rowcount > 0
+        except sqlite3.Error as e:
+            logger.exception("record_candidate_note 数据库错误: %s", e)
+            return False
 
     def upsert_unresolved(
         self, kb_name: str, prompt_id: int, note_id: str, now: Optional[str] = None
