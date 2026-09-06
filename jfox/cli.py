@@ -128,11 +128,7 @@ from .candidates.cli import candidates_app  # noqa: E402
 
 app.add_typer(candidates_app, name="candidates", help="查看候选知识宝石（待 L5 审阅）")
 
-# gem-synth 子命令组（查看 L3 合成进度：pending/success/failed + 失败复核）
-from .gem_synth.cli import gem_synth_app  # noqa: E402
-
-app.add_typer(gem_synth_app, name="gem-synth", help="L3 宝石合成进度查看")
-
+# gem-synth 合成进度子命令已随自动合成退役（#399）
 # bookshelf 子命令组（好书资产管理）
 from .bookshelf.cli import bookshelf_app  # noqa: E402
 

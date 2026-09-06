@@ -1,13 +1,13 @@
 ---
 name: jfox-promote
-description: Use when user wants to review/promote gem-synth candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，支持大积压的三模式过审（客观去重扫描 / 簇级 triage / 单条 A/B/C）+ 冗余维度 + 固化机械清理；也用于过审前监控 L3 合成进度与上游 fragments。Triggers on "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "candidate 过审", "L5 晋升", "promote candidate", "review candidate", "broken candidate", "candidate 审核", "破损 candidate", "批量过审", "簇级去重", "dedup 扫描", "candidate 冗余", "合成进度", "碎片", "gem-synth status", "fragments".
+description: Use when user wants to review/promote candidate notes into permanent notes, or reject/archive inaccurate ones. 过审 L5 候选宝石，支持大积压的三模式过审（客观去重扫描 / 簇级 triage / 单条 A/B/C）+ 冗余维度 + 固化机械清理；Triggers on "过审 candidate", "过审宝石", "晋升候选笔记", "审阅候选宝石", "candidate 过审", "L5 晋升", "promote candidate", "review candidate", "broken candidate", "candidate 审核", "破损 candidate", "批量过审", "簇级去重", "dedup 扫描", "candidate 冗余".
 ---
 
 # 过审 candidate（破损→完整，支持大积压）
 
-本 skill 过审 gem-synth 合成的 candidate——一种「破损级」候选知识笔记，把它晋升为永久笔记（permanent），或拒绝归档（reject，软删除可恢复）。candidate 由后台合成器围绕锚点（anchor，合成时选定的主题切入点）生成，处于 pending 状态；过审是知识闭环（采集→合成→过审）的最后一环。
+本 skill 过审 candidate——一种「破损级」候选知识笔记，把它晋升为永久笔记（permanent），或拒绝归档（reject，软删除可恢复）。candidate 由 `jfox prompts judge`（#399 prompt 判断）生成，处于 pending 状态；过审是知识闭环（采集→判断→过审）的最后一环。存量 gem-synth 合成的 candidate（无 `source_prompts` 溯源字段）同样走本流程。
 
-积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。注意：candidate 的 pending（过审状态）和 gem-synth status（合成进度）是两回事。
+积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。
 
 > 历史背景：对应 #249 五层 Loop 的 L5 晋升层；#319 起改为三模式以应对大积压。下面不依赖这些编号也能读懂。
 >
@@ -24,39 +24,15 @@ jfox kb current --format json
 
 若尚未初始化，先调用 `/skill:jfox-manage` 创建知识库。
 
-## 监控 L3 合成
+## 查看判断进度与历史碎片
 
-candidate 进入过审流程前，可以先看看 L3 合成的运行状态和上游碎片，确认有没有新的 candidate 产出、有没有合成失败的锚点。这一步可选，主要用来判断「现在有多少 candidate 可过审、合成端有没有卡住」。
+合成已退役（#399）。判断入口是 `jfox prompts judge`（手动触发）；
+采集与判断计数看 `jfox prompts status`；过审积压量看
+`jfox candidates list --status pending --format json`。
 
-### 查看合成状态
-
-```bash
-jfox gem-synth status --format json
-```
-
-返回的 JSON 字段（注意：这里的 status 是**合成进度**，不是 candidate 的过审状态）：
-
-- `pending`：待 L3 合成的 anchor（锚点）数。合成完成后归零——它不等于 candidate 过审队列的长度，过审积压量要看 `candidates list`。
-- `success` / `failed` / `duplicate` / `merged`：分别对应合成成功、合成失败、去重跳过、命中已有 candidate 后增量合并补入（#309）的数量。
-- `total`：以上各项的总数。
-- 失败锚点列表：用 `jfox gem-synth status --failed` 查看，这些是需要人工介入的 fragment（碎片）锚点。
-
-### 查看碎片
-
-会话过程中由 Hook 采集的 session 碎片会存进 `fragments.db`。过审前可以用 fragments 命令查看 candidate 的上游上下文——也就是这条 candidate 是从哪段会话里提炼出来的。
-
-```bash
-jfox fragments list --format json
-jfox fragments show <fragment_id>
-```
-
-`fragments list` 用来定位 candidate 可能来自哪个 session 主题；`fragments show` 查看某条碎片的原文、所属 session、采集时间等元信息。
-
-### 何时使用
-
-- 批量合成后先执行 `gem-synth status`，看 `pending`（待合成 anchor）和 `failed` 判断合成进度；过审积压量则看 `jfox candidates list --status pending --format json`。
-- 某条 candidate 内容存疑时，用 `fragments show` 追溯它的来源 fragment，辅助判档。
-- 发现 `failed_anchors` 时，可以转由 `/skill:jfox-session-summary` 检查对应 session 是否已产生高质量 summary，再决定是否重新触发合成。
+历史 `session_fragments`（只读）保留供追溯：`jfox fragments list --format json` /
+`jfox fragments show <fragment_id>` 可查 candidate 的上游会话上下文，
+辅助判档（新 candidate 溯源字段是 `source_prompts`，见 frontmatter）。
 
 ## 0. 何时用哪种模式（决策树）
 
@@ -298,7 +274,7 @@ jfox search "<关键词>" --type permanent                # 查现有 permanent�
 ### 合成与碎片监控命令
 
 ```bash
-jfox gem-synth status --format json          # 查看 L3 合成进度与失败锚点
+jfox prompts status --format json          # 查看采集/判断/失败计数
 jfox fragments list --format json            # 列出 Hook 采集的 session 碎片
 jfox fragments show <fragment_id>             # 查看碎片详情（默认 JSON，无 flag）
 ```
@@ -319,7 +295,7 @@ jfox fragments show <fragment_id>             # 查看碎片详情（默认 JSON
 
 ## 使用建议
 
-- **定期过审**：建议每批 L3 合成完成后立即过审，避免 pending candidate 堆积。
+- **定期过审**：建议每轮 `jfox prompts judge` 后立即过审新 candidate，避免堆积。
 - **大积压先模式1**：pending > 50 时先用模式1 客观去重砍掉精确和高度相似两档，再簇级 triage——别逐条过。
 - **大胆 reject**：整体不可信、或已被现有 permanent 覆盖（冗余）的 candidate 不应强行晋升；拒绝并归档是对知识库质量的保护。
 - **别按 confidence 排序**：confidence 是合成器自评，不等于质量或冗余，按它挑条目是误导信号。

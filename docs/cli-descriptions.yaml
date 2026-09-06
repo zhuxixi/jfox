@@ -50,7 +50,7 @@ commands:
   "jfox bulk-import":
     description: "Import multiple notes from a JSON file using the batch pipeline."
   "jfox candidates":
-    description: "Inspect candidate notes produced by knowledge-gem synthesis."
+    description: "Inspect candidate notes awaiting human review."
   "jfox candidates list":
     description: "List candidate notes awaiting review or matching a status filter."
   "jfox candidates promote":
@@ -72,17 +72,11 @@ commands:
   "jfox edit":
     description: "Edit an existing note while preserving its identity and creation time."
   "jfox fragments":
-    description: "Inspect raw session fragments captured by an agent hook."
+    description: "Inspect historical session fragments (read-only after capture retirement)."
   "jfox fragments list":
     description: "List captured session fragments, newest first."
   "jfox fragments show":
     description: "Show a fragment together with its complete original event."
-  "jfox gem-synth":
-    description: "Inspect the progress of the L3 knowledge-gem synthesis loop."
-  "jfox gem-synth dedup-backfill":
-    description: "Backfill candidate and permanent note embeddings into the deduplication index."
-  "jfox gem-synth status":
-    description: "Show pending, successful, failed, and skipped synthesis work."
   "jfox graph":
     description: "Analyze and explore the knowledge graph built from note links."
   "jfox inbox":

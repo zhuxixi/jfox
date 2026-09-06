@@ -87,7 +87,7 @@ def check_add_duplicate(
         # 通道二：正文 embedding（仅 daemon 可用时，防本地模型加载）
         if conf.embedding_dedup and len(content.strip()) > _EMBED_DEDUP_MIN_CHARS:
             if _daemon_available():
-                from .gem_synth.dedup import _resolve_kb_name, dedup_check
+                from .dedup import _resolve_kb_name, dedup_check
 
                 kb_name = cfg.base_dir.name if cfg is not None else _resolve_kb_name(None)
                 hit = dedup_check(
@@ -114,7 +114,7 @@ def record_added_permanent(note_id: str, content: str, *, cfg=None) -> None:
     try:
         if not _daemon_available():
             return
-        from .gem_synth.dedup import _resolve_kb_name, upsert_dedup
+        from .dedup import _resolve_kb_name, upsert_dedup
 
         kb_name = cfg.base_dir.name if cfg is not None else _resolve_kb_name(None)
         upsert_dedup(kb_name, note_id, "permanent", content, daemon_only=True)

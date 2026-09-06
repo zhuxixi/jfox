@@ -404,7 +404,7 @@ def delete_note(note_id: str) -> bool:
         except Exception as e:
             logger.warning(f"Failed to remove note from BM25 index: {e}")
 
-        # 广播 post_delete：gem_synth 订阅做 dedup 清理（类型守卫在订阅器）。
+        # 广播 post_delete：订阅者做各自的清理（类型守卫在订阅器）。
         _dispatch("post_delete", note_id=note_id, note_type=note.type)
 
         return True
@@ -436,7 +436,7 @@ def archive_note(note_id: str) -> bool:
 
     n.archived = True
     # 先持久化，成功后再广播 post_archive（防 update_note 失败 → 保护已删 → 下轮重复合成）。
-    # 类型守卫在 gem_synth 订阅器。
+    # 类型守卫在各订阅器。
     ok = update_note(n)
     if ok:
         _dispatch("post_archive", note_id=note_id, note_type=n.type)
@@ -555,7 +555,7 @@ def promote_note(note_id: str) -> bool:
                 get_note_index().update_note_meta(fresh)
             except Exception as e:
                 logger.warning(f"Failed to backfill backlinks for target {tid}: {e}")
-    # 广播 post_promote：gem_synth 订阅把 dedup 表 note_type 改 permanent。
+    # 广播 post_promote：prompts.lifecycle 订阅同步 judgment disposition。
     _dispatch("post_promote", note_id=note_id, note_type=n.type)
     return True
 
@@ -575,7 +575,7 @@ def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
     if reason:
         n.reject_reason = reason
     # 先持久化，成功后再广播 post_reject（防 update_note 失败 → 保护已删 → 下轮重复合成）。
-    # gem_synth 订阅做 dedup 清理 + 释放被阻断锚点（类型守卫在订阅器）。
+    # 订阅者做各自清理（类型守卫在订阅器；旧 gem_synth 订阅已退役）。
     ok = update_note(n)
     if ok:
         _dispatch("post_reject", note_id=note_id, note_type=n.type)

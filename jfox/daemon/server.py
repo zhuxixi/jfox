@@ -29,8 +29,6 @@ _auto_summary_task: Optional[asyncio.Task] = None
 _auto_summary_stop_event: Optional[threading.Event] = None
 
 # gem-synthesis 后台 task 与停止信号
-_gem_synth_task: Optional[asyncio.Task] = None
-_gem_synth_stop_event: Optional[threading.Event] = None
 
 # backup 后台 task 与停止信号
 _backup_task: Optional[asyncio.Task] = None
@@ -147,49 +145,6 @@ async def _maybe_stop_auto_summary() -> None:
     _auto_summary_stop_event = None
 
 
-def _maybe_start_gem_synth() -> None:
-    """如果用户启用了 gem-synthesis，启动后台循环 task"""
-    global _gem_synth_task, _gem_synth_stop_event
-    try:
-        from ..gem_synth.loop import gem_synth_loop
-        from ..global_config import get_global_config_manager
-
-        cfg = get_global_config_manager().get_gem_synthesis_config()
-        if not cfg.enabled:
-            logger.info("Daemon: gem-synthesis 未启用（config.gem_synthesis.enabled=false）")
-            return
-
-        _gem_synth_stop_event = threading.Event()
-        _gem_synth_task = asyncio.create_task(
-            gem_synth_loop(_gem_synth_stop_event, cfg.interval_minutes)
-        )
-        logger.info("Daemon: gem-synthesis 后台循环已启动 (interval=%dm)", cfg.interval_minutes)
-    except Exception as e:
-        logger.exception("Daemon: 启动 gem-synthesis 后台循环失败: %s", e)
-
-
-async def _maybe_stop_gem_synth() -> None:
-    """关闭 gem-synthesis 后台循环（lifespan shutdown 阶段调用）"""
-    global _gem_synth_task, _gem_synth_stop_event
-    if _gem_synth_stop_event is not None:
-        _gem_synth_stop_event.set()
-    if _gem_synth_task is not None:
-        try:
-            await asyncio.wait_for(_gem_synth_task, timeout=10)
-        except asyncio.TimeoutError:
-            logger.warning("Daemon: gem-synthesis task 10s 内未退出，取消之")
-            _gem_synth_task.cancel()
-            # return_exceptions=True 时 gather 不抛异常，无需 try/except
-            await asyncio.gather(_gem_synth_task, return_exceptions=True)
-        except Exception as e:
-            logger.warning("Daemon: 等待 gem-synthesis 退出时异常: %s", e)
-            _gem_synth_task.cancel()
-            # return_exceptions=True 时 gather 不抛异常，无需 try/except
-            await asyncio.gather(_gem_synth_task, return_exceptions=True)
-    _gem_synth_task = None
-    _gem_synth_stop_event = None
-
-
 def _maybe_start_backup() -> None:
     """如果用户启用了 backup，启动后台循环 task"""
     global _backup_task, _backup_stop_event
@@ -242,13 +197,11 @@ async def lifespan(app):
     _maybe_init_fragment_store()
     _load_model()
     _maybe_start_auto_summary()
-    _maybe_start_gem_synth()
     _maybe_start_backup()
     try:
         yield
     finally:
         await _maybe_stop_backup()
-        await _maybe_stop_gem_synth()
         await _maybe_stop_auto_summary()
         _maybe_close_fragment_store()
 
@@ -387,8 +340,6 @@ def capture_fragment(event: dict):
     请求体即 CC 事件的 stdin JSON（UserPromptSubmit / PostToolUse / Stop）。
     兼容窗口：UserPromptSubmit 转发到新 /api/prompt 路径；PostToolUse/Stop 返回 retired。
     """
-    from ..fragment import ingest_event
-
     hook_event = event.get("hook_event_name") if isinstance(event, dict) else None
     if hook_event == "UserPromptSubmit":
         # 旧插件发的 UserPromptSubmit → 转发到新 prompt 记录路径
@@ -396,8 +347,8 @@ def capture_fragment(event: dict):
     if hook_event in ("PostToolUse", "Stop"):
         # 旧采集事件已退役，不再写新 session_fragments
         return {"status": "retired", "reason": f"{hook_event} capture is retired"}
-    # 其他事件保持旧行为（兼容窗口内的未知事件）
-    return ingest_event(event)
+    # 其他未知事件：分类采集已退役，一律 retired（fragment.ingest_event 不再导出）
+    return {"status": "retired", "reason": f"{hook_event or 'unknown'} capture is retired"}
 
 
 @app.post("/api/prompt")
@@ -443,7 +394,7 @@ def main():
     from . import DEFAULT_HOST, DEFAULT_PORT
 
     # 配置 jfox 日志：daemon 由 `python -m jfox.daemon.server` 启动，不走 cli.py 的
-    # basicConfig；不配则用默认 lastResort handler（WARNING 级），gem_synth 等模块的
+    # basicConfig；不配则用默认 lastResort handler（WARNING 级），各子模块的
     # INFO 日志（tick / 后台循环已启动）全被吞 → 循环活动看不见（#290 日志盲点）。
     # process.py 已把本进程 stderr 重定向到 ~/.jfox_daemon.log，故 StreamHandler 即落盘。
     _jfox = logging.getLogger("jfox")

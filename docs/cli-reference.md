@@ -398,7 +398,7 @@ jfox bulk-import [OPTIONS] FILE_PATH
 
 ## `jfox candidates`
 
-Inspect candidate notes produced by knowledge-gem synthesis.
+Inspect candidate notes awaiting human review.
 
 **Usage**:
 
@@ -585,7 +585,7 @@ jfox edit [OPTIONS] NOTE_ID
 
 ## `jfox fragments`
 
-Inspect raw session fragments captured by an agent hook.
+Inspect historical session fragments (read-only after capture retirement).
 
 **Usage**:
 
@@ -623,46 +623,6 @@ jfox fragments show FRAGMENT_ID
 | Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
 |---|---|---|---|---|---|---|---|
 | `fragment_id` | `FRAGMENT_ID` | INTEGER | yes | — | — | no | no |
-
-## `jfox gem-synth`
-
-Inspect the progress of the L3 knowledge-gem synthesis loop.
-
-**Usage**:
-
-```text
-jfox gem-synth COMMAND [ARGS]...
-```
-
-## `jfox gem-synth dedup-backfill`
-
-Backfill candidate and permanent note embeddings into the deduplication index.
-
-**Usage**:
-
-```text
-jfox gem-synth dedup-backfill [OPTIONS]
-```
-
-| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
-|---|---|---|---|---|---|---|---|
-| `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
-| `output_format` | `--format, -f` | TEXT | no | `text` | — | no | no |
-
-## `jfox gem-synth status`
-
-Show pending, successful, failed, and skipped synthesis work.
-
-**Usage**:
-
-```text
-jfox gem-synth status [OPTIONS]
-```
-
-| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
-|---|---|---|---|---|---|---|---|
-| `failed_only` | `--failed` | BOOL | no | `false` | — | no | yes |
-| `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
 
 ## `jfox graph`
 
