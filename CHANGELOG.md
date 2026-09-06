@@ -11,6 +11,7 @@ All notable changes to jfox-cli will be documented in this file.
 ### Fixes
 
 - **embedding**: make dimension-migration check ndarray-safe for chromadb 1.5.x (#475) (#503)
+- **moc**: classify archived vector rows separately from true orphans in diagnose (#499) (#510)
 
 ### Changes
 
