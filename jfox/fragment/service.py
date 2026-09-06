@@ -6,9 +6,6 @@
 import logging
 from typing import Any, Dict, Optional
 
-from ..global_config import FragmentCaptureConfig, get_global_config_manager
-from .detector import classify
-from .internal_sources import INTERNAL_SOURCES
 from .store import FragmentStore
 
 logger = logging.getLogger(__name__)
@@ -65,60 +62,12 @@ def _summary_message(counts: Dict[str, int]) -> str:
 
 def ingest_event(
     event: Dict[str, Any],
-    store: Optional[FragmentStore] = None,
-    config: Optional[FragmentCaptureConfig] = None,
+    store: Any = None,  # 兼容旧调用点，忽略
+    config: Any = None,  # 兼容旧调用点，忽略
 ) -> Dict[str, Any]:
-    """处理一个 CC 事件，写入碎片，返回响应 dict。
+    """已退役（#399）：旧分类采集不再执行，返回 retired。
 
-    返回形如：
-      {fragment_id, fragment_type, message}              正常写入
-      {status: "skipped"}                                配置禁用
-      {status: "skipped", reason: "ignored internal source: ..."}  内部来源跳过
-      {status: "error", message}                         输入异常 / store 不可用 / 写入异常
+    保留函数签名兼容历史调用点；daemon /api/fragment 对未知事件走本路径。
     """
-    if config is None:
-        config = get_global_config_manager().get_fragment_capture_config()
-    if not config.enabled:
-        return {"status": "skipped"}
-
-    if not isinstance(event, dict):
-        return {"status": "error", "message": "event must be a JSON object"}
-
-    session_id = event.get("session_id")
-    if not session_id:
-        return {"status": "error", "message": "missing session_id in event"}
-
-    source = _get_event_source(event)
-    if source in INTERNAL_SOURCES:
-        logger.debug("ingest_event: 跳过 JFox 内部 session 来源: %s", source)
-        return {"status": "skipped", "reason": f"ignored internal source: {source}"}
-
-    # store 由 daemon lifespan 单点初始化；此处不懒创建，避免并发竞态、连接泄漏，
-    # 以及绕过 daemon 初始化失败时的「采集不可用」决策。
-    if store is None:
-        store = _default_store
-    if store is None:
-        return {"status": "error", "message": "fragment store unavailable (daemon not initialized)"}
-
-    try:
-        ftype, content = classify(event, config)
-        if ftype == "session_summary":
-            counts = store.counts_by_type(session_id)
-            content = _summary_message(counts)
-        fid = store.insert(
-            session_id=session_id,
-            fragment_type=ftype,
-            source_event=event.get("hook_event_name", "Unknown"),
-            content=content,
-            metadata=event,
-        )
-    except Exception as e:
-        # classify 与 store 操作都在此 try 内；用中性消息，避免把分类失败误报为 store error
-        logger.exception("ingest_event: 处理失败: %s", e)
-        return {"status": "error", "message": f"ingest error: {e}"}
-
-    message = content if ftype == "session_summary" else "ok"
-    return {"fragment_id": fid, "fragment_type": ftype, "message": message}
-
-
-__all__ = ["ingest_event", "set_default_store", "get_default_store"]
+    hook_event = event.get("hook_event_name") if isinstance(event, dict) else None
+    return {"status": "retired", "reason": f"{hook_event or 'unknown'} capture is retired"}

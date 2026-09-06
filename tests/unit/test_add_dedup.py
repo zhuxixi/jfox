@@ -23,7 +23,7 @@ from jfox.add_dedup import (
     record_added_permanent,
 )
 from jfox.config import ZKConfig
-from jfox.gem_synth.dedup import DedupStore, set_store
+from jfox.dedup import DedupStore, set_store
 from jfox.global_config import NoteAddConfig
 from jfox.models import Note, NoteType
 
@@ -269,7 +269,7 @@ class TestUntitledPermanentGate:
 
 def test_synthesis_db_env_override(tmp_path, monkeypatch):
     """JFOX_SYNTHESIS_DB 覆盖 synthesis db 路径（conftest 全局隔离的依据）。"""
-    from jfox.gem_synth.paths import default_synthesis_db_path
+    from jfox.dedup import default_synthesis_db_path
 
     p = tmp_path / "s.db"
     monkeypatch.setenv("JFOX_SYNTHESIS_DB", str(p))

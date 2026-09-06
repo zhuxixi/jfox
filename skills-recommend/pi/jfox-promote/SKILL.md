@@ -11,9 +11,9 @@ description: |
 
 # 过审 candidate（破损→完整，支持大积压）
 
-本 skill 过审 gem-synth 合成的 candidate——一种「破损级」候选知识笔记，把它晋升为永久笔记（permanent），或拒绝归档（reject，软删除可恢复）。candidate 由后台合成器围绕锚点（anchor，合成时选定的主题切入点）生成，处于 pending 状态；过审是知识闭环（采集→合成→过审）的最后一环。
+本 skill 过审 candidate——一种「破损级」候选知识笔记，把它晋升为永久笔记（permanent），或拒绝归档（reject，软删除可恢复）。candidate 由 `jfox prompts judge`（#399 prompt 判断）生成，处于 pending 状态；过审是知识闭环（采集→判断→过审）的最后一环。存量 gem-synth 合成的 candidate（无 `source_prompts` 溯源字段）同样走本流程。
 
-积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。注意：candidate 的 pending（过审状态）和 gem-synth status（合成进度）是两回事。
+积压量大时先用客观去重砍重复（模式1），再簇级 triage（模式2），最后精修高价值单条（模式3）；小积压直接模式2/3。
 
 > 历史背景：对应 #249 五层 Loop 的 L5 晋升层；#319 起改为三模式以应对大积压。下面不依赖这些编号也能读懂。
 

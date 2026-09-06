@@ -14,7 +14,16 @@ from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 
-from .paths import default_synthesis_db_path
+
+def default_synthesis_db_path() -> Path:
+    """dedup 库路径，可被 JFOX_SYNTHESIS_DB 覆盖（测试用）。"""
+    import os
+
+    env = os.environ.get("JFOX_SYNTHESIS_DB")
+    if env:
+        return Path(env).expanduser().resolve()
+    return Path.home() / ".zettelkasten" / "synthesis_log.db"
+
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +165,7 @@ def _resolve_kb_name(kb: Optional[str]) -> str:
     """
     if kb:
         return kb
-    from ..config import config as _zk_config
+    from .config import config as _zk_config
 
     return _zk_config.base_dir.name
 
@@ -200,7 +209,7 @@ def _embed(text: str, daemon_only: bool = False) -> Optional[np.ndarray]:
     """经 embedding daemon 取向量。daemon 不可用返回 None（调用方降级）。
 
     daemon_only=True 时绝不触发本地模型加载（#383 add 防重路径红线）。"""
-    from ..embedding_backend import get_backend
+    from .embedding_backend import get_backend
 
     vec = get_backend().encode_single(text, daemon_only=daemon_only)
     return np.asarray(vec, dtype=np.float32)
@@ -281,37 +290,3 @@ def delete_dedup(kb: str, note_id: str) -> None:
         _get_store().delete(kb, note_id)
     except Exception as e:
         logger.warning("delete_dedup 失败 note=%s: %s", note_id, e)
-
-
-def release_blocked_anchors(note_id: str) -> None:
-    """释放因"重复于/合并进 note_id"而被阻断的锚点（清除 synthesis_log 中指向它的
-    duplicate + merged 记账）。
-
-    candidate 被 reject/delete 后调用：该 candidate 曾触发 dedup 命中（duplicate）或
-    被增量合并进（merged，#309），对应锚点被标记已处理（不重试）。candidate 已丢弃 →
-    锚点应恢复为未处理，允许未来重新合成。失败仅 warning，不阻塞 reject 流程。"""
-    try:
-        from .store import SynthesisLog
-
-        log = SynthesisLog()
-        try:
-            log.clear_duplicates_of(note_id)
-        finally:
-            log.close()
-    except Exception as e:
-        logger.warning("release_blocked_anchors 失败 note=%s: %s", note_id, e)
-
-
-__all__ = [
-    "DedupHit",
-    "DedupStore",
-    "dedup_check",
-    "upsert_dedup",
-    "update_dedup_type",
-    "delete_dedup",
-    "release_blocked_anchors",
-    "set_store",
-    "_clean_candidate_content",
-    "_append_knowledge_section",
-    "_resolve_kb_name",
-]

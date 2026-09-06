@@ -166,7 +166,7 @@ def test_main_app_still_registers_candidates():
 
 
 def test_gem_synth_cli_no_longer_exports_candidates():
-    """迁移后 gem_synth.cli 不再导出 candidates_app。"""
-    import jfox.gem_synth.cli as gsc
+    """退役后整个 gem_synth CLI 已删除。"""
+    import importlib.util
 
-    assert not hasattr(gsc, "candidates_app")
+    assert importlib.util.find_spec("jfox.gem_synth") is None
