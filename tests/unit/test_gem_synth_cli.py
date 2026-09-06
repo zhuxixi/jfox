@@ -14,9 +14,9 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
+from jfox.candidates.cli import candidates_app
 from jfox.cli import app
 from jfox.config import use_kb
-from jfox.gem_synth.cli import candidates_app
 from jfox.models import GemLevel, Note, NoteType
 from jfox.note import create_note, load_note_by_id, save_note
 
@@ -135,15 +135,15 @@ def test_list_json_error_structure():
     通过 monkeypatch 让 list_notes 抛错触发 except 分支，验证输出为
     {"success": false, "error": ...} 而非红色提示文本。
     """
-    # list_cmd 函数体内 `from ..note import list_notes` 在调用时解析，
-    # 故 patch jfox.note.list_notes 模块属性即可生效。
-    import jfox.note as note_mod
+    # 迁移后 list 逻辑在 jfox.candidates.service，其 list_notes 在模块加载时绑定，
+    # 故 patch service 命名空间的引用。
+    import jfox.candidates.service as svc_mod
 
     def _boom(*args, **kwargs):
         raise RuntimeError("boom-for-test")
 
-    orig_list_notes = note_mod.list_notes
-    note_mod.list_notes = _boom
+    orig_list_notes = svc_mod.list_notes
+    svc_mod.list_notes = _boom
     try:
         result = CliRunner().invoke(candidates_app, ["list", "--format", "json"])
         assert result.exit_code == 1
@@ -151,7 +151,7 @@ def test_list_json_error_structure():
         assert data["success"] is False
         assert "boom-for-test" in data["error"]
     finally:
-        note_mod.list_notes = orig_list_notes
+        svc_mod.list_notes = orig_list_notes
 
 
 # ----------------------------------------------------------------------------
