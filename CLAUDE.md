@@ -71,18 +71,20 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `indexer.py` | File monitoring (watchdog) + incremental indexing |
 | `note.py` | Markdown file CRUD with YAML frontmatter |
 | `models.py` | `Note` data model with frontmatter serialization |
-| `add_dedup.py` | `jfox add` permanent 落库前双通道防重（#383）：标题通道（非 archived 同标题、大小写不敏感、不限类型）+ 正文余弦 ≥0.95 通道（复用 `gem_synth/dedup`，`daemon_only=True` 绝不回退本地模型加载、仅 daemon 在跑时启用）；闸门自身故障一律放行，非路障 |
+| `add_dedup.py` | `jfox add` permanent 落库前双通道防重（#383）：标题通道（非 archived 同标题、大小写不敏感、不限类型）+ 正文余弦 ≥0.95 通道（复用顶层 `jfox/dedup.py`，`daemon_only=True` 绝不回退本地模型加载、仅 daemon 在跑时启用）；闸门自身故障一律放行，非路障 |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
 | `bm25_index.py` | BM25 keyword search index；写路径 filelock + 原子写 + `write_version` 乐观并发控制，多进程并发写安全（#391/#396） |
 | `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理）；CPU 默认模型 `BAAI/bge-small-zh-v1.5`（512 维，#442），本地模型目录未命中时先走 ModelDownloader 下载链再兜底加载（#374） |
 | `daemon/` | Embedding 模型 HTTP 守护进程 (`server.py`/`client.py`/`process.py`)，`jfox daemon start/stop/status` |
 | `embedding_migration.py` | 全 KB 向量维度不匹配检测（#442）：daemon start/restart 时比对各 KB Chroma 集合维度与 daemon 服务维度，发现旧模型建库则交互式逐 KB 提示 rebuild，单 KB 失败不阻断其余 |
-| `fragment/` | 碎片采集：detector 分类 + store SQLite(WAL) + service 编排 |
+| `fragment/` | 碎片子系统（采集已退役，#498）：detector 分类与 `ingest_event` 采集链删除，仅留 store SQLite(WAL) 与历史回溯 CLI `jfox fragments list/show`；旧 `session_fragments` 表保留供 prompts `backfill` 回填 |
 | `bookshelf/` | 好书资产管理：store 文件夹 CRUD + meta jfox 自有元数据（wrap scan2book manifest）+ cli sub-app；纯文件管理不进索引 |
-| `gem_synth/` | L3 宝石合成：daemon 循环围绕锚点用 transcript + 永久笔记基准合成 candidate 笔记；存盘前 `dedup.py` 正文余弦查重，命中 candidate 时 `synthesizer.py` 增量合并（提取 delta 补进已有草稿，#309；permanent 仍跳过）；`lifecycle.py` 订阅 note 的 delete/archive/promote/reject 事件同步 dedup 表 |
+| `prompts/` | Prompt 记录与按需判断（#399，已合 parts 2-6）：记录层全量保存 CC UserPromptSubmit 到 `user_prompts`（与 fragment 共用 fragments.db，`JFOX_FRAGMENTS_DB` 可覆盖；cc-plugin hook 先原子写 spool `~/.zettelkasten/prompt-spool/` 再尽力 POST daemon `/api/prompt`，失败留 spool 待 drain 导入）；判断层 `judge.py` session 批量编排（claim 租约 → `transcript.py` 三模式上下文 → `runner.py` 外部 runner → `grounding.py` strict grounding → 存 candidate 带 `source_prompts` 溯源），成功只写 pending 留人工 disposition；`actions.py`+`cli.py` 人工处置面 `jfox prompts list/show/status/drain/backfill/judge/promote/unresolved/resolve-unresolved/ignore/retry/config`（#508），`lifecycle.py` 订阅 candidate 直接 promote/reject 时同步 judgment；runner 安全边界：argv + shell=False、prompt 只走 stdin、reserved flags 不被 `extra_args` 覆盖；配置在 `~/.zk_config.json` 的 `prompt_capture` 与 `prompt_judge` 两节 |
+| `candidates/` | 候选宝石过审 CLI（#497 从 gem_synth 原样解耦迁移）：`jfox candidates list/show/promote/reject`，命令名/参数/输出不变；gem_synth 自动合成与合成进度命令已整体退役（#498，daemon 只剩 auto-summary/backup loop） |
+| `dedup.py` / `dedup_lifecycle.py` | 顶层 dedup 表（原 `gem_synth/dedup.py`，#498 迁移）：正文余弦查重 SQLite，`jfox add` 防重共查；`dedup_lifecycle.py` 订阅 note delete/archive/promote/reject 同步 dedup 行（删除/归档清行、promote 改类型——残留 embedding 会让 add 误拦重新添加已删内容，#383 语义） |
 | `auto_summary/` | 自动总结子系统：daemon 内扫描 `~/.claude/projects/` 已结束的 Claude Code session，经 `claude -p` 生成摘要写入 `session` 笔记；CLI `jfox auto-summary run/scan/status/enable/disable`，ledger 去重 + schedule time window |
-| `backup/` | KB 滚动备份/恢复：`manager.py` BackupManager（tar.gz+sha256 清单+滚动轮转+可逆 restore）+ daemon `loop.py` 定时备份（镜像 auto-summary，quiesce 标志让 gem_synth/auto_summary 跳过写 tick）+ `jfox backup run/enable/disable/status/list/verify/restore`；默认关，opt-in |
-| `moc/` | MOC 结构层：`cluster.py` 密度诊断（永久笔记向量余弦相似度多阈值聚类——阈值化加权图 Louvain 社区发现（边权=相似度，`seed=42` 确定性，#463 起替代传递连通分量），默认阈值 0.65→0.75、diagnose 网格 0.70–0.80，#410/#463；链接/语义孤儿检测，N×N 稠密矩阵上限 5000）+ `draft.py`/`generate.py` create/update（从诊断簇生成并维护 structure 笔记，落盘带 backlinks 回填与成员磁盘存在性校验，#413）；CLI `jfox moc diagnose/create/update`；重依赖经 `__init__.py` 的 `__getattr__` 按需加载 |
+| `backup/` | KB 滚动备份/恢复：`manager.py` BackupManager（tar.gz+sha256 清单+滚动轮转+可逆 restore）+ daemon `loop.py` 定时备份（镜像 auto-summary，quiesce 标志让兄弟写类 loop 跳过写 tick）+ `jfox backup run/enable/disable/status/list/verify/restore`；默认关，opt-in |
+| `moc/` | MOC 结构层：`cluster.py` 密度诊断（永久笔记向量余弦相似度多阈值聚类——阈值化加权图 Louvain 社区发现（边权=相似度，`seed=42` 确定性，#463 起替代传递连通分量），默认阈值 0.65→0.75、diagnose 网格 0.70–0.80，#410/#463；链接/语义孤儿检测——向量行三态分类 ghost（磁盘缺失）/archived（已归档，不计孤儿）/live（#499/#510），N×N 稠密矩阵上限 5000）+ `draft.py`/`generate.py` create/update（从诊断簇生成并维护 structure 笔记，落盘带 backlinks 回填与成员磁盘存在性校验，#413）；CLI `jfox moc diagnose/create/update/add-member/remove-member`（add/remove-member 单成员精确增删并维护正文/links/backlinks 一致 + session-time MOC ownership，#484/#505）；重依赖经 `__init__.py` 的 `__getattr__` 按需加载 |
 | `vector_store.py` | ChromaDB vector store for semantic search；批量读 `get_all_embeddings()` 走复制前后清单校验一致的只读快照副本而非活库（Chroma 只读集合也会写 SQLite），失败抛 `VectorStoreReadError`（#407） |
 | `graph.py` | NetworkX knowledge graph from links/backlinks |
 | `redirect.py` | 笔记重定向 + delete 入链保护（#435/#449）：`jfox redirect OLD_ID KEEP_ID` 批量改写引用（frontmatter+正文，保留 alias/anchor，跳过 code fence/HTML 注释，非 dry-run 后验证无残留 OLD 引用）；`jfox delete` 默认拒绝删除被引用笔记，`--allow-dangling` 放行 |
@@ -115,12 +117,12 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **README**: 英文 baseline（#461 起重写），改 README 保持英文；其余项目文档/注释仍中文
 - **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）；命令面有任何增删改还须补 `docs/cli-descriptions.yaml` 英文描述并跑 `uv run python scripts/generate_docs.py` 重新生成 `docs/cli-reference.md`，否则 CI lint drift gate 挂（#474/#476）
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
-- **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 gem_synth/backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
+- **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
 - **Modifying data models**: Update `Note` class in `models.py`, update `to_markdown()`/`from_markdown()`, consider backward compat
 - **Viewing note content**: `jfox show <id_or_title>` 复用 `find_note_id_by_title_or_id` 定位笔记，默认输出完整 Markdown（`--json` / `--format json` 输出结构化字段）
-- **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `gem_synth/lifecycle.py` 同步 dedup 表）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
+- **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `dedup_lifecycle.py` 同步 dedup 表、`prompts/lifecycle.py` 同步 judgment）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
 - **源笔记清理统一 archive**: skill 整理/提炼后清理源笔记用 `jfox archive`（软删除，`jfox unarchive` 可回滚误判），不用 `delete --force` 硬删（#436）
-- **`jfox add` permanent 防重**（#383/#483）: 默认开启，标题或正文余弦 ≥0.95 命中即拒绝创建（exit 1，JSON 输出 `skipped: "duplicate"`），`--force` 跳过（迁移/回填用）；开关与阈值在 `~/.zk_config.json` 的 `note_add` 节（`NoteAddConfig`）；embedding 通道仅 daemon 在跑时生效，落库后回灌 dedup 表供后续 add 与 gem_synth 共查
+- **`jfox add` permanent 防重**（#383/#483）: 默认开启，标题或正文余弦 ≥0.95 命中即拒绝创建（exit 1，JSON 输出 `skipped: "duplicate"`），`--force` 跳过（迁移/回填用）；开关与阈值在 `~/.zk_config.json` 的 `note_add` 节（`NoteAddConfig`）；embedding 通道仅 daemon 在跑时生效，落库后回灌 dedup 表供后续 add 查重
 
 ## Test Infrastructure
 
@@ -195,7 +197,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 
 - `pytest.ini` `addopts` includes `-v`, so `pytest tests/` already runs verbose — adding `-v` manually is redundant
 - Test directory migration mostly complete; root-level `test_config_unit.py` and `test_config_set_unit.py` remain but test different things from `tests/unit/`
-- 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `gem_synth/lifecycle.py`
+- 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `dedup_lifecycle.py`
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
 - JSON 模式（`cli.py` `_json_mode_requested` 兼容 `--json`/`-f json`/`-fjson`/`--format=json`，重复 flag 取后者）下 CLI 入口统一 `logging.disable(CRITICAL)` + `TQDM_DISABLE=1`，保证 `--json 2>&1 | jq` 合流后仍是纯 JSON（#383 根因 A：INFO/tqdm 噪声曾令调用方解析失败、误判后重跑产生重复笔记）；命令内告警并入 JSON 字段（如 add 的 `vector_dimension_warning`）而非 stderr print——stderr 在 2>&1 管道同样污染解析流
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：写盘前按真实磁盘路径 re-read-and-merge——重读 fresh 再合并写回，文件名发散不产生同 id 双文件、与常驻 daemon 并发写不丢更新（#392/#422）；单 target 写盘失败仅 warning 不中断，悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
