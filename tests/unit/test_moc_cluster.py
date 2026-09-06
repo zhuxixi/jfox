@@ -13,6 +13,7 @@ from jfox.moc.cluster import (
     MAX_DENSE_CLUSTER_NOTES,
     MocDiagnoseError,
     build_threshold_summary,
+    classify_vector_id,
     compute_similarity,
     diagnose_moc_density,
     find_clusters_at_threshold,
@@ -137,6 +138,24 @@ def _permanent_meta(note_id: str, title: str, *, archived: bool = False) -> Note
     )
 
 
+class TestClassifyVectorId:
+    """classify_vector_id 的三分判定（ghost / archived / live）。"""
+
+    def test_classify_vector_id_ghost_when_id_not_in_permanent_meta(self):
+        assert classify_vector_id("missing", {}) == "ghost"
+
+    def test_classify_vector_id_ghost_when_permanent_meta_empty(self):
+        assert classify_vector_id("p0", {}) == "ghost"
+
+    def test_classify_vector_id_archived_when_meta_marked_archived(self):
+        meta = _permanent_meta("a1", "A1", archived=True)
+        assert classify_vector_id("a1", {"a1": meta}) == "archived"
+
+    def test_classify_vector_id_live_when_meta_not_archived(self):
+        meta = _permanent_meta("p0", "P0")
+        assert classify_vector_id("p0", {"p0": meta}) == "live"
+
+
 def test_diagnose_sorting_is_independent_of_vector_store_order():
     config = ZKConfig(base_dir=Path("/tmp/moc-test"))
     metas = [_permanent_meta("p0", "P0"), _permanent_meta("p1", "P1")]
@@ -227,7 +246,12 @@ def test_diagnose_filters_archived_and_orphan_vectors_and_enriches_graph():
 
     assert report.coverage.filesystem == 5
     assert report.coverage.vector == 7
-    assert report.coverage.vector_orphans == 2
+    assert report.coverage.vector_orphans == 1  # 仅 ghost
+    assert report.coverage.archived_in_index == 1
+    assert any(
+        "Vector index contains 1 permanent orphan(s)" in warning
+        for warning in report.coverage.warnings
+    )
     assert report.coverage.bm25 == 4
     assert report.coverage.bm25_coverage_ratio == 0.8
     assert report.suggest is not None
@@ -308,10 +332,76 @@ def test_diagnose_all_orphan_vectors_returns_empty_clusters():
     ):
         report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
 
-    assert report.coverage.vector_orphans == 2
+    assert report.coverage.vector_orphans == 1  # 仅 ghost；p0 是 archived
+    assert report.coverage.archived_in_index == 1
     assert report.suggest is not None
     assert report.suggest.clusters == []
     assert report.threshold_sweep[0].orphan_count == 0
+
+
+def test_diagnose_counts_duplicate_live_rows_as_orphans():
+    """live id 在 vector 索引中重复出现 → 计真孤儿（索引异常），不算 archived。"""
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    metas = [_permanent_meta("p0", "P0")]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0", "p0"],
+        [None, None],
+        np.array([[1.0, 0.0], [1.0, 0.0]], dtype=np.float32),
+    )
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.return_value = 0
+    graph.graph.out_degree.return_value = 0
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch(
+            "jfox.moc.cluster.BM25Index",
+            return_value=MagicMock(doc_ids=[], doc_types=[]),
+        ),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    assert report.coverage.vector_orphans == 1
+    assert report.coverage.archived_in_index == 0
+
+
+def test_diagnose_archived_only_rows_emit_no_orphan_warning():
+    """vector 索引仅多含 archived 笔记时：不计孤儿、不发 orphan 警告。"""
+    config = ZKConfig(base_dir=Path("/tmp/moc-test"))
+    metas = [_permanent_meta("p0", "P0"), _permanent_meta("a1", "A1", archived=True)]
+    note_index = MagicMock()
+    note_index.get_all_meta.return_value = metas
+    vector_store = MagicMock()
+    vector_store.get_all_embeddings.return_value = (
+        ["p0", "a1"],
+        [None, None],
+        np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+    )
+    graph = MagicMock()
+    graph.build.return_value = graph
+    graph.graph.in_degree.return_value = 0
+    graph.graph.out_degree.return_value = 0
+    with (
+        patch("jfox.moc.cluster.get_note_index", return_value=note_index),
+        patch("jfox.moc.cluster.VectorStore", return_value=vector_store),
+        patch(
+            "jfox.moc.cluster.BM25Index",
+            return_value=MagicMock(doc_ids=[], doc_types=[]),
+        ),
+        patch("jfox.moc.cluster.KnowledgeGraph", return_value=graph),
+    ):
+        report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
+
+    assert report.coverage.vector_orphans == 0
+    assert report.coverage.archived_in_index == 1
+    assert not any(
+        warning.startswith("Vector index contains") for warning in report.coverage.warnings
+    )
 
 
 def test_diagnose_includes_missing_vector_link_orphan_and_flags():
@@ -413,6 +503,8 @@ def test_diagnose_filesystem_failure_skips_unverified_semantic_clusters():
     assert report.orphans.notes == []
     assert any("permanent scope unavailable" in warning.lower() for warning in report.warnings)
     assert any("semantic clustering was skipped" in warning.lower() for warning in report.warnings)
+    assert report.coverage.vector_orphans == 0
+    assert report.coverage.archived_in_index == 0
 
 
 def test_diagnose_malformed_bm25_metadata_reports_invalid_and_na_coverage(tmp_path):
@@ -539,7 +631,8 @@ def test_diagnose_dense_limit_counts_only_verified_unique_live_rows():
         report = diagnose_moc_density(config, [0.65], 2, 0.65, 10)
 
     assert report.coverage.vector == len(vector_ids)
-    assert report.coverage.vector_orphans == len(vector_ids) - 2
+    assert report.coverage.vector_orphans == 6  # 1 live duplicate + 5 ghost
+    assert report.coverage.archived_in_index == 4  # archived 重复 4 行如实计数
     assert compute.call_args.args[0].shape == (2, 2)
     assert report.threshold_sweep[0].cluster_count == 1
 

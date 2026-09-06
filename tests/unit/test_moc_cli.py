@@ -37,6 +37,7 @@ def _report() -> MocDiagnoseReport:
             filesystem=5,
             vector=7,
             vector_orphans=2,
+            archived_in_index=2,
             bm25=4,
             bm25_coverage_ratio=0.8,
             warnings=["Vector index contains 2 permanent orphan(s)"],
@@ -158,6 +159,7 @@ def test_diagnose_json_contract():
     payload = json.loads(result.output)
     assert payload["success"] is True
     assert payload["coverage"]["vector_orphans"] == 2
+    assert payload["coverage"]["archived_in_index"] == 2
     assert payload["suggest"]["threshold"] == 0.65
     assert set(payload) == {
         "success",
@@ -258,6 +260,24 @@ def test_diagnose_table_has_four_sections_and_permanent_only_coverage():
     )[0]
     for note_type in ("candidate", "session", "fleeting"):
         assert note_type not in coverage_output.lower()
+
+
+def test_diagnose_table_shows_archived_info_line_when_nonzero():
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=_report()):
+        result = runner.invoke(moc_app, ["diagnose"])
+
+    assert result.exit_code == 0, result.output
+    assert "archived permanent note(s)" in result.output
+
+
+def test_diagnose_table_hides_archived_info_line_when_zero():
+    report = _report()
+    report.coverage.archived_in_index = 0
+    with patch("jfox.moc.cli.diagnose_moc_density", return_value=report):
+        result = runner.invoke(moc_app, ["diagnose"])
+
+    assert result.exit_code == 0, result.output
+    assert "archived permanent note(s)" not in result.output
 
 
 @pytest.mark.parametrize(

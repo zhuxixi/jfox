@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Literal, Mapping, Optional, Sequence
 
 import networkx as nx
 import numpy as np
@@ -13,7 +13,7 @@ from ..bm25_index import BM25Index
 from ..config import ZKConfig
 from ..graph import KnowledgeGraph
 from ..models import NoteType
-from ..note_index import get_note_index
+from ..note_index import NoteMeta, get_note_index
 from ..vector_store import VectorStore, VectorStoreReadError
 from . import MocDiagnoseError
 
@@ -58,6 +58,7 @@ class CoverageReport:
     filesystem: Optional[int] = 0
     vector: Optional[int] = 0
     vector_orphans: int = 0
+    archived_in_index: int = 0
     bm25: Optional[int] = 0
     bm25_coverage_ratio: Optional[float] = None
     warnings: List[str] = field(default_factory=list)
@@ -160,6 +161,24 @@ def semantic_orphan_indices(node_count: int, clusters: Sequence[Sequence[int]]) 
     return [index for index in range(node_count) if index not in clustered]
 
 
+def classify_vector_id(
+    note_id: str, permanent_meta: Mapping[str, NoteMeta]
+) -> Literal["ghost", "archived", "live"]:
+    """将一条 permanent vector 索引条目分类为 ghost / archived / live。
+
+    ghost：磁盘上不存在对应 permanent 笔记（索引死条目，真孤儿）；
+    archived：磁盘上存在但 frontmatter 标记归档（正常状态，不计入孤儿）；
+    live：活跃的 permanent 笔记。
+    duplicate（重复条目）不在此函数判定——它依赖循环内的 seen 状态。
+    """
+    meta = permanent_meta.get(note_id)
+    if meta is None:
+        return "ghost"
+    if meta.archived:
+        return "archived"
+    return "live"
+
+
 def build_threshold_summary(
     similarity: np.ndarray, threshold: float, min_size: int
 ) -> ThresholdSummary:
@@ -231,13 +250,13 @@ def diagnose_moc_density(
     warnings: List[str] = []
     try:
         note_index = get_note_index(config)
-        live_meta = {
-            meta.id: meta
-            for meta in note_index.get_all_meta()
-            if meta.type == NoteType.PERMANENT and not meta.archived
+        permanent_meta = {
+            meta.id: meta for meta in note_index.get_all_meta() if meta.type == NoteType.PERMANENT
         }
+        live_meta = {note_id: meta for note_id, meta in permanent_meta.items() if not meta.archived}
         filesystem_count: Optional[int] = len(live_meta)
     except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        permanent_meta = {}
         live_meta = {}
         filesystem_count = None
         warnings.append(f"Filesystem coverage unavailable: {exc}")
@@ -265,6 +284,7 @@ def diagnose_moc_density(
     records = []
     seen_live_ids = set()
     orphan_count = 0
+    archived_count = 0
     if filesystem_count is None:
         warnings.append("Permanent scope unavailable; semantic clustering was skipped")
         warnings.append(
@@ -279,7 +299,11 @@ def diagnose_moc_density(
                 raise MocDiagnoseError(
                     f"Corrupt permanent vector metadata for {note_id}: expected an object"
                 )
-            if note_id not in live_meta or note_id in seen_live_ids:
+            classification = classify_vector_id(note_id, permanent_meta)
+            if classification == "archived":
+                archived_count += 1
+                continue
+            if classification == "ghost" or note_id in seen_live_ids:
                 orphan_count += 1
                 continue
             seen_live_ids.add(note_id)
@@ -290,6 +314,7 @@ def diagnose_moc_density(
     title_by_id = {note_id: meta.title for note_id, meta in live_meta.items()}
     live_embeddings = [record[2] for record in records]
     coverage.vector_orphans = orphan_count
+    coverage.archived_in_index = archived_count
 
     live_note_count = len(live_embeddings)
     if live_note_count > MAX_DENSE_CLUSTER_NOTES:
