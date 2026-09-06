@@ -811,6 +811,25 @@ Diagnose and maintain Map of Content structure notes.
 jfox moc COMMAND [ARGS]...
 ```
 
+## `jfox moc add-member`
+
+Add a single member note to an existing MOC, updating its body, links, and backlinks.
+
+**Usage**:
+
+```text
+jfox moc add-member [OPTIONS] MOC_ID NOTE_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `moc_id` | `MOC_ID` | TEXT | yes | — | — | no | no |
+| `note_id` | `NOTE_ID` | TEXT | yes | — | — | no | no |
+| `group` | `--group` | TEXT | no | — | — | no | no |
+| `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
+| `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `json_output` | `--json` | BOOL | no | `false` | — | no | yes |
+
 ## `jfox moc create`
 
 Create a structure note draft from a diagnosed topic cluster.
@@ -849,6 +868,24 @@ jfox moc diagnose [OPTIONS]
 | `min_size` | `--min-size` | INTEGER | no | `3` | — | no | no |
 | `suggest_threshold` | `--suggest-threshold` | FLOAT | no | `0.75` | — | no | no |
 | `top` | `--top` | INTEGER | no | `10` | — | no | no |
+| `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
+| `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `json_output` | `--json` | BOOL | no | `false` | — | no | yes |
+
+## `jfox moc remove-member`
+
+Remove a single member note from an existing MOC, cleaning up its body, links, and backlinks.
+
+**Usage**:
+
+```text
+jfox moc remove-member [OPTIONS] MOC_ID NOTE_ID
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `moc_id` | `MOC_ID` | TEXT | yes | — | — | no | no |
+| `note_id` | `NOTE_ID` | TEXT | yes | — | — | no | no |
 | `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
 | `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
 | `json_output` | `--json` | BOOL | no | `false` | — | no | yes |

@@ -79,8 +79,11 @@ def test_moc_help_registers_exact_diagnose_contract():
     result = root_runner.invoke(app, ["moc", "--help"])
 
     assert result.exit_code == 0
-    assert "Usage: jfox moc [OPTIONS] COMMAND [ARGS]..." in _help_lines(result.output)
-    assert "│ diagnose 诊断永久笔记的语义密度和 MOC 聚类建议。 │" in _help_lines(result.output)
+    lines = _help_lines(result.output)
+    assert "Usage: jfox moc [OPTIONS] COMMAND [ARGS]..." in lines
+    assert "│ diagnose 诊断永久笔记的语义密度和 MOC 聚类建议。 │" in lines
+    assert "│ add-member 向 MOC 添加单个成员，维护正文/links/backlinks 一致。 │" in lines
+    assert "│ remove-member 从 MOC 移除单个成员，对称清理正文/links/backlinks。 │" in lines
 
 
 def test_moc_diagnose_help_preserves_exact_baseline_contract():

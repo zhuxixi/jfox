@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import math
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, Optional
 
 import typer
@@ -12,7 +14,7 @@ from rich.table import Table
 
 from ..config import ZKConfig, config, use_kb
 from ..models import Note, NoteType
-from ..note_index import get_note_index
+from ..note_index import NoteIndex, get_note_index
 from . import MocDiagnoseError
 
 if TYPE_CHECKING:
@@ -45,6 +47,27 @@ def load_note_by_id(*args: Any, **kwargs: Any) -> Any:
     from ..note import load_note_by_id as _load
 
     return _load(*args, **kwargs)
+
+
+def load_note(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 note.load_note（精确路径加载）。"""
+    from ..note import load_note as _load_note
+
+    return _load_note(*args, **kwargs)
+
+
+def upsert_member_line(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 draft.upsert_member_line（纯函数）。"""
+    from .draft import upsert_member_line as _upsert
+
+    return _upsert(*args, **kwargs)
+
+
+def remove_member_lines(*args: Any, **kwargs: Any) -> Any:
+    """按需加载 draft.remove_member_lines（纯函数）。"""
+    from .draft import remove_member_lines as _remove
+
+    return _remove(*args, **kwargs)
 
 
 def update_note(*args: Any, **kwargs: Any) -> Any:
@@ -264,18 +287,24 @@ def draft_to_dict(
 
 
 def _render_draft(draft: Any, cluster: Any) -> None:
-    """table 格式的草稿预览。"""
+    """table 格式的草稿预览（与 render_moc_content 同一 ID canonical 规则）。"""
+    from .draft import _member_link
+
     hub_title = cluster.hub.title if cluster and cluster.hub else "N/A"
     _console.print(f"Cluster size {cluster.size}; hub: {hub_title}")
     _console.print(f"MOC title: {draft.title}")
     for group in draft.groups:
         _console.print(f"## {group.name} ({len(group.members)})")
         for member in group.members:
-            _console.print(f"- [[{member.title}]] — {member.link_degree} links")
+            _console.print(
+                f"- {_member_link(member.id, member.title)} — {member.link_degree} links"
+            )
     if draft.orphan_bucket:
         _console.print(f"## 待归类 ({len(draft.orphan_bucket)})")
         for orphan in draft.orphan_bucket:
-            _console.print(f"- [[{orphan.title}]] — {orphan.link_degree} links")
+            _console.print(
+                f"- {_member_link(orphan.id, orphan.title)} — {orphan.link_degree} links"
+            )
 
 
 def _create_impl(
@@ -521,6 +550,323 @@ def update_cmd(
                 _console.print(f"  Warning: {payload['warning']}")
             for warning in payload.get("warnings", []):
                 _console.print(f"  Warning: {warning}")
+
+
+# 单成员命令（spec §3.1-§3.4）：精确加载 + 三处一致性维护
+_MEMBER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def _validate_member_ids(moc_id: str, note_id: str) -> None:
+    """两个 ID 必须满足 ^[A-Za-z0-9][A-Za-z0-9_-]*$，拒绝 glob 元字符与路径分隔符。"""
+    for value, label in ((moc_id, "MOC"), (note_id, "note")):
+        if not _MEMBER_ID_RE.match(value):
+            raise ValueError(
+                f"Invalid {label} id: {value!r} " "(must match ^[A-Za-z0-9][A-Za-z0-9_-]*$)"
+            )
+
+
+def _exact_load(idx: "NoteIndex", note_id: str) -> Optional[Note]:
+    """从 idx 精确加载：find_by_id → filepath → load_note → ID 核对（spec §3.1）。
+
+    文件不存在（ghost）或加载后 ID 不精确相等都返回 None，不 fallback 到 glob。
+    """
+    meta = idx.find_by_id(note_id)
+    if meta is None:
+        return None
+    note = load_note(Path(meta.filepath))
+    if note is None or note.id != note_id:
+        return None
+    # from_markdown 不回填 _filepath，filepath 属性按当前标题现算；对 legacy 文件名
+    # （#407/#408 时间戳-微秒-slug 等与标题派生名不一致的文件）会算出不存在的路径，
+    # 把真实笔记误判成 ghost。钉住索引命中的真实磁盘路径后再校验存在性。
+    note.set_filepath(Path(meta.filepath))
+    if not note.filepath.exists():
+        return None
+    return note
+
+
+def _title_unique(idx: "NoteIndex", title: Optional[str]) -> bool:
+    """标题在 idx 快照内大小写不敏感地唯一（含已归档；不使用 find_by_title）。"""
+    if title is None:
+        return False
+    target = title.lower()
+    count = sum(1 for meta in idx.get_all_meta() if meta.title.lower() == target)
+    return count == 1
+
+
+def _save_moc_or_fail(moc: Note) -> None:
+    """持久化 MOC 主文件；失败抛 OSError，不碰 backlinks（spec §3.2 步骤 8）。"""
+    if not update_note(moc):
+        raise OSError(f"Failed to save MOC note {moc.id}")
+
+
+def _add_member_impl(
+    active_config: ZKConfig, moc_id: str, note_id: str, group: Optional[str]
+) -> dict[str, Any]:
+    """add-member 核心逻辑：精确校验 → 纯函数改正文 → links 规范化 → 落盘 → 回填。"""
+    _validate_member_ids(moc_id, note_id)
+    if moc_id == note_id:
+        raise ValueError(f"self-link is not allowed: {moc_id}")
+
+    idx = get_note_index(active_config)
+    idx.rebuild()
+
+    moc = _exact_load(idx, moc_id)
+    if moc is None:
+        raise ValueError(f"MOC note not found: {moc_id}")
+    if moc.type != NoteType.STRUCTURE:
+        raise ValueError(f"Note {moc_id} is not a structure note (type={moc.type.value})")
+    if moc.archived:
+        raise ValueError(f"MOC note is archived: {moc_id}")
+
+    member = _exact_load(idx, note_id)
+    if member is None:
+        raise ValueError(f"Member note not found: {note_id}")
+    if member.archived:
+        raise ValueError(f"Member note is archived: {note_id}")
+
+    warnings: list[str] = []
+    if member.type != NoteType.PERMANENT:
+        warnings.append(f"member note {note_id} is not permanent (type={member.type.value})")
+        if member.type == NoteType.STRUCTURE:
+            warnings.append(f"nested structure member: {note_id}")
+    if "\n" in member.title or "\r" in member.title or "]" in member.title:
+        warnings.append(
+            f"unsafe member title: canonical row uses [[{note_id}]] "
+            "(title contains newline or ])"
+        )
+
+    legacy_title_unique = _title_unique(idx, member.title)
+    upsert_result = upsert_member_line(
+        moc.content,
+        note_id,
+        member.title,
+        list(member.tags),
+        group,
+        legacy_title_unique=legacy_title_unique,
+    )
+    if upsert_result.ambiguous_legacy:
+        warnings.append(f"legacy title rows preserved (title not unique): {member.title}")
+
+    links_has_member = note_id in moc.links
+    backlink_has_member = moc_id in member.backlinks
+    already_member = links_has_member or backlink_has_member or upsert_result.had_existing_row
+
+    new_links = sorted(set(moc.links + [note_id]))
+    links_changed = new_links != moc.links
+    body_changed = upsert_result.changed
+
+    applied = False
+    if body_changed or links_changed:
+        if body_changed:
+            moc.content = upsert_result.content
+        moc.links = new_links
+        _save_moc_or_fail(moc)
+        applied = True
+
+    partial = False
+    if not backlink_has_member:
+        backfill = backfill_moc_backlinks(moc, [note_id], cfg=active_config)
+        if backfill.changed_ids:
+            applied = True
+        if backfill.failed_ids:
+            partial = True
+            warnings.append(
+                f"backlink backfill failed for member {note_id} (moc {moc_id}); "
+                f"retry: jfox moc add-member {moc_id} {note_id}"
+            )
+    if upsert_result.ambiguous_legacy:
+        partial = True
+
+    return {
+        "success": True,
+        "moc_id": moc_id,
+        "note_id": note_id,
+        "title": member.title,
+        "group": (
+            upsert_result.resolved_group
+            if (upsert_result.had_existing_row or upsert_result.rows_added)
+            else None
+        ),
+        "already_member": already_member,
+        "applied": applied,
+        "partial": partial,
+        "rows_added": upsert_result.rows_added,
+        "rows_canonicalized": upsert_result.rows_canonicalized,
+        "warnings": warnings,
+    }
+
+
+def _remove_member_impl(active_config: ZKConfig, moc_id: str, note_id: str) -> dict[str, Any]:
+    """remove-member 核心逻辑：纯函数删行 → links 摘除 → 落盘 → 摘 backlink。"""
+    _validate_member_ids(moc_id, note_id)
+
+    idx = get_note_index(active_config)
+    idx.rebuild()
+
+    moc = _exact_load(idx, moc_id)
+    if moc is None:
+        raise ValueError(f"MOC note not found: {moc_id}")
+    if moc.type != NoteType.STRUCTURE:
+        raise ValueError(f"Note {moc_id} is not a structure note (type={moc.type.value})")
+
+    member = _exact_load(idx, note_id)  # 不存在/已归档都允许 remove
+    member_title = member.title if member is not None else None
+    legacy_title_unique = _title_unique(idx, member_title)
+
+    removal = remove_member_lines(
+        moc.content,
+        note_id,
+        member_title,
+        legacy_title_unique=legacy_title_unique,
+    )
+
+    had_links = note_id in moc.links
+    had_backlink = member is not None and moc_id in member.backlinks
+
+    warnings: list[str] = []
+    if removal.ambiguous_legacy and member_title is not None:
+        warnings.append(f"legacy title rows preserved (title not unique): {member_title}")
+
+    # 仅歧义旧行、无任何可确认成员状态：不动文件、不摘 backlink（spec §3.3）
+    only_ambiguous = (
+        removal.ambiguous_legacy and not removal.changed and not had_links and not had_backlink
+    )
+    if only_ambiguous:
+        return {
+            "success": True,
+            "moc_id": moc_id,
+            "note_id": note_id,
+            "title": member_title,
+            "removed": False,
+            "not_member": True,
+            "applied": False,
+            "partial": False,
+            "removed_rows": 0,
+            "removed_groups": [],
+            "warnings": warnings,
+        }
+
+    new_links = [link for link in moc.links if link != note_id]
+    links_changed = new_links != moc.links
+
+    applied = False
+    if removal.changed or links_changed:
+        if removal.changed:
+            moc.content = removal.content
+        moc.links = new_links
+        _save_moc_or_fail(moc)
+        applied = True
+
+    partial = False
+    backlink_changed = False
+    if member is not None:
+        backrem = remove_moc_backlinks(moc_id, [note_id], cfg=active_config)
+        if backrem.changed_ids:
+            applied = True
+            backlink_changed = True
+        if backrem.failed_ids:
+            partial = True
+            warnings.append(
+                f"backlink removal failed for member {note_id} (moc {moc_id}); "
+                f"retry: jfox moc remove-member {moc_id} {note_id}"
+            )
+    if removal.ambiguous_legacy:
+        partial = True
+
+    removed = bool(removal.removed_rows or links_changed or backlink_changed)
+    return {
+        "success": True,
+        "moc_id": moc_id,
+        "note_id": note_id,
+        "title": member_title,
+        "removed": removed,
+        "not_member": not removed,
+        "applied": applied,
+        "partial": partial,
+        "removed_rows": removal.removed_rows,
+        "removed_groups": list(removal.removed_groups),
+        "warnings": warnings,
+    }
+
+
+@moc_app.command(
+    "add-member",
+    help="向 MOC 添加单个成员，维护正文/links/backlinks 一致。",
+)
+def add_member_cmd(
+    moc_id: str = typer.Argument(..., help="MOC 笔记 id（structure）"),
+    note_id: str = typer.Argument(..., help="成员笔记 id"),
+    group: Optional[str] = typer.Option(
+        None, "--group", help="显式指定目标分组（缺省按 tags 匹配）"
+    ),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+) -> None:
+    """向 MOC 精确添加单个成员（spec §3.2）。"""
+    if json_output:
+        output_format = "json"
+    if output_format not in {"table", "json"}:
+        _fail("format must be table or json", output_format)
+
+    try:
+        with use_kb(kb):
+            active_config = ZKConfig.for_kb(config.base_dir)
+            payload = _add_member_impl(active_config, moc_id, note_id, group)
+    except (MocDiagnoseError, ValueError, OSError) as exc:
+        _fail(str(exc), output_format)
+
+    if output_format == "json":
+        _json_console.print(json.dumps(payload, ensure_ascii=False, indent=2), soft_wrap=True)
+    else:
+        action = "noop" if not payload["applied"] else "added"
+        _console.print(
+            f"[{payload['moc_id']}] {action}: {payload['title']} ({payload['note_id']}) "
+            f"-> {payload['group'] or '-'}"
+        )
+        for warning in payload["warnings"]:
+            _console.print(f"  Warning: {warning}")
+
+
+@moc_app.command(
+    "remove-member",
+    help="从 MOC 移除单个成员，对称清理正文/links/backlinks。",
+)
+def remove_member_cmd(
+    moc_id: str = typer.Argument(..., help="MOC 笔记 id（structure）"),
+    note_id: str = typer.Argument(..., help="成员笔记 id"),
+    kb: Optional[str] = typer.Option(None, "--kb", "-k"),
+    output_format: str = typer.Option("table", "--format", "-f"),
+    json_output: bool = typer.Option(
+        False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
+    ),
+) -> None:
+    """从 MOC 移除单个成员（spec §3.3）。"""
+    if json_output:
+        output_format = "json"
+    if output_format not in {"table", "json"}:
+        _fail("format must be table or json", output_format)
+
+    try:
+        with use_kb(kb):
+            active_config = ZKConfig.for_kb(config.base_dir)
+            payload = _remove_member_impl(active_config, moc_id, note_id)
+    except (MocDiagnoseError, ValueError, OSError) as exc:
+        _fail(str(exc), output_format)
+
+    if output_format == "json":
+        _json_console.print(json.dumps(payload, ensure_ascii=False, indent=2), soft_wrap=True)
+    else:
+        action = "noop" if not payload["applied"] else "removed"
+        _console.print(
+            f"[{payload['moc_id']}] {action}: {payload['title'] or payload['note_id']} "
+            f"(rows={payload['removed_rows']}, groups={','.join(payload['removed_groups']) or '-'})"
+        )
+        for warning in payload["warnings"]:
+            _console.print(f"  Warning: {warning}")
 
 
 @moc_app.command(

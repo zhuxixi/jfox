@@ -88,6 +88,8 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 | 已有 permanent 讲了相关主题，但这条是新增量 | **可补充** | 标记，起草时准备用 `jfox edit` 追加到那条已有笔记 |
 | 没找到对应 permanent | **未记录** | 进入 Step 3 起草新笔记 |
 
+**MOC 候选信号（顺带采集）**：查看 suggest-links 结果里的 `type` 字段——`type: structure` 的条目是 MOC（主题地图）候选信号。按 MOC ID 去重，保留标题和 score，记到对应候选名下；归档 structure 不会出现在默认结果里，无法确认状态的不当作信号。本步只采集信号，不自动挂载，也不改变上面的去重判定。
+
 > **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
 
 ### Step 3: 提炼 permanent 草稿
@@ -194,6 +196,29 @@ AskUserQuestion(questions=[{
 - **Other**（AskUserQuestion 自动提供）→ 选项覆盖不了的场景（混合处置、想调整标题/标签、临时改主意等），用户在 Other 里说明意图，按其指示处置，处置完再回到本选择题收尾。
 - 用户对某条明确说「不要了」→ 等同跳过，不写入；若本批全部被跳过/否决 → 不写入任何内容，按「错误处理」结束。
 
+**MOC 归属确认（仅「新笔记」候选）**
+
+草稿处置确认后，对本批每条新笔记逐条确认 MOC 归属。「补充已有笔记」的候选不做归属——存量笔记的 MOC 归属归 `moc update` 批量兜底或手动 `jfox moc add-member` 管理。
+
+- Step 2 采集的信号里没有活跃 structure → 不问，直接进 Step 5，不打扰用户。
+- 有信号 → 用 AskUserQuestion 追问「挂到哪个 MOC？」，`multiSelect: true` 允许一条笔记同时挂多个 MOC（MOC 成员天然多对多）：
+
+```
+AskUserQuestion(questions=[{
+    "question": "新笔记《标题》挂到哪个 MOC？",
+    "header": "MOC 归属",
+    "options": [
+        {"label": "MOC 标题", "description": "ID 与匹配分放这里"},
+        {"label": "不挂", "description": "本次不归入任何 MOC；与 MOC 选项互斥，选了它就不再选 MOC"},
+    ],
+    "multiSelect": true,
+}])
+```
+
+- 手动指定路径保留：用户在 Other 输入 MOC ID 后，先用 `jfox show <MOC_ID> --json` 核对是未归档的 structure，无效就重新询问或选「不挂」。
+- 每条新笔记独立确认（各自一次 AskUserQuestion），允许不同笔记挂不同 MOC；不要把一次选择套用到整批。
+- 用户改过新笔记草稿的，必须对最终草稿重新跑 suggest-links 采集 MOC 信号，不能复用修改前的结果。
+
 一批落库后，若仍有剩余候选，继续下一批同样用选择题确认：
 
 ```
@@ -234,6 +259,19 @@ cat >> /tmp/existing.md << 'EOF'
 EOF
 jfox edit <已有笔记_id> --content-file /tmp/existing.md --kb <kb-name>
 ```
+
+**MOC 归属挂载（Step 4 确认过归属的新笔记）**
+
+`jfox add` 成功拿到新笔记 ID 后，对每个选定的 MOC 执行挂载：
+
+```bash
+jfox moc add-member <MOC_ID> <NEW_NOTE_ID> --kb <kb-name> --json
+```
+
+- 多个 MOC 就逐个调用；`--kb` 与 `jfox add` 传同一个值。
+- `jfox add` 失败就不调用挂载；挂载失败不回滚已落库的笔记——报告失败的 note ID、MOC ID 和重试命令，继续处理其余笔记和 MOC。
+- 挂载返回 `partial: true` 表示已挂上但仍有未收敛状态（如 MOC 正文里保留了同名旧标题行），照实转告用户。
+- 无 MOC 信号的批次正常落库结束，收尾时可提示用户后续用 `jfox moc add-member` 手动补挂。
 
 > 写入后的验证（`jfox show` / `jfox refs`）详见 `/skill:jfox-manage` §4.6。落库后可以顺手 `jfox graph --stats --json` 看 avg_degree、isolated_nodes 是否健康（目标见 `jfox-organize` Step 3）。
 

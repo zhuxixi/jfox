@@ -7,7 +7,13 @@ import pytest
 
 from jfox.moc.cluster import ClusterMember, ClusterSummary
 from jfox.moc.draft import build_moc_draft
-from jfox.moc.generate import MOC_TAG, remove_moc_backlinks, verify_members_on_disk, write_moc
+from jfox.moc.generate import (
+    MOC_TAG,
+    backfill_moc_backlinks,
+    remove_moc_backlinks,
+    verify_members_on_disk,
+    write_moc,
+)
 from jfox.models import NoteType
 from jfox.note import list_notes, load_note_by_id
 
@@ -120,6 +126,63 @@ def test_remove_moc_backlinks_strips_moc_id(seeded_kb):
     for mid in MEMBER_IDS:
         member = load_note_by_id(mid)
         assert moc.id not in member.backlinks
+
+
+def test_backfill_returns_changed_ids(seeded_kb):
+    moc = write_moc(_draft(seeded_kb))
+    remove_moc_backlinks(moc.id, MEMBER_IDS, cfg=seeded_kb)
+
+    result = backfill_moc_backlinks(moc, MEMBER_IDS, cfg=seeded_kb)
+
+    assert result.changed_ids == tuple(MEMBER_IDS)
+    assert result.failed_ids == ()
+
+
+def test_remove_returns_failed_ids_and_continues(seeded_kb, monkeypatch):
+    moc = write_moc(_draft(seeded_kb))
+    failing_id = MEMBER_IDS[1]
+    from jfox import note as note_module
+
+    original_atomic_write = note_module._atomic_write
+
+    def fail_one(path, content):
+        if failing_id in str(path):
+            raise OSError("test write failure")
+        return original_atomic_write(path, content)
+
+    monkeypatch.setattr(note_module, "_atomic_write", fail_one)
+    result = remove_moc_backlinks(moc.id, MEMBER_IDS, cfg=seeded_kb)
+
+    assert MEMBER_IDS[0] in result.changed_ids
+    assert failing_id in result.failed_ids
+
+
+def test_backfill_skips_missing_targets(seeded_kb):
+    moc = write_moc(_draft(seeded_kb))
+
+    result = backfill_moc_backlinks(moc, ["99999999999999"], cfg=seeded_kb)
+
+    assert result.changed_ids == ()
+    assert result.failed_ids == ()
+
+
+def test_backfill_skips_already_clean_backlinks(seeded_kb):
+    moc = write_moc(_draft(seeded_kb))
+
+    result = backfill_moc_backlinks(moc, MEMBER_IDS, cfg=seeded_kb)
+
+    assert result.changed_ids == ()
+    assert result.failed_ids == ()
+
+
+def test_remove_skips_already_clean_backlinks(seeded_kb):
+    moc = write_moc(_draft(seeded_kb))
+    remove_moc_backlinks(moc.id, MEMBER_IDS, cfg=seeded_kb)
+
+    result = remove_moc_backlinks(moc.id, MEMBER_IDS, cfg=seeded_kb)
+
+    assert result.changed_ids == ()
+    assert result.failed_ids == ()
 
 
 def test_write_moc_raises_when_save_fails(seeded_kb, monkeypatch):

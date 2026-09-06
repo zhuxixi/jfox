@@ -99,10 +99,14 @@ commands:
     description: "List notes with optional type, tag, archive, and output filters."
   "jfox moc":
     description: "Diagnose and maintain Map of Content structure notes."
+  "jfox moc add-member":
+    description: "Add a single member note to an existing MOC, updating its body, links, and backlinks."
   "jfox moc create":
     description: "Create a structure note draft from a diagnosed topic cluster."
   "jfox moc diagnose":
     description: "Analyze permanent-note density and suggest MOC clusters."
+  "jfox moc remove-member":
+    description: "Remove a single member note from an existing MOC, cleaning up its body, links, and backlinks."
   "jfox moc update":
     description: "Rescan topic clusters and update the members of an existing MOC."
   "jfox prompts":

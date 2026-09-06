@@ -8,15 +8,30 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Sequence
+from typing import Optional, Sequence
 
+from ..config import ZKConfig
 from ..models import Note, NoteType
 from .draft import MocCreateDraft, render_moc_content
 
 logger = logging.getLogger(__name__)
 
 MOC_TAG = "moc"
+
+
+@dataclass(frozen=True)
+class BacklinkUpdateResult:
+    """backlinks 增量回填/摘除的结果：成功变更与真实失败的成员 ID。
+
+    - changed_ids：写盘 + 索引更新均成功的成员 ID；
+    - failed_ids：真实读写/索引异常失败的成员 ID；
+    - 缺失目标与已处于目标状态的成员不计入任何列表（不是失败）。
+    """
+
+    changed_ids: tuple[str, ...] = ()
+    failed_ids: tuple[str, ...] = ()
 
 
 def verify_members_on_disk(member_ids: Sequence[str]) -> tuple[set[str], list[str]]:
@@ -69,15 +84,23 @@ def write_moc(draft: MocCreateDraft) -> Note:
     return moc
 
 
-def backfill_moc_backlinks(moc_note: Note, member_ids: Sequence[str]) -> None:
-    """把 MOC id 增量加进每个成员笔记的 backlinks。"""
+def backfill_moc_backlinks(
+    moc_note: Note, member_ids: Sequence[str], cfg: Optional[ZKConfig] = None
+) -> BacklinkUpdateResult:
+    """把 MOC id 增量加进每个成员笔记的 backlinks。
+
+    返回 BacklinkUpdateResult：changed_ids 为写盘 + 索引更新均成功的成员，
+    failed_ids 为真实读写/索引异常失败的成员；缺失目标与已回填的成员不计入任何列表。
+    """
     from ..note import _atomic_write, load_note_by_id
     from ..note_index import get_note_index
 
     now = datetime.now()
-    index = get_note_index()
+    index = get_note_index(cfg)
+    changed: list[str] = []
+    failed: list[str] = []
     for mid in member_ids:
-        target = load_note_by_id(mid)
+        target = load_note_by_id(mid, cfg)
         if target is None or moc_note.id in target.backlinks:
             continue
         target.updated = now
@@ -85,19 +108,30 @@ def backfill_moc_backlinks(moc_note: Note, member_ids: Sequence[str]) -> None:
         try:
             _atomic_write(target.filepath, target.to_markdown())
             index.update_note_meta(target)
+            changed.append(mid)
         except Exception as exc:  # 单成员失败不中断（与 promote 一致）
             logger.warning(f"Failed to backfill backlinks for MOC member {mid}: {exc}")
+            failed.append(mid)
+    return BacklinkUpdateResult(changed_ids=tuple(changed), failed_ids=tuple(failed))
 
 
-def remove_moc_backlinks(moc_id: str, member_ids: Sequence[str]) -> None:
-    """把 MOC id 从成员笔记的 backlinks 摘除（update 摘除死链时用）。"""
+def remove_moc_backlinks(
+    moc_id: str, member_ids: Sequence[str], cfg: Optional[ZKConfig] = None
+) -> BacklinkUpdateResult:
+    """把 MOC id 从成员笔记的 backlinks 摘除（update 摘除死链时用）。
+
+    返回 BacklinkUpdateResult：changed_ids 为写盘 + 索引更新均成功的成员，
+    failed_ids 为真实读写/索引异常失败的成员；缺失目标与已无该 backlink 的成员不计入任何列表。
+    """
     from ..note import _atomic_write, load_note_by_id
     from ..note_index import get_note_index
 
     now = datetime.now()
-    index = get_note_index()
+    index = get_note_index(cfg)
+    changed: list[str] = []
+    failed: list[str] = []
     for mid in member_ids:
-        target = load_note_by_id(mid)
+        target = load_note_by_id(mid, cfg)
         if target is None or moc_id not in target.backlinks:
             continue
         target.updated = now
@@ -105,5 +139,8 @@ def remove_moc_backlinks(moc_id: str, member_ids: Sequence[str]) -> None:
         try:
             _atomic_write(target.filepath, target.to_markdown())
             index.update_note_meta(target)
+            changed.append(mid)
         except Exception as exc:
             logger.warning(f"Failed to remove MOC backlink for member {mid}: {exc}")
+            failed.append(mid)
+    return BacklinkUpdateResult(changed_ids=tuple(changed), failed_ids=tuple(failed))
