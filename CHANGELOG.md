@@ -21,6 +21,8 @@ All notable changes to jfox-cli will be documented in this file.
 
 - retire gem synth pipeline and finalize prompt judgment cutover (#498)
 - separate candidate commands from gem synth (#497)
+- **claude.md**: gem_synth 退役迁移 + prompts/candidates 命令面 + moc member 管理（#497-#510） (#512)
+- **readme**: remove reference to retired gem-synth dedup-backfill command (#517)
 
 [1.14.0]: https://github.com/zhuxixi/jfox/compare/v1.13.0...v1.14.0
 
