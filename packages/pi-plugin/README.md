@@ -12,7 +12,7 @@ spool；daemon 不可用时 spool 保留，`jfox prompts drain` 恢复。全程�
 
 ## 前置条件
 
-- jfox ≥ 0.15.0（记录层：`/api/prompt` 端点 + source 透传）
+- jfox ≥ 1.14.0（记录层 `/api/prompt` 端点）；source 透传需包含 #462 改动的发布版本——旧 daemon 收到 pi 事件时按 claude-code 记录，功能不破坏，建议升级
 - jfox daemon 运行中（`jfox daemon start`）；停机也能采（spool 兜底）
 
 ## 安装
