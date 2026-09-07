@@ -285,7 +285,7 @@ export function buildCaptureEvent(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --experimental-strip-types packages/pi-plugin/test/run-tests.ts`
-Expected: `8 passed, 0 failed`，退出码 0
+Expected: `7 passed, 0 failed`，退出码 0
 
 - [ ] **Step 5: Commit**
 
@@ -532,7 +532,7 @@ export default function jfoxPromptCapture(pi: ExtensionAPI): void {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --experimental-strip-types packages/pi-plugin/test/run-tests.ts`
-Expected: `12 passed, 0 failed`（8 纯函数 + 4 流程），退出码 0
+Expected: `11 passed, 0 failed`（7 纯函数 + 4 流程），退出码 0
 再跑一次 Python 回归：`uv run pytest tests/unit/test_prompt_capture.py -v` → 全 PASS
 
 - [ ] **Step 5: Commit**
