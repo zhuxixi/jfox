@@ -20,9 +20,7 @@ class TestFreshKbMissingMetadata:
             version = idx._read_disk_write_version()
 
         assert version == 0
-        infos = [
-            r for r in caplog.records if r.levelname == "INFO" and "fresh KB" in r.message
-        ]
+        infos = [r for r in caplog.records if r.levelname == "INFO" and "fresh KB" in r.message]
         assert infos, "expected an INFO record mentioning fresh KB"
         warnings = [r for r in caplog.records if r.levelname == "WARNING"]
         assert not warnings, f"fresh KB must not emit WARNING, got: {warnings}"
@@ -39,8 +37,7 @@ class TestCorruptedMetadataKeepsWarning:
 
         assert version == 0
         assert any(
-            r.levelname == "WARNING" and "Failed to read" in r.message
-            for r in caplog.records
+            r.levelname == "WARNING" and "Failed to read" in r.message for r in caplog.records
         )
 
     def test_malformed_write_version_field_keeps_warning(self, tmp_path, caplog):
@@ -53,6 +50,5 @@ class TestCorruptedMetadataKeepsWarning:
 
         assert version == 0
         assert any(
-            r.levelname == "WARNING" and "Failed to read" in r.message
-            for r in caplog.records
+            r.levelname == "WARNING" and "Failed to read" in r.message for r in caplog.records
         )
