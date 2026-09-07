@@ -241,6 +241,10 @@ class BM25Index:
         try:
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 return int(json.load(f).get("write_version") or 0)
+        except FileNotFoundError:
+            # 全新 KB 首写是预期路径（_load() 同场景发 INFO），非异常——降级对齐先例
+            logger.info("BM25 metadata not found (fresh KB), write_version treated as 0")
+            return 0
         except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
             logger.warning(f"Failed to read BM25 metadata write_version ({e}), treat as 0")
             return 0
