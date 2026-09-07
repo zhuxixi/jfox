@@ -4,7 +4,7 @@
 
 ## 背景与定位
 
-#482 原主体（`--json 2>&1` 被 WARNING 污染）已被 #483 的 `logging.disable(logging.CRITICAL)`
+Issue #482 原主体（`--json 2>&1` 被 WARNING 污染）已被 #483 的 `logging.disable(logging.CRITICAL)`
 顺带修复（实测确认）。本 spec 处理残余：全新 KB 首写是预期路径，但
 `_read_disk_write_version()` 对不存在的 metadata 报 `WARNING + "Failed to read"`，
 与 `_load()` 同毫秒发出的 `INFO "BM25 index not found, will create new index"` 语义矛盾。
@@ -30,6 +30,7 @@ def _read_disk_write_version(self) -> int:
 ```
 
 要点：
+
 - `FileNotFoundError` 是 `OSError` 子类，**必须前置单独捕获**，否则被宽分支吞掉
 - 返回值与控制流零变化（两个分支都 `return 0`），三个调用点（`_save()` L353 /
   reload L397 / `check_stale_and_reload()` L942）行为不变 → #396 并发写语义零影响
