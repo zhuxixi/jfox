@@ -99,7 +99,12 @@ def ingest_prompt(
         )
         source_key = f"legacy:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
 
-    return store.insert_prompt(event, source_key=source_key, capture_id=cid)
+    # 顶层 source 透传为 DB 来源（#462 D4）：pi 扩展放 "pi-coding-agent"；
+    # CC event 无此字段 → 保持默认 "claude-code"。backfill 直调 insert_prompt 不受影响。
+    db_source = source if source else "claude-code"
+    return store.insert_prompt(
+        event, source_key=source_key, capture_id=cid, source=db_source
+    )
 
 
 # ---------------------------------------------------------------------------

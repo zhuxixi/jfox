@@ -221,3 +221,39 @@ def test_drain_spool_stops_on_total_size_cap(tmp_path, monkeypatch):
     assert result["imported"] == 0
     assert "max_spool_bytes" in result.get("error", "")
     assert len(list(spool.glob("*.json"))) == 3  # 文件原样保留
+
+
+# ---------------------------------------------------------------------------
+# source 透传（#462 D4：pi 扩展 event 的来源标记进 DB source 列）
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_prompt_passes_through_pi_source(tmp_path):
+    """event 顶层 source=pi-coding-agent 透传为 DB source（#462）。"""
+    store = _store(tmp_path)
+    result = ingest_prompt(
+        {
+            "hook_event_name": "UserPromptSubmit",
+            "session_id": "s1",
+            "prompt": "pi 侧输入",
+            "source": "pi-coding-agent",
+        },
+        store=store,
+        capture_id="cap-pi-1",
+    )
+    assert result["status"] == "stored"
+    row = store.get_prompt(result["prompt_id"])
+    assert row["source"] == "pi-coding-agent"
+
+
+def test_ingest_prompt_defaults_source_without_field(tmp_path):
+    """无 source 字段的 CC 形 event 保持默认 claude-code（零回归）。"""
+    store = _store(tmp_path)
+    result = ingest_prompt(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "cc 输入"},
+        store=store,
+        capture_id="cap-cc-1",
+    )
+    assert result["status"] == "stored"
+    row = store.get_prompt(result["prompt_id"])
+    assert row["source"] == "claude-code"
