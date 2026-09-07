@@ -2,6 +2,28 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.14.0] - 2026-09-07
+
+### Features
+
+- **moc**: moc add-member/remove-member + session-time MOC ownership (#484) (#505)
+- **prompts**: human judgment actions and CLI (#399 part 6/8) (#508)
+- **prompts**: session batch judge with candidate provenance (#399 part 5/8) (#495)
+- **prompts**: transcript evidence and safe judge runner (#399 part 4/8) (#494)
+- **prompts**: durable prompt capture via spool and API (#399 part 3/8) (#493)
+- **prompts**: prompt recording and judgment store (#399 part 2/8) (#492)
+
+### Fixes
+
+- **moc**: classify archived vector rows separately from true orphans (#499) (#510)
+
+### Changes
+
+- retire gem synth pipeline and finalize prompt judgment cutover (#498)
+- separate candidate commands from gem synth (#497)
+
+[1.14.0]: https://github.com/zhuxixi/jfox/compare/v1.13.0...v1.14.0
+
 ## [1.13.0] - 2026-09-05
 
 ### Features
