@@ -9,6 +9,12 @@
  * restart pi (or /reload). Runtime deps: none (node builtins only).
  */
 
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 const INTERNAL_SOURCES = new Set(["auto-summary", "gem-synth", "prompt-judge"]);
 
 export interface CaptureInput {
@@ -49,4 +55,93 @@ export function buildCaptureEvent(
     cwd: session.cwd,
     jfox_capture_id: captureId,
   };
+}
+
+const DEFAULT_DAEMON_URL = "http://127.0.0.1:18700";
+const DEFAULT_SPOOL_DIR = join(homedir(), ".zettelkasten", "prompt-spool");
+const SETTLED_STATUSES = new Set(["stored", "duplicate", "skipped"]);
+
+/** Atomic spool write: tmp file -> rename. Returns false on any failure. */
+export async function writeSpoolAtomic(
+  spoolDir: string,
+  captureId: string,
+  payload: string,
+): Promise<boolean> {
+  try {
+    await mkdir(spoolDir, { recursive: true, mode: 0o700 });
+    const finalPath = join(spoolDir, `${captureId}.json`);
+    const tmpPath = `${finalPath}.tmp`;
+    await writeFile(tmpPath, payload, { mode: 0o600 });
+    await rename(tmpPath, finalPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Best-effort POST to daemon /api/prompt. Returns null on failure/timeout. */
+export async function postToDaemon(
+  baseUrl: string,
+  payload: string,
+): Promise<{ status: string } | null> {
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      signal: AbortSignal.timeout(2000),
+    });
+    const data = (await res.json()) as { status?: unknown };
+    if (typeof data.status === "string") return { status: data.status };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface CaptureDeps {
+  writeSpool: (dir: string, id: string, payload: string) => Promise<boolean>;
+  postToDaemon: (url: string, payload: string) => Promise<{ status: string } | null>;
+}
+
+/**
+ * Orchestration: filter -> build event -> atomic spool -> best-effort POST ->
+ * delete spool only on settled status. Swallows all errors (never breaks pi).
+ */
+export async function capturePrompt(
+  input: CaptureInput,
+  session: SessionInfo,
+  env: Record<string, string | undefined> = process.env,
+  deps: CaptureDeps = { writeSpool: writeSpoolAtomic, postToDaemon: postToDaemon },
+): Promise<void> {
+  try {
+    if (!shouldCapture(input, env)) return;
+    const captureId = randomUUID();
+    const payload = JSON.stringify(buildCaptureEvent(input, session, captureId));
+    const spoolDir = env.JFOX_PROMPT_SPOOL_DIR || DEFAULT_SPOOL_DIR;
+    const daemonUrl = env.JFOX_DAEMON_URL || DEFAULT_DAEMON_URL;
+    const spooled = await deps.writeSpool(spoolDir, captureId, payload);
+    if (!spooled) return; // spool write failed: give up silently, never fake success
+    const resp = await deps.postToDaemon(daemonUrl, payload);
+    if (resp && SETTLED_STATUSES.has(resp.status)) {
+      await unlink(join(spoolDir, `${captureId}.json`)).catch(() => undefined);
+    }
+  } catch {
+    // capture must never break the pi session
+  }
+}
+
+export default function jfoxPromptCapture(pi: ExtensionAPI): void {
+  pi.on("input", async (event, ctx) => {
+    // fire-and-forget: the POST has a 2s timeout, must not delay agent start
+    void capturePrompt(
+      { source: event.source ?? "", text: event.text ?? "" },
+      {
+        id: ctx.sessionManager.getSessionId(),
+        file: ctx.sessionManager.getSessionFile() ?? null,
+        cwd: ctx.sessionManager.getCwd(),
+      },
+    );
+    return { action: "continue" };
+  });
 }
