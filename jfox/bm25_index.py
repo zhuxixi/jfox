@@ -237,7 +237,7 @@ class BM25Index:
             return False
 
     def _read_disk_write_version(self) -> int:
-        """读磁盘 metadata 的 write_version；损坏/缺失视为 0（异常留痕便于追踪）"""
+        """读磁盘 metadata 的 write_version；缺失视为 0（fresh KB 预期路径，发 info）；损坏视为 0（异常留痕便于追踪）"""
         try:
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 return int(json.load(f).get("write_version") or 0)

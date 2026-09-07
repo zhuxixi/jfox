@@ -1,6 +1,6 @@
 # Spec: #482 全新 KB 首写 BM25 metadata 缺失的日志级别语义修正
 
-状态：**draft（等用户确认）** · 2026-09-07 · repo: zhuxixi/jfox
+状态：**accepted（已实现，final review 通过）** · 2026-09-07 · repo: zhuxixi/jfox
 
 ## 背景与定位
 
