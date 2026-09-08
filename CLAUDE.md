@@ -143,7 +143,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 
 Four jobs in `.github/workflows/integration-test.yml`:
 
-- **Fast** (PR/push): `not embedding and not slow`, Python 3.11, Ubuntu + Windows
+- **Fast** (PR/push): `not embedding and not slow`, Python 3.11, Ubuntu + Windows；另跑 pi-plugin node 测试（setup-node 22，#462）
 - **Core** (main branch): Core workflow tests with real embeddings, Python 3.10 + 3.12
 - **Full** (manual): All tests, all OS, all Python versions
 - **Coverage** (after fast): Runs coverage on fast tests, uploads HTML/XML artifacts
@@ -187,6 +187,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 **Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.5.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 **Non-Claude-Code platforms**: `skills-recommend/`（`pi/` + `kimi-cli/`）是 pi / Kimi CLI 适配版 SKILL.md 集（如 `pi/jfox-moc`，#419）——CLI 语义或命令面变更时须与 cc-plugin skills 同步更新。
+**pi prompt 采集扩展**（#462）：`packages/pi-plugin/extensions/jfox-prompt-capture.ts`（TypeScript 单文件、零 npm 依赖、node ≥ 22.6 直跑）监听 pi input 事件→合成 CC 兼容事件→原子写 spool 再尽力 POST daemon `/api/prompt`，与 cc-plugin hook 同链路、复用 `jfox prompts drain` 兜底；`user_prompts.source` 由 `prompts/service.py` 透传顶层 source（pi → `pi-coding-agent`，CC 默认 `claude-code`）；本地测试 `node --experimental-strip-types packages/pi-plugin/test/run-tests.ts`
 **Skill 多副本同步**: skill 文案/行为改动须同步所有镜像副本——`packages/cc-plugin/skills/`、`packages/kimi-plugin/skills/`、`skills-recommend/kimi-cli/`、`skills-recommend/pi/`，只改一处会各端行为分叉（#440 踩过同步模式）
 
 ## Branch Rules
