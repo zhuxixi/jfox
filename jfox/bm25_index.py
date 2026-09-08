@@ -237,10 +237,14 @@ class BM25Index:
             return False
 
     def _read_disk_write_version(self) -> int:
-        """读磁盘 metadata 的 write_version；损坏/缺失视为 0（异常留痕便于追踪）"""
+        """读磁盘 metadata 的 write_version；缺失视为 0（fresh KB 预期路径，发 info）；损坏视为 0（异常留痕便于追踪）"""
         try:
             with open(self.metadata_path, "r", encoding="utf-8") as f:
                 return int(json.load(f).get("write_version") or 0)
+        except FileNotFoundError:
+            # 全新 KB 首写是预期路径（_load() 同场景发 INFO），非异常——降级对齐先例
+            logger.info("BM25 metadata not found (fresh KB), write_version treated as 0")
+            return 0
         except (OSError, json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
             logger.warning(f"Failed to read BM25 metadata write_version ({e}), treat as 0")
             return 0
