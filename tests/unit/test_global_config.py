@@ -931,3 +931,38 @@ class TestFromDictNonDictSection:
         assert FragmentCaptureConfig.from_dict(falsy) == FragmentCaptureConfig()
         assert PromptCaptureConfig.from_dict(falsy) == PromptCaptureConfig()
         assert PromptJudgeConfig.from_dict(falsy) == PromptJudgeConfig()
+
+
+class TestGlobalConfigFromDictDefensive:
+    """A2: 根级/容器级/entry 级畸形输入不炸、坏局部跳过、好局部保留。"""
+
+    @pytest.mark.parametrize("bad", [[1], "oops", 42, True])
+    def test_root_non_dict_returns_default_object(self, bad):
+        cfg = GlobalConfig.from_dict(bad)
+        assert cfg.default == DEFAULT_KB_NAME
+        assert cfg.knowledge_bases == {}
+
+    def test_knowledge_bases_non_dict_preserves_other_sections(self):
+        cfg = GlobalConfig.from_dict(
+            {
+                "default": "work",
+                "knowledge_bases": ["broken"],
+                "backup": {"enabled": True, "retain": 3},
+            }
+        )
+        assert cfg.default == "work"
+        assert cfg.knowledge_bases == {}
+        assert cfg.backup.enabled is True
+        assert cfg.backup.retain == 3
+
+    def test_malformed_kb_entry_skipped_valid_kept(self):
+        cfg = GlobalConfig.from_dict(
+            {
+                "knowledge_bases": {
+                    "bad": "oops",
+                    "work": {"path": "/tmp/work", "created": "2024-01-01T00:00:00"},
+                }
+            }
+        )
+        assert "bad" not in cfg.knowledge_bases
+        assert cfg.knowledge_bases["work"].path == "/tmp/work"

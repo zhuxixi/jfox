@@ -521,25 +521,40 @@ class GlobalConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "GlobalConfig":
-        kbs = {}
-        for name, kb_data in data.get("knowledge_bases", {}).items():
-            kbs[name] = KnowledgeBaseEntry.from_dict(name, kb_data)
+    def from_dict(cls, data: Any) -> "GlobalConfig":
+        # 根级非 dict：纯解析入口不抛异常，回默认对象（文件级恢复由 _load 负责）
+        if not isinstance(data, dict):
+            logger.warning(
+                f"Ignoring non-dict global config root: {type(data).__name__}"
+            )
+            data = {}
+        kbs: Dict[str, KnowledgeBaseEntry] = {}
+        raw_kbs = data.get("knowledge_bases", {})
+        if isinstance(raw_kbs, dict):
+            for name, kb_data in raw_kbs.items():
+                if isinstance(kb_data, dict):
+                    kbs[name] = KnowledgeBaseEntry.from_dict(name, kb_data)
+                else:
+                    # 坏 entry 跳过：回默认会造出 path="" 的伪 entry 污染注册表
+                    logger.warning(f"Skipping malformed KB entry {name!r}: not a dict")
+        else:
+            logger.warning(
+                f"Ignoring malformed knowledge_bases: {type(raw_kbs).__name__}"
+            )
 
+        fragment_capture = FragmentCaptureConfig.from_dict(data.get("fragment_capture"))
         return cls(
             default=data.get("default", DEFAULT_KB_NAME),
             knowledge_bases=kbs,
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
-            fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
+            fragment_capture=fragment_capture,
             backup=BackupConfig.from_dict(data.get("backup")),
             note_add=NoteAddConfig.from_dict(data.get("note_add")),
             prompt_capture=PromptCaptureConfig.from_dict(
                 data.get("prompt_capture")
                 if data.get("prompt_capture") is not None
                 # 兼容：无新 section 时从旧 fragment_capture.enabled 继承
-                else {
-                    "enabled": FragmentCaptureConfig.from_dict(data.get("fragment_capture")).enabled
-                }
+                else {"enabled": fragment_capture.enabled}
             ),
             prompt_judge=PromptJudgeConfig.from_dict(data.get("prompt_judge")),
         )
