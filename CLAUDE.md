@@ -62,7 +62,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 |--------|------|
 | `cli.py` | All CLI commands (~4200 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
 | `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
-| `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json` |
+| `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json`；损坏恢复契约（#481/#526）：`from_dict` 各级非 dict 守卫回默认，文件级加载失败先字节级备份 `.corrupt-*` 快照再恢复默认，备份失败则不落盘覆盖原文件 |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
 | `formatters.py` | Output formats: JSON, CSV, YAML, Table, Paths |
 | `git_extractor.py` | Git 仓库数据提取器（ingest 功能） |
@@ -129,6 +129,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Fixtures** (`conftest.py`): `temp_kb` (temp KB path), `cli` (ZKCLI instance), `cli_fast` (ZKCLI with mocked embeddings), `generator` (NoteGenerator), `mock_embedding_backend`
 - **Test utils** (`tests/utils/`): `temp_kb.py`, `jfox_cli.py` (CLI wrapper), `note_generator.py`
 - **全局配置隔离**: conftest 设 `ZK_CONFIG_PATH`（配合既有 `ZK_KB_ROOT`）指向临时目录，pytest 及其拉起的 CLI 子进程不读写真实 `~/.zk_config.json`（#469，`global_config.py` 的 `DEFAULT_CONFIG_PATH` 支持该 env 覆盖）；`JFOX_SYNTHESIS_DB` 同样无条件指临时路径，防 DedupStore 单例写真实 `~/.zettelkasten/synthesis_log.db`（#483）
+- **测试生成笔记标题须全局唯一**: #483 add 防重闸门会拒绝重复标题，曾致 nightly flaky（#523）；`tests/utils/note_generator.py` 已做无放回抽取 + 跨调用标题去重，自写测试生成器同理
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
 - **Run single-process** to avoid ChromaDB/model loading conflicts
