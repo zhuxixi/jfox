@@ -8,8 +8,9 @@ import json
 import logging
 import math
 import os
+import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -56,6 +57,16 @@ def _is_valid_time(s: str) -> bool:
     except ValueError:
         return False
     return 0 <= hi <= 23 and 0 <= mi <= 59
+
+
+def _utc_corrupt_timestamp() -> str:
+    """坏配置备份名的 UTC 时间戳（可被测试 monkeypatch 固定）"""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _corrupt_backup_suffix() -> str:
+    """坏配置备份名的唯一后缀（可被测试 monkeypatch 固定）"""
+    return uuid.uuid4().hex[:8]
 
 
 @dataclass
@@ -682,6 +693,36 @@ class GlobalConfigManager:
         except Exception as e:
             logger.error(f"Failed to save config: {e}")
             return False
+
+    def _backup_corrupted_config(self) -> bool:
+        """文件级加载失败时先把原文件字节备份为 .corrupt-* 快照。
+
+        契约（spec §3.4）：备份原始字节而非重新序列化；独占创建、冲突重试、
+        绝不覆盖已有快照；任何失败记 ERROR（含 traceback）并返回 False，
+        不得抛异常——调用方据此决定是否允许默认配置覆盖原文件。
+        """
+        try:
+            original = self.config_path.read_bytes()
+        except Exception as e:
+            logger.error(f"Failed to read corrupted config for backup: {e}", exc_info=True)
+            return False
+        for _ in range(5):
+            try:
+                candidate = self.config_path.parent / (
+                    f"{self.config_path.name}.corrupt-"
+                    f"{_utc_corrupt_timestamp()}-{_corrupt_backup_suffix()}"
+                )
+                with open(candidate, "xb") as f:
+                    f.write(original)
+                logger.warning(f"Backed up corrupted config to {candidate}")
+                return True
+            except FileExistsError:
+                continue  # 同秒冲突：换后缀重试，绝不覆盖
+            except Exception as e:
+                logger.error(f"Failed to write config backup: {e}", exc_info=True)
+                return False
+        logger.error("Failed to write config backup: suffix collisions exhausted")
+        return False
 
     def _create_default_config(self) -> GlobalConfig:
         """创建默认配置"""

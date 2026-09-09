@@ -8,6 +8,7 @@
 import os
 import subprocess
 import sys
+from itertools import cycle
 
 import pytest
 
@@ -18,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from jfox import global_config as gc
 from jfox.global_config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_KB_NAME,
@@ -988,3 +990,55 @@ class TestLoadFileLevelFailureLogs:
 
     def test_root_non_dict(self, tmp_path, caplog):
         self._assert_failure_logged(tmp_path, caplog, "[1, 2, 3]")
+
+
+class TestBackupCorruptedConfig:
+    """A5 备份本体：字节保真、独占不覆盖、失败返回 False 且有 traceback。"""
+
+    def test_preserves_original_bytes(self, tmp_path):
+        original = b'{"default": "work"'  # 缺右括号：非法 JSON 也必须可备份
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+        manager = GlobalConfigManager(config_path=cfg_path)
+
+        assert manager._backup_corrupted_config() is True
+
+        backups = list(tmp_path.glob("zk_config.json.corrupt-*"))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == original
+
+    def test_never_overwrites_existing_snapshot(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(gc, "_utc_corrupt_timestamp", lambda: "20260909T000000Z")
+        # cycle 必须先绑定为持久迭代器：lambda 内新建 cycle 会让 next() 永远取首元素
+        suffix_cycle = cycle(["dup", "dup", "ok"])
+        monkeypatch.setattr(gc, "_corrupt_backup_suffix", lambda: next(suffix_cycle))
+        original = b"[1, 2, 3]"
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+        collision = tmp_path / "zk_config.json.corrupt-20260909T000000Z-dup"
+        collision.write_bytes(b"OLD")
+        manager = GlobalConfigManager(config_path=cfg_path)
+
+        assert manager._backup_corrupted_config() is True
+
+        assert collision.read_bytes() == b"OLD"  # 已有快照未被覆盖
+        created = tmp_path / "zk_config.json.corrupt-20260909T000000Z-ok"
+        assert created.read_bytes() == original
+
+    def test_suffix_failure_returns_false_with_traceback(self, tmp_path, caplog, monkeypatch):
+        original = b'{"bad"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+
+        def _boom():
+            raise OSError("suffix generator exploded")
+
+        monkeypatch.setattr(gc, "_corrupt_backup_suffix", _boom)
+        manager = GlobalConfigManager(config_path=cfg_path)
+
+        with caplog.at_level(logging.ERROR, logger="jfox.global_config"):
+            assert manager._backup_corrupted_config() is False
+
+        errors = [r for r in caplog.records if "backup" in r.getMessage().lower()]
+        assert errors and errors[0].exc_info is not None
+        assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
