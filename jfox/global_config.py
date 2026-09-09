@@ -8,8 +8,9 @@ import json
 import logging
 import math
 import os
+import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -58,6 +59,16 @@ def _is_valid_time(s: str) -> bool:
     return 0 <= hi <= 23 and 0 <= mi <= 59
 
 
+def _utc_corrupt_timestamp() -> str:
+    """坏配置备份名的 UTC 时间戳（可被测试 monkeypatch 固定）"""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _corrupt_backup_suffix() -> str:
+    """坏配置备份名的唯一后缀（可被测试 monkeypatch 固定）"""
+    return uuid.uuid4().hex[:8]
+
+
 @dataclass
 class BackupConfig:
     """KB 滚动备份配置（opt-in，默认关闭）。
@@ -84,7 +95,9 @@ class BackupConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "BackupConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
         # retain 防御：null/非数字 → 默认 7（避免 int(None) TypeError）
         try:
@@ -188,7 +201,9 @@ class AutoSummaryConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "AutoSummaryConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
 
         def _safe_int(v: Any, default: int) -> int:
@@ -261,7 +276,9 @@ class FragmentCaptureConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "FragmentCaptureConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
         raw_enabled = data.get("enabled", True)
         if isinstance(raw_enabled, str):
@@ -312,7 +329,9 @@ class PromptCaptureConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptCaptureConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
         raw_enabled = data.get("enabled", True)
         if isinstance(raw_enabled, str):
@@ -403,7 +422,9 @@ class PromptJudgeConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptJudgeConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
 
         def _safe_int(key, default):
@@ -511,25 +532,36 @@ class GlobalConfig:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "GlobalConfig":
-        kbs = {}
-        for name, kb_data in data.get("knowledge_bases", {}).items():
-            kbs[name] = KnowledgeBaseEntry.from_dict(name, kb_data)
+    def from_dict(cls, data: Any) -> "GlobalConfig":
+        # 根级非 dict：纯解析入口不抛异常，回默认对象（文件级恢复由 _load 负责）
+        if not isinstance(data, dict):
+            logger.warning(f"Ignoring non-dict global config root: {type(data).__name__}")
+            data = {}
+        kbs: Dict[str, KnowledgeBaseEntry] = {}
+        raw_kbs = data.get("knowledge_bases", {})
+        if isinstance(raw_kbs, dict):
+            for name, kb_data in raw_kbs.items():
+                if isinstance(kb_data, dict):
+                    kbs[name] = KnowledgeBaseEntry.from_dict(name, kb_data)
+                else:
+                    # 坏 entry 跳过：回默认会造出 path="" 的伪 entry 污染注册表
+                    logger.warning(f"Skipping malformed KB entry {name!r}: not a dict")
+        else:
+            logger.warning(f"Ignoring malformed knowledge_bases: {type(raw_kbs).__name__}")
 
+        fragment_capture = FragmentCaptureConfig.from_dict(data.get("fragment_capture"))
         return cls(
             default=data.get("default", DEFAULT_KB_NAME),
             knowledge_bases=kbs,
             auto_summary=AutoSummaryConfig.from_dict(data.get("auto_summary")),
-            fragment_capture=FragmentCaptureConfig.from_dict(data.get("fragment_capture")),
+            fragment_capture=fragment_capture,
             backup=BackupConfig.from_dict(data.get("backup")),
             note_add=NoteAddConfig.from_dict(data.get("note_add")),
             prompt_capture=PromptCaptureConfig.from_dict(
                 data.get("prompt_capture")
                 if data.get("prompt_capture") is not None
                 # 兼容：无新 section 时从旧 fragment_capture.enabled 继承
-                else {
-                    "enabled": FragmentCaptureConfig.from_dict(data.get("fragment_capture")).enabled
-                }
+                else {"enabled": fragment_capture.enabled}
             ),
             prompt_judge=PromptJudgeConfig.from_dict(data.get("prompt_judge")),
         )
@@ -564,13 +596,22 @@ class GlobalConfigManager:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # 根级非 dict 视为文件级加载失败（整个文件无法按配置格式解释），
+                # 交由下方 except 的恢复路径处理，而不是静默变成空配置（#481）
+                if not isinstance(data, dict):
+                    raise ValueError(f"config root is {type(data).__name__}, expected dict")
                 self._config = GlobalConfig.from_dict(data)
                 # 迁移旧版默认 KB 路径（~/.zettelkasten/ → ~/.zettelkasten/default/）
                 self._migrate_default_kb_path()
                 logger.debug(f"Loaded global config from {self.config_path}")
             except Exception as e:
-                logger.warning(f"Failed to load config: {e}, creating default")
-                self._config = self._create_default_config()
+                # exc_info 保留原始 traceback：未来任何解析缺陷都可诊断，
+                # 避免只剩一行消息无从排查（#481）
+                logger.warning(f"Failed to load config: {e}, creating default", exc_info=True)
+                # 先备份原文件字节，再按备份结果决定是否持久化默认配置：
+                # 备份失败（返回 False）时不落盘，原文件保持原样等用户修复（#481）
+                backup_ok = self._backup_corrupted_config()
+                self._config = self._create_default_config(persist=backup_ok)
         else:
             self._config = self._create_default_config()
 
@@ -648,8 +689,42 @@ class GlobalConfigManager:
             logger.error(f"Failed to save config: {e}")
             return False
 
-    def _create_default_config(self) -> GlobalConfig:
-        """创建默认配置"""
+    def _backup_corrupted_config(self) -> bool:
+        """文件级加载失败时先把原文件字节备份为 .corrupt-* 快照。
+
+        契约（spec §3.4）：备份原始字节而非重新序列化；独占创建、冲突重试、
+        绝不覆盖已有快照；任何失败记 ERROR（含 traceback）并返回 False，
+        不得抛异常——调用方据此决定是否允许默认配置覆盖原文件。
+        """
+        try:
+            original = self.config_path.read_bytes()
+        except Exception as e:
+            logger.error(f"Failed to read corrupted config for backup: {e}", exc_info=True)
+            return False
+        for _ in range(5):
+            try:
+                candidate = self.config_path.parent / (
+                    f"{self.config_path.name}.corrupt-"
+                    f"{_utc_corrupt_timestamp()}-{_corrupt_backup_suffix()}"
+                )
+                with open(candidate, "xb") as f:
+                    f.write(original)
+                logger.warning(f"Backed up corrupted config to {candidate}")
+                return True
+            except FileExistsError:
+                continue  # 同秒冲突：换后缀重试，绝不覆盖
+            except Exception as e:
+                logger.error(f"Failed to write config backup: {e}", exc_info=True)
+                return False
+        logger.error("Failed to write config backup: suffix collisions exhausted")
+        return False
+
+    def _create_default_config(self, persist: bool = True) -> GlobalConfig:
+        """创建默认配置
+
+        persist=False 供加载失败但备份未成功时使用：返回内存默认配置，
+        但不落盘覆盖原文件（spec §3.3，#481）。
+        """
         default_kb = KnowledgeBaseEntry(
             name=DEFAULT_KB_NAME,
             path=str(DEFAULT_KB_PATH / "default"),
@@ -661,8 +736,8 @@ class GlobalConfigManager:
             default=DEFAULT_KB_NAME, knowledge_bases={DEFAULT_KB_NAME: default_kb}
         )
 
-        # 如果默认知识库已存在，保留它
-        if DEFAULT_KB_PATH.exists():
+        # 如果默认知识库已存在，保留它；备份失败时不得覆盖原文件
+        if persist and DEFAULT_KB_PATH.exists():
             self._config = config
             self._save()
 

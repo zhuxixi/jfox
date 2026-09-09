@@ -8,23 +8,30 @@
 import os
 import subprocess
 import sys
+from itertools import cycle
 
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from jfox import global_config as gc
 from jfox.global_config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_KB_NAME,
     DEFAULT_KB_PATH,
     AutoSummaryConfig,
+    BackupConfig,
+    FragmentCaptureConfig,
     GlobalConfig,
     GlobalConfigManager,
     KnowledgeBaseEntry,
+    PromptCaptureConfig,
+    PromptJudgeConfig,
     get_global_config_manager,
 )
 
@@ -875,3 +882,285 @@ class TestGetGlobalConfigManager:
         manager = get_global_config_manager()
 
         assert isinstance(manager, GlobalConfigManager)
+
+
+class TestFromDictNonDictSection:
+    """A1: truthy 非 dict section 不得炸 from_dict，回该类默认配置。"""
+
+    TRUTHY_NON_DICT = [
+        pytest.param("enabled", id="str"),
+        pytest.param(1, id="int"),
+        pytest.param(["x"], id="list"),
+        pytest.param(True, id="bool"),
+    ]
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_backup_config(self, bad):
+        cfg = BackupConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == BackupConfig()
+        assert cfg.enabled is False and cfg.retain == 7
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_auto_summary_config(self, bad):
+        cfg = AutoSummaryConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == AutoSummaryConfig()
+        assert cfg.enabled is False and cfg.interval_minutes == 30
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_fragment_capture_config(self, bad):
+        cfg = FragmentCaptureConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == FragmentCaptureConfig()
+        assert cfg.enabled is True and cfg.max_content_chars == 500
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_prompt_capture_config(self, bad):
+        cfg = PromptCaptureConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == PromptCaptureConfig()
+        assert cfg.enabled is True and cfg.endpoint_url == "http://127.0.0.1:18700/api/prompt"
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_prompt_judge_config(self, bad):
+        cfg = PromptJudgeConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == PromptJudgeConfig()
+        assert cfg.runner == "pi" and cfg.model == "ollama/deepseek-v4-pro:0813-cloud"
+
+    @pytest.mark.parametrize(
+        "falsy", [pytest.param(None, id="none"), pytest.param({}, id="empty-dict")]
+    )
+    def test_falsy_inputs_still_return_defaults(self, falsy):
+        """None/空 dict 是既有行为，回归保护。"""
+        assert BackupConfig.from_dict(falsy) == BackupConfig()
+        assert AutoSummaryConfig.from_dict(falsy) == AutoSummaryConfig()
+        assert FragmentCaptureConfig.from_dict(falsy) == FragmentCaptureConfig()
+        assert PromptCaptureConfig.from_dict(falsy) == PromptCaptureConfig()
+        assert PromptJudgeConfig.from_dict(falsy) == PromptJudgeConfig()
+
+
+class TestGlobalConfigFromDictDefensive:
+    """A2: 根级/容器级/entry 级畸形输入不炸、坏局部跳过、好局部保留。"""
+
+    @pytest.mark.parametrize("bad", [[1], "oops", 42, True])
+    def test_root_non_dict_returns_default_object(self, bad):
+        cfg = GlobalConfig.from_dict(bad)
+        assert cfg.default == DEFAULT_KB_NAME
+        assert cfg.knowledge_bases == {}
+
+    def test_knowledge_bases_non_dict_preserves_other_sections(self):
+        cfg = GlobalConfig.from_dict(
+            {
+                "default": "work",
+                "knowledge_bases": ["broken"],
+                "backup": {"enabled": True, "retain": 3},
+            }
+        )
+        assert cfg.default == "work"
+        assert cfg.knowledge_bases == {}
+        assert cfg.backup.enabled is True
+        assert cfg.backup.retain == 3
+
+    def test_malformed_kb_entry_skipped_valid_kept(self):
+        cfg = GlobalConfig.from_dict(
+            {
+                "knowledge_bases": {
+                    "bad": "oops",
+                    "work": {"path": "/tmp/work", "created": "2024-01-01T00:00:00"},
+                }
+            }
+        )
+        assert "bad" not in cfg.knowledge_bases
+        assert cfg.knowledge_bases["work"].path == "/tmp/work"
+
+
+class TestLoadFileLevelFailureLogs:
+    """A4: 文件级加载失败记录原始 traceback 并返回默认配置。"""
+
+    def _assert_failure_logged(self, tmp_path, caplog, raw: str):
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_text(raw, encoding="utf-8")
+        manager = GlobalConfigManager(config_path=cfg_path)
+        with caplog.at_level(logging.WARNING, logger="jfox.global_config"):
+            config = manager.get_config()
+        assert config.default == DEFAULT_KB_NAME
+        warnings_ = [r for r in caplog.records if "Failed to load config" in r.message]
+        assert warnings_, "expected load-failure warning"
+        assert warnings_[0].exc_info is not None
+
+    def test_invalid_json(self, tmp_path, caplog):
+        self._assert_failure_logged(tmp_path, caplog, "invalid json")
+
+    def test_root_non_dict(self, tmp_path, caplog):
+        self._assert_failure_logged(tmp_path, caplog, "[1, 2, 3]")
+
+
+class TestBackupCorruptedConfig:
+    """A5 备份本体：字节保真、独占不覆盖、失败返回 False 且有 traceback。"""
+
+    def test_preserves_original_bytes(self, tmp_path):
+        original = b'{"default": "work"'  # 缺右括号：非法 JSON 也必须可备份
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+        manager = GlobalConfigManager(config_path=cfg_path)
+
+        assert manager._backup_corrupted_config() is True
+
+        backups = list(tmp_path.glob("zk_config.json.corrupt-*"))
+        assert len(backups) == 1
+        assert backups[0].read_bytes() == original
+
+    def test_never_overwrites_existing_snapshot(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(gc, "_utc_corrupt_timestamp", lambda: "20260909T000000Z")
+        # cycle 必须先绑定为持久迭代器：lambda 内新建 cycle 会让 next() 永远取首元素
+        suffix_cycle = cycle(["dup", "dup", "ok"])
+        monkeypatch.setattr(gc, "_corrupt_backup_suffix", lambda: next(suffix_cycle))
+        original = b"[1, 2, 3]"
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+        collision = tmp_path / "zk_config.json.corrupt-20260909T000000Z-dup"
+        collision.write_bytes(b"OLD")
+        manager = GlobalConfigManager(config_path=cfg_path)
+
+        assert manager._backup_corrupted_config() is True
+
+        assert collision.read_bytes() == b"OLD"  # 已有快照未被覆盖
+        created = tmp_path / "zk_config.json.corrupt-20260909T000000Z-ok"
+        assert created.read_bytes() == original
+
+    def test_suffix_failure_returns_false_with_traceback(self, tmp_path, caplog, monkeypatch):
+        original = b'{"bad"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+
+        def _boom():
+            raise OSError("suffix generator exploded")
+
+        monkeypatch.setattr(gc, "_corrupt_backup_suffix", _boom)
+        manager = GlobalConfigManager(config_path=cfg_path)
+
+        with caplog.at_level(logging.ERROR, logger="jfox.global_config"):
+            assert manager._backup_corrupted_config() is False
+
+        errors = [r for r in caplog.records if "backup" in r.getMessage().lower()]
+        assert errors and errors[0].exc_info is not None
+        assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
+
+
+SECTION_CLASSES = {
+    "auto_summary": AutoSummaryConfig,
+    "fragment_capture": FragmentCaptureConfig,
+    "backup": BackupConfig,
+    "prompt_capture": PromptCaptureConfig,
+    "prompt_judge": PromptJudgeConfig,
+}
+
+GOOD_PAYLOAD = {
+    "default": "work",
+    "knowledge_bases": {"work": {"path": "/tmp/work", "created": "2024-01-01T00:00:00"}},
+    "note_add": {"dedup_enabled": False},
+}
+
+
+class TestLoadMalformedSection:
+    """A3: section 级畸形不触发整体回退，注册表/兄弟段/原文件全部保留。
+
+    fixture 安全：default 指向 work 且注册表无 default entry，
+    _migrate_default_kb_path 会提前返回，不会合法改写文件（spec §6.3）。
+    """
+
+    @pytest.mark.parametrize("section", sorted(SECTION_CLASSES))
+    def test_registry_default_and_file_preserved(self, tmp_path, section):
+        cfg_path = tmp_path / "zk_config.json"
+        payload = dict(GOOD_PAYLOAD)
+        payload[section] = "enabled"
+        cfg_path.write_text(json.dumps(payload), encoding="utf-8")
+        before = cfg_path.read_bytes()
+
+        config = GlobalConfigManager(config_path=cfg_path).get_config()
+
+        assert config.default == "work"
+        assert config.knowledge_bases["work"].path == "/tmp/work"
+        assert DEFAULT_KB_NAME not in config.knowledge_bases  # 未被整体重置
+        assert getattr(config, section) == SECTION_CLASSES[section]()  # 坏段回默认
+        assert config.note_add.dedup_enabled is False  # 兄弟段保留
+        assert cfg_path.read_bytes() == before  # 原文件未被重写
+
+
+class TestLoadRecoveryOrchestration:
+    """A5 编排 + A6：文件级失败的备份与 persist 门控。"""
+
+    def test_file_failure_backs_up_then_recovers(self, tmp_path):
+        original = b'{"default": "work"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+
+        config = GlobalConfigManager(config_path=cfg_path).get_config()
+
+        assert config.default == DEFAULT_KB_NAME
+        backups = list(tmp_path.glob("zk_config.json.corrupt-*"))
+        assert len(backups) == 1 and backups[0].read_bytes() == original
+
+    def test_two_consecutive_failures_two_distinct_snapshots(self, tmp_path):
+        original = b'{"default": "work"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+        GlobalConfigManager(config_path=cfg_path).get_config()
+        cfg_path.write_bytes(original)  # 恢复坏内容，再次触发（同秒，靠 suffix 区分）
+        GlobalConfigManager(config_path=cfg_path).get_config()
+
+        backups = list(tmp_path.glob("zk_config.json.corrupt-*"))
+        assert len(backups) == 2
+        assert all(b.read_bytes() == original for b in backups)
+
+    def test_normal_load_creates_no_snapshot(self, tmp_path):
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_text(json.dumps(GOOD_PAYLOAD), encoding="utf-8")
+
+        assert GlobalConfigManager(config_path=cfg_path).get_config().default == "work"
+        assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
+
+    def test_backup_failure_returns_default_but_keeps_original_file(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        original = b'{"default": "work"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+
+        def _boom():
+            raise OSError("backup subsystem exploded")
+
+        monkeypatch.setattr(gc, "_corrupt_backup_suffix", _boom)
+        with caplog.at_level(logging.WARNING, logger="jfox.global_config"):
+            config = GlobalConfigManager(config_path=cfg_path).get_config()
+
+        assert config.default == DEFAULT_KB_NAME  # 内存默认配置仍可用
+        assert cfg_path.read_bytes() == original  # 原文件未被覆盖
+        errors = [r for r in caplog.records if "backup" in r.getMessage().lower()]
+        assert errors and errors[0].exc_info is not None  # 备份错误有 traceback
+        warnings_ = [r for r in caplog.records if "Failed to load config" in r.message]
+        assert warnings_ and warnings_[0].exc_info is not None  # 原始异常仍可诊断
+        assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
+
+    def test_create_default_persist_false_never_saves(self, tmp_path, monkeypatch):
+        saved: list[bool] = []
+        monkeypatch.setattr(GlobalConfigManager, "_save", lambda self: saved.append(True) or True)
+        monkeypatch.setattr(gc, "DEFAULT_KB_PATH", tmp_path / "kbroot")  # 存在与否都不得触发保存
+        (tmp_path / "kbroot").mkdir()
+
+        config = GlobalConfigManager(
+            config_path=tmp_path / "zk_config.json"
+        )._create_default_config(persist=False)
+
+        assert config.default == DEFAULT_KB_NAME
+        assert saved == []
+        assert not (tmp_path / "zk_config.json").exists()
+
+    def test_create_default_persist_true_keeps_existing_behavior(self, tmp_path, monkeypatch):
+        saved: list[bool] = []
+        monkeypatch.setattr(GlobalConfigManager, "_save", lambda self: saved.append(True) or True)
+        monkeypatch.setattr(gc, "DEFAULT_KB_PATH", tmp_path / "kbroot")
+        (tmp_path / "kbroot").mkdir()
+
+        GlobalConfigManager(config_path=tmp_path / "zk_config.json")._create_default_config(
+            persist=True
+        )
+
+        assert saved == [True]
