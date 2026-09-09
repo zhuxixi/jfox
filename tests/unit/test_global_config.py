@@ -1054,9 +1054,7 @@ SECTION_CLASSES = {
 
 GOOD_PAYLOAD = {
     "default": "work",
-    "knowledge_bases": {
-        "work": {"path": "/tmp/work", "created": "2024-01-01T00:00:00"}
-    },
+    "knowledge_bases": {"work": {"path": "/tmp/work", "created": "2024-01-01T00:00:00"}},
     "note_add": {"dedup_enabled": False},
 }
 
@@ -1147,9 +1145,9 @@ class TestLoadRecoveryOrchestration:
         monkeypatch.setattr(gc, "DEFAULT_KB_PATH", tmp_path / "kbroot")  # 存在与否都不得触发保存
         (tmp_path / "kbroot").mkdir()
 
-        config = GlobalConfigManager(config_path=tmp_path / "zk_config.json")._create_default_config(
-            persist=False
-        )
+        config = GlobalConfigManager(
+            config_path=tmp_path / "zk_config.json"
+        )._create_default_config(persist=False)
 
         assert config.default == DEFAULT_KB_NAME
         assert saved == []

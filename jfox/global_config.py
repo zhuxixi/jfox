@@ -535,9 +535,7 @@ class GlobalConfig:
     def from_dict(cls, data: Any) -> "GlobalConfig":
         # 根级非 dict：纯解析入口不抛异常，回默认对象（文件级恢复由 _load 负责）
         if not isinstance(data, dict):
-            logger.warning(
-                f"Ignoring non-dict global config root: {type(data).__name__}"
-            )
+            logger.warning(f"Ignoring non-dict global config root: {type(data).__name__}")
             data = {}
         kbs: Dict[str, KnowledgeBaseEntry] = {}
         raw_kbs = data.get("knowledge_bases", {})
@@ -549,9 +547,7 @@ class GlobalConfig:
                     # 坏 entry 跳过：回默认会造出 path="" 的伪 entry 污染注册表
                     logger.warning(f"Skipping malformed KB entry {name!r}: not a dict")
         else:
-            logger.warning(
-                f"Ignoring malformed knowledge_bases: {type(raw_kbs).__name__}"
-            )
+            logger.warning(f"Ignoring malformed knowledge_bases: {type(raw_kbs).__name__}")
 
         fragment_capture = FragmentCaptureConfig.from_dict(data.get("fragment_capture"))
         return cls(
@@ -603,9 +599,7 @@ class GlobalConfigManager:
                 # 根级非 dict 视为文件级加载失败（整个文件无法按配置格式解释），
                 # 交由下方 except 的恢复路径处理，而不是静默变成空配置（#481）
                 if not isinstance(data, dict):
-                    raise ValueError(
-                        f"config root is {type(data).__name__}, expected dict"
-                    )
+                    raise ValueError(f"config root is {type(data).__name__}, expected dict")
                 self._config = GlobalConfig.from_dict(data)
                 # 迁移旧版默认 KB 路径（~/.zettelkasten/ → ~/.zettelkasten/default/）
                 self._migrate_default_kb_path()
@@ -613,9 +607,7 @@ class GlobalConfigManager:
             except Exception as e:
                 # exc_info 保留原始 traceback：未来任何解析缺陷都可诊断，
                 # 避免只剩一行消息无从排查（#481）
-                logger.warning(
-                    f"Failed to load config: {e}, creating default", exc_info=True
-                )
+                logger.warning(f"Failed to load config: {e}, creating default", exc_info=True)
                 # 先备份原文件字节，再按备份结果决定是否持久化默认配置：
                 # 备份失败（返回 False）时不落盘，原文件保持原样等用户修复（#481）
                 backup_ok = self._backup_corrupted_config()
