@@ -188,9 +188,15 @@ class NoteGenerator:
             for cat_templates in NOTE_TEMPLATES.values():
                 templates.extend(cat_templates)
 
+        # 无放回轮转（#523 组 B）：每轮洗牌取尽再补，一轮内标题不重复；
+        # 旧 random.choice 有放回抽样在 count 接近模板数时高概率撞标题，
+        # #483 防重闸门后 add 直接拒绝重复标题 → flaky。
+        pool: List[dict] = []
         for i in range(count):
-            # 随机选择模板
-            template = random.choice(templates)
+            if not pool:
+                pool = templates.copy()
+                random.shuffle(pool)
+            template = pool.pop()
 
             # 填充详情
             detail = random.choice(DETAILS)
@@ -200,6 +206,13 @@ class NoteGenerator:
             title = template["title"]
             if count > len(templates):
                 title = f"{title} ({i+1})"
+            # 跨调用去重（generate_mixed 等同一 generator 多次调 generate
+            # 的场景）：撞历史标题时序号递增，保证全局唯一
+            base = title
+            n = 1
+            while title in self._generated_titles:
+                n += 1
+                title = f"{base} ({n})"
 
             note = GeneratedNote(
                 title=title,
