@@ -151,7 +151,7 @@ class TestVectorStoreDimensionMismatch:
     """add_note() 维度不匹配时应给出友好提示"""
 
     def test_add_note_dimension_mismatch_friendly_message(self):
-        """维度不匹配时 logger.error 应包含 rebuild 提示"""
+        """维度不匹配时 rebuild 提示应经 last_dimension_warning 上浮（日志只留原始错误）"""
         from jfox.vector_store import VectorStore
 
         store = VectorStore()
@@ -181,11 +181,15 @@ class TestVectorStoreDimensionMismatch:
                 result = store.add_note(note)
 
         assert result is False
-        # 验证错误信息包含 rebuild 提示
+        # 维度不匹配：日志保留原始错误（调试用），rebuild 提示经
+        # last_dimension_warning 属性上浮给 CLI（#442 行为，#523 组 C）
         error_msg = mock_error.call_args[0][0]
-        assert "jfox index rebuild" in error_msg
-        assert "384" in error_msg
-        assert "1024" in error_msg
+        assert "dim mismatch" in error_msg
+        assert "rebuild" not in error_msg
+        assert store.last_dimension_warning is not None
+        assert "jfox index rebuild" in store.last_dimension_warning
+        assert "384" in store.last_dimension_warning
+        assert "1024" in store.last_dimension_warning
 
     def test_add_note_non_dimension_exception_unchanged(self):
         """非维度不匹配的异常仍使用原始错误信息格式"""
