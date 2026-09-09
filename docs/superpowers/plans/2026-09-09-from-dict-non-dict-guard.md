@@ -28,10 +28,12 @@
 ### Task 1: 5 个子配置类 `from_dict` 顶层 isinstance 守卫（验收 A1）
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（`BackupConfig.from_dict` ~:86、`AutoSummaryConfig.from_dict` ~:190、`FragmentCaptureConfig.from_dict` ~:263、`PromptCaptureConfig.from_dict` ~:314、`PromptJudgeConfig.from_dict` ~:405，各 1 处守卫行）
 - Test: `tests/unit/test_global_config.py`（新增 import + 1 个测试类）
 
 **Interfaces:**
+
 - Consumes: 无（首个 task）
 - Produces: 5 个类 `from_dict(Optional[Dict])` 对 truthy 非 dict 输入返回 `cls()`；签名不变，供 Task 2/5 的 manager 级测试依赖
 
@@ -141,10 +143,12 @@ git commit -m "fix(config): guard sub-config from_dict against non-dict sections
 ### Task 2: `GlobalConfig.from_dict` 三级守卫（验收 A2）
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（`GlobalConfig.from_dict` ~:513-535；顺带消除 `fragment_capture` 的重复解析）
 - Test: `tests/unit/test_global_config.py`（新增 1 个测试类）
 
 **Interfaces:**
+
 - Consumes: Task 1 的子配置守卫（`FragmentCaptureConfig.from_dict` 对非 dict 已安全）
 - Produces: `GlobalConfig.from_dict(data: Any) -> GlobalConfig`——根级非 dict 返回 `cls()` 等价默认对象；`knowledge_bases` 非 dict 忽略该 section；坏 entry 跳过。供 Task 5 的 `_load` 调用
 
@@ -258,10 +262,12 @@ git commit -m "fix(config): harden GlobalConfig.from_dict root/container/entry l
 ### Task 3: `_load` 根级校验 + traceback 日志（验收 A4）
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（`_load` ~:558-577）
 - Test: `tests/unit/test_global_config.py`（新增 1 个测试类；顶部需 `import logging`，若未有则补）
 
 **Interfaces:**
+
 - Consumes: Task 2 的 `GlobalConfig.from_dict(data: Any)`
 - Produces: `_load()` 对「非法 JSON / 根级非 dict / 未覆盖解析异常」统一进入 except 分支并记 `exc_info=True` 的 warning。本 task 尚不改恢复行为（`_create_default_config` 无 persist 参数），A4 的验收在本 task 完成
 
@@ -335,10 +341,12 @@ git commit -m "fix(config): validate config root type and log load failures with
 ### Task 4: `_backup_corrupted_config` 字节备份方法（验收 A5 的备份本体）
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（模块顶部 import 区 + 新增模块级助手 2 个 + manager 新私有方法；放在 `_save` 之后）
 - Test: `tests/unit/test_global_config.py`（新增 1 个测试类；需 `from itertools import cycle`）
 
 **Interfaces:**
+
 - Consumes: 无
 - Produces（Task 5 依赖，签名精确如下）:
   - `_utc_corrupt_timestamp() -> str`（模块级，格式 `%Y%m%dT%H%M%SZ`，UTC）
@@ -473,10 +481,12 @@ git commit -m "feat(config): byte-faithful .corrupt-* snapshot before default-co
 ### Task 5: `_create_default_config(persist)` + `_load` 恢复编排（验收 A3、A6、A5 编排部分）
 
 **Files:**
+
 - Modify: `jfox/global_config.py`（`_create_default_config` ~:651-669、`_load` except/else 分支）
 - Test: `tests/unit/test_global_config.py`（新增 2 个测试类）
 
 **Interfaces:**
+
 - Consumes: Task 4 的 `_backup_corrupted_config() -> bool`
 - Produces: `_create_default_config(self, persist: bool = True) -> GlobalConfig`；`_load()` except 分支顺序 = warning 日志 → 备份 → `persist=backup_ok` 的默认配置恢复
 
@@ -672,9 +682,11 @@ git commit -m "fix(config): gate default-config persistence on corrupt-file back
 ### Task 6: 回归门禁（验收 A7）+ 收尾
 
 **Files:**
+
 - 无新改动；跑 spec §4 全部受影响测试文件
 
 **Interfaces:**
+
 - Consumes: Task 1-5 全部产物
 - Produces: A7 通过证据（本地 CR 与 PR 描述引用）
 
