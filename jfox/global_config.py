@@ -84,7 +84,9 @@ class BackupConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "BackupConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
         # retain 防御：null/非数字 → 默认 7（避免 int(None) TypeError）
         try:
@@ -188,7 +190,9 @@ class AutoSummaryConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "AutoSummaryConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
 
         def _safe_int(v: Any, default: int) -> int:
@@ -261,7 +265,9 @@ class FragmentCaptureConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "FragmentCaptureConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
         raw_enabled = data.get("enabled", True)
         if isinstance(raw_enabled, str):
@@ -312,7 +318,9 @@ class PromptCaptureConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptCaptureConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
         raw_enabled = data.get("enabled", True)
         if isinstance(raw_enabled, str):
@@ -403,7 +411,9 @@ class PromptJudgeConfig:
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]]) -> "PromptJudgeConfig":
-        if not data:
+        # 非 dict 值（如手改配置写成字符串）回默认：data.get 会抛 AttributeError，
+        # 上层 _load 的宽 except 会重建默认 GlobalConfig，有清空注册表的风险（#481）
+        if not isinstance(data, dict):
             return cls()
 
         def _safe_int(key, default):

@@ -22,9 +22,13 @@ from jfox.global_config import (
     DEFAULT_KB_NAME,
     DEFAULT_KB_PATH,
     AutoSummaryConfig,
+    BackupConfig,
+    FragmentCaptureConfig,
     GlobalConfig,
     GlobalConfigManager,
     KnowledgeBaseEntry,
+    PromptCaptureConfig,
+    PromptJudgeConfig,
     get_global_config_manager,
 )
 
@@ -875,3 +879,55 @@ class TestGetGlobalConfigManager:
         manager = get_global_config_manager()
 
         assert isinstance(manager, GlobalConfigManager)
+
+
+class TestFromDictNonDictSection:
+    """A1: truthy 非 dict section 不得炸 from_dict，回该类默认配置。"""
+
+    TRUTHY_NON_DICT = [
+        pytest.param("enabled", id="str"),
+        pytest.param(1, id="int"),
+        pytest.param(["x"], id="list"),
+        pytest.param(True, id="bool"),
+    ]
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_backup_config(self, bad):
+        cfg = BackupConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == BackupConfig()
+        assert cfg.enabled is False and cfg.retain == 7
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_auto_summary_config(self, bad):
+        cfg = AutoSummaryConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == AutoSummaryConfig()
+        assert cfg.enabled is False and cfg.interval_minutes == 30
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_fragment_capture_config(self, bad):
+        cfg = FragmentCaptureConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == FragmentCaptureConfig()
+        assert cfg.enabled is True and cfg.max_content_chars == 500
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_prompt_capture_config(self, bad):
+        cfg = PromptCaptureConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == PromptCaptureConfig()
+        assert cfg.enabled is True and cfg.endpoint_url == "http://127.0.0.1:18700/api/prompt"
+
+    @pytest.mark.parametrize("bad", TRUTHY_NON_DICT)
+    def test_prompt_judge_config(self, bad):
+        cfg = PromptJudgeConfig.from_dict(bad)  # type: ignore[arg-type]
+        assert cfg == PromptJudgeConfig()
+        assert cfg.runner == "pi" and cfg.model == "ollama/deepseek-v4-pro:0813-cloud"
+
+    @pytest.mark.parametrize(
+        "falsy", [pytest.param(None, id="none"), pytest.param({}, id="empty-dict")]
+    )
+    def test_falsy_inputs_still_return_defaults(self, falsy):
+        """None/空 dict 是既有行为，回归保护。"""
+        assert BackupConfig.from_dict(falsy) == BackupConfig()
+        assert AutoSummaryConfig.from_dict(falsy) == AutoSummaryConfig()
+        assert FragmentCaptureConfig.from_dict(falsy) == FragmentCaptureConfig()
+        assert PromptCaptureConfig.from_dict(falsy) == PromptCaptureConfig()
+        assert PromptJudgeConfig.from_dict(falsy) == PromptJudgeConfig()
