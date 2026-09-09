@@ -211,6 +211,7 @@ except Exception as e:
 - `_backup_corrupted_config()`：单独测试原始字节复制、独占创建、名称冲突不覆盖、I/O 失败返回状态；该方法不负责创建默认配置。测试 I/O 失败时应确认方法返回失败而不是抛出备份异常。
 - `_create_default_config(persist=...)`：单独测试 `persist=True` 保持现有默认配置创建/保存行为，`persist=False` 不写配置文件；即使 `DEFAULT_KB_PATH` 存在也必须满足该约束。
 - `_load()`：只测试编排关系——加载失败时先调用备份，再按备份结果决定是否持久化；使用 `tmp_path` 和 `caplog`，不接触真实 `~/.zk_config.json`。
+
 ### 6.3 管理层回归边界
 
 A3 必须断言两层结果：
