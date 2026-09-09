@@ -12,6 +12,7 @@ daemon 持久库的固定 session 残留污染（#523 根因之一）。
 import json
 import os
 import subprocess
+import sys
 import urllib.request
 import uuid
 from pathlib import Path
@@ -24,6 +25,15 @@ pytestmark = pytest.mark.integration
 DAEMON = "http://127.0.0.1:18700"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK = REPO_ROOT / "packages" / "cc-plugin" / "hooks" / "fragment-capture.sh"
+# 硬路径调用，不依赖 PATH（Windows 上 PATH 的 bash 会解析到 WSL launcher）
+BASH = "/bin/bash"
+
+# hook 是 bash 脚本，仅在 Unix 上运行；Windows 无 /bin/bash 且产品不经 bash
+# 调用该 hook——与 test_fragment_hook.py 的 win32 skip 同惯例
+posix_only = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="fragment-capture.sh 是 bash 脚本，Windows 无 /bin/bash，产品不经 bash 调用该 hook",
+)
 
 
 def _daemon_up() -> bool:
@@ -58,7 +68,7 @@ def _run_hook(
         **(extra_env or {}),
     }
     return subprocess.run(
-        ["bash", str(HOOK)], input=payload, capture_output=True, text=True, timeout=10, env=env
+        [BASH, str(HOOK)], input=payload, capture_output=True, text=True, timeout=10, env=env
     )
 
 
@@ -97,6 +107,7 @@ def test_prompt_api_idempotent():
 
 
 @pytest.mark.usefixtures("require_daemon")
+@posix_only
 def test_hook_post_success_clears_spool(tmp_path):
     """daemon 可用：hook 完成后 spool 为空（stored 确认后删除）、静默 exit 0"""
     payload = json.dumps(
@@ -109,6 +120,7 @@ def test_hook_post_success_clears_spool(tmp_path):
     assert list(tmp_path.glob("*.json")) == []  # POST 成功 → spool 已删
 
 
+@posix_only
 def test_hook_post_failure_keeps_spool(tmp_path):
     """daemon 不可达：spool 保留（durable 降级不丢数据）、仍静默 exit 0。
     本用例不依赖真实 daemon（JFOX_DAEMON_URL 指向黑洞端口）。"""
@@ -125,6 +137,7 @@ def test_hook_post_failure_keeps_spool(tmp_path):
     assert kept["prompt"] == "降级探针"
 
 
+@posix_only
 def test_hook_handles_real_cc_format_payload(tmp_path):
     """回归 guard：CC stdin JSON 冒号后带空格，hook 必须仍能解析处理。
     历史上 bash glob 空格敏感 bug 曾致验收#5 静默失败（见 git 历史
@@ -142,6 +155,7 @@ def test_hook_handles_real_cc_format_payload(tmp_path):
     assert kept["prompt"] == "空格格式探针"
 
 
+@posix_only
 @pytest.mark.parametrize("source", ["auto-summary", "gem-synth", "prompt-judge"])
 def test_hook_internal_session_skipped(source, tmp_path):
     """JFOX_INTERNAL_SESSION 命中内部来源 → hook 直接 exit 0，不产生 spool 文件"""
