@@ -616,7 +616,10 @@ class GlobalConfigManager:
                 logger.warning(
                     f"Failed to load config: {e}, creating default", exc_info=True
                 )
-                self._config = self._create_default_config()
+                # 先备份原文件字节，再按备份结果决定是否持久化默认配置：
+                # 备份失败（返回 False）时不落盘，原文件保持原样等用户修复（#481）
+                backup_ok = self._backup_corrupted_config()
+                self._config = self._create_default_config(persist=backup_ok)
         else:
             self._config = self._create_default_config()
 
@@ -724,8 +727,12 @@ class GlobalConfigManager:
         logger.error("Failed to write config backup: suffix collisions exhausted")
         return False
 
-    def _create_default_config(self) -> GlobalConfig:
-        """创建默认配置"""
+    def _create_default_config(self, persist: bool = True) -> GlobalConfig:
+        """创建默认配置
+
+        persist=False 供加载失败但备份未成功时使用：返回内存默认配置，
+        但不落盘覆盖原文件（spec §3.3，#481）。
+        """
         default_kb = KnowledgeBaseEntry(
             name=DEFAULT_KB_NAME,
             path=str(DEFAULT_KB_PATH / "default"),
@@ -737,8 +744,8 @@ class GlobalConfigManager:
             default=DEFAULT_KB_NAME, knowledge_bases={DEFAULT_KB_NAME: default_kb}
         )
 
-        # 如果默认知识库已存在，保留它
-        if DEFAULT_KB_PATH.exists():
+        # 如果默认知识库已存在，保留它；备份失败时不得覆盖原文件
+        if persist and DEFAULT_KB_PATH.exists():
             self._config = config
             self._save()
 

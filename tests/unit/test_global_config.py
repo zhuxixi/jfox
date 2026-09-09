@@ -1042,3 +1042,127 @@ class TestBackupCorruptedConfig:
         errors = [r for r in caplog.records if "backup" in r.getMessage().lower()]
         assert errors and errors[0].exc_info is not None
         assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
+
+
+SECTION_CLASSES = {
+    "auto_summary": AutoSummaryConfig,
+    "fragment_capture": FragmentCaptureConfig,
+    "backup": BackupConfig,
+    "prompt_capture": PromptCaptureConfig,
+    "prompt_judge": PromptJudgeConfig,
+}
+
+GOOD_PAYLOAD = {
+    "default": "work",
+    "knowledge_bases": {
+        "work": {"path": "/tmp/work", "created": "2024-01-01T00:00:00"}
+    },
+    "note_add": {"dedup_enabled": False},
+}
+
+
+class TestLoadMalformedSection:
+    """A3: section 级畸形不触发整体回退，注册表/兄弟段/原文件全部保留。
+
+    fixture 安全：default 指向 work 且注册表无 default entry，
+    _migrate_default_kb_path 会提前返回，不会合法改写文件（spec §6.3）。
+    """
+
+    @pytest.mark.parametrize("section", sorted(SECTION_CLASSES))
+    def test_registry_default_and_file_preserved(self, tmp_path, section):
+        cfg_path = tmp_path / "zk_config.json"
+        payload = dict(GOOD_PAYLOAD)
+        payload[section] = "enabled"
+        cfg_path.write_text(json.dumps(payload), encoding="utf-8")
+        before = cfg_path.read_bytes()
+
+        config = GlobalConfigManager(config_path=cfg_path).get_config()
+
+        assert config.default == "work"
+        assert config.knowledge_bases["work"].path == "/tmp/work"
+        assert DEFAULT_KB_NAME not in config.knowledge_bases  # 未被整体重置
+        assert getattr(config, section) == SECTION_CLASSES[section]()  # 坏段回默认
+        assert config.note_add.dedup_enabled is False  # 兄弟段保留
+        assert cfg_path.read_bytes() == before  # 原文件未被重写
+
+
+class TestLoadRecoveryOrchestration:
+    """A5 编排 + A6：文件级失败的备份与 persist 门控。"""
+
+    def test_file_failure_backs_up_then_recovers(self, tmp_path):
+        original = b'{"default": "work"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+
+        config = GlobalConfigManager(config_path=cfg_path).get_config()
+
+        assert config.default == DEFAULT_KB_NAME
+        backups = list(tmp_path.glob("zk_config.json.corrupt-*"))
+        assert len(backups) == 1 and backups[0].read_bytes() == original
+
+    def test_two_consecutive_failures_two_distinct_snapshots(self, tmp_path):
+        original = b'{"default": "work"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+        GlobalConfigManager(config_path=cfg_path).get_config()
+        cfg_path.write_bytes(original)  # 恢复坏内容，再次触发（同秒，靠 suffix 区分）
+        GlobalConfigManager(config_path=cfg_path).get_config()
+
+        backups = list(tmp_path.glob("zk_config.json.corrupt-*"))
+        assert len(backups) == 2
+        assert all(b.read_bytes() == original for b in backups)
+
+    def test_normal_load_creates_no_snapshot(self, tmp_path):
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_text(json.dumps(GOOD_PAYLOAD), encoding="utf-8")
+
+        assert GlobalConfigManager(config_path=cfg_path).get_config().default == "work"
+        assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
+
+    def test_backup_failure_returns_default_but_keeps_original_file(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        original = b'{"default": "work"'
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_bytes(original)
+
+        def _boom():
+            raise OSError("backup subsystem exploded")
+
+        monkeypatch.setattr(gc, "_corrupt_backup_suffix", _boom)
+        with caplog.at_level(logging.WARNING, logger="jfox.global_config"):
+            config = GlobalConfigManager(config_path=cfg_path).get_config()
+
+        assert config.default == DEFAULT_KB_NAME  # 内存默认配置仍可用
+        assert cfg_path.read_bytes() == original  # 原文件未被覆盖
+        errors = [r for r in caplog.records if "backup" in r.getMessage().lower()]
+        assert errors and errors[0].exc_info is not None  # 备份错误有 traceback
+        warnings_ = [r for r in caplog.records if "Failed to load config" in r.message]
+        assert warnings_ and warnings_[0].exc_info is not None  # 原始异常仍可诊断
+        assert list(tmp_path.glob("zk_config.json.corrupt-*")) == []
+
+    def test_create_default_persist_false_never_saves(self, tmp_path, monkeypatch):
+        saved: list[bool] = []
+        monkeypatch.setattr(GlobalConfigManager, "_save", lambda self: saved.append(True) or True)
+        monkeypatch.setattr(gc, "DEFAULT_KB_PATH", tmp_path / "kbroot")  # 存在与否都不得触发保存
+        (tmp_path / "kbroot").mkdir()
+
+        config = GlobalConfigManager(config_path=tmp_path / "zk_config.json")._create_default_config(
+            persist=False
+        )
+
+        assert config.default == DEFAULT_KB_NAME
+        assert saved == []
+        assert not (tmp_path / "zk_config.json").exists()
+
+    def test_create_default_persist_true_keeps_existing_behavior(self, tmp_path, monkeypatch):
+        saved: list[bool] = []
+        monkeypatch.setattr(GlobalConfigManager, "_save", lambda self: saved.append(True) or True)
+        monkeypatch.setattr(gc, "DEFAULT_KB_PATH", tmp_path / "kbroot")
+        (tmp_path / "kbroot").mkdir()
+
+        GlobalConfigManager(config_path=tmp_path / "zk_config.json")._create_default_config(
+            persist=True
+        )
+
+        assert saved == [True]
