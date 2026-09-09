@@ -13,6 +13,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -966,3 +967,24 @@ class TestGlobalConfigFromDictDefensive:
         )
         assert "bad" not in cfg.knowledge_bases
         assert cfg.knowledge_bases["work"].path == "/tmp/work"
+
+
+class TestLoadFileLevelFailureLogs:
+    """A4: 文件级加载失败记录原始 traceback 并返回默认配置。"""
+
+    def _assert_failure_logged(self, tmp_path, caplog, raw: str):
+        cfg_path = tmp_path / "zk_config.json"
+        cfg_path.write_text(raw, encoding="utf-8")
+        manager = GlobalConfigManager(config_path=cfg_path)
+        with caplog.at_level(logging.WARNING, logger="jfox.global_config"):
+            config = manager.get_config()
+        assert config.default == DEFAULT_KB_NAME
+        warnings_ = [r for r in caplog.records if "Failed to load config" in r.message]
+        assert warnings_, "expected load-failure warning"
+        assert warnings_[0].exc_info is not None
+
+    def test_invalid_json(self, tmp_path, caplog):
+        self._assert_failure_logged(tmp_path, caplog, "invalid json")
+
+    def test_root_non_dict(self, tmp_path, caplog):
+        self._assert_failure_logged(tmp_path, caplog, "[1, 2, 3]")

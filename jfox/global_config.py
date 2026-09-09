@@ -589,12 +589,22 @@ class GlobalConfigManager:
             try:
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # 根级非 dict 视为文件级加载失败（整个文件无法按配置格式解释），
+                # 交由下方 except 的恢复路径处理，而不是静默变成空配置（#481）
+                if not isinstance(data, dict):
+                    raise ValueError(
+                        f"config root is {type(data).__name__}, expected dict"
+                    )
                 self._config = GlobalConfig.from_dict(data)
                 # 迁移旧版默认 KB 路径（~/.zettelkasten/ → ~/.zettelkasten/default/）
                 self._migrate_default_kb_path()
                 logger.debug(f"Loaded global config from {self.config_path}")
             except Exception as e:
-                logger.warning(f"Failed to load config: {e}, creating default")
+                # exc_info 保留原始 traceback：未来任何解析缺陷都可诊断，
+                # 避免只剩一行消息无从排查（#481）
+                logger.warning(
+                    f"Failed to load config: {e}, creating default", exc_info=True
+                )
                 self._config = self._create_default_config()
         else:
             self._config = self._create_default_config()
