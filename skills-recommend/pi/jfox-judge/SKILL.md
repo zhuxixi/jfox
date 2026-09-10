@@ -1,8 +1,9 @@
 ---
 name: jfox-judge
 description: |
-  把 jfox 采集的 user prompt 判断、合成 candidate 并确认晋升的端到端工作流。
-  judge 仅手动触发，agent 只起草不晋升——new 类的草稿逐条给你确认后才 promote。
+  End-to-end workflow for jfox-captured user prompts: judge them, draft candidate
+  notes, and confirm promotions. Judge runs only when invoked manually; the agent
+  drafts, you decide — nothing is promoted automatically.
   Triggers on: "判断 prompt", "prompts judge", "prompt 积压", "处置判断结果",
   "待解决问题清单", "judge prompts", "prompt 合成笔记", "prompt 转笔记".
 ---
@@ -69,7 +70,7 @@ jfox prompts retry <ID>                # 重置失败/证据不足状态，下�
 jfox prompts ignore <ID>               # 确定无价值，忽略
 ```
 
-处置命令有严格前置校验（如 `promote` 仅 new + candidate pending、`unresolved` 仅 repeated）；不满足时命令拒绝执行，确需覆盖用 `--force --reason "<理由>"` 留痕。
+处置命令有严格前置校验（如 `promote` 仅 new + candidate pending、`unresolved` 仅 repeated）；不满足时命令拒绝执行。仅 `unresolved` 支持 `--force` 覆盖分类（必须带 `--reason "<理由>"` 留痕）；`resolve-unresolved` 可附 `--reason`；`promote` / `ignore` / `retry` 无覆盖选项——前置不满足时改用替代动作（如 `ignore --reject-candidate`）。
 
 ### Step 4：（可选）待解决问题闭环
 
@@ -80,7 +81,7 @@ jfox prompts ignore <ID>               # 确定无价值，忽略
 - **仅手动触发**：hook 和 daemon 都不运行判断，每次 judge 由你显式发起。
 - **runner 隔离**：默认本地 pi runner 禁用工具、会话、扩展、skills 和项目上下文，prompt 只走 stdin，被判断的 prompt 内容不会被 runner 执行。
 - **隐私边界**：judge 会把 transcript（会话对话记录）上下文送给 runner；远程 runner 必须显式 `--allow-remote`——全文会离开本机。
-- **前置校验与留痕**：默认动作前置不满足即拒绝；`--force --reason` 覆盖必须写明理由（留痕）。
+- **前置校验与留痕**：默认动作前置不满足即拒绝；仅 `unresolved` 支持 `--force` 覆盖分类且必须带 `--reason "<理由>"` 留痕（`resolve-unresolved` 支持 `--reason`；其余处置命令无覆盖选项）。
 - **不做自动决策**：judge 不做自动去重、自动合并、置信度过滤；candidate 是否晋升由你决定。
 
 ## 数据运维
