@@ -7,7 +7,7 @@ Issue：zhuxixi/jfox#513
 
 ## 1. 背景与目标
 
-#399（gem-synth 退役 → prompt 记录 + 按需判断）已全部合入（#491–#498）并随 1.14.0 发布。jfox-promote 三个镜像已同步，但 skill 体系仍有两处欠账：
+issue #399（gem-synth 退役 → prompt 记录 + 按需判断）已全部合入（#491–#498）并随 1.14.0 发布。jfox-promote 三个镜像已同步，但 skill 体系仍有两处欠账：
 
 1. `skills-recommend/pi/jfox-overview/SKILL.md` 有 3 处退役引用（路由表 L44、一句话职责 L63、复合工作流 §2 L77）
 2. prompt 判断闭环（`jfox prompts` 12 命令族）无 skill 覆盖——用户说「判断 prompt」「prompt 积压」时无路由

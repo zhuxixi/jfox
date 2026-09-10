@@ -24,9 +24,11 @@
 ### Task 1: 新建 jfox-judge skill（端到端）
 
 **Files:**
+
 - Create: `skills-recommend/pi/jfox-judge/SKILL.md`
 
 **Interfaces:**
+
 - Consumes: 无（独立新文件）
 - Produces: `jfox-judge` skill 路径与 frontmatter（Task 2 的 overview 路由行引用该 skill 名与触发词）
 
@@ -141,6 +143,7 @@ jfox prompts config                 # 查看/设置采集与判断配置（如 d
 - [ ] **Step 2: 验证 A2 / A3（static 断言）**
 
 Run:
+
 ```bash
 WT=/home/elling/git-repo/github/jfox/.pi/worktrees/issue-513-skill-sync-399-overview-jfox-judge
 grep -q "^name: jfox-judge" "$WT/skills-recommend/pi/jfox-judge/SKILL.md" && echo "A2 name OK"
@@ -148,6 +151,7 @@ for kw in "判断 prompt" "prompts judge" "prompt 积压" "--allow-remote" "--fo
   grep -q -- "$kw" "$WT/skills-recommend/pi/jfox-judge/SKILL.md" || { echo "MISSING: $kw"; exit 1; }
 done && echo "A3 keywords OK"
 ```
+
 Expected: `A2 name OK` + `A3 keywords OK`（无 MISSING 行）。
 
 - [ ] **Step 3: markdownlint**
@@ -167,19 +171,24 @@ git -C $WT commit -m "docs(skill): add jfox-judge end-to-end prompt judgment ski
 ### Task 2: overview 退役引用清理 + jfox-judge 路由新增
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-overview/SKILL.md`（5 处：L41 / L52 / L58 / L71 / L76）
 
 **Interfaces:**
+
 - Consumes: Task 1 产出的 skill 名 `jfox-judge` 与触发词（判断 prompt / prompts judge / prompt 积压）
 - Produces: overview 中 jfox-judge 路由行（验收 A1 的目标状态）
 
 - [ ] **Step 1: 修改路由表（L41 行改写 + 新增 jfox-judge 行）**
 
 将：
+
 ```markdown
 | 过审 gem-synth 候选宝石、晋升为 permanent 或拒绝归档 | `jfox-promote` | 过审 candidate / promote / L5 晋升 |
 ```
+
 改为（新增 jfox-judge 行插在 promote 行之前）：
+
 ```markdown
 | 判断采集的 prompt、处置判断结果、确认晋升笔记 | `jfox-judge` | 判断 prompt / prompts judge / prompt 积压 |
 | 过审 candidate、晋升为 permanent 或拒绝归档（存量 / 大积压） | `jfox-promote` | 过审 candidate / promote / L5 晋升 |
@@ -190,10 +199,13 @@ git -C $WT commit -m "docs(skill): add jfox-judge end-to-end prompt judgment ski
 将 L52 `15 个 skill 一句话职责：` 改为 `16 个 skill 一句话职责：`。
 
 将 L58：
+
 ```markdown
 - **jfox-promote** — gem-synth 候选宝石过审（三模式：客观去重 / 簇级 triage / 单条 A/B/C + 冗余维度）。
 ```
+
 改为（新增 jfox-judge 行插在 jfox-promote 行之前）：
+
 ```markdown
 - **jfox-judge** — prompt 判断与端到端沉淀：judge 生成 candidate → 确认晋升 permanent；待解决问题清单闭环。
 - **jfox-promote** — candidate 过审（三模式：客观去重 / 簇级 triage / 单条 A/B/C + 冗余维度；存量与大积压清理）。
@@ -202,19 +214,25 @@ git -C $WT commit -m "docs(skill): add jfox-judge end-to-end prompt judgment ski
 - [ ] **Step 3: 更新笔记模型引路与复合工作流（L71 / L76）**
 
 将 L71 中：
+
 ```markdown
 候选宝石的来龙去脉见 **jfox-promote** skill；
 ```
+
 改为：
+
 ```markdown
 候选宝石的生成与过审见 **jfox-judge** / **jfox-promote** skill；
 ```
 
 将 L76：
+
 ```markdown
 2. **知识闭环（含 AI 合成）**：碎片采集（后台）→ gem-synth 合成 candidate → `jfox-promote`（过审晋升 permanent）→ `jfox-search`。
 ```
+
 改为：
+
 ```markdown
 2. **知识闭环（prompt → 笔记）**：hook 全量记录 prompt（后台）→ `jfox-judge`（判断 + 确认晋升 permanent；待解决问题清单）→ `jfox-search`；存量 candidate 积压清理用 `jfox-promote`。
 ```
@@ -222,12 +240,14 @@ git -C $WT commit -m "docs(skill): add jfox-judge end-to-end prompt judgment ski
 - [ ] **Step 4: 验证 A1（static 断言）**
 
 Run:
+
 ```bash
 WT=/home/elling/git-repo/github/jfox/.pi/worktrees/issue-513-skill-sync-399-overview-jfox-judge
 ! grep -n "gem-synth\|碎片采集\|后台合成" "$WT/skills-recommend/pi/jfox-overview/SKILL.md" && echo "A1 no retired refs OK"
 grep -c "jfox-judge" "$WT/skills-recommend/pi/jfox-overview/SKILL.md"   # 期望 >= 4（路由表/职责/模型段/工作流）
 grep -q "16 个 skill" "$WT/skills-recommend/pi/jfox-overview/SKILL.md" && echo "count OK"
 ```
+
 Expected: `A1 no retired refs OK` + 计数 ≥4 + `count OK`。
 
 - [ ] **Step 5: markdownlint**
@@ -247,9 +267,11 @@ git -C $WT commit -m "docs(skill): clean retired gem-synth refs in overview, rou
 ### Task 3: 全量验证与收尾核对
 
 **Files:**
+
 - Test: 全仓 markdownlint + 验收矩阵核对（无文件产出）
 
 **Interfaces:**
+
 - Consumes: Task 1/2 的两个文件
 - Produces: 验收矩阵 A1–A5 的核对记录（本地 CR 输入）
 
