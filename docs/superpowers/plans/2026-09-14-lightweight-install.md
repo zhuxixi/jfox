@@ -25,6 +25,7 @@
 ### Task 1: 打包基建——依赖拆分 + CI 矩阵 + no_embed 环境
 
 **Files:**
+
 - Modify: `pyproject.toml`（dependencies / optional-dependencies）
 - Modify: `pytest.ini:11-21`（markers 块）
 - Modify: `.github/workflows/integration-test.yml:209,214`（Core）与 `:267,272`（Full）
@@ -33,6 +34,7 @@
 - Regenerate: `uv.lock`
 
 **Interfaces:**
+
 - Consumes: 无（首个任务）
 - Produces: 可安装的轻量核心包；`embed` extra；`.venv-noembed` 测试环境（后续所有 no-embed 测试的运行环境）；pytest marker `no_embed`
 
@@ -112,6 +114,7 @@ embed = [
 - [ ] **Step 5: 修改 CI（Core/Full 补 embed extra）**
 
 `.github/workflows/integration-test.yml`：
+
 - Core job 的 Install 步骤（约 209 行）：`run: uv sync --extra dev` → `run: uv sync --extra dev --extra embed`
 - Core job 的 Run core tests（约 214 行）：`uv run pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short` → 前缀改 `uv run --extra dev --extra embed pytest ...`
 - Full job 的 Install 步骤（约 267 行）：同上改 `--extra dev --extra embed`
@@ -164,10 +167,12 @@ git commit -m "chore(deps): move sentence-transformers to [embed] extra + CI mat
 ### Task 2: 可用性探测与安装提示（embedding_backend 新接口，A1/A2）
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py`（模块顶部、`_GPU_DEFAULT_MODEL` 之前插入新代码段）
 - Create: `tests/unit/test_embed_availability.py`
 
 **Interfaces:**
+
 - Consumes: `jfox.daemon.process.is_daemon_running` / `_get_daemon_url`、`jfox.daemon.client.DaemonClient`（既有）
 - Produces（后续所有 task 依赖，签名逐字固定）:
   - `is_local_embed_available() -> bool`（find_spec + 模块级缓存）
@@ -388,10 +393,12 @@ git commit -m "feat(embed): availability probes + missing-dependency error + ins
 ### Task 3: `EmbeddingBackend.load()` 的 ImportError 转专用异常
 
 **Files:**
+
 - Modify: `jfox/embedding_backend.py:105-140`（`load()` 方法内）
 - Test: `tests/unit/test_embed_availability.py`（追加 class）
 
 **Interfaces:**
+
 - Consumes: Task 2 的 `EmbedDependencyMissingError` / `format_embed_hint`
 - Produces: `load()` 在本地组件缺失时抛 `EmbedDependencyMissingError`（daemon 路径与 `encode(daemon_only=True)` 语义不变）——Task 4/5/6 依赖此行为
 
@@ -461,10 +468,12 @@ git commit -m "feat(embed): load() raises EmbedDependencyMissingError on missing
 ### Task 4: VectorStore 守卫——typed re-raise + 行保留
 
 **Files:**
+
 - Modify: `jfox/vector_store.py`（顶部 import、`__init__`、`add_note`、`search`、`add_or_update_note`）
 - Create: `tests/unit/test_vector_store_embed_guard.py`
 
 **Interfaces:**
+
 - Consumes: Task 2 的 `EmbedDependencyMissingError`、`is_embedding_service_available`；Task 3 的 load() 抛错路径
 - Produces:
   - `VectorStore.last_embed_warning: Optional[str]` 实例属性（CLI add/edit 展示用，Task 6）
@@ -639,10 +648,12 @@ git commit -m "feat(store): typed re-raise on missing embed + preserve rows on r
 ### Task 5: SearchEngine 双路径告警通道
 
 **Files:**
+
 - Modify: `jfox/search_engine.py`（顶部 import、`__init__`、`search`、`_semantic_search`、`_hybrid_search_with_k`）
 - Create: `tests/unit/test_search_engine_embed_warning.py`
 
 **Interfaces:**
+
 - Consumes: Task 4 的 typed re-raise
 - Produces: `HybridSearchEngine.last_embed_warning: Optional[str]`（每次 `search()` 开头清空）——CLI search/query/suggest-links 展示用（Task 7）
 
@@ -806,11 +817,13 @@ git commit -m "feat(search): engine-level embed-missing warning on semantic+hybr
 ### Task 6: save 层降级 + add/edit CLI 展示 + A4 集成测试
 
 **Files:**
+
 - Modify: `jfox/note.py`（顶部 import、`save_note:151-190`、`update_note:585-645`）
 - Modify: `jfox/cli.py`（`_add_note_impl` 的 dim-warning 展示区 `~650-700`；`_edit_impl` 结果输出区 `~1881-1935`）
 - Create: `tests/integration/test_no_embed_degradation.py`
 
 **Interfaces:**
+
 - Consumes: Task 4 的 typed re-raise / `last_embed_warning` / 行保留
 - Produces: `save_note`/`update_note` 在组件缺失时返回 `True`（文件 + BM25 落盘，向量跳过）；CLI `add`/`edit` 的 JSON `semantic_index_warning` 字段与 table 黄字提示——A4 验收；集成测试文件后续 task 追加用例
 
@@ -1034,10 +1047,12 @@ git commit -m "feat(core): save-layer degradation on missing embed + add/edit hi
 ### Task 7: CLI search/query/suggest-links——semantic 拒绝 + warnings 展示（A5）
 
 **Files:**
+
 - Modify: `jfox/cli.py`（`_search_impl:783-886`、`search` 命令 `~887-915`、`_query_impl:1952-2015`、`_suggest_links_impl:2320-2358`）
 - Test: `tests/integration/test_no_embed_degradation.py`（追加 class）
 
 **Interfaces:**
+
 - Consumes: Task 2 的探测函数与 `format_embed_hint`；Task 5 的 `get_search_engine().last_embed_warning`
 - Produces: 拒绝协议 `{"success": false, "code": "embed_dependency_missing", "error": hint}`；降级 warnings `{"code": "embedding_unavailable", "message": ..., "fallback": "keyword"}`；query `effective_mode` 字段
 
@@ -1248,10 +1263,12 @@ git commit -m "feat(cli): semantic refusal gate + degrade warnings for search/qu
 ### Task 8: `index rebuild` 降级——不清空向量库（A6）
 
 **Files:**
+
 - Modify: `jfox/cli.py`（`_index_impl` 的 `elif action == "rebuild":` 分支，约 2510-2560）
 - Test: `tests/integration/test_no_embed_degradation.py`（追加 class）
 
 **Interfaces:**
+
 - Consumes: Task 2 探测 + hint；spec 不变量（不调用会 reset collection 的 `Indexer.index_all()`）
 - Produces: rebuild 结果 `semantic_skipped: bool` + `warnings`（`fallback: "bm25_only"`）
 
@@ -1369,10 +1386,12 @@ git commit -m "feat(index): rebuild degrades to BM25-only without resetting vect
 ### Task 9: daemon 守卫 + status 块 + ingest-log/bulk-import 守卫（A7/A10）
 
 **Files:**
+
 - Modify: `jfox/cli.py`（`daemon:3242-`、`_status_impl:1027-1080`、`_ingest_log_impl:3025-`、`bulk_import:3128-`）
 - Test: `tests/integration/test_no_embed_degradation.py`（追加两个 class）
 
 **Interfaces:**
+
 - Consumes: Task 2 探测函数；Task 7 的 `_print_embed_refusal`
 - Produces: `status` 输出的 `embedding` 块（`local_package`/`daemon_running`/`service_available`）
 
@@ -1534,11 +1553,13 @@ git commit -m "feat(cli): daemon/status/bulk gates on missing embed component (#
 ### Task 10: E2E 验证脚本 + README/AGENTS 文档（A8）
 
 **Files:**
+
 - Create: `scripts/verify_lightweight_install.sh`（chmod +x）
 - Modify: `README.md`（安装章节、开发环境章节）
 - Modify: `AGENTS.md`（「安装开发环境」命令）
 
 **Interfaces:**
+
 - Consumes: Task 1 的 wheel 打包结构
 - Produces: A8 可执行验证；对外安装文档三段式
 
@@ -1656,9 +1677,11 @@ git commit -m "docs+build: lightweight-install E2E script + 3-part install docs 
 ### Task 11: 全量验证与收尾
 
 **Files:**
+
 - Modify: 按验证结果修正（预期无或极少）
 
 **Interfaces:**
+
 - Consumes: 全部前置 task
 - Produces: PR 就绪状态（本地 CR 前的最后校验）
 

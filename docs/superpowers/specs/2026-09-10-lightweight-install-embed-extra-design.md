@@ -106,9 +106,11 @@ if add_to_index:
 
 - 人类模式（table）：降级提示走 stdout 黄色文本；拒绝提示走 stderr；退出码 1。
 - JSON 模式：降级警告进结构化 `warnings` 数组（stdout 不混文本）；拒绝输出结构化错误（stdout）：
+
   ```json
   {"success": false, "code": "embed_dependency_missing", "error": "<安装提示>"}
   ```
+
 - csv/yaml/paths 等结构化非 JSON 模式：提示走 stderr（沿用 dim warning 既有先例）。
 - 统一 warnings 结构：`{"code": "embedding_unavailable", "message": "<安装提示>", "fallback": "keyword" | "bm25_only"}`。
 
@@ -229,7 +231,7 @@ pip:       pip install "jfox-cli[embed]"（CPU 机器先装 torch cpu 版，见�
 | VectorStore 守卫（add_note / search / add_or_update_note） | 事实报告者：typed raise + 记录 `last_embed_warning` + 替换写入不删既有行 | unit：mock backend 抛 typed error，断言 re-raise 与 warning 记录；**不测降级决策** | store 层只报事实，降级归调用层——此边界禁止回耦；「不删既有行」在 A4 用真实 ChromaDB 行验证 |
 | `note.save_note()` / `note.update_note()` 语义路捕获 | 降级决策点（两函数一致） | integration（no-embed venv）：真 CLI add/edit | 文件落到盘、BM25 可搜到、向量跳过、返回 True 分开断言；替换写入不删既有行 |
 | `SearchEngine.last_embed_warning`（semantic + hybrid 双路径） | 实例属性告警通道 | unit：mock vector_store 抛 typed error，分别走 `_semantic_search` / `_hybrid_search_with_k`，断言返回 []/BM25 且 warning 非空、`search()` 会清空旧值 | 引擎不做 I/O 提示，打印归 CLI 层 |
-| CLI 前置检查（semantic / daemon start|restart / ingest-log / bulk-import）与警告展示 | 早退守卫 + 输出协议 | integration（no-embed venv）：退出码 + stdout/stderr 分流 + JSON 结构 | JSON 模式 stdout 不混文本（snapshot 断言） |
+| CLI 前置检查（semantic / daemon start或restart / ingest-log / bulk-import）与警告展示 | 早退守卫 + 输出协议 | integration（no-embed venv）：退出码 + stdout/stderr 分流 + JSON 结构 | JSON 模式 stdout 不混文本（snapshot 断言） |
 | `scripts/verify_lightweight_install.sh` | E2E 脚本（build + 干净 venv + 装包 + 断言 + 隔离 HOME smoke） | 本地/CI 可执行 | 不依赖 PyPI（装本地 wheel），发布验证归 U1 |
 | `no_embed` pytest 标记 | 测试环境维度标记 | Fast job（天然无 embed）执行；装有 embed 的环境通过 `pytest.mark.skipif(is_local_embed_available(), ...)` 跳过 | 与 `embedding` 标记语义互斥；marker 注册于 pytest.ini（`--strict-markers`） |
 
