@@ -1359,7 +1359,10 @@ def _refs_impl(
         # 查看特定笔记的引用关系
         n = note.load_note_by_id(note_id)
         if not n:
-            console.print(f"[red]Note not found: {note_id}[/red]")
+            if output_format == "json":
+                print(output_json({"success": False, "error": f"Note not found: {note_id}"}))
+            else:
+                console.print(f"[red]Note not found: {note_id}[/red]")
             raise typer.Exit(1)
 
         # 获取链接到的笔记（悬空 id 不再静默过滤，标记 dangling 可见化，#392 B2）
@@ -1493,6 +1496,8 @@ def refs(
         with use_kb(kb):
             _refs_impl(note_id, search, output_format, json_output)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
@@ -1562,7 +1567,7 @@ def _delete_impl(
     # 确认删除
     if not force:
         if output_format == "json":
-            console.print(f"Use --force to delete: {n.title}")
+            print(output_json({"success": False, "error": f"Use --force to delete: {n.title}"}))
             raise typer.Exit(1)
         else:
             console.print(f"Note: {n.title}")
@@ -2144,7 +2149,10 @@ def _graph_impl(
     elif note_id:
         # 显示特定笔记的图谱
         if note_id not in kg.graph:
-            console.print(f"[red]Note not found: {note_id}[/red]")
+            if output_format == "json":
+                print(output_json({"success": False, "error": f"Note not found: {note_id}"}))
+            else:
+                console.print(f"[red]Note not found: {note_id}[/red]")
             raise typer.Exit(1)
 
         related = kg.get_related(note_id, depth=depth)
@@ -2200,6 +2208,8 @@ def graph(
         with use_kb(kb):
             _graph_impl(note_id, depth, stats, orphans, output_format, json_output)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
@@ -2438,7 +2448,8 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         from . import note as note_module
         from .bm25_index import get_bm25_index
 
-        console.print("[yellow]Rebuilding BM25 index...[/yellow]")
+        if output_format != "json":
+            console.print("[yellow]Rebuilding BM25 index...[/yellow]")
         bm25_index = get_bm25_index()
         notes = note_module.list_notes(limit=10000, include_archived=True)
         success = bm25_index.rebuild_from_notes(notes)
@@ -2515,7 +2526,8 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
                         console.print(f"  - {err}")
 
         elif action == "rebuild":
-            console.print("[yellow]Rebuilding index...[/yellow]")
+            if output_format != "json":
+                console.print("[yellow]Rebuilding index...[/yellow]")
             count = indexer.index_all()
 
             # 同时重建 BM25 索引
@@ -2573,6 +2585,8 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             if output_format == "json":
                 # verify 报告本身执行成功即 success:true；执行错误经 verification["error"] 传导
                 print(output_json({"success": not result.get("error"), **result}))
+                if result.get("error"):
+                    raise typer.Exit(1)
             else:
                 if verification.get("error"):
                     console.print(f"[red]✗[/red] {verification['error']}")
@@ -3495,12 +3509,16 @@ def _download_impl(
         shutil.rmtree(downloader._model_cache, ignore_errors=True)
 
     ok = downloader.ensure_cached()
-    return {
+    result = {
         "model": model,
         "success": ok,
         "cache_dir": str(downloader._model_cache),
         "instructions": downloader.get_manual_instructions() if not ok else "",
     }
+    if not ok:
+        # #502 统一契约：失败输出必带非空 error
+        result["error"] = f"模型 {model} 下载失败，请按 instructions 手动下载"
+    return result
 
 
 @model_app.command("download")

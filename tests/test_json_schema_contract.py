@@ -99,7 +99,9 @@ class TestContractList:
     NO_KB = {
         "kb-list",
         "kb-current",
+        "kb-info",
         "fragments-list",
+        "prompts-config",
         "auto-summary-status",
         "auto-summary-scan",
         "backup-status",
@@ -122,6 +124,8 @@ class TestContractList:
         ("list", ["list"], False),
         ("show", ["show", "{note_id}"], True),
         ("refs-default", ["refs"], False),
+        ("refs-search", ["refs", "--search", "U1"], False),
+        ("refs-note", ["refs", "--note", "{note_id}"], True),
         ("query", ["query", "任意词"], False),
         ("graph-stats", ["graph", "--stats"], False),
         ("graph-orphans", ["graph", "--orphans"], False),
@@ -141,6 +145,7 @@ class TestContractList:
         ("index-verify", ["index", "verify"], False),
         ("kb-list", ["kb", "list"], False),
         ("kb-current", ["kb", "current"], False),
+        ("kb-info", ["kb", "info"], False),
         # --- Task 5: template/fragments ---
         ("template-list", ["template", "list", "--format", "json"], False),
         ("template-show", ["template", "show", "quick"], False),
@@ -148,6 +153,7 @@ class TestContractList:
         # --- Task 6: prompts ---
         ("prompts-list", ["prompts", "list"], False),
         ("prompts-status", ["prompts", "status"], False),
+        ("prompts-config", ["prompts", "config"], False),
         # --- Task 8: candidates ---
         ("candidates-list", ["candidates", "list", "--format", "json"], False),
         # --- Task 7: bookshelf/auto-summary/backup ---
@@ -256,6 +262,23 @@ class TestErrorContract:
         data = assert_json_shape(r.stdout, False)
         assert data["ok"] is False  # 兼容键保留
         assert "snapshot" in data
+
+    def test_prompts_promote_nonexistent_json_error(self, cli):
+        # 动作命令失败分支（final review P2-9）：锁住 success:false + 非空 error + 退出码 1
+        r = _run_json(cli, "prompts", "promote", "999999")
+        assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
+        data = assert_json_shape(r.stdout, False)
+        assert "999999" in data["error"] or "promote failed" in data["error"]
+
+    def test_delete_without_force_outputs_json_error(self, cli):
+        # 无入链笔记不带 --force 删除（final review P1-1）：JSON 错误 + 退出码 1，
+        # 不再是 console 纯文本污染 stdout
+        created = _run_json(cli, "add", "待删正文", "--title", "Contract-Del-NoForce")
+        note_id = assert_json_shape(created.stdout, True)["note"]["id"]
+        r = _run_json(cli, "delete", note_id)
+        assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
+        data = assert_json_shape(r.stdout, False)
+        assert "Use --force to delete" in data["error"]
 
 
 class TestAutoSummaryRunShape:

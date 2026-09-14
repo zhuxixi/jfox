@@ -52,7 +52,7 @@ else:
 | `daily` | `success, date, total, notes[]` | 列表 `notes` | `{success, error}` |
 | `inbox` | `success, total, notes[]` | 列表 `notes` | `{success, error}` |
 | `suggest-links` | `success, content, total_suggestions, threshold, suggestions[]` | 列表 `suggestions` | `{success, error}` |
-| `index <action>` | `rebuild`：`success, indexed, bm25_rebuilt, bm25_indexed[, backlinks_*]`；`rebuild-bm25`：`success, indexed`；`status`：`success, total_indexed, last_indexed, pending_changes, vector_store`；`bm25-status`：`success, bm25_index{...}`；`verify`：`success`（语义见特殊语义说明）+ 透传字段 | 平铺 | `{success, error}` |
+| `index <action>` | `rebuild`：`success, indexed, bm25_rebuilt, bm25_indexed[, backlinks_*]`；`rebuild-bm25`：`success, indexed`；`status`：`success, total_indexed, last_indexed, pending_changes, vector_store`；`bm25-status`：`success, bm25_index{...}`；`verify`：`success`（语义见特殊语义说明）+ 透传字段 | 平铺 | `{success, error}`（错误分支需显式 `--json` 开启，见特殊语义说明） |
 | `kb <action>` | `list`：`success, current, knowledge_bases[]`；`create/switch/use/remove/delete/rename`：`success, message`；`current/info`：`success, name, path, total_notes, by_type, created, last_used, description, is_current` | 平铺实体 | `{success, error}`（错误分支需显式 `--json` 开启，见特殊语义说明） |
 | `ingest-log` | `success, repo_path, commits_extracted, imported, failed, total`（空仓库带 `message`） | 平铺计数 | `{success, error}` |
 | `bulk-import` | `success, imported, failed, total`（`--json` 默认开启） | 平铺计数 | `{success, error}` |
@@ -91,8 +91,8 @@ else:
 | `prompts show <id>` | `success` + 行平铺 + `judgment` | 顶层平铺 | `{success, error}` |
 | `prompts status` | `success, total_prompts, unjudged, processing, failed, succeeded, pending_disposition, active_unresolved` | 平铺统计 | — |
 | `prompts drain` | `success, imported, duplicates, remaining, ...` | 平铺 | spool 溢出：`{success:false, error, ...}` + 退出码 1 |
-| `prompts backfill` | `success, found, imported, skipped` | 平铺计数 | `{success, error}` |
-| `prompts judge` | `success, total, succeeded, failed, batches, items[]` | 平铺 + 列表 | `{success, error}` |
+| `prompts backfill` | `success, found, imported, skipped` | 平铺计数 | 失败为未捕获异常：非零退出码 + traceback，无 JSON 输出（已知例外，后续收敛） |
+| `prompts judge` | `success, total, succeeded, failed, batches, items[]` | 平铺 + 列表 | 失败为未捕获异常：非零退出码 + traceback，无 JSON 输出（已知例外，后续收敛） |
 | `prompts config` | `success, capture{...}, judge{...}`（`--set` 成功输出为 console，见特殊语义说明） | 嵌套两段 | `{success, error}` |
 | `prompts promote/unresolved/resolve-unresolved/ignore/retry <id>` | 成功无 JSON 输出（console 确认文本） | — | `{success, error}` |
 

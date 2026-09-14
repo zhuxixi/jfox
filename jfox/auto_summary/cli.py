@@ -346,7 +346,7 @@ def run(
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
     """手动触发一轮 auto-summary（不依赖 daemon）"""
-    if not _config().enabled and not dry_run:
+    if not _config().enabled and not dry_run and output_format != "json":
         console.print(
             "[yellow]提示：auto-summary 当前处于禁用状态[/yellow]，"
             "本次手动 run 仍会执行，但 daemon 不会自动调度。"

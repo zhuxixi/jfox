@@ -278,7 +278,8 @@ def remove_cmd(
             shelf = _shelf()
             if not shelf.exists(slug):
                 raise BookNotFoundError(slug)
-            if not yes:
+            # json 模式跳过交互确认直接执行（对齐 kb remove 的 json_output 门控约定）
+            if not yes and not json_output:
                 meta = shelf.get(slug)
                 confirmed = typer.confirm(
                     f"确认删除《{meta.title}》（{meta.book.get('page_count', 0)} 页）？不可逆。",

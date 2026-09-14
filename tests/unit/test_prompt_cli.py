@@ -87,9 +87,11 @@ def test_list_json_includes_fields(tmp_path, monkeypatch):
     import json
 
     data = json.loads(result.output)
-    assert len(data) == 2
-    assert "prompt_id" in data[0]
-    assert "session_id" in data[0]
+    # #502 C5a：裸数组包装为 {success, items}
+    assert data["success"] is True
+    assert len(data["items"]) == 2
+    assert "prompt_id" in data["items"][0]
+    assert "session_id" in data["items"][0]
 
 
 def test_show_by_id(tmp_path, monkeypatch):
