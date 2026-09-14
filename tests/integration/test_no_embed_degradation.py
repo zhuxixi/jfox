@@ -90,3 +90,40 @@ class TestEditPreservesIndexRow:  # A4 行保留
         assert "semantic_index_warning" in edited.json()
 
         assert _get_indexed_ids(cli.kb_path, note_id) == [note_id]  # 行未被删除
+
+
+class TestSearchModes:  # A5
+    # 命名避开 conftest 自动标记关键词（embedding/semantic/vector）
+
+    def test_hybrid_degrades_to_bm25_with_warning(self, cli):
+        cli.add("混合检索降级测试量子内容", title="混合降级")
+        result = cli._run("search", "量子", "--mode", "hybrid")
+        assert result.returncode == 0
+        data = result.json()
+        assert data["total"] >= 1
+        assert data["warnings"][0]["code"] == "embedding_unavailable"
+        assert data["warnings"][0]["fallback"] == "keyword"
+
+    def test_explicit_mode_refused(self, cli):
+        # 显式语义模式：服务不可用 → 拒绝而非静默降级（原计划名 test_semantic_mode_refused
+        # 因 conftest 自动标记陷阱改此名）
+        result = cli._run("search", "量子", "--mode", "semantic")
+        assert result.returncode == 1
+        data = result.json()
+        assert data["code"] == "embed_dependency_missing"
+        assert "UV_TORCH_BACKEND" in data["error"]
+
+    def test_keyword_mode_unaffected(self, cli):
+        cli.add("关键词模式不受影响内容", title="关键词模式")
+        result = cli._run("search", "不受影响", "--mode", "keyword")
+        assert result.returncode == 0
+        assert result.json()["total"] >= 1
+        assert "warnings" not in result.json()
+
+    def test_query_degrades_with_effective_mode(self, cli):
+        cli.add("联合查询降级测试内容", title="联合查询")
+        result = cli._run("query", "联合查询")
+        assert result.returncode == 0
+        data = result.json()
+        assert data["effective_mode"] == "keyword"
+        assert data["warnings"][0]["code"] == "embedding_unavailable"

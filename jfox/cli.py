@@ -147,6 +147,28 @@ def output_json(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def _print_embed_refusal(output_format: str, context: str):
+    """#519 显式语义入口拒绝：JSON 结构化错误（stdout）/ 人类模式 stderr。"""
+    from .embedding_backend import format_embed_hint
+
+    hint = format_embed_hint(context)
+    if output_format == "json":
+        print(output_json({"success": False, "code": "embed_dependency_missing", "error": hint}))
+    else:
+        import sys
+
+        print(f"✗ {hint}", file=sys.stderr)
+
+
+def _embed_warning_payload(engine) -> dict:
+    """#519 降级 warnings 数组元素（fallback=keyword：搜索类降级）。"""
+    return {
+        "code": "embedding_unavailable",
+        "message": engine.last_embed_warning,
+        "fallback": "keyword",
+    }
+
+
 @app.command()
 def init(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="知识库名称（默认: default）"),
@@ -802,6 +824,18 @@ def _search_impl(
     """搜索笔记的内部实现"""
     from .formatters import OutputFormatter
 
+    # #519 显式语义入口：服务不可用 → 拒绝，不静默换 BM25
+    if search_mode == "semantic":
+        from .embedding_backend import is_embedding_service_available
+
+        if not is_embedding_service_available():
+            _print_embed_refusal(output_format, "语义检索")
+            raise typer.Exit(1)
+
+    from .search_engine import get_search_engine
+
+    engine = get_search_engine()
+
     results = note.search_notes(
         query,
         top_k=top,
@@ -820,6 +854,9 @@ def _search_impl(
     }
 
     if output_format == "json":
+        # #519 降级警告进结构化字段（stdout 不混文本）
+        if engine.last_embed_warning:
+            result["warnings"] = [_embed_warning_payload(engine)]
         print(OutputFormatter.to_json(result))
     elif output_format == "table":
         mode_display = {
@@ -844,6 +881,10 @@ def _search_impl(
             console.print(f"{i}. [{score:.2f}]{badge} {r['metadata'].get('title', 'Untitled')}")
             console.print(f"   {r['document'][:100]}...")
             console.print()
+
+        # #519 降级提示（人类模式 stdout）
+        if engine.last_embed_warning:
+            console.print(f"[yellow]⚠ {engine.last_embed_warning}[/yellow]")
     elif output_format == "csv":
         # 扁平化结果数据
         flat_results = []
@@ -892,6 +933,12 @@ def _search_impl(
 
             print(f"⚠ {dim_warning}", file=sys.stderr)
 
+    # #519 csv/yaml/paths 模式：降级提示走 stderr，不污染结构化 stdout
+    if engine.last_embed_warning and output_format not in ("json", "table"):
+        import sys
+
+        print(f"⚠ {engine.last_embed_warning}", file=sys.stderr)
+
 
 @app.command()
 def search(
@@ -935,6 +982,9 @@ def search(
         with use_kb(kb):
             _search_impl(query, top, note_type, tags, search_mode, output_format, include_archived)
 
+    except typer.Exit:
+        # #519 拒绝路径的退出码需透传，否则会被下方 except Exception 二次包装
+        raise
     except Exception as e:
         result = {
             "success": False,
@@ -1999,6 +2049,9 @@ def _query_impl(
     json_output: bool,
 ):
     """语义搜索 + 知识图谱联合查询的内部实现"""
+    from .search_engine import get_search_engine
+
+    engine = get_search_engine()
     # 1. 语义搜索
     vector_results = note.search_notes(query_str, top_k=top)
 
@@ -2039,15 +2092,21 @@ def _query_impl(
             }
         )
 
+    degraded = engine.last_embed_warning is not None
     result = {
         "query": query_str,
-        "semantic_results": len(vector_results),
+        "semantic_results": len(vector_results),  # 兼容保留（降级时实为 BM25 计数）
+        "effective_mode": "keyword" if degraded else "hybrid",
         "results": enriched_results,
     }
+    if degraded:
+        result["warnings"] = [_embed_warning_payload(engine)]
 
     if json_output:
         print(output_json(result))
     else:
+        if degraded:
+            console.print(f"[yellow]⚠ {engine.last_embed_warning}[/yellow]")
         console.print(f"[bold]Query:[/bold] {query_str}")
         console.print(f"[bold]Results:[/bold] {len(enriched_results)}\n")
 
@@ -2084,6 +2143,9 @@ def query(
         with use_kb(kb):
             _query_impl(query_str, top, graph_depth, json_output)
 
+    except typer.Exit:
+        # #519 透传拒绝路径退出码
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
@@ -2350,6 +2412,12 @@ def _suggest_links_impl(
     """推荐链接笔记的内部实现"""
     suggestions = note.suggest_links(content, top_k=top_k, threshold=threshold)
 
+    # #519 降级检测：语义路缺失时引擎会写入告警（关键词匹配照常返回）
+    from .search_engine import get_search_engine
+
+    engine = get_search_engine()
+    degraded = engine.last_embed_warning is not None
+
     result = {
         "content": content[:200] + "..." if len(content) > 200 else content,
         "total_suggestions": len(suggestions),
@@ -2358,8 +2426,12 @@ def _suggest_links_impl(
     }
 
     if output_format == "json":
+        if degraded:
+            result["warnings"] = [_embed_warning_payload(engine)]
         print(output_json(result))
     else:
+        if degraded:
+            console.print("[yellow]⚠ 语义组件不可用，当前仅使用关键词匹配[/yellow]")
         if suggestions:
             console.print(f"[bold]Suggested links (confidence > {threshold}):[/bold]\n")
             for i, s in enumerate(suggestions, 1):
