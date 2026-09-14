@@ -13,6 +13,8 @@
 """
 
 import os
+import subprocess
+import sys
 
 import pytest
 
@@ -174,3 +176,55 @@ class TestIndexRebuild:  # A6
         result = cli._run("index", "rebuild", "--backlinks")
         assert result.returncode == 0
         assert "backlinks_rebuilt" in result.json()
+
+
+class TestRefusalEntrypoints:  # A7
+    # 注：brief 原本的 test_suggest_links_keyword_degradation 已在 Task 7 fix round
+    # 以 test_link_hints_degrade_to_keyword 落地，此处按裁决省略避免重复。
+
+    @staticmethod
+    def _run_daemon(action: str):
+        """直接子进程调 daemon（ZKCLI._run 会给非 init/kb 命令注入 --kb，daemon 无此选项）。"""
+        cmd = [sys.executable, "-m", "jfox", "daemon", action, "--no-auto-summary"]
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env={**os.environ, "PYTHONUTF8": "1"},
+        )
+
+    def test_daemon_start_refused(self, cli):
+        result = self._run_daemon("start")
+        assert result.returncode == 1
+        assert "UV_TORCH_BACKEND" in result.stderr
+
+    def test_daemon_restart_refused(self, cli):
+        result = self._run_daemon("restart")
+        assert result.returncode == 1
+        assert "UV_TORCH_BACKEND" in result.stderr
+
+    def test_mass_import_refused(self, cli, tmp_path):
+        # bulk-import 的 --json/--no-json 默认 True → 拒绝时 stdout 输出结构化错误
+        # （测试名避开 conftest 陷阱：bulk 会触发 slow+bulk 自动标记；
+        #   命令名字面量不出现在 nodeid，不受影响）
+        result = cli._run("bulk-import", str(tmp_path / "notexist.json"))
+        assert result.returncode == 1
+        data = result.json()
+        assert data["code"] == "embed_dependency_missing"
+        assert "UV_TORCH_BACKEND" in data["error"]
+
+
+class TestStatusComponentBlock:  # A10（类名避开 conftest 陷阱：原 TestStatusEmbeddingBlock 含 embedding）
+    def test_status_shows_availability(self, cli):
+        result = cli._run("status")
+        assert result.returncode == 0
+        emb = result.json()["embedding"]
+        # no-embed 环境的硬事实：本地组件必缺
+        assert emb["local_package"] is False
+        # daemon 状态取决于宿主机（可能真有 daemon 在跑），断言类型与蕴含不变量：
+        # 本地组件缺失时，服务可用 ⟹ daemon 在跑
+        assert isinstance(emb["daemon_running"], bool)
+        assert isinstance(emb["service_available"], bool)
+        if emb["service_available"]:
+            assert emb["daemon_running"] is True

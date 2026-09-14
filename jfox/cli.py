@@ -1119,6 +1119,19 @@ def _status_impl(output_format: str, json_output: bool):
         },
     }
 
+    # #519 语义组件可用性（不触发模型加载）
+    from .daemon.process import is_daemon_running
+    from .embedding_backend import (
+        is_embedding_service_available,
+        is_local_embed_available,
+    )
+
+    result["embedding"] = {
+        "local_package": is_local_embed_available(),
+        "daemon_running": is_daemon_running(),
+        "service_available": is_embedding_service_available(),
+    }
+
     # 处理 --json 快捷方式
     if json_output:
         output_format = "json"
@@ -1142,6 +1155,18 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Backend", backend.resolved_device)
         table.add_row("Model", backend.model_name or "auto (未加载)")
         table.add_row("Dimension", str(backend.dimension))
+        table.add_row(
+            "Embed Component",
+            "[green]installed[/green]"
+            if result["embedding"]["local_package"]
+            else "[yellow]not installed[/yellow]",
+        )
+        table.add_row(
+            "Embed Service",
+            "[green]available[/green]"
+            if result["embedding"]["service_available"]
+            else "[yellow]unavailable[/yellow]",
+        )
 
         console.print(table)
     else:
@@ -3152,6 +3177,13 @@ def _ingest_log_impl(
     json_output: bool,
 ):
     """从 Git 仓库提取 commit 历史并导入为笔记"""
+    # #519 批量导入走本地模型路径：组件缺失直接拒绝
+    from .embedding_backend import is_local_embed_available
+
+    if not is_local_embed_available():
+        _print_embed_refusal(output_format, "批量导入（ingest-log）")
+        raise typer.Exit(1)
+
     from .git_extractor import commits_to_notes, extract_commits
     from .performance import bulk_import_notes
 
@@ -3230,6 +3262,8 @@ def ingest_log(
         with use_kb(kb):
             _ingest_log_impl(repo_path, limit, note_type, batch_size, output_format, json_output)
 
+    except typer.Exit:
+        raise
     except ValueError as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
@@ -3270,6 +3304,27 @@ def bulk_import(
         jfox bulk-import notes.json --kb work --type permanent
     """
     try:
+        # #519 批量导入走本地模型路径：组件缺失直接拒绝（在读文件之前）
+        from .embedding_backend import format_embed_hint, is_local_embed_available
+
+        if not is_local_embed_available():
+            hint = format_embed_hint("批量导入（bulk-import）")
+            if json_output:
+                print(
+                    output_json(
+                        {
+                            "success": False,
+                            "code": "embed_dependency_missing",
+                            "error": hint,
+                        }
+                    )
+                )
+            else:
+                import sys
+
+                print(f"✗ {hint}", file=sys.stderr)
+            raise typer.Exit(1)
+
         import json
 
         # 读取文件
@@ -3296,6 +3351,8 @@ def bulk_import(
             console.print(f"[red]✗[/red] Failed: {result['failed']}")
             console.print(f"Total: {result['total']}")
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
@@ -3391,6 +3448,7 @@ def daemon(
         start_daemon,
         stop_daemon,
     )
+    from .embedding_backend import format_embed_hint, is_local_embed_available
 
     def _print_daemon_status():
         """打印 daemon 状态表格"""
@@ -3420,6 +3478,13 @@ def daemon(
             raise typer.Exit(1)
 
         if action == "start":
+            # #519 daemon 必须本地加载模型：组件缺失直接拒绝
+            if not is_local_embed_available():
+                import sys
+
+                print(format_embed_hint("启动 embedding daemon"), file=sys.stderr)
+                raise typer.Exit(1)
+
             # auto-summary 启用检查
             if enable_auto_summary:
                 _pending_auto_summary = True
@@ -3466,6 +3531,13 @@ def daemon(
                 raise typer.Exit(1)
 
         elif action == "restart":
+            # #519 daemon 必须本地加载模型：组件缺失直接拒绝
+            if not is_local_embed_available():
+                import sys
+
+                print(format_embed_hint("重启 embedding daemon"), file=sys.stderr)
+                raise typer.Exit(1)
+
             if enable_auto_summary:
                 _pending_auto_summary = True
             elif no_auto_summary:
