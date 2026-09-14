@@ -1,5 +1,6 @@
 """Template management CLI commands"""
 
+import json
 import os
 import subprocess
 from typing import List, Optional
@@ -51,8 +52,6 @@ def list_templates(
         custom_templates = [t for t in templates if not t.is_builtin]
 
         if output_format == "json":
-            import json
-
             result = {
                 "builtin": [
                     {
@@ -71,7 +70,7 @@ def list_templates(
                     for t in custom_templates
                 ],
             }
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps({"success": True, **result}, ensure_ascii=False, indent=2))
         elif output_format == "table":
             if builtin_templates:
                 console.print("[bold]Built-in Templates:[/bold]")
@@ -101,8 +100,13 @@ def list_templates(
             console.print(f"[red]Error:[/red] Unsupported format: {output_format}")
             raise typer.Exit(1)
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        if output_format == "json" or json_output:
+            print(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -121,15 +125,22 @@ def show_template(
             template = manager.get_template(name)
 
         if not template:
-            available = manager.get_available_templates()
-            console.print(f"[red]Template '{name}' not found[/red]")
-            if available:
-                console.print(f"[dim]Available: {', '.join(available)}[/dim]")
+            if json_output:
+                print(
+                    json.dumps(
+                        {"success": False, "error": f"Template '{name}' not found"},
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                available = manager.get_available_templates()
+                console.print(f"[red]Template '{name}' not found[/red]")
+                if available:
+                    console.print(f"[dim]Available: {', '.join(available)}[/dim]")
             raise typer.Exit(1)
 
         if json_output:
-            import json
-
             result = {
                 "name": template.name,
                 "description": template.description,
@@ -139,7 +150,7 @@ def show_template(
                 "tags": template.tags,
                 "is_builtin": template.is_builtin,
             }
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps({"success": True, **result}, ensure_ascii=False, indent=2))
         else:
             builtin_tag = " (built-in)" if template.is_builtin else ""
             console.print(f"[bold]{template.name}{builtin_tag}[/bold]")
@@ -152,8 +163,13 @@ def show_template(
             console.print("[bold]Content:[/bold]")
             console.print(template.content)
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        if json_output:
+            print(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -181,8 +197,20 @@ def create_template(
         # Check if template exists
         existing = manager.get_template(name)
         if existing and not force:
-            console.print(f"[red]Template '{name}' already exists[/red]")
-            console.print("[dim]Use --force to overwrite[/dim]")
+            if json_output:
+                print(
+                    json.dumps(
+                        {
+                            "success": False,
+                            "error": f"Template '{name}' already exists (use --force to overwrite)",
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(f"[red]Template '{name}' already exists[/red]")
+                console.print("[dim]Use --force to overwrite[/dim]")
             raise typer.Exit(1)
 
         # Interactive mode if not all required fields provided
@@ -193,7 +221,16 @@ def create_template(
 
         # Validate note_type
         if note_type not in ["fleeting", "literature", "permanent", "session"]:
-            console.print(f"[red]Invalid note type: {note_type}[/red]")
+            if json_output:
+                print(
+                    json.dumps(
+                        {"success": False, "error": f"Invalid note type: {note_type}"},
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(f"[red]Invalid note type: {note_type}[/red]")
             raise typer.Exit(1)
 
         template = manager.create_template(
@@ -206,8 +243,6 @@ def create_template(
         )
 
         if json_output:
-            import json
-
             result = {
                 "success": True,
                 "template": {
@@ -221,8 +256,20 @@ def create_template(
             action = "updated" if existing else "created"
             console.print(f"[green]Template '{name}' {action} successfully[/green]")
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        # str(e) 可能为空（如交互 prompt EOF 触发 typer.Abort），保持 error 非空的契约
+        if json_output:
+            print(
+                json.dumps(
+                    {"success": False, "error": str(e) or type(e).__name__},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -284,11 +331,29 @@ def remove_template(
 
         template = manager.get_template(name)
         if not template:
-            console.print(f"[red]Template '{name}' not found[/red]")
+            if json_output:
+                print(
+                    json.dumps(
+                        {"success": False, "error": f"Template '{name}' not found"},
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(f"[red]Template '{name}' not found[/red]")
             raise typer.Exit(1)
 
         if template.is_builtin:
-            console.print(f"[red]Cannot remove built-in template '{name}'[/red]")
+            if json_output:
+                print(
+                    json.dumps(
+                        {"success": False, "error": f"Cannot remove built-in template '{name}'"},
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(f"[red]Cannot remove built-in template '{name}'[/red]")
             raise typer.Exit(1)
 
         # Confirm deletion
@@ -302,13 +367,16 @@ def remove_template(
         manager.delete_template(name)
 
         if json_output:
-            import json
-
             result = {"success": True, "deleted": name}
             print(json.dumps(result, ensure_ascii=False, indent=2))
         else:
             console.print(f"[green]Template '{name}' deleted[/green]")
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
+        if json_output:
+            print(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False, indent=2))
+        else:
+            console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)

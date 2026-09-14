@@ -26,7 +26,10 @@ DEFAULT_PROJECT_BLOCKLIST_SUBSTRINGS: tuple[str, ...] = (
 
 
 def default_claude_projects_dir() -> Path:
-    """返回 ~/.claude/projects/ 的路径"""
+    """返回 ~/.claude/projects/ 的路径，可被 JFOX_CLAUDE_PROJECTS_DIR 覆盖（测试隔离）。"""
+    env = os.environ.get("JFOX_CLAUDE_PROJECTS_DIR")
+    if env:
+        return Path(env).expanduser().resolve()
     return Path.home() / ".claude" / "projects"
 
 

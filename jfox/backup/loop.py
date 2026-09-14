@@ -16,7 +16,7 @@ from typing import Optional
 
 from ..global_config import DEFAULT_KB_PATH, get_global_config_manager
 from ..utils import atomic_write_json
-from .manager import BackupManager
+from .manager import BackupManager, default_backup_root
 from .schedule import should_run_now
 
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def write_backup_state(backup_root: Path, ok: bool, archive: Optional[str]) -> N
 
 
 def _resolve_backup_root(cfg) -> Path:
-    return Path(cfg.backup_root).expanduser() if cfg.backup_root else Path.home() / ".jfox-backup"
+    return Path(cfg.backup_root).expanduser() if cfg.backup_root else default_backup_root()
 
 
 def _tick_once() -> str:

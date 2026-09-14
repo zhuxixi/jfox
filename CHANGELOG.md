@@ -2,6 +2,18 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- **cli**: `--json` 输出轻量统一：全命令顶层补 `success` 布尔、错误分支必出 JSON、`add` 顶层冗余 `id`/`title` 快捷字段、schema 参考文档 `docs/json-schemas.md` (#502)
+
+### Breaking Changes
+
+- **backup**: `backup list --format json` 由裸数组改为 `{success, items}`，原 `[0]` 索引改为 `.items[0]` (#502)
+- **prompts**: `prompts list` 由裸数组改为 `{success, items}` (#502)
+- **auto-summary**: `run` 顶层 `success`（int 计数）改名为 `succeeded`，`success` 变为布尔（命令完成即 `true`）；`status` 的 `progress.success` 同名改为 `progress.succeeded` (#502)
+
 ## [1.14.0] - 2026-09-07
 
 ### Features
@@ -356,17 +368,6 @@ All notable changes to jfox-cli will be documented in this file.
 - add GitHub PR and issue templates (#241)
 
 [1.0.0]: https://github.com/zhuxixi/jfox/compare/v0.10.0...v1.0.0
-
-## [Unreleased]
-
-### Features
-
-- auto-summary 支持 Kimi Code session（`~/.kimi-code/sessions/`），与 Claude Code 共存；新增 `session_sources`/`kimi_sessions_dir` 配置（默认 claude+kimi 都启用，auto-detect 目录）。(#242)
-- 总结笔记升级为五段结构（背景/做了什么/关键决策/技术细节/未决事项），更具上下文感。(#242)
-
-### Changes
-
-- auto-summary ledger 去重 key 加来源前缀（`claude:`/`kimi:`），旧数据自动迁移。
 
 ## [0.10.0] - 2026-06-06
 

@@ -31,6 +31,19 @@ os.environ["ZK_CONFIG_PATH"] = str(_TEST_ROOT / "zk_config.json")
 # 预设值语义仅在 nightly 脚本层（换假 HOME）有意义，conftest 层一律覆盖
 os.environ["JFOX_SYNTHESIS_DB"] = str(_TEST_ROOT / "synthesis_test.db")
 
+# 隔离真实 fragments/prompts db（#502 契约测试）：两者共用 JFOX_FRAGMENTS_DB，
+# 测试进程与 CLI 子进程都指向临时路径，防 fragments-list / prompts list 契约测试
+# 读到机器真实 ~/.zettelkasten/fragments.db（形状断言对空库同样成立）。
+# 无条件赋值，同上。
+os.environ["JFOX_FRAGMENTS_DB"] = str(_TEST_ROOT / "fragments_test.db")
+
+# 隔离真实 backup root / claude projects 目录（#502 契约测试）：backup 子应用读
+# backup_root 下的 state.json 与快照（真实 ~/.jfox-backup 可达数十 GB，list 逐个
+# sha256 会超时），auto-summary scan/status 读 ~/.claude/projects 的真实 session。
+# 两者指向临时空目录——形状断言对空数据同样成立。无条件赋值，同上。
+os.environ["JFOX_BACKUP_ROOT"] = str(_TEST_ROOT / "backup_test")
+os.environ["JFOX_CLAUDE_PROJECTS_DIR"] = str(_TEST_ROOT / "claude_projects_test")
+
 import pytest
 
 # ============================================================================

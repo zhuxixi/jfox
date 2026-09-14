@@ -163,7 +163,7 @@ def list_cmd(
         _fail(str(e), output_format)
         return
     if output_format == "json":
-        _emit_json({"books": rows, "total": len(rows)})
+        _emit_json({"success": True, "books": rows, "total": len(rows)})
         return
     table = Table(title=f"书架（共 {len(rows)} 本）")
     for col in ("slug", "title", "page_count", "added_at", "distill_status"):
@@ -210,7 +210,7 @@ def show_cmd(
             if page is not None:
                 text = shelf.read_page(slug, page)
                 if output_format == "json":
-                    _emit_json({"slug": slug, "page": page, "content": text})
+                    _emit_json({"success": True, "slug": slug, "page": page, "content": text})
                 else:
                     print(text)
                 return
@@ -244,7 +244,7 @@ def show_cmd(
         _fail(f"读取失败：{e}", output_format)
         return
     if output_format == "json":
-        _emit_json(data)
+        _emit_json({"success": True, **data})
     else:
         console.print(f"[bold]{escape(meta.title)}[/bold]  ({escape(meta.slug)})")
         console.print(
@@ -278,7 +278,8 @@ def remove_cmd(
             shelf = _shelf()
             if not shelf.exists(slug):
                 raise BookNotFoundError(slug)
-            if not yes:
+            # json 模式跳过交互确认直接执行（对齐 kb remove 的 json_output 门控约定）
+            if not yes and not json_output:
                 meta = shelf.get(slug)
                 confirmed = typer.confirm(
                     f"确认删除《{meta.title}》（{meta.book.get('page_count', 0)} 页）？不可逆。",
@@ -286,12 +287,13 @@ def remove_cmd(
                 )
                 if not confirmed:
                     if output_format == "json":
-                        _emit_json({"slug": slug, "removed": False})
+                        # 取消是成功交互：success True + removed False
+                        _emit_json({"success": True, "slug": slug, "removed": False})
                     else:
                         console.print("[yellow]已取消[/yellow]")
                     return
             shelf.remove(slug)
-            data = {"slug": slug, "removed": True}
+            data = {"success": True, "slug": slug, "removed": True}
     except (
         BookNotFoundError,
         InvalidBundleError,
