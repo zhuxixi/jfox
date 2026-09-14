@@ -629,6 +629,8 @@ def _add_note_impl(
 
         result = {
             "success": True,
+            "id": new_note.id,  # 顶层快捷字段（#502 C3），与 note.id 同值
+            "title": new_note.title,  # 顶层快捷字段（#502 C3），与 note.title 同值
             "note": {
                 "id": new_note.id,
                 "title": new_note.title,
@@ -2915,7 +2917,9 @@ def kb(
             if not current_name:
                 if json_output:
                     print(
-                        output_json({"success": False, "error": "No default knowledge base configured"})
+                        output_json(
+                            {"success": False, "error": "No default knowledge base configured"}
+                        )
                     )
                 else:
                     console.print("[red]No default knowledge base configured[/red]")

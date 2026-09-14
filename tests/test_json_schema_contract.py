@@ -43,9 +43,9 @@ def assert_json_shape(stdout: str, success_expected: bool) -> dict:
     data = json.loads(stdout)  # strict: any pollution raises here
     assert isinstance(data, dict), f"top level must be object, got {type(data)}"
     assert "success" in data, f"missing top-level success in: {stdout[:200]}"
-    assert isinstance(data["success"], bool), (
-        f"success must be bool, got {type(data['success'])}: {data['success']!r}"
-    )
+    assert isinstance(
+        data["success"], bool
+    ), f"success must be bool, got {type(data['success'])}: {data['success']!r}"
     assert data["success"] is success_expected
     if not success_expected:
         assert data.get("error"), "error output must carry non-empty error"
@@ -71,6 +71,13 @@ class TestAlreadyCompliantSmoke:
         assert r.returncode == 0
         data = assert_json_shape(r.stdout, True)
         assert data["note"]["id"]  # #483 shape intact
+
+    def test_add_top_level_shortcuts(self, cli):
+        """#502 C3: add --json 顶层冗余 id/title 快捷字段，与 note 内同值。"""
+        r = _run_json(cli, "add", "快捷字段正文", "--title", "Contract-Shortcut-1")
+        data = assert_json_shape(r.stdout, True)
+        assert data["id"] == data["note"]["id"]
+        assert data["title"] == data["note"]["title"]
 
 
 class TestContractList:
@@ -135,7 +142,8 @@ class TestErrorContract:
         assert_json_shape(r.stdout, False)
 
     def test_kb_remove_missing_name_outputs_json_error(self, cli):
-        # kb remove with no name arg: currently console-only
+        # kb remove with no name arg: Task 3 (#502 C2a) 起该分支输出 JSON 错误
+        # {"success": false, "error": ...} 并以退出码 1 结束
         r = _run_json(cli, "kb", "remove", with_kb=False)
         assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
         assert_json_shape(r.stdout, False)
