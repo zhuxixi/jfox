@@ -59,9 +59,7 @@ class TestServiceAvailability:
     def test_daemon_running_and_client_available(self, monkeypatch):
         monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
         monkeypatch.setattr("jfox.daemon.process.is_daemon_running", lambda: True)
-        monkeypatch.setattr(
-            "jfox.daemon.process._get_daemon_url", lambda: "http://127.0.0.1:18700"
-        )
+        monkeypatch.setattr("jfox.daemon.process._get_daemon_url", lambda: "http://127.0.0.1:18700")
         with patch("jfox.daemon.client.DaemonClient") as client_cls:
             client_cls.return_value.available = True
             assert is_embedding_service_available() is True

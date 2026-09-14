@@ -73,9 +73,7 @@ def test_hybrid_mode_falls_back_to_bm25_with_warning(monkeypatch):
 
 def test_search_clears_stale_warning(monkeypatch):
     _fake_note_loader(monkeypatch)
-    engine = _engine(
-        FakeVectorStore(), FakeBM25(results=[{"note_id": "n1", "score": 1.0}])
-    )
+    engine = _engine(FakeVectorStore(), FakeBM25(results=[{"note_id": "n1", "score": 1.0}]))
     engine.last_embed_warning = "旧告警"
     engine.search("查询", mode=SearchMode.KEYWORD, include_archived=True)
     assert engine.last_embed_warning is None

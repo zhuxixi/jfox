@@ -33,6 +33,7 @@ from jfox.embedding_backend import is_local_embed_available
 def _pin_no_daemon(monkeypatch):
     monkeypatch.setenv("JFOX_DAEMON_PROCESS", "1")
 
+
 pytestmark = [
     pytest.mark.no_embed,
     pytest.mark.integration,

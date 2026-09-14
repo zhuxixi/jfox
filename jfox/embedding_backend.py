@@ -26,9 +26,7 @@ def is_local_embed_available() -> bool:
     global _local_embed_available
     if _local_embed_available is None:
         try:
-            _local_embed_available = (
-                importlib.util.find_spec("sentence_transformers") is not None
-            )
+            _local_embed_available = importlib.util.find_spec("sentence_transformers") is not None
         except Exception:
             _local_embed_available = False
     return _local_embed_available
@@ -182,9 +180,7 @@ class EmbeddingBackend:
             try:
                 from sentence_transformers import SentenceTransformer
             except ImportError as exc:  # #519 轻量化安装：本地语义组件缺失
-                raise EmbedDependencyMissingError(
-                    format_embed_hint("加载本地嵌入模型")
-                ) from exc
+                raise EmbedDependencyMissingError(format_embed_hint("加载本地嵌入模型")) from exc
 
             # Prefer local model dir; on miss, run ModelDownloader fallback chain
             # (HF -> ModelScope -> curl) before hard-loading via network (#374).

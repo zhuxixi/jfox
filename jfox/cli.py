@@ -1157,15 +1157,19 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Dimension", str(backend.dimension))
         table.add_row(
             "Embed Component",
-            "[green]installed[/green]"
-            if result["embedding"]["local_package"]
-            else "[yellow]not installed[/yellow]",
+            (
+                "[green]installed[/green]"
+                if result["embedding"]["local_package"]
+                else "[yellow]not installed[/yellow]"
+            ),
         )
         table.add_row(
             "Embed Service",
-            "[green]available[/green]"
-            if result["embedding"]["service_available"]
-            else "[yellow]unavailable[/yellow]",
+            (
+                "[green]available[/green]"
+                if result["embedding"]["service_available"]
+                else "[yellow]unavailable[/yellow]"
+            ),
         )
 
         console.print(table)
@@ -2678,9 +2682,7 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             else:
                 console.print(f"[green]✓[/green] Indexed {count} notes")
                 if not semantic_available:
-                    console.print(
-                        f"[yellow]⚠ {format_embed_hint('重建语义索引')}[/yellow]"
-                    )
+                    console.print(f"[yellow]⚠ {format_embed_hint('重建语义索引')}[/yellow]")
                 if bm25_success:
                     console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
                 else:
