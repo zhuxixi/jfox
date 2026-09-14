@@ -1,6 +1,6 @@
 # Spec：issue #511 — wiki-link 字面量误链 + edit 自链
 
-> 状态：DRAFT（等用户确认）
+> 状态：Accepted（已按 review 修订并执行完毕）
 > 路由：bug → systematic-debugging（Phase 1 根因调查完成，见 research/01）
 > 关联：#470（同路径覆盖+不去重+同名歧义）、#458（# 截断），均 OPEN 不并入本 PR
 
@@ -65,8 +65,8 @@
 | A2 | `resolve_wiki_links` 去重 | 自动化（unit） | 同上 test_dedup | 正文两个相同 `[[标题]]` → resolved 仅 1 条 |
 | A3 | `resolve_wiki_links` unresolved 语义 | 自动化（unit） | 同上 test_unresolved | 不存在的目标进 unresolved，不影响 resolved |
 | A4 | `_strip_wiki_link_exclusions` 剥 inline code | 自动化（unit） | `uv run pytest tests/unit/test_wiki_link_resolution.py -v` 中 test_strip_inline_code | `` `[[ID]]` `` 输入 → 输出无 `[[` |
-| A5 | edit 全链路：字面量不自链 | 自动化（integration） | `uv run pytest tests/integration/test_links_edit_add.py -v` 中 test_edit_no_self_link | temp_kb 建「标题含 ID canonical」笔记 + 追加含 `[[ID|标题]]` 正文 → show --json 的 links/backlinks 均不含自身 ID |
-| A6 | add 全链路：字面量不自链 | 自动化（integration） | 同上 test_add_no_self_link | 同上断言（add 场景） |
+| A5 | edit 全链路：字面量不自链 | 自动化（integration） | `uv run pytest tests/integration/test_links_edit_add.py -v` 中 test_edit_no_self_link | temp_kb 建「标题含 ID canonical」笔记 + 追加含 `[[ID|标题]]` 正文 → 读盘断言 links/backlinks 均不含自身 ID（直读磁盘等价且强于 show --json） |
+| A6 | add 全链路：字面量不自链 | 自动化（integration） | 同上 test_add_no_false_self_link | 同上断言（add 场景） |
 | A7 | 解析剥离生效 + 正文完整性 | 自动化（integration） | 同上 test_literal_in_fence_and_inline_not_linked | ① 正文 fenced 块与反引号内的 `[[...]]` 不进 links；② 剥离只影响解析输入——edit 后 `n.content` 与原始输入逐字节一致（剥离区域也原样落盘） |
 | A8 | rebuild 不回归（规则一致性） | 自动化（unit + integration） | `uv run pytest tests/unit/test_rebuild_backlinks_impl.py tests/integration/test_index_rebuild_backlinks.py -v`；再造双链接场景跑 `jfox index rebuild --backlinks` | 现有测试全过；rebuild 结果与 edit 结果一致（同正文同 links） |
 | A9 | 既有测试全量回归 | 自动化（unit/integration） | `uv run pytest tests/ -m "not slow and not embedding"` | 全绿（Fast 档，与 CI 相同范围） |
