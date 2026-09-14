@@ -2603,8 +2603,21 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
                         console.print(f"  - {err}")
 
         elif action == "rebuild":
-            console.print("[yellow]Rebuilding index...[/yellow]")
-            count = indexer.index_all()
+            from .embedding_backend import (
+                format_embed_hint,
+                is_embedding_service_available,
+            )
+
+            semantic_available = is_embedding_service_available()
+            count = 0
+            if semantic_available:
+                console.print("[yellow]Rebuilding index...[/yellow]")
+                count = indexer.index_all()
+            else:
+                # #519：无编码能力时不调用 index_all（它会 reset collection 清空向量库），
+                # 只重建 BM25，既有向量行原样保留
+                logger.info("语义组件不可用，跳过语义索引重建（#519）")
+                console.print("[yellow]语义组件不可用，跳过语义索引重建（#519）[/yellow]")
 
             # 同时重建 BM25 索引
             from . import note as note_module
@@ -2617,9 +2630,18 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             result = {
                 "success": True,
                 "indexed": count,
+                "semantic_skipped": not semantic_available,
                 "bm25_rebuilt": bm25_success,
                 "bm25_indexed": len(notes),
             }
+            if not semantic_available:
+                result["warnings"] = [
+                    {
+                        "code": "embedding_unavailable",
+                        "message": format_embed_hint("重建语义索引"),
+                        "fallback": "bm25_only",
+                    }
+                ]
 
             # 如果指定 --backlinks，重新计算 backlinks
             if backlinks:
@@ -2630,6 +2652,10 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
                 print(output_json(result))
             else:
                 console.print(f"[green]✓[/green] Indexed {count} notes")
+                if not semantic_available:
+                    console.print(
+                        f"[yellow]⚠ {format_embed_hint('重建语义索引')}[/yellow]"
+                    )
                 if bm25_success:
                     console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
                 else:

@@ -144,3 +144,33 @@ class TestDegradeProtocols:  # A5（类名避开 conftest 陷阱：原 TestSearc
         assert data["warnings"][0]["code"] == "embedding_unavailable"
         keyword_hits = [s for s in data["suggestions"] if s["match_type"] == "keyword"]
         assert len(keyword_hits) >= 1
+
+
+class TestIndexRebuild:  # A6
+    # 命名避开 conftest 陷阱：原 plan 名 test_rebuild_bm25_only_preserves_vectors 含 "vectors"
+
+    def test_rebuild_bm25_only_keeps_existing_rows(self, cli):
+        n1 = cli.add("重建保留测试甲", title="重建甲").json()["note"]["id"]
+        n2 = cli.add("重建保留测试乙", title="重建乙").json()["note"]["id"]
+        _seed_index_row(cli.kb_path, n1)
+        _seed_index_row(cli.kb_path, n2)
+
+        result = cli._run("index", "rebuild")
+        assert result.returncode == 0
+        data = result.json()
+        assert data["semantic_skipped"] is True
+        assert data["warnings"][0]["code"] == "embedding_unavailable"
+        assert data["warnings"][0]["fallback"] == "bm25_only"
+        assert data["bm25_rebuilt"] is True
+        # 既有向量行保留（rebuild 不得清空 collection）
+        assert _get_indexed_ids(cli.kb_path, n1) == [n1]
+        assert _get_indexed_ids(cli.kb_path, n2) == [n2]
+        # BM25 全量可检索
+        keyword = cli._run("search", "重建甲", "--mode", "keyword")
+        assert keyword.returncode == 0
+        assert keyword.json()["total"] >= 1
+
+    def test_rebuild_backlinks_still_works(self, cli):
+        result = cli._run("index", "rebuild", "--backlinks")
+        assert result.returncode == 0
+        assert "backlinks_rebuilt" in result.json()
