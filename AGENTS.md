@@ -89,8 +89,8 @@ jfox/
 ### 安装开发环境
 
 ```bash
-# 安装（使用 uv，推荐）
-uv sync --extra dev
+# 安装（使用 uv，推荐；embed 为语义组件，开发环境需要）
+uv sync --extra dev --extra embed
 
 # 安装（legacy pip fallback）
 pip install -e ".[dev]"

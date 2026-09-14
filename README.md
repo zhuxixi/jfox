@@ -54,11 +54,31 @@ install → initialize → create a note → create a link → search
 
 ### Install
 
-For a quick user installation with `uv`:
+The default install is lightweight and CPU-friendly:
 
 ```bash
-uv tool install "git+https://github.com/zhuxixi/jfox.git"
+uv tool install "jfox-cli"
+# or from source: uv tool install "git+https://github.com/zhuxixi/jfox.git"
 ```
+
+It includes note CRUD, BM25 keyword search, and the knowledge graph. It does **not** include semantic vector search (no torch/CUDA download; zero nvidia dependencies on CPU-only machines).
+
+#### Semantic search component (optional)
+
+```bash
+# GPU machines
+uv tool install "jfox-cli[embed]"
+
+# CPU-only machines (UV_TORCH_BACKEND=cpu makes uv resolve the CPU torch build, no CUDA)
+UV_TORCH_BACKEND=cpu uv tool install "jfox-cli[embed]"
+
+# pip users (on CPU machines run first: pip install torch --index-url https://download.pytorch.org/whl/cpu)
+pip install "jfox-cli[embed]"
+```
+
+#### Upgrading from 1.x
+
+Starting with 2.0, the default install no longer bundles the semantic search component. An in-place upgrade (pip/uv do not uninstall existing packages) usually keeps working unchanged; after rebuilding an environment, jfox prints the same install hint the first time a semantic feature is used. After installing the component, run `jfox index rebuild` to backfill the semantic index.
 
 For local development, see [Installation and Development](#installation-and-development).
 
@@ -281,7 +301,7 @@ For the current per-skill directory inventory, see the [generated plugin skill i
 ```bash
 git clone https://github.com/zhuxixi/jfox.git
 cd jfox
-uv sync --extra dev
+uv sync --extra dev --extra embed
 ```
 
 Verify the installation:
