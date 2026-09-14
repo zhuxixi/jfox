@@ -40,7 +40,7 @@ def _normalize_wiki_link_title(link_text: str) -> str:
 
 
 def _strip_wiki_link_exclusions(text: str) -> str:
-    """移除不应参与 wiki-link 匹配的 Markdown 区域（fenced code block、HTML 注释）。
+    """移除不应参与 wiki-link 匹配的 Markdown 区域（fenced code block、HTML 注释、inline code）。
 
     这是轻量级处理，覆盖最常见的误匹配场景；不保证解析所有 Markdown 边界情况。
     """
@@ -48,6 +48,8 @@ def _strip_wiki_link_exclusions(text: str) -> str:
     text = re.sub(r"```[\s\S]*?```", "", text)
     # HTML 注释
     text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    # inline code（反引号 span；须最后处理，避免吃掉 fenced 边界）
+    text = re.sub(r"`[^`]+`", "", text)
     return text
 
 
