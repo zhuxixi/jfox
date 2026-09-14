@@ -105,3 +105,26 @@ class TestLiteralStripped:
         # 剥离区域正文原样落盘（解析剥离 ≠ 落盘剥离）
         assert "`[[剥离目标笔记]]`" in n.content
         assert "示例 [[剥离目标笔记]] 在 fenced 内" in n.content
+
+
+class TestRebuildConsistency:
+    """rebuild 与 edit/add 规则一致（A8）"""
+
+    def test_rebuild_dedup_and_strip_consistent(self, cli_fast):
+        """同一正文：rebuild 产出与 add 一致（去重 + 剥离）"""
+        t = cli_fast.add("T", title="一致性目标", note_type="permanent")
+        target_id = t.data["note"]["id"]
+
+        content = "引用 [[一致性目标]] 两次 [[一致性目标]]，行内 `[[一致性目标]]` 不解析"
+        r = cli_fast.add(content, title="一致性源", note_type="permanent")
+        src_path = r.data["note"]["filepath"]
+        assert _load_note(src_path).links == [target_id]
+
+        # 手动污染 links 字段后 rebuild 应从正文解析恢复出相同结果
+        n = _load_note(src_path)
+        n.links = []
+        Path(src_path).write_text(n.to_markdown(), encoding="utf-8")
+
+        rb = cli_fast.index_rebuild(backlinks=True)
+        assert rb.success
+        assert _load_note(src_path).links == [target_id]

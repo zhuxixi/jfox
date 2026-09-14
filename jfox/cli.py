@@ -404,18 +404,15 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     unresolved: List[str] = []
 
     for n in notes:
-        wiki_links = extract_wiki_links(n.content)
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id and target_id in note_by_id:
-                # 过滤自链接，避免笔记指向自身
-                if target_id == n.id:
-                    continue
-                # 避免同一笔记内重复链接同一目标
-                if target_id not in parsed_links[n.id]:
-                    parsed_links[n.id].append(target_id)
+        # 统一解析规则（剥离→自链过滤→去重，见 #511）
+        parsed, unres = resolve_wiki_links(n.content, self_id=n.id)
+        for target_id in parsed:
+            # 存在性对账兜底：索引命中但文件系统无此笔记时视为悬空
+            if target_id in note_by_id:
+                parsed_links[n.id].append(target_id)
             else:
-                unresolved.append(link_text)
+                unresolved.append(target_id)
+        unresolved.extend(unres)
 
     # 第二阶段：合并现有 forward links 与解析出的 links，然后重新计算 backlinks
     merged_links: Dict[str, List[str]] = {}
