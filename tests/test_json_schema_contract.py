@@ -108,6 +108,7 @@ class TestContractList:
     # command ids that accept no --json option (their args carry the format flag)
     NO_EXTRA_FLAGS = {
         "fragments-list",
+        "candidates-list",
         "auto-summary-status",
         "auto-summary-scan",
         "backup-status",
@@ -147,6 +148,8 @@ class TestContractList:
         # --- Task 6: prompts ---
         ("prompts-list", ["prompts", "list"], False),
         ("prompts-status", ["prompts", "status"], False),
+        # --- Task 8: candidates ---
+        ("candidates-list", ["candidates", "list", "--format", "json"], False),
         # --- Task 7: bookshelf/auto-summary/backup ---
         ("bookshelf-list", ["bookshelf", "list"], False),
         ("auto-summary-status", ["auto-summary", "status", "--format", "json"], False),

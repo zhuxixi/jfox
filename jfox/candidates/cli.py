@@ -60,9 +60,10 @@ def show_cmd(
         if output_format == "json":
             # content 字段用纯正文（note.content），不含 frontmatter（避免与 top-level
             # 字段重复）。to_dict() 会把 content 截断到 200 字符，这里用完整正文覆盖。
+            # #502 C1f：顶层 success 布尔；to_dict() 无 success 键，展开无冲突
             data = note.to_dict()
             data["content"] = note.content
-            typer.echo(_json.dumps(data, ensure_ascii=False, indent=2))
+            typer.echo(_json.dumps({"success": True, **data}, ensure_ascii=False, indent=2))
             return
 
         # 默认输出完整原始 markdown（与 jfox show 一致）。
@@ -104,8 +105,13 @@ def list_cmd(
             raise typer.Exit(code=1)
 
         if output_format == "json":
+            # #502 C1f：顶层 success 布尔，与全库契约一致
             typer.echo(
-                _json.dumps({"candidates": rows, "total": len(rows)}, ensure_ascii=False, indent=2)
+                _json.dumps(
+                    {"success": True, "candidates": rows, "total": len(rows)},
+                    ensure_ascii=False,
+                    indent=2,
+                )
             )
             return
 
