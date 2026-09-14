@@ -14,11 +14,13 @@ jfox CLI 27 个顶层命令 + 9 个 typer 子应用、50+ JSON 输出点，成�
 ## 2. 目标与非目标
 
 **目标**：
+
 1. agent/脚本一条规则分流所有命令：顶层 `d["success"]` 布尔判断成败。
 2. 错误信息永远可从 stdout JSON 拿到：`{success: false, error: "..."}` + 退出码 1。
 3. schema 有文档（`docs/json-schemas.md`）。
 
 **非目标**：
+
 - 不动实体字段位置（`note` 嵌套 / `show` 平铺 / `results`/`notes` 列表键保持现状——留给未来 2.0 纯 envelope）。
 - 不引入 `schema_version` / `command` / `data` 字段。
 - 不改 `--format` 非 json 值静默走默认输出（KB 确认 wontfix-by-design）。
@@ -55,6 +57,7 @@ jfox CLI 27 个顶层命令 + 9 个 typer 子应用、50+ JSON 输出点，成�
 统一规则：JSON 输出模式下任何错误路径输出 `{"success": false, "error": "<message>"}` + `raise typer.Exit(1)`。
 
 修复清单（盘点确认；调研复查修正：`delete` 入链守卫的 JSON 分支**已合规**——已有 `{success:false, error, references}` + Exit(1)，console.print 只是 table 分支，不修）：
+
 1. `kb`：缺 name / KB 不存在 / 无默认 KB / 路径越界分支仅 console
 2. `status`：generic except 仅 console（L1109-1112）
 3. `template`：全部错误分支仅 console
@@ -87,6 +90,7 @@ result = {
 ### C6 新文档 `docs/json-schemas.md`
 
 结构：
+
 1. 分流规则：顶层 `success` 布尔判断成败；失败时 `error` 字符串 + 退出码 1；成功时实体字段位置见各命令条目
 2. 每命令条目表：命令 | 成功顶层字段 | 实体字段位置 | 失败形状 | 示例 JSON
 3. 覆盖全部 27 顶层命令 + 9 子应用命令

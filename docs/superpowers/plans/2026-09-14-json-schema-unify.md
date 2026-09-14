@@ -37,9 +37,11 @@
 ### Task 1: Contract test scaffolding (A1/A2 basis)
 
 **Files:**
+
 - Create: `tests/test_json_schema_contract.py`
 
 **Interfaces:**
+
 - Consumes: `tests/utils/jfox_cli.py` `ZKCLI` (via existing `cli` fixture from conftest), `tests/conftest.py` fixtures `cli`, `temp_kb`
 - Produces: `assert_json_shape(stdout: str, success_expected: bool) -> dict`, `EXPECTED_SUCCESS_COMMANDS` list, `_run_json(cli, *args) -> subprocess.CompletedProcess` — later tasks only append entries to `EXPECTED_SUCCESS_COMMANDS`; no other changes to this file except Task 6/7 additions noted there.
 
@@ -125,10 +127,12 @@ git commit -m "test: add json schema contract harness for #502"
 ### Task 2: Main CLI query commands emit success (C1a → A1)
 
 **Files:**
+
 - Modify: `jfox/cli.py` — search (~L805), status (~L1049), list (~L1147), show (~L1270), refs (3 result dicts ~L1307/L1333/L1394 region), query (~L2022), graph (3 branches ~L2089/L2128/L2148), daily (~L2226), inbox (~L2296), suggest-links (~L2331), bulk-import (~L3171), check (~L3564)
 - Modify: `tests/test_json_schema_contract.py` — add `EXPECTED_SUCCESS_COMMANDS` and parameterized tests
 
 **Interfaces:**
+
 - Consumes: Task 1 helpers
 - Produces: query-class commands contract-green; `EXPECTED_SUCCESS_COMMANDS` list that Tasks 3-8 extend
 
@@ -208,17 +212,29 @@ print(OutputFormatter.to_json({"success": True, **result}))
 ```
 
 Sites (anchor → wrapping):
+
 1. `search` — `if output_format == "json": print(OutputFormatter.to_json(result))` after the `"results": results` dict (~L812)
+
 2. `status` — same OutputFormatter site after `"backend"` dict (~L1067). ⚠️ this result also feeds yaml branch — wrap at print site only
+
 3. `list` — OutputFormatter site after `"notes": data` (~L1152). ⚠️ same wrap-at-print rule
+
 4. `show` — `print(output_json(n.to_show_dict(raw_markdown=raw)))` (~L1270) → `print(output_json({"success": True, **n.to_show_dict(raw_markdown=raw)}))`
+
 5. `refs` default — `result = {"notes": notes_with_links}` print site (~L1450)
+
 6. `refs --search` — `result = {"query": search, "matches": ...}` print site (~L1335)
+
 7. `refs --note` — `result = {"note": {...}, "forward_links": ...}` print site (~L1396 region)
+
 8. `query` — `"results"`/`"semantic_results"` result print (~L2024)
+
 9. `graph --stats` — `result = {"total_nodes": ...}` print (~L2102)
+
 10. `graph --orphans` — `result = {"orphans": orphans_list}` print (~L2130)
+
 11. `graph --note` — `"related"` result print (~L2152) — needs a note id; contract test covers via `refs-default` style: add `("graph-note", ["graph", "--note", "{note_id}"], True)` to the list in Step 1
+
 12. `daily` (~L2236), `inbox` (~L2306), `suggest-links` (~L2340), `bulk-import` (~L3171: `print(output_json(result))` → `{"success": True, **result}`), `check` (~L3564: `print(output_json({"total": len(issues), "issues": issues}))` → `print(output_json({"success": True, "total": len(issues), "issues": issues}))`)
 
 (That is 16 print sites total — wrap every one; the list above groups near-identical ones.)
@@ -249,10 +265,12 @@ git commit -m "feat(cli): emit top-level success on query-class json output (#50
 ### Task 3: index/kb action branches + model download purity (C1b/C2a → A1/A2)
 
 **Files:**
+
 - Modify: `jfox/cli.py` — `index` action branches `status`/`bm25-status`/`verify`, `kb` list/current/info JSON prints, `kb` error branches (missing name / KB not found / no default KB / path escape), `model download`
 - Modify: `tests/test_json_schema_contract.py` — extend list + error-shape tests
 
 **Interfaces:**
+
 - Consumes: Task 1/2 helpers
 - Produces: `kb`-subcommand error JSON contract: `{"success": false, "error": str}` + exit 1
 
@@ -335,8 +353,11 @@ Also fix `status` generic except (L1109-1112) — note the command layer receive
 - [ ] **Step 5: Implement model download purity (C2a)**
 
 In `model download` (~L3465-3485):
+
 1. Move `console.print(f"[yellow]准备下载模型: ...")` into the non-json branch (it pollutes stdout in json mode).
+
 2. Change `console.print(output_json(result))` → `print(output_json(result))` (Rich console may wrap/escape JSON).
+
 3. Wrap the whole body in try/except with the Exit-first pattern:
 
 ```python
@@ -369,10 +390,12 @@ git commit -m "feat(cli): success on index/kb json, kb+model error json purity (
 ### Task 4: add top-level id/title (C3 → A3)
 
 **Files:**
+
 - Modify: `jfox/cli.py` — `_add_note_impl` result dict (~L632)
 - Modify: `tests/test_json_schema_contract.py` — extend smoke test
 
 **Interfaces:**
+
 - Consumes: Task 1 harness
 - Produces: `add --json` top-level `id`/`title` == `note.id`/`note.title`
 
@@ -427,11 +450,13 @@ git commit -m "feat(add): top-level id/title shortcuts in json output (#502 C3)"
 ### Task 5: template + fragments: success & error JSON (C1c/C2b → A1/A2)
 
 **Files:**
+
 - Modify: `jfox/template_cli.py` — list/show json sites + error branches
 - Modify: `jfox/fragment/cli.py` — list/show json sites + error branches
 - Modify: `tests/test_json_schema_contract.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 harness
 - Produces: contract entries for template/fragments
 
@@ -466,10 +491,12 @@ Expected: 3 success entries FAIL (missing success); 2 error tests FAIL (non-JSON
 - [ ] **Step 3: Implement template_cli.py**
 
 1. `list` json site (~L74): `print(json.dumps(result, ...))` → `print(json.dumps({"success": True, **result}, ensure_ascii=False, indent=2))`
+
 2. `show` json site (~L142): same wrap.
+
 3. `show` not-found branch (~L124-127): JSON output before Exit:
 
-```python
+    ```python
         if not template:
             if json_output:
                 print(json.dumps(
@@ -481,15 +508,18 @@ Expected: 3 success entries FAIL (missing success); 2 error tests FAIL (non-JSON
                 if available:
                     console.print(f"[dim]Available: {', '.join(available)}[/dim]")
             raise typer.Exit(1)
-```
+    ```
 
 4. `list` generic except (~L105): add `if output_format == "json": print(json.dumps({"success": False, "error": str(e)}, ...))` before the console print, keep Exit(1).
 
 - [ ] **Step 4: Implement fragment/cli.py**
 
 1. `list` json site (~L43): `_json.dumps({"fragments": rows, "total": len(rows)}, ...)` → `_json.dumps({"success": True, "fragments": rows, "total": len(rows)}, ...)`
+
 2. `list` read-failure (~L37): add JSON branch (mirror template pattern; gate on `output_format == "json"`).
+
 3. `show` output (~L79): `_json.dumps(row, ...)` → `_json.dumps({"success": True, **row}, ...)` (show is JSON-only).
+
 4. `show` error branches (~L72-77): JSON-only command → always JSON error:
 
 ```python
@@ -517,10 +547,12 @@ git commit -m "feat(template,fragments): success flag and json error branches (#
 ### Task 6: prompts: success, error JSON, bare-array wrap (C1d/C2c/C5a → A1/A2/A5)
 
 **Files:**
+
 - Modify: `jfox/prompts/cli.py` — list/show/status/drain/backfill/judge/config json sites; action-command error branches (~L326-336/366-376/405-415 region)
 - Modify: `tests/test_json_schema_contract.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 harness
 - Produces: `prompts list` wrapped shape `{success, items}`
 
@@ -547,10 +579,15 @@ Expected: 3 FAIL (list: top-level array raises isinstance assertion; status: mis
 - [ ] **Step 3: Implement**
 
 1. `list` (~L76): `print(json.dumps(rows, ...))` → `print(json.dumps({"success": True, "items": rows}, ensure_ascii=False, indent=2))`
+
 2. `status` (~L169): wrap its `data` dict with success.
+
 3. `show` (~L123): wrap `out` dict; not-found already JSON-shaped — verify it also has success:false (it does per inventory) and leave.
+
 4. `drain` (~L200), `backfill` (~L225), `judge` (~L279): wrap result/data dicts.
+
 5. `config` (~L111 site with capture/judge): wrap.
+
 6. Action commands (promote/unresolved/resolve-unresolved/ignore/retry) error branches (~L326-415): the pattern at these sites is already `json.dumps({...})` in json mode for failures — audit each: ensure failure JSON includes `"success": False` and `"error"`; where the current failure JSON lacks `error`, add it (message from the service result if available, else generic). Success side of action commands prints console text only — leave as-is (out of #502 scope: they have no `--json` success output today; wrapping a new success JSON would be additive but is NOT required by the spec — do not gold-plate).
 
 - [ ] **Step 4: Run + commit**
@@ -568,12 +605,14 @@ git commit -m "feat(prompts): success flag, json errors, list bare-array wrap (#
 ### Task 7: bookshelf + auto-summary + backup (C1e/C2d/C4/C5b → A1/A2/A4/A5)
 
 **Files:**
+
 - Modify: `jfox/bookshelf/cli.py` — list (~L166), show json site, remove (~L289/L294)
 - Modify: `jfox/auto_summary/cli.py` — status (~L109 + progress dict ~L100), scan, run (~L353-374)
 - Modify: `jfox/backup/cli.py` — status, list (~L197), verify (~L220)
 - Modify: `tests/test_json_schema_contract.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 harness
 - Produces: `auto-summary run` shape `{success: bool, succeeded: int, ...}`; `backup list` `{success, items}`; `backup verify` `{success, snapshot, ok}`
 
@@ -636,20 +675,27 @@ Expected: FAIL entries as described.
 - [ ] **Step 4: Implement bookshelf**
 
 1. `list` (~L166): `_emit_json({"books": rows, "total": len(rows)})` → `_emit_json({"success": True, "books": rows, "total": len(rows)})`
+
 2. `show` json site (find `_emit_json(book_meta...)` / `to_dict()` print): wrap with success.
+
 3. `show --page` shape `{slug, page, content}`: wrap with success.
+
 4. `remove` (~L289/294): add `"success": True` to both `{slug, removed}` dicts.
 
 - [ ] **Step 5: Implement auto_summary**
 
 1. `run` json (~L355): `"success": report.success` → `"success": True, "succeeded": report.success`
+
 2. `status` progress dict (~L100): `"success": success` → `"succeeded": success`; add `"success": True` to the top-level `_fmt(json_data={...})` dict (~L112).
+
 3. `scan` json site: wrap with success.
 
 - [ ] **Step 6: Implement backup**
 
 1. `list` (~L197): `_fmt(json_data=snaps, fmt="json")` → `_fmt(json_data={"success": True, "items": snaps}, fmt="json")`
+
 2. `verify` (~L220): `{"snapshot": str(p), "ok": ok}` → `{"success": ok, "snapshot": str(p), "ok": ok}` (keep ok for compat; success carries the contract; exit code already correct at ~L223)
+
 3. `status` json site: wrap with success.
 
 - [ ] **Step 7: Run + commit**
@@ -669,10 +715,12 @@ git commit -m "feat(bookshelf,auto-summary,backup): success flag, run rename, li
 ### Task 8: candidates show/list (C1f → A1)
 
 **Files:**
+
 - Modify: `jfox/candidates/cli.py` — show/list json sites
 - Modify: `tests/test_json_schema_contract.py`
 
 **Interfaces:**
+
 - Consumes: Task 1 harness
 - Produces: candidates contract entries
 
@@ -693,7 +741,9 @@ Expected: FAIL missing success.
 - [ ] **Step 3: Implement**
 
 1. `list` json site: wrap `{"candidates": ..., "total": ...}` with success.
+
 2. `show` json site (`typer.echo(json.dumps(note.to_dict()...))`): wrap `{"success": True, **note_dict}`.
+
 3. Do NOT touch promote/reject (already have success; their failure-without-error quirk is out of #502 scope — noted in plan deliberately).
 
 - [ ] **Step 4: Run + commit**
@@ -711,9 +761,11 @@ git commit -m "feat(candidates): success flag on show/list json (#502 C1f)"
 ### Task 9: docs/json-schemas.md (C6 → U1 support)
 
 **Files:**
+
 - Create: `docs/json-schemas.md`
 
 **Interfaces:**
+
 - Consumes: final shapes from Tasks 2-8
 - Produces: the user-facing schema doc (U1 verifies against real output)
 
@@ -778,9 +830,11 @@ git commit -m "docs: add json output schema reference (#502 C6)"
 ### Task 10: Full regression + acceptance cross-check (A1-A5)
 
 **Files:**
+
 - Modify: none (verification task)
 
 **Interfaces:**
+
 - Consumes: everything
 - Produces: acceptance evidence recorded in the PR description
 
