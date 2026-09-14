@@ -73,7 +73,7 @@ def list_cmd(
     store = _get_store(kb)
     rows = store.list_prompts(session_id=session, limit=limit)
     if format == "json":
-        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": True, "items": rows}, ensure_ascii=False, indent=2))
         return
     table = Table(title=f"User Prompts（{len(rows)} 条）")
     table.add_column("ID", style="cyan")
@@ -120,7 +120,7 @@ def show_cmd(
     if format == "json":
         out = dict(p)
         out["judgment"] = j
-        print(json.dumps(out, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": True, **out}, ensure_ascii=False, indent=2))
         return
     if full:
         console.print(p.get("prompt") or "")
@@ -166,7 +166,7 @@ def status_cmd(
         "active_unresolved": active_unresolved,
     }
     if format == "json":
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": True, **data}, ensure_ascii=False, indent=2))
         return
     table = Table(title="Prompt 状态")
     table.add_column("指标")
@@ -197,7 +197,7 @@ def drain_cmd(
     store = _get_store(kb)
     result = drain_spool(store=store)
     if format == "json":
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": True, **result}, ensure_ascii=False, indent=2))
         return
     console.print(
         f"drain 完成：导入 {result.get('imported', 0)} 条，"
@@ -222,7 +222,7 @@ def backfill_cmd(
     store = _get_store(kb)
     result = backfill_from_fragments(store=store, dry_run=dry_run)
     if format == "json":
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": True, **result}, ensure_ascii=False, indent=2))
         return
     console.print(
         f"backfill{'（dry-run）' if dry_run else ''}："
@@ -276,7 +276,7 @@ def judge_cmd(
         "items": report.items,
     }
     if format == "json":
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": True, **data}, ensure_ascii=False, indent=2))
         return
     console.print(
         f"judge 完成：处理 {report.total} 条，"
@@ -514,7 +514,15 @@ def config_cmd(
     gm = get_global_config_manager()
     if set_key:
         if "=" not in set_key:
-            console.print("[red]--set 需要 key=value 格式[/red]")
+            if format == "json":
+                print(
+                    json.dumps(
+                        {"success": False, "error": "--set 需要 key=value 格式"},
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                console.print("[red]--set 需要 key=value 格式[/red]")
             raise typer.Exit(1)
         key, _, value = set_key.partition("=")
         # 数值字段自动转换
@@ -528,14 +536,23 @@ def config_cmd(
         judge_fields = {f.name for f in dataclasses.fields(type(gm.get_prompt_judge_config()))}
         capture_fields = {f.name for f in dataclasses.fields(type(gm.get_prompt_capture_config()))}
         if key not in judge_fields and key not in capture_fields:
-            console.print(f"[red]未知配置项：{key}[/red]（合法字段见 jfox prompts config 输出）")
+            msg = f"未知配置项：{key}（合法字段见 jfox prompts config 输出）"
+            if format == "json":
+                print(json.dumps({"success": False, "error": msg}, ensure_ascii=False))
+            else:
+                console.print(f"[red]{msg}[/red]")
             raise typer.Exit(1)
         if key in judge_fields:
             ok = gm.update_prompt_judge_config(**{key: value})
         else:
             ok = gm.update_prompt_capture_config(**{key: value})
         if not ok:
-            console.print(f"[red]设置失败：{key}[/red]")
+            if format == "json":
+                print(
+                    json.dumps({"success": False, "error": f"设置失败：{key}"}, ensure_ascii=False)
+                )
+            else:
+                console.print(f"[red]设置失败：{key}[/red]")
             raise typer.Exit(1)
         console.print(f"[green]{key} = {value}[/green]")
         return
@@ -549,7 +566,7 @@ def config_cmd(
         "judge": dataclasses.asdict(judge),
     }
     if format == "json":
-        print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+        print(json.dumps({"success": True, **data}, ensure_ascii=False, indent=2, default=str))
         return
     table = Table(title="Prompts 配置")
     table.add_column("模块")

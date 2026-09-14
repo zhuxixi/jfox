@@ -129,6 +129,9 @@ class TestContractList:
         ("template-list", ["template", "list", "--format", "json"], False),
         ("template-show", ["template", "show", "quick"], False),
         ("fragments-list", ["fragments", "list", "--format", "json"], False),
+        # --- Task 6: prompts ---
+        ("prompts-list", ["prompts", "list"], False),
+        ("prompts-status", ["prompts", "status"], False),
     ]
 
     @pytest.mark.parametrize(
@@ -152,8 +155,12 @@ class TestContractList:
         assert r.returncode == 0, f"stdout: {r.stdout[:300]}"
         assert_json_shape(r.stdout, True)
 
+    def test_prompts_list_is_object_with_items(self, cli):
+        # prompts list 曾输出裸 JSON 数组；C5a 包装为 {success, items}
+        r = _run_json(cli, "prompts", "list")
+        data = assert_json_shape(r.stdout, True)
+        assert isinstance(data["items"], list)
 
-class TestErrorContract:
     """Error branches must emit {success:false, error} JSON + exit 1 (#502 C2a)."""
 
     def test_kb_switch_nonexistent_outputs_json_error(self, cli):
@@ -182,5 +189,11 @@ class TestErrorContract:
     def test_fragments_show_missing_json_error(self, cli):
         # fragments show 是纯 JSON 命令：无 --json/--kb 选项，错误分支也必须输出 JSON
         r = _run_json(cli, "fragments", "show", "999999999", with_kb=False, append_json=False)
+        assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
+        assert_json_shape(r.stdout, False)
+
+    def test_prompts_config_bad_set_json_error(self, cli):
+        # config --set 未知 key：该命令有 JSON 输出模式，错误分支也必须 JSON（C2 精神）
+        r = _run_json(cli, "prompts", "config", "--set", "unknown-key-502=x", with_kb=False)
         assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
         assert_json_shape(r.stdout, False)
