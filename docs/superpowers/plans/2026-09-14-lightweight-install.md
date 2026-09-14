@@ -45,8 +45,20 @@
 ```python
 """A3 (#519): 打包结构静态断言——核心依赖不含 sentence-transformers。"""
 
-import tomllib
+import sys
 from pathlib import Path
+
+import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 无 stdlib tomllib；用例已由下方 skipif 拦截
+    tomllib = None  # type: ignore[assignment]
+
+pytestmark = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="tomllib requires Python 3.11+ (#519 A3 runs on 3.11+)",
+)
 
 PYPROJECT = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
 
@@ -143,7 +155,7 @@ Expected: PASS（3 个用例）
 
 ```bash
 uv venv .venv-noembed
-uv pip install --python .venv-noembed/bin/python -e ".[dev]"
+UV_PROJECT_ENVIRONMENT=.venv-noembed uv sync --extra dev
 .venv-noembed/bin/python -c "import importlib.util; assert importlib.util.find_spec('sentence_transformers') is None; print('noembed OK')"
 .venv-noembed/bin/python -m pytest tests/unit/test_pyproject_embed_extra.py -v
 ```

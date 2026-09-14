@@ -1,8 +1,19 @@
 """A3 (#519): 打包结构静态断言——核心依赖不含 sentence-transformers。"""
 
+import sys
 from pathlib import Path
 
-import tomllib
+import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 无 stdlib tomllib；用例已由下方 skipif 拦截
+    tomllib = None  # type: ignore[assignment]
+
+pytestmark = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="tomllib requires Python 3.11+ (#519 A3 runs on 3.11+)",
+)
 
 PYPROJECT = Path(__file__).resolve().parent.parent.parent / "pyproject.toml"
 
