@@ -65,3 +65,49 @@ class TestAlreadyCompliantSmoke:
         assert r.returncode == 0
         data = assert_json_shape(r.stdout, True)
         assert data["note"]["id"]  # #483 shape intact
+
+
+class TestContractList:
+    """Every entry: (id, cmd-args-after-'jfox', needs_existing_note).
+
+    Commands are added here by the task that fixes them; the list is the
+    contract. Run with no setup beyond an initialized temp KB unless
+    needs_existing_note (then a note is created first via cli fixture).
+    """
+
+    EXPECTED_SUCCESS_COMMANDS = [
+        # --- Task 2: main CLI query class ---
+        ("search", ["search", "任意词"], False),
+        ("status", ["status"], False),
+        ("list", ["list"], False),
+        ("show", ["show", "{note_id}"], True),
+        ("refs-default", ["refs"], False),
+        ("query", ["query", "任意词"], False),
+        ("graph-stats", ["graph", "--stats"], False),
+        ("graph-orphans", ["graph", "--orphans"], False),
+        ("graph-note", ["graph", "--note", "{note_id}"], True),
+        ("daily", ["daily"], False),
+        ("inbox", ["inbox"], False),
+        ("suggest-links", ["suggest-links", "一段内容"], False),
+        (
+            "bulk-import",
+            ["bulk-import", str(Path(__file__).parent / "fixtures" / "bulk_import_notes.json")],
+            False,
+        ),
+        ("check", ["check"], False),
+    ]
+
+    @pytest.mark.parametrize(
+        "cmd_id,args,needs_note",
+        EXPECTED_SUCCESS_COMMANDS,
+        ids=[c[0] for c in EXPECTED_SUCCESS_COMMANDS],
+    )
+    def test_success_has_top_level_success(self, cli, cmd_id, args, needs_note):
+        note_id = None
+        if needs_note:
+            created = _run_json(cli, "add", "契约前置正文", "--title", f"Contract-Setup-{cmd_id}")
+            note_id = assert_json_shape(created.stdout, True)["note"]["id"]
+        final_args = [a.format(note_id=note_id) for a in args]
+        r = _run_json(cli, *final_args)
+        assert r.returncode == 0, f"stdout: {r.stdout[:300]}"
+        assert_json_shape(r.stdout, True)

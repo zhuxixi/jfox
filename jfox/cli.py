@@ -810,7 +810,7 @@ def _search_impl(
     }
 
     if output_format == "json":
-        print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "table":
         mode_display = {
             "hybrid": "Hybrid (BM25 + Semantic)",
@@ -1065,7 +1065,7 @@ def _status_impl(output_format: str, json_output: bool):
 
     # 根据格式输出
     if output_format == "json":
-        print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "yaml":
         print(OutputFormatter.to_yaml(result))
     elif output_format == "table":
@@ -1150,7 +1150,7 @@ def _list_impl(
     }
 
     if output_format == "json":
-        print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "table":
         title = f"Notes ({len(notes)} total)"
         if archived_only:
@@ -1266,8 +1266,8 @@ def _show_impl(note_ref: str, output_format: str = "markdown"):
     raw = n.filepath.read_text(encoding="utf-8")
 
     if output_format == "json":
-        # 输出结构化 JSON，便于脚本和 LLM 消费
-        print(output_json(n.to_show_dict(raw_markdown=raw)))
+        # 输出结构化 JSON，便于脚本和 LLM 消费（#502: 顶层 success 分流字段）
+        print(output_json({"success": True, **n.to_show_dict(raw_markdown=raw)}))
     else:
         # 默认输出原始 Markdown 内容（含 YAML frontmatter）
         print(raw)
@@ -1336,7 +1336,7 @@ def _refs_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[bold]Search:[/bold] '{search}'\n")
             if matches:
@@ -1402,7 +1402,7 @@ def _refs_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[bold]{n.title}[/bold]\n")
 
@@ -1448,7 +1448,7 @@ def _refs_impl(
         result = {"notes": notes_with_links}
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             table = Table(title="Note References")
             table.add_column("ID", style="dim")
@@ -2023,7 +2023,7 @@ def _query_impl(
     }
 
     if json_output:
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         console.print(f"[bold]Query:[/bold] {query_str}")
         console.print(f"[bold]Results:[/bold] {len(enriched_results)}\n")
@@ -2099,7 +2099,7 @@ def _graph_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             table = Table(title="Knowledge Graph Statistics")
             table.add_column("Metric", style="cyan")
@@ -2128,7 +2128,7 @@ def _graph_impl(
         result = {"orphans": orphans_list}
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
             for o in orphans_list:
@@ -2150,7 +2150,7 @@ def _graph_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")  # type: ignore[union-attr]
 
@@ -2237,7 +2237,7 @@ def _daily_impl(
     }
 
     if output_format == "json":
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
         if daily_notes:
@@ -2308,7 +2308,7 @@ def _inbox_impl(
     }
 
     if output_format == "json":
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         console.print(f"[bold]Inbox ({len(all_notes)}):[/bold]\n")
         for m in all_notes:
@@ -2335,7 +2335,7 @@ def _suggest_links_impl(
     }
 
     if output_format == "json":
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         if suggestions:
             console.print(f"[bold]Suggested links (confidence > {threshold}):[/bold]\n")
@@ -3155,7 +3155,8 @@ def bulk_import(
         with open(file_path, "r", encoding="utf-8") as f:
             notes_data = json.load(f)
 
-        console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
+        if not json_output:
+            console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
 
         from .config import use_kb
         from .performance import bulk_import_notes
@@ -3169,7 +3170,7 @@ def bulk_import(
             )
 
         if json_output:
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[green]✓[/green] Imported: {result['imported']}")
             console.print(f"[red]✗[/red] Failed: {result['failed']}")
@@ -3561,7 +3562,7 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
 
     # 输出结果
     if output_format == "json":
-        print(output_json({"total": len(issues), "issues": issues}))
+        print(output_json({"success": True, "total": len(issues), "issues": issues}))
     else:
         if not issues:
             console.print("No issues found. Knowledge base is clean.")
