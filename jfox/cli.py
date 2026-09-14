@@ -328,9 +328,7 @@ def find_note_id_by_title_or_id(
     return None
 
 
-def resolve_wiki_links(
-    content: str, self_id: Optional[str] = None
-) -> Tuple[List[str], List[str]]:
+def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[List[str], List[str]]:
     """统一解析正文 wiki links：先剥离代码块/注释，再解析，过滤自链并去重。
 
     规则（edit/add/rebuild 三路径共用，杜绝规则漂移）：
