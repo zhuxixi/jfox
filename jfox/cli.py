@@ -12,7 +12,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -328,6 +328,42 @@ def find_note_id_by_title_or_id(
     return None
 
 
+def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[List[str], List[str]]:
+    """统一解析正文 wiki links：先剥离代码块/注释，再解析，过滤自链并去重。
+
+    规则（edit/add/rebuild 三路径共用，杜绝规则漂移）：
+    1. _strip_wiki_link_exclusions 剥离 fenced code block / HTML 注释 / inline code
+    2. find_note_id_by_title_or_id 三级匹配（精确 ID → 精确标题 → 标题包含）
+    3. target_id == self_id 跳过（自链过滤）
+    4. resolved 去重（保序）
+    5. 找不到目标的进 unresolved
+
+    Args:
+        content: 笔记正文（原文，不会被修改）
+        self_id: 当前笔记 ID，用于自链过滤；add 场景传 None（新笔记尚未入索引，
+                 find_note_id_by_title_or_id 不可能命中自身）
+
+    Returns:
+        (resolved_links, unresolved_titles)
+    """
+    from .note_index import _strip_wiki_link_exclusions
+
+    stripped = _strip_wiki_link_exclusions(content)
+    wiki_links = extract_wiki_links(stripped)
+    resolved_links: List[str] = []
+    unresolved: List[str] = []
+    for link_text in wiki_links:
+        target_id = find_note_id_by_title_or_id(link_text)
+        if target_id:
+            if target_id == self_id:
+                continue
+            if target_id not in resolved_links:
+                resolved_links.append(target_id)
+        else:
+            unresolved.append(link_text)
+    return resolved_links, unresolved
+
+
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     """重新计算所有笔记的 links 和 backlinks。
 
@@ -368,18 +404,15 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     unresolved: List[str] = []
 
     for n in notes:
-        wiki_links = extract_wiki_links(n.content)
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id and target_id in note_by_id:
-                # 过滤自链接，避免笔记指向自身
-                if target_id == n.id:
-                    continue
-                # 避免同一笔记内重复链接同一目标
-                if target_id not in parsed_links[n.id]:
-                    parsed_links[n.id].append(target_id)
+        # 统一解析规则（剥离→自链过滤→去重，见 #511）
+        parsed, unres = resolve_wiki_links(n.content, self_id=n.id)
+        for target_id in parsed:
+            # 存在性对账兜底：索引命中但文件系统无此笔记时视为悬空
+            if target_id in note_by_id:
+                parsed_links[n.id].append(target_id)
             else:
-                unresolved.append(link_text)
+                unresolved.append(target_id)
+        unresolved.extend(unres)
 
     # 第二阶段：合并现有 forward links 与解析出的 links，然后重新计算 backlinks
     merged_links: Dict[str, List[str]] = {}
@@ -516,17 +549,9 @@ def _add_note_impl(
 
         check_add_duplicate(note.derive_note_title(title, content), content)
 
-    # 从内容中提取维基链接
-    wiki_links = extract_wiki_links(content)
-    resolved_links = []
-    unresolved = []
-
-    for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text)
-        if target_id:
-            resolved_links.append(target_id)
-        else:
-            unresolved.append(link_text)
+    # 从内容中提取维基链接（统一规则：剥离→去重，见 #511；
+    # 新笔记尚未入索引不会命中自身，self_id 传 None）
+    resolved_links, unresolved = resolve_wiki_links(content, self_id=None)
 
     # 创建笔记
     new_note = note.create_note(
@@ -1840,19 +1865,9 @@ def _edit_impl(
     if topic is not None:
         n.topic = topic
 
-    # 如果内容被更新，解析 wiki links
+    # 如果内容被更新，解析 wiki links（统一规则：剥离→自链过滤→去重，见 #511）
     if content is not None:
-        wiki_links = extract_wiki_links(content)
-        resolved_links = []
-        unresolved = []
-
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id:
-                resolved_links.append(target_id)
-            else:
-                unresolved.append(link_text)
-
+        resolved_links, unresolved = resolve_wiki_links(content, self_id=n.id)
         n.links = resolved_links
     else:
         unresolved = []

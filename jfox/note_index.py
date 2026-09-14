@@ -40,7 +40,7 @@ def _normalize_wiki_link_title(link_text: str) -> str:
 
 
 def _strip_wiki_link_exclusions(text: str) -> str:
-    """移除不应参与 wiki-link 匹配的 Markdown 区域（fenced code block、HTML 注释）。
+    """移除不应参与 wiki-link 匹配的 Markdown 区域（fenced code block、HTML 注释、inline code）。
 
     这是轻量级处理，覆盖最常见的误匹配场景；不保证解析所有 Markdown 边界情况。
     """
@@ -48,6 +48,8 @@ def _strip_wiki_link_exclusions(text: str) -> str:
     text = re.sub(r"```[\s\S]*?```", "", text)
     # HTML 注释
     text = re.sub(r"<!--[\s\S]*?-->", "", text)
+    # inline code（反引号 span；须最后处理，避免吃掉 fenced 边界）
+    text = re.sub(r"`[^`]+`", "", text)
     return text
 
 
@@ -237,7 +239,7 @@ class NoteIndex:
 
         基于索引中已缓存的文件路径直接读取正文，避免全量加载 Note 对象。
         匹配规则为大小写不敏感的精确标题匹配；frontmatter、 fenced code block、
-        HTML 注释中的 [[...]] 不参与匹配。支持 [[标题|别名]] / [[标题#锚点]] 变体。
+        HTML 注释、inline code 中的 [[...]] 不参与匹配。支持 [[标题|别名]] / [[标题#锚点]] 变体。
 
         注意：与正向解析 find_note_id_by_title_or_id 的“标题包含”子串 fallback 不同，
         反向回填只回填精确标题引用，避免把 [[Foo]] 错误回填到标题为 "Foo Bar" 的笔记。
