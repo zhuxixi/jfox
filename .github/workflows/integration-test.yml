@@ -206,12 +206,12 @@ jobs:
         key: ${{ runner.os }}-sentence-transformers-bge-small-zh-v1.5
 
     - name: Install dependencies
-      run: uv sync --extra dev
+      run: uv sync --extra dev --extra embed
 
     - name: Run core tests
       run: |
         # 只跑核心工作流测试，单进程避免模型加载冲突
-        uv run pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short
+        uv run --extra dev --extra embed pytest tests/test_core_workflow.py tests/test_integration.py -v --timeout=400 --tb=short
       timeout-minutes: ${{ matrix.os == 'windows-latest' && 50 || 25 }}
       env:
         PYTHONIOENCODING: utf-8
@@ -264,12 +264,12 @@ jobs:
         key: ${{ runner.os }}-sentence-transformers-bge-small-zh-v1.5
 
     - name: Install dependencies
-      run: uv sync --extra dev
+      run: uv sync --extra dev --extra embed
 
     - name: Run full test suite
       run: |
         # 全量测试，单进程（避免模型加载问题）
-        uv run pytest tests/ -v --timeout=600 --tb=short
+        uv run --extra dev --extra embed pytest tests/ -v --timeout=600 --tb=short
       timeout-minutes: 60
       env:
         PYTHONIOENCODING: utf-8
