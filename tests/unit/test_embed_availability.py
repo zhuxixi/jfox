@@ -1,6 +1,7 @@
 """A1/A2 (#519): 语义组件可用性探测、缓存与安装提示。"""
 
 import importlib.util
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -103,3 +104,15 @@ class TestHintAndError:
     def test_error_carries_hint(self):
         err = EmbedDependencyMissingError(format_embed_hint("写入语义索引"))
         assert "UV_TORCH_BACKEND" in str(err)
+
+
+class TestLoadRaisesTypedError:
+    def test_load_without_package_raises_typed(self, monkeypatch):
+        # sys.modules 置 None 使 `from sentence_transformers import ...` 抛 ImportError
+        monkeypatch.setitem(sys.modules, "sentence_transformers", None)
+        monkeypatch.setattr("jfox.daemon.process.is_daemon_running", lambda: False)
+
+        backend = eb.EmbeddingBackend(model_name="BAAI/bge-small-zh-v1.5", device="cpu")
+        with pytest.raises(EmbedDependencyMissingError) as exc_info:
+            backend.load()
+        assert "UV_TORCH_BACKEND" in str(exc_info.value)

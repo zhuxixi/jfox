@@ -179,7 +179,12 @@ class EmbeddingBackend:
             return  # daemon 已持有模型，无需本地加载
 
         try:
-            from sentence_transformers import SentenceTransformer
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError as exc:  # #519 轻量化安装：本地语义组件缺失
+                raise EmbedDependencyMissingError(
+                    format_embed_hint("加载本地嵌入模型")
+                ) from exc
 
             # Prefer local model dir; on miss, run ModelDownloader fallback chain
             # (HF -> ModelScope -> curl) before hard-loading via network (#374).
