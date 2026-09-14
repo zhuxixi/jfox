@@ -94,10 +94,25 @@ class TestContractList:
     needs_existing_note (then a note is created first via cli fixture).
     """
 
-    # command ids that accept no --kb option (main CLI kb/fragments families)
-    NO_KB = {"kb-list", "kb-current", "fragments-list"}
+    # command ids that accept no --kb option (main CLI kb/fragments families;
+    # auto-summary/backup sub-apps also have no --kb option)
+    NO_KB = {
+        "kb-list",
+        "kb-current",
+        "fragments-list",
+        "auto-summary-status",
+        "auto-summary-scan",
+        "backup-status",
+        "backup-list",
+    }
     # command ids that accept no --json option (their args carry the format flag)
-    NO_EXTRA_FLAGS = {"fragments-list"}
+    NO_EXTRA_FLAGS = {
+        "fragments-list",
+        "auto-summary-status",
+        "auto-summary-scan",
+        "backup-status",
+        "backup-list",
+    }
 
     EXPECTED_SUCCESS_COMMANDS = [
         # --- Task 2: main CLI query class ---
@@ -132,6 +147,12 @@ class TestContractList:
         # --- Task 6: prompts ---
         ("prompts-list", ["prompts", "list"], False),
         ("prompts-status", ["prompts", "status"], False),
+        # --- Task 7: bookshelf/auto-summary/backup ---
+        ("bookshelf-list", ["bookshelf", "list"], False),
+        ("auto-summary-status", ["auto-summary", "status", "--format", "json"], False),
+        ("auto-summary-scan", ["auto-summary", "scan", "--format", "json"], False),
+        ("backup-status", ["backup", "status", "--format", "json"], False),
+        ("backup-list", ["backup", "list", "--format", "json"], False),
     ]
 
     @pytest.mark.parametrize(
@@ -160,6 +181,20 @@ class TestContractList:
         r = _run_json(cli, "prompts", "list")
         data = assert_json_shape(r.stdout, True)
         assert isinstance(data["items"], list)
+
+    def test_backup_list_is_object_with_items(self, cli):
+        # backup list 曾输出裸 JSON 数组；C5b 包装为 {success, items}
+        r = _run_json(cli, "backup", "list", "--format", "json", with_kb=False, append_json=False)
+        data = assert_json_shape(r.stdout, True)
+        assert isinstance(data["items"], list)
+
+    def test_auto_summary_scan_shape(self, cli):
+        # auto-summary scan --json 顶层 success + pending 列表
+        r = _run_json(
+            cli, "auto-summary", "scan", "--format", "json", with_kb=False, append_json=False
+        )
+        data = assert_json_shape(r.stdout, True)
+        assert isinstance(data.get("pending"), list)
 
 
 class TestErrorContract:
@@ -199,3 +234,30 @@ class TestErrorContract:
         r = _run_json(cli, "prompts", "config", "--set", "unknown-key-502=x", with_kb=False)
         assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
         assert_json_shape(r.stdout, False)
+
+
+class TestAutoSummaryRunShape:
+    def test_run_json_has_bool_success_and_int_succeeded(self, cli, monkeypatch):
+        """run 的 json 分支形状：success=bool，succeeded=int（C4 重命名）。
+
+        run 会触发 claude -p，不能用子进程测；monkeypatch run_once 返回
+        计数型 FakeReport，直接调命令函数断言输出形状。
+        """
+        from jfox.auto_summary import cli as as_cli
+
+        class FakeReport:
+            scanned = processed = skipped = failed = 0
+            success = 3  # int 计数——被重命名的字段
+            items = []
+
+        monkeypatch.setattr(as_cli, "run_once", lambda dry_run: FakeReport())
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            as_cli.run(dry_run=True, output_format="json")
+        data = json.loads(buf.getvalue())
+        assert data["success"] is True  # 布尔
+        assert data["succeeded"] == 3  # 重命名后的计数
+        assert "error" not in data

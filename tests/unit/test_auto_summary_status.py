@@ -80,7 +80,7 @@ class TestProgressJsonOutput:
         assert "progress" in data
         assert data["progress"]["total_scannable"] == 3
         assert data["progress"]["pending"] == 3
-        assert data["progress"]["success"] == 0
+        assert data["progress"]["succeeded"] == 0
         assert "retryable" in data["progress"]  # 新增字段
 
     @patch("jfox.auto_summary.cli.list_session_files")
@@ -124,7 +124,7 @@ class TestProgressJsonOutput:
         data = json.loads(_strip_ansi(result.output))
         p = data["progress"]
         assert p["total_scannable"] == 4
-        assert p["success"] == 1
+        assert p["succeeded"] == 1
         assert p["failed"] == 1  # s2: failed_permanent
         assert p["retryable"] == 1  # s3: failed_transient
         assert p["pending"] == 2  # s3 (retryable) + s4 (无记录)
@@ -171,7 +171,7 @@ class TestProgressJsonOutput:
         data = json.loads(_strip_ansi(result.output))
         p = data["progress"]
         assert p["total_scannable"] == 4
-        assert p["success"] == 1
+        assert p["succeeded"] == 1
         assert p["skipped"] == 1
         # failed_transient 归入 pending（runner 会重试），failed 仅计永久失败
         assert p["failed"] == 0
