@@ -552,17 +552,9 @@ def _add_note_impl(
 
         check_add_duplicate(note.derive_note_title(title, content), content)
 
-    # 从内容中提取维基链接
-    wiki_links = extract_wiki_links(content)
-    resolved_links = []
-    unresolved = []
-
-    for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text)
-        if target_id:
-            resolved_links.append(target_id)
-        else:
-            unresolved.append(link_text)
+    # 从内容中提取维基链接（统一规则：剥离→去重，见 #511；
+    # 新笔记尚未入索引不会命中自身，self_id 传 None）
+    resolved_links, unresolved = resolve_wiki_links(content, self_id=None)
 
     # 创建笔记
     new_note = note.create_note(

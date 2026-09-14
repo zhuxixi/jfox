@@ -55,3 +55,53 @@ class TestEditSelfLink:
         e = cli_fast.edit(r.data["note"]["id"], content="见 [[去重目标]] 再 [[去重目标]]")
         assert e.success
         assert _load_note(src_path).links == [target_id]
+
+
+class TestAddSelfLink:
+    """add 路径（A6/A7）"""
+
+    def test_add_no_false_self_link(self, cli_fast):
+        """A6：add 正文含与自身标题相关的字面量，links 不含自身 ID"""
+        r = cli_fast.add(
+            "说明文字 [[ID|标题]] 示例",
+            title="某机制与 ID canonical 说明",
+            note_type="permanent",
+        )
+        assert r.success
+        note_id = r.data["note"]["id"]
+        n = _load_note(r.data["note"]["filepath"])
+        assert note_id not in n.links
+        assert note_id not in n.backlinks
+
+    def test_add_dedup(self, cli_fast):
+        """A2 链路级：add 正文两次引用同一目标，links 去重"""
+        t = cli_fast.add("T", title="add去重目标", note_type="permanent")
+        target_id = t.data["note"]["id"]
+        r = cli_fast.add(
+            "见 [[add去重目标]] 再 [[add去重目标]]", title="add去重源", note_type="permanent"
+        )
+        assert r.success
+        assert _load_note(r.data["note"]["filepath"]).links == [target_id]
+
+
+class TestLiteralStripped:
+    """字面量剥离（A7）"""
+
+    def test_literal_in_fence_and_inline_not_linked(self, cli_fast):
+        """fenced 块与反引号内的 [[...]] 不进 links；正文原样落盘"""
+        t = cli_fast.add("T", title="剥离目标笔记", note_type="permanent")
+        target_id = t.data["note"]["id"]
+
+        content = (
+            "正常引用 [[剥离目标笔记]]\n\n"
+            "```\n示例 [[剥离目标笔记]] 在 fenced 内\n```\n\n"
+            "行内 `[[剥离目标笔记]]` 示例\n"
+        )
+        r = cli_fast.add(content, title="剥离测试源", note_type="permanent")
+        assert r.success
+        n = _load_note(r.data["note"]["filepath"])
+        # 正常引用解析一次；fenced 与 inline 内的字面量不进 links
+        assert n.links == [target_id]
+        # 剥离区域正文原样落盘（解析剥离 ≠ 落盘剥离）
+        assert "`[[剥离目标笔记]]`" in n.content
+        assert "示例 [[剥离目标笔记]] 在 fenced 内" in n.content
