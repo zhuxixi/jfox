@@ -1876,19 +1876,9 @@ def _edit_impl(
     if topic is not None:
         n.topic = topic
 
-    # 如果内容被更新，解析 wiki links
+    # 如果内容被更新，解析 wiki links（统一规则：剥离→自链过滤→去重，见 #511）
     if content is not None:
-        wiki_links = extract_wiki_links(content)
-        resolved_links = []
-        unresolved = []
-
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id:
-                resolved_links.append(target_id)
-            else:
-                unresolved.append(link_text)
-
+        resolved_links, unresolved = resolve_wiki_links(content, self_id=n.id)
         n.links = resolved_links
     else:
         unresolved = []
