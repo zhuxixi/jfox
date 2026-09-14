@@ -161,6 +161,8 @@ class TestContractList:
         data = assert_json_shape(r.stdout, True)
         assert isinstance(data["items"], list)
 
+
+class TestErrorContract:
     """Error branches must emit {success:false, error} JSON + exit 1 (#502 C2a)."""
 
     def test_kb_switch_nonexistent_outputs_json_error(self, cli):

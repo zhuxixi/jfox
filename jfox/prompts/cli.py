@@ -196,9 +196,15 @@ def drain_cmd(
 
     store = _get_store(kb)
     result = drain_spool(store=store)
+    ok = "error" not in result  # spool 溢出时 service 返回 error 字段（#502 C2c）
     if format == "json":
-        print(json.dumps({"success": True, **result}, ensure_ascii=False, indent=2))
+        print(json.dumps({"success": ok, **result}, ensure_ascii=False, indent=2))
+        if not ok:
+            raise typer.Exit(1)
         return
+    if not ok:
+        console.print(f"[red]✗[/red] {result['error']}")
+        raise typer.Exit(1)
     console.print(
         f"drain 完成：导入 {result.get('imported', 0)} 条，"
         f"重复 {result.get('duplicates', 0)} 条，残留 {result.get('remaining', 0)} 条"
