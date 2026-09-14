@@ -173,6 +173,12 @@ class TestErrorContract:
         assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
         assert_json_shape(r.stdout, False)
 
+    def test_template_remove_not_found_json_error(self, cli):
+        # remove 的 json 选项默认 True（--json/--no-json），_run_json 追加的 --json 合法
+        r = _run_json(cli, "template", "remove", "nonexistent-tpl-502")
+        assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
+        assert_json_shape(r.stdout, False)
+
     def test_fragments_show_missing_json_error(self, cli):
         # fragments show 是纯 JSON 命令：无 --json/--kb 选项，错误分支也必须输出 JSON
         r = _run_json(cli, "fragments", "show", "999999999", with_kb=False, append_json=False)
