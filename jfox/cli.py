@@ -1106,8 +1106,13 @@ def status(
         with use_kb(kb):
             _status_impl(output_format, json_output)
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        if output_format == "json" or json_output:
+            print(output_json({"success": False, "error": str(e)}))
+        else:
+            console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
 
@@ -2461,7 +2466,7 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             table = Table(title="BM25 Index Status")
             table.add_column("Property", style="cyan")
@@ -2491,7 +2496,7 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             }
 
             if output_format == "json":
-                print(output_json(result))
+                print(output_json({"success": True, **result}))
             else:
                 table = Table(title="Index Status")
                 table.add_column("Property", style="cyan")
@@ -2564,7 +2569,8 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             result = verification
 
             if output_format == "json":
-                print(output_json(result))
+                # verify 报告本身执行成功即 success:true；执行错误经 verification["error"] 传导
+                print(output_json({"success": not result.get("error"), **result}))
             else:
                 if verification.get("error"):
                     console.print(f"[red]✗[/red] {verification['error']}")
@@ -2724,7 +2730,7 @@ def kb(
 
             # 根据格式输出
             if output_format == "json":
-                print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json({"success": True, **result}))
             elif output_format == "yaml":
                 print(OutputFormatter.to_yaml(result))
             elif output_format == "csv":
@@ -2792,7 +2798,10 @@ def kb(
 
         elif action == "create":
             if not name:
-                console.print("[red]Error: name is required for create[/red]")
+                if json_output:
+                    print(output_json({"success": False, "error": "name is required for create"}))
+                else:
+                    console.print("[red]Error: name is required for create[/red]")
                 raise typer.Exit(1)
 
             path_obj = Path(path) if path else None
@@ -2806,10 +2815,14 @@ def kb(
                 try:
                     resolved.relative_to(kb_root)
                 except ValueError:
-                    console.print(
-                        f"[red]✗[/red] Path '{resolved}' is outside managed directory "
+                    path_error = (
+                        f"Path '{resolved}' is outside managed directory "
                         f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
                     )
+                    if json_output:
+                        print(output_json({"success": False, "error": path_error}))
+                    else:
+                        console.print(f"[red]✗[/red] {path_error}")
                     raise typer.Exit(1)
 
             success, message = manager.create(
@@ -2817,9 +2830,13 @@ def kb(
             )
 
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -2829,14 +2846,23 @@ def kb(
 
         elif action in ("switch", "use"):
             if not name:
-                console.print("[red]Error: name is required for switch/use[/red]")
+                if json_output:
+                    print(
+                        output_json({"success": False, "error": "name is required for switch/use"})
+                    )
+                else:
+                    console.print("[red]Error: name is required for switch/use[/red]")
                 raise typer.Exit(1)
 
             success, message = manager.switch(name)
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -2846,7 +2872,10 @@ def kb(
 
         elif action == "remove" or action == "delete":
             if not name:
-                console.print("[red]Error: name is required for remove[/red]")
+                if json_output:
+                    print(output_json({"success": False, "error": "name is required for remove"}))
+                else:
+                    console.print("[red]Error: name is required for remove[/red]")
                 raise typer.Exit(1)
 
             # 确认删除
@@ -2863,9 +2892,13 @@ def kb(
 
             success, message = manager.remove(name, delete_data=force)
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -2880,12 +2913,21 @@ def kb(
             current_name = manager.config_manager.get_default_kb_name()
 
             if not current_name:
-                console.print("[red]No default knowledge base configured[/red]")
+                if json_output:
+                    print(
+                        output_json({"success": False, "error": "No default knowledge base configured"})
+                    )
+                else:
+                    console.print("[red]No default knowledge base configured[/red]")
                 raise typer.Exit(1)
 
             stats = manager.get_info(current_name)
             if not stats:
-                console.print(f"[red]Knowledge base '{current_name}' not found[/red]")
+                nf_error = f"Knowledge base '{current_name}' not found"
+                if json_output:
+                    print(output_json({"success": False, "error": nf_error}))
+                else:
+                    console.print(f"[red]{nf_error}[/red]")
                 raise typer.Exit(1)
 
             result = {
@@ -2905,7 +2947,7 @@ def kb(
 
             # 根据格式输出
             if output_format == "json":
-                print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json({"success": True, **result}))
             elif output_format == "yaml":
                 print(OutputFormatter.to_yaml(result))
             elif output_format == "table":
@@ -2937,7 +2979,11 @@ def kb(
 
             stats = manager.get_info(target_name)
             if not stats:
-                console.print(f"[red]Knowledge base '{target_name}' not found[/red]")
+                nf_error = f"Knowledge base '{target_name}' not found"
+                if json_output:
+                    print(output_json({"success": False, "error": nf_error}))
+                else:
+                    console.print(f"[red]{nf_error}[/red]")
                 raise typer.Exit(1)
 
             result = {
@@ -2957,7 +3003,7 @@ def kb(
 
             # 根据格式输出
             if output_format == "json":
-                print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json({"success": True, **result}))
             elif output_format == "yaml":
                 print(OutputFormatter.to_yaml(result))
             elif output_format == "table":
@@ -2986,14 +3032,22 @@ def kb(
 
         elif action == "rename":
             if not name or not new_name:
-                console.print("[red]Error: both old and new name are required for rename[/red]")
+                rename_error = "both old and new name are required for rename"
+                if json_output:
+                    print(output_json({"success": False, "error": rename_error}))
+                else:
+                    console.print(f"[red]Error: {rename_error}[/red]")
                 raise typer.Exit(1)
 
             success, message = manager.rename(name, new_name)
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -3002,12 +3056,21 @@ def kb(
                     raise typer.Exit(1)
 
         else:
-            console.print(f"[red]Unknown action: {action}[/red]")
-            console.print(
+            unknown_error = (
+                f"Unknown action: {action}. "
                 "Available actions: list, create, switch/use, remove, info, current, rename"
             )
+            if json_output:
+                print(output_json({"success": False, "error": unknown_error}))
+            else:
+                console.print(f"[red]Unknown action: {action}[/red]")
+                console.print(
+                    "Available actions: list, create, switch/use, remove, info, current, rename"
+                )
             raise typer.Exit(1)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
@@ -3467,12 +3530,22 @@ def download(
     if json_output:
         output_format = "json"
 
-    console.print(f"[yellow]准备下载模型: {model or 'auto'}[/yellow]")
+    if output_format != "json":
+        console.print(f"[yellow]准备下载模型: {model or 'auto'}[/yellow]")
 
-    result = _download_impl(model=model, force=force)
+    try:
+        result = _download_impl(model=model, force=force)
+    except typer.Exit:
+        raise
+    except Exception as e:  # 意外异常也必须产出 JSON（#502 C2a）
+        if output_format == "json":
+            print(output_json({"success": False, "error": str(e)}))
+            raise typer.Exit(1)
+        console.print(f"[red]✗ 模型下载失败：{e}[/red]")
+        raise typer.Exit(1)
 
     if output_format == "json":
-        console.print(output_json(result))
+        print(output_json(result))
     else:
         if result["success"]:
             console.print(f"[green]✓ 模型下载完成: {result['model']}[/green]")
