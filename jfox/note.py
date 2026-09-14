@@ -157,10 +157,16 @@ def save_note(note: Note, add_to_index: bool = True) -> bool:
 
         # 添加到向量索引
         if add_to_index:
+            # 延迟导入：保持 cli→note 导入链不拉入 numpy（moc 导入契约）
+            from .embedding_backend import EmbedDependencyMissingError
             from .vector_store import get_vector_store
 
             vector_store = get_vector_store()
-            vector_store.add_note(note)
+            try:
+                vector_store.add_note(note)
+            except EmbedDependencyMissingError:
+                # #519 轻量化安装：组件缺失 → 跳过向量索引；文件已写、BM25 继续
+                logger.info("语义组件不可用，跳过向量索引（#519）")
 
             # 添加到 BM25 索引
             try:
@@ -617,13 +623,17 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
 
         # 更新索引
         if add_to_index:
-            # 先删除旧索引，再添加新索引
+            # #519 替换写入走守卫原语：服务不可用时不删除既有行；
+            # 组件缺失（typed）单独降级，其余异常保持既有 warning 语义
             try:
+                # 延迟导入：同 save_note，导入链不拉入 numpy
+                from .embedding_backend import EmbedDependencyMissingError
                 from .vector_store import get_vector_store
 
                 vector_store = get_vector_store()
-                vector_store.delete_note(note_obj.id)
-                vector_store.add_note(note_obj)
+                vector_store.add_or_update_note(note_obj)
+            except EmbedDependencyMissingError:
+                logger.info("语义组件不可用，跳过向量索引更新（#519）")
             except Exception as e:
                 logger.warning(f"Failed to update vector store index: {e}")
 

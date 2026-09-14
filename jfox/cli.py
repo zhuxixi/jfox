@@ -654,6 +654,10 @@ def _add_note_impl(
             if dim_warning:
                 # 并入 JSON 字段而非 stderr print：stderr 在 2>&1 管道里同样污染解析流
                 result["vector_dimension_warning"] = dim_warning
+            # #519 语义组件缺失提示（对齐 vector_dimension_warning 的读取模式）
+            embed_warning = get_vector_store().last_embed_warning
+            if embed_warning:
+                result["semantic_index_warning"] = embed_warning
             print(output_json(result))
         else:
             _print_action_table(
@@ -698,6 +702,12 @@ def _add_note_impl(
             if dim_warning:
                 console.print(f"  [yellow]⚠ {dim_warning}[/yellow]")
                 console.print("  [yellow]笔记已保存，但未进入向量索引。[/yellow]")
+
+            # #519 语义组件缺失提示（对齐 dim warning 的展示模式）
+            embed_warning = get_vector_store().last_embed_warning
+            if embed_warning:
+                console.print(f"  [yellow]⚠ {embed_warning}[/yellow]")
+                console.print("  [yellow]笔记已保存，但未进入语义索引。[/yellow]")
     else:
         raise Exception("Failed to save note")
 
@@ -1892,6 +1902,13 @@ def _edit_impl(
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
 
+        # #519 语义组件缺失提示（对齐 add 的 JSON 字段模式）
+        from .vector_store import get_vector_store
+
+        embed_warning = get_vector_store().last_embed_warning
+        if embed_warning:
+            result["semantic_index_warning"] = embed_warning
+
         if output_format == "json":
             print(output_json(result))
         else:
@@ -1921,6 +1938,12 @@ def _edit_impl(
                 console.print(
                     f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
                 )
+
+            # #519 语义组件缺失提示（对齐 dim warning 的展示模式）
+            embed_warning = get_vector_store().last_embed_warning
+            if embed_warning:
+                console.print(f"  [yellow]⚠ {embed_warning}[/yellow]")
+                console.print("  [yellow]笔记已更新，但语义索引未刷新。[/yellow]")
     else:
         raise Exception("Failed to update note")
 
