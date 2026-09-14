@@ -58,7 +58,7 @@ else:
 | `bulk-import` | `success, imported, failed, total`（`--json` 默认开启） | 平铺计数 | `{success, error}` |
 | `check` | `success, total, issues[{file,issue,size}]`（发现 issue 时退出码 1，见特殊语义说明） | 列表 `issues` | `{success, error}` |
 | `update` | `success, method, previous_version, current_version, already_latest, command, output, stderr, error`（成功时 `error` 为空串）+ dev 分支 `message` | 平铺 | 同形状 `success:false` |
-| `redirect` | `success, old_id, keep_id, files_changed, frontmatter_links_updated, body_links_updated, backlinks_updated, conflicts[], unreadable_files[], errors[], verification_passed[, dry_run]` | 平铺计数 + 列表 | `{success, error, ...}` |
+| `redirect` | `success, old_id, keep_id, files_changed, frontmatter_links_updated, body_links_updated, backlinks_updated, conflicts[], unreadable_files[], errors[], verification_passed[, dry_run]` | 平铺计数 + 列表 | `{success, error, errors[], conflicts[], unreadable_files[], verification_passed}`（`error` 为首条错误或冲突计数摘要） |
 | `config` | 无 JSON 输出（console） | — | — |
 | `perf` | 无 JSON 输出（console） | — | — |
 | `daemon` | 无 JSON 输出（console） | — | — |

@@ -4094,11 +4094,21 @@ def _redirect_impl(old_id: str, keep_id: str, dry_run: bool, output_format: str)
     # 任何失败面（errors / conflicts / unreadable / 验证未过）都以非零退出码结束，
     # 避免 conflicts-only 场景误报成功（CR issue-4）
     if not result.success:
+        # #502: 失败输出必有非空 error 摘要（全局契约）；详情仍在各列表字段
+        if result.errors:
+            error_summary = result.errors[0]
+        elif result.conflicts:
+            error_summary = f"{len(result.conflicts)} 个引用冲突需要人工处理"
+        elif result.unreadable_files:
+            error_summary = f"{len(result.unreadable_files)} 个文件不可读"
+        else:
+            error_summary = "部分引用验证未通过"
         if output_format == "json":
             print(
                 output_json(
                     {
                         "success": False,
+                        "error": error_summary,
                         "errors": result.errors,
                         "conflicts": result.conflicts,
                         "unreadable_files": result.unreadable_files,
