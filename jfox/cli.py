@@ -12,7 +12,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -326,6 +326,44 @@ def find_note_id_by_title_or_id(
             return meta.id
 
     return None
+
+
+def resolve_wiki_links(
+    content: str, self_id: Optional[str] = None
+) -> Tuple[List[str], List[str]]:
+    """统一解析正文 wiki links：先剥离代码块/注释，再解析，过滤自链并去重。
+
+    规则（edit/add/rebuild 三路径共用，杜绝规则漂移）：
+    1. _strip_wiki_link_exclusions 剥离 fenced code block / HTML 注释 / inline code
+    2. find_note_id_by_title_or_id 三级匹配（精确 ID → 精确标题 → 标题包含）
+    3. target_id == self_id 跳过（自链过滤）
+    4. resolved 去重（保序）
+    5. 找不到目标的进 unresolved
+
+    Args:
+        content: 笔记正文（原文，不会被修改）
+        self_id: 当前笔记 ID，用于自链过滤；add 场景传 None（新笔记尚未入索引，
+                 find_note_id_by_title_or_id 不可能命中自身）
+
+    Returns:
+        (resolved_links, unresolved_titles)
+    """
+    from .note_index import _strip_wiki_link_exclusions
+
+    stripped = _strip_wiki_link_exclusions(content)
+    wiki_links = extract_wiki_links(stripped)
+    resolved_links: List[str] = []
+    unresolved: List[str] = []
+    for link_text in wiki_links:
+        target_id = find_note_id_by_title_or_id(link_text)
+        if target_id:
+            if target_id == self_id:
+                continue
+            if target_id not in resolved_links:
+                resolved_links.append(target_id)
+        else:
+            unresolved.append(link_text)
+    return resolved_links, unresolved
 
 
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
