@@ -3,9 +3,13 @@
 必须在无 sentence-transformers 环境执行（CI Fast job 天然满足；
 本地用 .venv-noembed/bin/python -m pytest 运行）。
 
-命名注意：conftest 的 pytest_collection_modifyitems 会给 nodeid 含
-"embedding"/"semantic"/"vector" 的测试自动加 embedding 标记（CI Fast
-按 `not embedding` 过滤会整组 deselect），类名/用例名必须避开这些词。
+命名注意：conftest 的 pytest_collection_modifyitems 会先把 nodeid **lower()** 再做
+大小写不敏感子串匹配（类名也算！），CI Fast 按 `not embedding and not slow`
+过滤会把命中项整组 deselect，类名/用例名必须避开以下全部子串：
+- "embedding"/"semantic"/"vector" → embedding + very_slow
+- "search"/"suggest"/"query" → slow
+- "bulk"/"batch"/"large"/"many" → slow + bulk
+（实测：类名 TestSearchModes 因含 "search" 被整类 slow——大写也无济于事）
 """
 
 import os
@@ -92,8 +96,8 @@ class TestEditPreservesIndexRow:  # A4 行保留
         assert _get_indexed_ids(cli.kb_path, note_id) == [note_id]  # 行未被删除
 
 
-class TestSearchModes:  # A5
-    # 命名避开 conftest 自动标记关键词（embedding/semantic/vector）
+class TestDegradeProtocols:  # A5（类名避开 conftest 陷阱：原 TestSearchModes 含 "search" 被整类 slow）
+    # 命名避开 conftest 自动标记关键词（embedding/semantic/vector/search/suggest/query）
 
     def test_hybrid_degrades_to_bm25_with_warning(self, cli):
         cli.add("混合检索降级测试量子内容", title="混合降级")
@@ -120,10 +124,23 @@ class TestSearchModes:  # A5
         assert result.json()["total"] >= 1
         assert "warnings" not in result.json()
 
-    def test_query_degrades_with_effective_mode(self, cli):
+    def test_joint_lookup_degrades_with_effective_mode(self, cli):
+        # 原 plan 名 test_query_degrades_with_effective_mode：nodeid 含 "query" 会命中
+        # conftest 规则二（自动 slow）被 CI Fast deselect，故改名（"joint lookup" 同义）
         cli.add("联合查询降级测试内容", title="联合查询")
         result = cli._run("query", "联合查询")
         assert result.returncode == 0
         data = result.json()
         assert data["effective_mode"] == "keyword"
         assert data["warnings"][0]["code"] == "embedding_unavailable"
+
+    def test_link_hints_degrade_to_keyword(self, cli):
+        # _suggest_links_impl 变更代码的唯一直接覆盖（tests/test_suggest_links.py 全组
+        # 被 conftest 规则二自动 slow，CI Fast 不可见）
+        cli.add("量子纠缠与拓扑序的关联笔记", title="量子纠缠")
+        result = cli.suggest_links("量子纠缠")
+        assert result.returncode == 0
+        data = result.json()
+        assert data["warnings"][0]["code"] == "embedding_unavailable"
+        keyword_hits = [s for s in data["suggestions"] if s["match_type"] == "keyword"]
+        assert len(keyword_hits) >= 1
