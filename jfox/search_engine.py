@@ -9,6 +9,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from .bm25_index import BM25Index, get_bm25_index
+from .embedding_backend import EmbedDependencyMissingError, format_embed_hint
 from .vector_store import VectorStore, get_vector_store
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,8 @@ class HybridSearchEngine:
         else:
             self.bm25_index = bm25_index
         self.rrf_k = rrf_k
+        # #519 轻量化安装：semantic/hybrid 路径遇组件缺失时写入，CLI 展示
+        self.last_embed_warning: Optional[str] = None
 
         # 若 BM25 索引是从 v1 迁移而来，需要全量重建以回填 doc_types
         if self.bm25_index.needs_rebuild:
@@ -113,6 +116,7 @@ class HybridSearchEngine:
         Returns:
             搜索结果列表
         """
+        self.last_embed_warning = None
         if mode == SearchMode.SEMANTIC:
             return self._semantic_search(
                 query, top_k, note_type, tags, include_archived=include_archived
@@ -157,6 +161,9 @@ class HybridSearchEngine:
                 filtered = self._filter_archived_results(results, include_archived)
 
             return filtered[:top_k]
+        except EmbedDependencyMissingError:
+            self.last_embed_warning = format_embed_hint("语义检索")
+            return []
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
             return []
@@ -244,6 +251,10 @@ class HybridSearchEngine:
             semantic_results = self.vector_store.search(
                 query, top_k=search_k, note_type=note_type, tags=tags
             )
+        except EmbedDependencyMissingError:
+            # #519：组件缺失 → BM25-only 融合（RRF 自然退化），写告警供 CLI 展示
+            self.last_embed_warning = format_embed_hint("语义检索")
+            semantic_results = []
         except Exception as e:
             logger.warning(f"Semantic search failed in hybrid mode: {e}")
 
