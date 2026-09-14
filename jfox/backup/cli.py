@@ -220,9 +220,13 @@ def verify_cmd(
     """校验快照完整性（sha256 + tar）"""
     p = _resolve_snapshot(snapshot)
     ok = _make_mgr().verify(p)
+    # success 承载分流契约（= 校验结果），ok 保留兼容旧调用方；
+    # 失败时补 error：全局契约要求 failure 输出必带非空 error（#502 fix round 1）
+    data = {"success": ok, "snapshot": str(p), "ok": ok}
+    if not ok:
+        data["error"] = f"快照校验失败：{p}"
     if format == "json":
-        # success 承载分流契约（= 校验结果），ok 保留兼容旧调用方
-        _fmt(json_data={"success": ok, "snapshot": str(p), "ok": ok}, fmt="json")
+        _fmt(json_data=data, fmt="json")
     else:
         console.print("[green]校验通过[/green]" if ok else "[red]校验失败[/red]")
     raise typer.Exit(0 if ok else 1)

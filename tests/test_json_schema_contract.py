@@ -235,6 +235,25 @@ class TestErrorContract:
         assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
         assert_json_shape(r.stdout, False)
 
+    def test_backup_verify_missing_snapshot_json_error(self, cli):
+        # backup verify 失败（快照不存在）→ success:false + 非空 error + 退出码 1。
+        # JFOX_BACKUP_ROOT 已被 conftest 隔离到临时目录，verify 对缺失归档返回 False，
+        # 不触碰真实 ~/.jfox-backup（#502 Task 7 fix round 1）
+        r = _run_json(
+            cli,
+            "backup",
+            "verify",
+            "does-not-exist-502",
+            "--format",
+            "json",
+            with_kb=False,
+            append_json=False,
+        )
+        assert r.returncode == 1, f"stdout: {r.stdout[:300]}"
+        data = assert_json_shape(r.stdout, False)
+        assert data["ok"] is False  # 兼容键保留
+        assert "snapshot" in data
+
 
 class TestAutoSummaryRunShape:
     def test_run_json_has_bool_success_and_int_succeeded(self, cli, monkeypatch):
