@@ -61,10 +61,12 @@ def resolve_wiki_links(
 ### Task 1: `_strip_wiki_link_exclusions` 增剥 inline code（验收 ID: A4）
 
 **Files:**
+
 - Modify: `$WT/jfox/note_index.py:42-53`
 - Test: `$WT/tests/unit/test_wiki_link_resolution.py`（本 task 创建，含 TestStripWikiLinkExclusions；Task 2 继续往里加 TestResolveWikiLinks）
 
 **Interfaces:**
+
 - Consumes: 无（纯函数增强）
 - Produces: `_strip_wiki_link_exclusions(text: str) -> str` 行为变更——反引号 span 内容被移除；Task 2-5 经 `resolve_wiki_links` 间接受益
 
@@ -187,10 +189,12 @@ git -C $WT commit -m "feat(note_index): strip inline code from wiki-link exclusi
 ### Task 2: 新增 `resolve_wiki_links` 纯函数（验收 ID: A1, A2, A3）
 
 **Files:**
+
 - Modify: `$WT/jfox/cli.py`（在 `find_note_id_by_title_or_id` 结束后、`_rebuild_backlinks_impl` 定义前插入，即 327-331 行之间）
 - Test: `$WT/tests/unit/test_wiki_link_resolution.py`（追加 TestResolveWikiLinks）
 
 **Interfaces:**
+
 - Consumes: `_strip_wiki_link_exclusions`（Task 1 产物）、`extract_wiki_links`（cli.py:277）、`find_note_id_by_title_or_id`（cli.py:284）
 - Produces: `resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[List[str], List[str]]`——Task 3/4/5 的调用点依赖此签名
 
@@ -327,10 +331,12 @@ git -C $WT commit -m "feat(cli): add resolve_wiki_links unified parsing function
 ### Task 3: `_edit_impl` 接入 `resolve_wiki_links`（验收 ID: A5, A7-edit）
 
 **Files:**
+
 - Modify: `$WT/jfox/cli.py:1845-1858`（`_edit_impl` 的 wiki links 解析段）
 - Test: `$WT/tests/integration/test_links_edit_add.py`（本 task 创建）
 
 **Interfaces:**
+
 - Consumes: `resolve_wiki_links`（Task 2 产物）
 - Produces: edit 后 `n.links` 无自链、无重复；backlinks 回填循环行为不变
 
@@ -458,10 +464,12 @@ git -C $WT commit -m "fix(edit): filter self-links and dedupe via resolve_wiki_l
 ### Task 4: `_add_note_impl` 接入 `resolve_wiki_links`（验收 ID: A6, A7-add）
 
 **Files:**
+
 - Modify: `$WT/jfox/cli.py:520-529`（`_add_note_impl` 的 wiki links 解析段）
 - Test: `$WT/tests/integration/test_links_edit_add.py`（追加 TestAddSelfLink、TestLiteralStripped）
 
 **Interfaces:**
+
 - Consumes: `resolve_wiki_links`（Task 2 产物）
 - Produces: add 后 links 无重复；fenced/inline 内字面量不进 links；backfill 循环（cli.py:546 起）输入已去重
 
@@ -572,10 +580,12 @@ git -C $WT commit -m "fix(add): dedupe links and strip literal wiki-links (#511)
 ### Task 5: `_rebuild_backlinks_impl` 接入 + 保留存在性过滤（验收 ID: A8）
 
 **Files:**
+
 - Modify: `$WT/jfox/cli.py:371-381`（`_rebuild_backlinks_impl` 第一阶段解析循环）
 - Test: `$WT/tests/integration/test_links_edit_add.py`（追加 TestRebuildConsistency）
 
 **Interfaces:**
+
 - Consumes: `resolve_wiki_links`（Task 2 产物）
 - Produces: rebuild 与 edit/add 解析规则一致；`target_id in note_by_id` 存在性对账保留；unresolved 语义保持（find 失败报标题文本，存在性失败报 ID）
 
@@ -678,6 +688,7 @@ git -C $WT commit -m "refactor(rebuild): share resolve_wiki_links parsing rules 
 **Files:** 无改动（纯验证 task）
 
 **Interfaces:**
+
 - Consumes: Task 1-5 全部产物
 - Produces: 回归证据
 
@@ -710,6 +721,7 @@ git -C $WT commit -m "style: black format (#511)"
 **Files:** 无仓库改动（一次性脚本，不进库）
 
 **Interfaces:**
+
 - Consumes: 修复后的 CLI（可选——edit 自清依赖本修复）
 - Produces: 存量自链清单 + 逐条处置记录
 

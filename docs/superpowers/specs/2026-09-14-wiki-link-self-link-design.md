@@ -65,7 +65,7 @@
 | A2 | `resolve_wiki_links` 去重 | 自动化（unit） | 同上 test_dedup | 正文两个相同 `[[标题]]` → resolved 仅 1 条 |
 | A3 | `resolve_wiki_links` unresolved 语义 | 自动化（unit） | 同上 test_unresolved | 不存在的目标进 unresolved，不影响 resolved |
 | A4 | `_strip_wiki_link_exclusions` 剥 inline code | 自动化（unit） | `uv run pytest tests/unit/test_wiki_link_resolution.py -v` 中 test_strip_inline_code | `` `[[ID]]` `` 输入 → 输出无 `[[` |
-| A5 | edit 全链路：字面量不自链 | 自动化（integration） | `uv run pytest tests/integration/test_links_edit_add.py -v` 中 test_edit_no_self_link | temp_kb 建「标题含 ID canonical」笔记 + 追加含 `[[ID|标题]]` 正文 → 读盘断言 links/backlinks 均不含自身 ID（直读磁盘等价且强于 show --json） |
+| A5 | edit 全链路：字面量不自链 | 自动化（integration） | `uv run pytest tests/integration/test_links_edit_add.py -v` 中 test_edit_no_self_link | temp_kb 建「标题含 ID canonical」笔记 + 追加含 `[[ID\|标题]]` 正文 → 读盘断言 links/backlinks 均不含自身 ID（直读磁盘等价且强于 show --json） |
 | A6 | add 全链路：字面量不自链 | 自动化（integration） | 同上 test_add_no_false_self_link | 同上断言（add 场景） |
 | A7 | 解析剥离生效 + 正文完整性 | 自动化（integration） | 同上 test_literal_in_fence_and_inline_not_linked | ① 正文 fenced 块与反引号内的 `[[...]]` 不进 links；② 剥离只影响解析输入——edit 后 `n.content` 与原始输入逐字节一致（剥离区域也原样落盘） |
 | A8 | rebuild 不回归（规则一致性） | 自动化（unit + integration） | `uv run pytest tests/unit/test_rebuild_backlinks_impl.py tests/integration/test_index_rebuild_backlinks.py -v`；再造双链接场景跑 `jfox index rebuild --backlinks` | 现有测试全过；rebuild 结果与 edit 结果一致（同正文同 links） |
@@ -73,7 +73,7 @@
 | U1 | 存量自链扫描（可选） | 用户实测 | 一次性脚本遍历 default 库：`n.id in n.links or n.id in n.backlinks` 的笔记清单 | 输出清单，逐条人工确认处置 |
 
 > U1 处置有轻量手段：含历史自链的笔记，下次 `jfox edit` 时 `old_links` 含自己、`new_links` 不含 → backlinks 回填循环会反向删掉自己的 backlink——**edit 一次即自清**，无需专门清理器。扫出清单后逐条 edit（或无操作内容改动）即可。
-
+>
 > A5/A6 的复现场景严格对齐 issue 复现步骤（标题含「ID canonical」、正文含 `[[ID|标题]]` 字面量、edit 追加内容）。
 
 ## 5. 风险与回归面
