@@ -20,12 +20,18 @@ import pytest
 
 from jfox.embedding_backend import is_local_embed_available
 
+
 # 隔离真实 daemon：开发机可能运行着用户的 embedding daemon，子进程 add 会经
 # HTTP 成功编码（如 bge-m3 1024 维），破坏「零语义基础设施」场景。
 # JFOX_DAEMON_PROCESS 是既有守卫（_check_daemon：daemon 进程内不外连），
 # 设定后编码路径只走本地 → 无 sentence-transformers 即确定性地缺失；
 # 子进程经环境继承同样生效。
-os.environ["JFOX_DAEMON_PROCESS"] = "1"
+# 用 autouse fixture 而非模块级 os.environ：后者在 collection 阶段就写入
+# 进程环境，会毒化同进程内后续收集的其他测试文件（#519 Task 11 全量验证实测：
+# unit/test_embed_availability 的 daemon 分支测试因此翻转失败）。
+@pytest.fixture(autouse=True)
+def _pin_no_daemon(monkeypatch):
+    monkeypatch.setenv("JFOX_DAEMON_PROCESS", "1")
 
 pytestmark = [
     pytest.mark.no_embed,
