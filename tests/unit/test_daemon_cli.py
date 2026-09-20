@@ -13,6 +13,14 @@ def runner():
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def mock_local_embed_available():
+    """#519：daemon start/restart 有本地组件守卫（无 [embed] 时拒绝）；
+    本文件聚焦 auto-summary 交互逻辑，恒置组件可用以越过守卫。"""
+    with patch("jfox.embedding_backend.is_local_embed_available", return_value=True):
+        yield
+
+
 @pytest.fixture
 def mock_global_config():
     """Mock GlobalConfigManager，默认 auto_summary.enabled=False"""
