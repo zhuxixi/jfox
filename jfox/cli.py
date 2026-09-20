@@ -12,7 +12,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -350,6 +350,42 @@ def find_note_id_by_title_or_id(
     return None
 
 
+def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[List[str], List[str]]:
+    """统一解析正文 wiki links：先剥离代码块/注释，再解析，过滤自链并去重。
+
+    规则（edit/add/rebuild 三路径共用，杜绝规则漂移）：
+    1. _strip_wiki_link_exclusions 剥离 fenced code block / HTML 注释 / inline code
+    2. find_note_id_by_title_or_id 三级匹配（精确 ID → 精确标题 → 标题包含）
+    3. target_id == self_id 跳过（自链过滤）
+    4. resolved 去重（保序）
+    5. 找不到目标的进 unresolved
+
+    Args:
+        content: 笔记正文（原文，不会被修改）
+        self_id: 当前笔记 ID，用于自链过滤；add 场景传 None（新笔记尚未入索引，
+                 find_note_id_by_title_or_id 不可能命中自身）
+
+    Returns:
+        (resolved_links, unresolved_titles)
+    """
+    from .note_index import _strip_wiki_link_exclusions
+
+    stripped = _strip_wiki_link_exclusions(content)
+    wiki_links = extract_wiki_links(stripped)
+    resolved_links: List[str] = []
+    unresolved: List[str] = []
+    for link_text in wiki_links:
+        target_id = find_note_id_by_title_or_id(link_text)
+        if target_id:
+            if target_id == self_id:
+                continue
+            if target_id not in resolved_links:
+                resolved_links.append(target_id)
+        else:
+            unresolved.append(link_text)
+    return resolved_links, unresolved
+
+
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     """重新计算所有笔记的 links 和 backlinks。
 
@@ -390,18 +426,15 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     unresolved: List[str] = []
 
     for n in notes:
-        wiki_links = extract_wiki_links(n.content)
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id and target_id in note_by_id:
-                # 过滤自链接，避免笔记指向自身
-                if target_id == n.id:
-                    continue
-                # 避免同一笔记内重复链接同一目标
-                if target_id not in parsed_links[n.id]:
-                    parsed_links[n.id].append(target_id)
+        # 统一解析规则（剥离→自链过滤→去重，见 #511）
+        parsed, unres = resolve_wiki_links(n.content, self_id=n.id)
+        for target_id in parsed:
+            # 存在性对账兜底：索引命中但文件系统无此笔记时视为悬空
+            if target_id in note_by_id:
+                parsed_links[n.id].append(target_id)
             else:
-                unresolved.append(link_text)
+                unresolved.append(target_id)
+        unresolved.extend(unres)
 
     # 第二阶段：合并现有 forward links 与解析出的 links，然后重新计算 backlinks
     merged_links: Dict[str, List[str]] = {}
@@ -538,17 +571,9 @@ def _add_note_impl(
 
         check_add_duplicate(note.derive_note_title(title, content), content)
 
-    # 从内容中提取维基链接
-    wiki_links = extract_wiki_links(content)
-    resolved_links = []
-    unresolved = []
-
-    for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text)
-        if target_id:
-            resolved_links.append(target_id)
-        else:
-            unresolved.append(link_text)
+    # 从内容中提取维基链接（统一规则：剥离→去重，见 #511；
+    # 新笔记尚未入索引不会命中自身，self_id 传 None）
+    resolved_links, unresolved = resolve_wiki_links(content, self_id=None)
 
     # 创建笔记
     new_note = note.create_note(
@@ -651,6 +676,8 @@ def _add_note_impl(
 
         result = {
             "success": True,
+            "id": new_note.id,  # 顶层快捷字段（#502 C3），与 note.id 同值
+            "title": new_note.title,  # 顶层快捷字段（#502 C3），与 note.title 同值
             "note": {
                 "id": new_note.id,
                 "title": new_note.title,
@@ -857,7 +884,8 @@ def _search_impl(
         # #519 降级警告进结构化字段（stdout 不混文本）
         if engine.last_embed_warning:
             result["warnings"] = [_embed_warning_payload(engine)]
-        print(OutputFormatter.to_json(result))
+        # #502 统一 schema：成功路径携带 success 标志
+        print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "table":
         mode_display = {
             "hybrid": "Hybrid (BM25 + Semantic)",
@@ -1138,7 +1166,7 @@ def _status_impl(output_format: str, json_output: bool):
 
     # 根据格式输出
     if output_format == "json":
-        print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "yaml":
         print(OutputFormatter.to_yaml(result))
     elif output_format == "table":
@@ -1195,8 +1223,13 @@ def status(
         with use_kb(kb):
             _status_impl(output_format, json_output)
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        console.print(f"[red]Error:[/red] {e}")
+        if output_format == "json" or json_output:
+            print(output_json({"success": False, "error": str(e)}))
+        else:
+            console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
 
@@ -1239,7 +1272,7 @@ def _list_impl(
     }
 
     if output_format == "json":
-        print(OutputFormatter.to_json(result))
+        print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "table":
         title = f"Notes ({len(notes)} total)"
         if archived_only:
@@ -1355,8 +1388,8 @@ def _show_impl(note_ref: str, output_format: str = "markdown"):
     raw = n.filepath.read_text(encoding="utf-8")
 
     if output_format == "json":
-        # 输出结构化 JSON，便于脚本和 LLM 消费
-        print(output_json(n.to_show_dict(raw_markdown=raw)))
+        # 输出结构化 JSON，便于脚本和 LLM 消费（#502: 顶层 success 分流字段）
+        print(output_json({"success": True, **n.to_show_dict(raw_markdown=raw)}))
     else:
         # 默认输出原始 Markdown 内容（含 YAML frontmatter）
         print(raw)
@@ -1425,7 +1458,7 @@ def _refs_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[bold]Search:[/bold] '{search}'\n")
             if matches:
@@ -1441,7 +1474,10 @@ def _refs_impl(
         # 查看特定笔记的引用关系
         n = note.load_note_by_id(note_id)
         if not n:
-            console.print(f"[red]Note not found: {note_id}[/red]")
+            if output_format == "json":
+                print(output_json({"success": False, "error": f"Note not found: {note_id}"}))
+            else:
+                console.print(f"[red]Note not found: {note_id}[/red]")
             raise typer.Exit(1)
 
         # 获取链接到的笔记（悬空 id 不再静默过滤，标记 dangling 可见化，#392 B2）
@@ -1491,7 +1527,7 @@ def _refs_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[bold]{n.title}[/bold]\n")
 
@@ -1537,7 +1573,7 @@ def _refs_impl(
         result = {"notes": notes_with_links}
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             table = Table(title="Note References")
             table.add_column("ID", style="dim")
@@ -1575,6 +1611,8 @@ def refs(
         with use_kb(kb):
             _refs_impl(note_id, search, output_format, json_output)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
@@ -1644,7 +1682,7 @@ def _delete_impl(
     # 确认删除
     if not force:
         if output_format == "json":
-            console.print(f"Use --force to delete: {n.title}")
+            print(output_json({"success": False, "error": f"Use --force to delete: {n.title}"}))
             raise typer.Exit(1)
         else:
             console.print(f"Note: {n.title}")
@@ -1929,19 +1967,9 @@ def _edit_impl(
     if topic is not None:
         n.topic = topic
 
-    # 如果内容被更新，解析 wiki links
+    # 如果内容被更新，解析 wiki links（统一规则：剥离→自链过滤→去重，见 #511）
     if content is not None:
-        wiki_links = extract_wiki_links(content)
-        resolved_links = []
-        unresolved = []
-
-        for link_text in wiki_links:
-            target_id = find_note_id_by_title_or_id(link_text)
-            if target_id:
-                resolved_links.append(target_id)
-            else:
-                unresolved.append(link_text)
-
+        resolved_links, unresolved = resolve_wiki_links(content, self_id=n.id)
         n.links = resolved_links
     else:
         unresolved = []
@@ -2132,7 +2160,7 @@ def _query_impl(
         result["warnings"] = [_embed_warning_payload(engine)]
 
     if json_output:
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         if degraded:
             console.print(f"[yellow]⚠ {engine.last_embed_warning}[/yellow]")
@@ -2213,7 +2241,7 @@ def _graph_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             table = Table(title="Knowledge Graph Statistics")
             table.add_column("Metric", style="cyan")
@@ -2242,7 +2270,7 @@ def _graph_impl(
         result = {"orphans": orphans_list}
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[bold]Orphan Notes ({len(orphans_list)}):[/bold]\n")
             for o in orphans_list:
@@ -2251,7 +2279,10 @@ def _graph_impl(
     elif note_id:
         # 显示特定笔记的图谱
         if note_id not in kg.graph:
-            console.print(f"[red]Note not found: {note_id}[/red]")
+            if output_format == "json":
+                print(output_json({"success": False, "error": f"Note not found: {note_id}"}))
+            else:
+                console.print(f"[red]Note not found: {note_id}[/red]")
             raise typer.Exit(1)
 
         related = kg.get_related(note_id, depth=depth)
@@ -2264,7 +2295,7 @@ def _graph_impl(
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             tree = Tree(f"[bold]{n.title}[/bold] ({note_id})")  # type: ignore[union-attr]
 
@@ -2307,6 +2338,8 @@ def graph(
         with use_kb(kb):
             _graph_impl(note_id, depth, stats, orphans, output_format, json_output)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
@@ -2351,7 +2384,7 @@ def _daily_impl(
     }
 
     if output_format == "json":
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         console.print(f"[bold]Notes for {target_date.strftime('%Y-%m-%d')}:[/bold]\n")
         if daily_notes:
@@ -2422,7 +2455,7 @@ def _inbox_impl(
     }
 
     if output_format == "json":
-        print(output_json(result))
+        print(output_json({"success": True, **result}))
     else:
         console.print(f"[bold]Inbox ({len(all_notes)}):[/bold]\n")
         for m in all_notes:
@@ -2457,7 +2490,8 @@ def _suggest_links_impl(
     if output_format == "json":
         if degraded:
             result["warnings"] = [_embed_warning_payload(engine)]
-        print(output_json(result))
+        # #502 统一 schema：成功路径携带 success 标志
+        print(output_json({"success": True, **result}))
     else:
         if degraded:
             console.print("[yellow]⚠ 语义组件不可用，当前仅使用关键词匹配[/yellow]")
@@ -2555,7 +2589,8 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         from . import note as note_module
         from .bm25_index import get_bm25_index
 
-        console.print("[yellow]Rebuilding BM25 index...[/yellow]")
+        if output_format != "json":
+            console.print("[yellow]Rebuilding BM25 index...[/yellow]")
         bm25_index = get_bm25_index()
         notes = note_module.list_notes(limit=10000, include_archived=True)
         success = bm25_index.rebuild_from_notes(notes)
@@ -2585,7 +2620,7 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         }
 
         if output_format == "json":
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             table = Table(title="BM25 Index Status")
             table.add_column("Property", style="cyan")
@@ -2615,7 +2650,7 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             }
 
             if output_format == "json":
-                print(output_json(result))
+                print(output_json({"success": True, **result}))
             else:
                 table = Table(title="Index Status")
                 table.add_column("Property", style="cyan")
@@ -2640,13 +2675,15 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             semantic_available = is_embedding_service_available()
             count = 0
             if semantic_available:
-                console.print("[yellow]Rebuilding index...[/yellow]")
+                if output_format != "json":
+                    console.print("[yellow]Rebuilding index...[/yellow]")
                 count = indexer.index_all()
             else:
                 # #519：无编码能力时不调用 index_all（它会 reset collection 清空向量库），
                 # 只重建 BM25，既有向量行原样保留
                 logger.info("语义组件不可用，跳过语义索引重建（#519）")
-                console.print("[yellow]语义组件不可用，跳过语义索引重建（#519）[/yellow]")
+                if output_format != "json":
+                    console.print("[yellow]语义组件不可用，跳过语义索引重建（#519）[/yellow]")
 
             # 同时重建 BM25 索引
             from . import note as note_module
@@ -2712,7 +2749,10 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             result = verification
 
             if output_format == "json":
-                print(output_json(result))
+                # verify 报告本身执行成功即 success:true；执行错误经 verification["error"] 传导
+                print(output_json({"success": not result.get("error"), **result}))
+                if result.get("error"):
+                    raise typer.Exit(1)
             else:
                 if verification.get("error"):
                     console.print(f"[red]✗[/red] {verification['error']}")
@@ -2872,7 +2912,7 @@ def kb(
 
             # 根据格式输出
             if output_format == "json":
-                print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json({"success": True, **result}))
             elif output_format == "yaml":
                 print(OutputFormatter.to_yaml(result))
             elif output_format == "csv":
@@ -2940,7 +2980,10 @@ def kb(
 
         elif action == "create":
             if not name:
-                console.print("[red]Error: name is required for create[/red]")
+                if json_output:
+                    print(output_json({"success": False, "error": "name is required for create"}))
+                else:
+                    console.print("[red]Error: name is required for create[/red]")
                 raise typer.Exit(1)
 
             path_obj = Path(path) if path else None
@@ -2954,10 +2997,14 @@ def kb(
                 try:
                     resolved.relative_to(kb_root)
                 except ValueError:
-                    console.print(
-                        f"[red]✗[/red] Path '{resolved}' is outside managed directory "
+                    path_error = (
+                        f"Path '{resolved}' is outside managed directory "
                         f"'{kb_root}'. All knowledge bases must be under {kb_root}/"
                     )
+                    if json_output:
+                        print(output_json({"success": False, "error": path_error}))
+                    else:
+                        console.print(f"[red]✗[/red] {path_error}")
                     raise typer.Exit(1)
 
             success, message = manager.create(
@@ -2965,9 +3012,13 @@ def kb(
             )
 
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -2977,14 +3028,23 @@ def kb(
 
         elif action in ("switch", "use"):
             if not name:
-                console.print("[red]Error: name is required for switch/use[/red]")
+                if json_output:
+                    print(
+                        output_json({"success": False, "error": "name is required for switch/use"})
+                    )
+                else:
+                    console.print("[red]Error: name is required for switch/use[/red]")
                 raise typer.Exit(1)
 
             success, message = manager.switch(name)
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -2994,7 +3054,10 @@ def kb(
 
         elif action == "remove" or action == "delete":
             if not name:
-                console.print("[red]Error: name is required for remove[/red]")
+                if json_output:
+                    print(output_json({"success": False, "error": "name is required for remove"}))
+                else:
+                    console.print("[red]Error: name is required for remove[/red]")
                 raise typer.Exit(1)
 
             # 确认删除
@@ -3011,9 +3074,13 @@ def kb(
 
             success, message = manager.remove(name, delete_data=force)
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -3028,12 +3095,23 @@ def kb(
             current_name = manager.config_manager.get_default_kb_name()
 
             if not current_name:
-                console.print("[red]No default knowledge base configured[/red]")
+                if json_output:
+                    print(
+                        output_json(
+                            {"success": False, "error": "No default knowledge base configured"}
+                        )
+                    )
+                else:
+                    console.print("[red]No default knowledge base configured[/red]")
                 raise typer.Exit(1)
 
             stats = manager.get_info(current_name)
             if not stats:
-                console.print(f"[red]Knowledge base '{current_name}' not found[/red]")
+                nf_error = f"Knowledge base '{current_name}' not found"
+                if json_output:
+                    print(output_json({"success": False, "error": nf_error}))
+                else:
+                    console.print(f"[red]{nf_error}[/red]")
                 raise typer.Exit(1)
 
             result = {
@@ -3053,7 +3131,7 @@ def kb(
 
             # 根据格式输出
             if output_format == "json":
-                print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json({"success": True, **result}))
             elif output_format == "yaml":
                 print(OutputFormatter.to_yaml(result))
             elif output_format == "table":
@@ -3085,7 +3163,11 @@ def kb(
 
             stats = manager.get_info(target_name)
             if not stats:
-                console.print(f"[red]Knowledge base '{target_name}' not found[/red]")
+                nf_error = f"Knowledge base '{target_name}' not found"
+                if json_output:
+                    print(output_json({"success": False, "error": nf_error}))
+                else:
+                    console.print(f"[red]{nf_error}[/red]")
                 raise typer.Exit(1)
 
             result = {
@@ -3105,7 +3187,7 @@ def kb(
 
             # 根据格式输出
             if output_format == "json":
-                print(OutputFormatter.to_json(result))
+                print(OutputFormatter.to_json({"success": True, **result}))
             elif output_format == "yaml":
                 print(OutputFormatter.to_yaml(result))
             elif output_format == "table":
@@ -3134,14 +3216,22 @@ def kb(
 
         elif action == "rename":
             if not name or not new_name:
-                console.print("[red]Error: both old and new name are required for rename[/red]")
+                rename_error = "both old and new name are required for rename"
+                if json_output:
+                    print(output_json({"success": False, "error": rename_error}))
+                else:
+                    console.print(f"[red]Error: {rename_error}[/red]")
                 raise typer.Exit(1)
 
             success, message = manager.rename(name, new_name)
             result = {"success": success, "message": message}
+            if not success:
+                result["error"] = message
 
             if json_output:
                 print(output_json(result))
+                if not success:
+                    raise typer.Exit(1)
             else:
                 if success:
                     console.print(f"[green]✓[/green] {message}")
@@ -3150,12 +3240,21 @@ def kb(
                     raise typer.Exit(1)
 
         else:
-            console.print(f"[red]Unknown action: {action}[/red]")
-            console.print(
+            unknown_error = (
+                f"Unknown action: {action}. "
                 "Available actions: list, create, switch/use, remove, info, current, rename"
             )
+            if json_output:
+                print(output_json({"success": False, "error": unknown_error}))
+            else:
+                console.print(f"[red]Unknown action: {action}[/red]")
+                console.print(
+                    "Available actions: list, create, switch/use, remove, info, current, rename"
+                )
             raise typer.Exit(1)
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
@@ -3333,7 +3432,8 @@ def bulk_import(
         with open(file_path, "r", encoding="utf-8") as f:
             notes_data = json.load(f)
 
-        console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
+        if not json_output:
+            console.print(f"[yellow]Importing {len(notes_data)} notes...[/yellow]")
 
         from .config import use_kb
         from .performance import bulk_import_notes
@@ -3347,7 +3447,7 @@ def bulk_import(
             )
 
         if json_output:
-            print(output_json(result))
+            print(output_json({"success": True, **result}))
         else:
             console.print(f"[green]✓[/green] Imported: {result['imported']}")
             console.print(f"[red]✗[/red] Failed: {result['failed']}")
@@ -3622,12 +3722,16 @@ def _download_impl(
         shutil.rmtree(downloader._model_cache, ignore_errors=True)
 
     ok = downloader.ensure_cached()
-    return {
+    result = {
         "model": model,
         "success": ok,
         "cache_dir": str(downloader._model_cache),
         "instructions": downloader.get_manual_instructions() if not ok else "",
     }
+    if not ok:
+        # #502 统一契约：失败输出必带非空 error
+        result["error"] = f"模型 {model} 下载失败，请按 instructions 手动下载"
+    return result
 
 
 @model_app.command("download")
@@ -3661,12 +3765,22 @@ def download(
     if json_output:
         output_format = "json"
 
-    console.print(f"[yellow]准备下载模型: {model or 'auto'}[/yellow]")
+    if output_format != "json":
+        console.print(f"[yellow]准备下载模型: {model or 'auto'}[/yellow]")
 
-    result = _download_impl(model=model, force=force)
+    try:
+        result = _download_impl(model=model, force=force)
+    except typer.Exit:
+        raise
+    except Exception as e:  # 意外异常也必须产出 JSON（#502 C2a）
+        if output_format == "json":
+            print(output_json({"success": False, "error": str(e)}))
+            raise typer.Exit(1)
+        console.print(f"[red]✗ 模型下载失败：{e}[/red]")
+        raise typer.Exit(1)
 
     if output_format == "json":
-        console.print(output_json(result))
+        print(output_json(result))
     else:
         if result["success"]:
             console.print(f"[green]✓ 模型下载完成: {result['model']}[/green]")
@@ -3756,7 +3870,7 @@ def _check_impl(clean: bool = False, output_format: str = "table"):
 
     # 输出结果
     if output_format == "json":
-        print(output_json({"total": len(issues), "issues": issues}))
+        print(output_json({"success": True, "total": len(issues), "issues": issues}))
     else:
         if not issues:
             console.print("No issues found. Knowledge base is clean.")
@@ -4211,11 +4325,21 @@ def _redirect_impl(old_id: str, keep_id: str, dry_run: bool, output_format: str)
     # 任何失败面（errors / conflicts / unreadable / 验证未过）都以非零退出码结束，
     # 避免 conflicts-only 场景误报成功（CR issue-4）
     if not result.success:
+        # #502: 失败输出必有非空 error 摘要（全局契约）；详情仍在各列表字段
+        if result.errors:
+            error_summary = result.errors[0]
+        elif result.conflicts:
+            error_summary = f"{len(result.conflicts)} 个引用冲突需要人工处理"
+        elif result.unreadable_files:
+            error_summary = f"{len(result.unreadable_files)} 个文件不可读"
+        else:
+            error_summary = "部分引用验证未通过"
         if output_format == "json":
             print(
                 output_json(
                     {
                         "success": False,
+                        "error": error_summary,
                         "errors": result.errors,
                         "conflicts": result.conflicts,
                         "unreadable_files": result.unreadable_files,

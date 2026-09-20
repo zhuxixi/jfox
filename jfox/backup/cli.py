@@ -42,7 +42,8 @@ backup_app = typer.Typer(
 def _fmt(table: Optional[Table] = None, json_data: Any = None, fmt: str = "table") -> None:
     """统一输出路由：fmt=json 输出 JSON，否则渲染 Table"""
     if fmt == "json":
-        console.print(_json.dumps(json_data, ensure_ascii=False, indent=2))
+        # soft_wrap=True：禁止 rich 按 80 列折行破坏 JSON（同 bookshelf _emit_json #336）
+        console.print(_json.dumps(json_data, ensure_ascii=False, indent=2), soft_wrap=True)
     elif table is not None:
         console.print(table)
 
@@ -52,8 +53,10 @@ def _cfg():
 
 
 def _backup_root() -> Path:
+    from .manager import default_backup_root
+
     cfg = _cfg()
-    return Path(cfg.backup_root).expanduser() if cfg.backup_root else Path.home() / ".jfox-backup"
+    return Path(cfg.backup_root).expanduser() if cfg.backup_root else default_backup_root()
 
 
 def _make_mgr():
@@ -104,7 +107,7 @@ def status(
         "last_ok": state.get("last_ok"),
     }
     if format == "json":
-        _fmt(json_data=data, fmt="json")
+        _fmt(json_data={"success": True, **data}, fmt="json")
         return
     t = Table(title="JFox Backup")
     t.add_column("属性")
@@ -194,7 +197,8 @@ def list_cmd(
     """列出已有快照"""
     snaps = _make_mgr().list_snapshots()
     if format == "json":
-        _fmt(json_data=snaps, fmt="json")
+        # C5b：曾是裸 JSON 数组，包装为 {success, items}（#502，v1.14.0 breaking）
+        _fmt(json_data={"success": True, "items": snaps}, fmt="json")
         return
     if not snaps:
         console.print("[dim]无快照[/dim]")
@@ -216,8 +220,13 @@ def verify_cmd(
     """校验快照完整性（sha256 + tar）"""
     p = _resolve_snapshot(snapshot)
     ok = _make_mgr().verify(p)
+    # success 承载分流契约（= 校验结果），ok 保留兼容旧调用方；
+    # 失败时补 error：全局契约要求 failure 输出必带非空 error（#502 fix round 1）
+    data = {"success": ok, "snapshot": str(p), "ok": ok}
+    if not ok:
+        data["error"] = f"快照校验失败：{p}"
     if format == "json":
-        _fmt(json_data={"snapshot": str(p), "ok": ok}, fmt="json")
+        _fmt(json_data=data, fmt="json")
     else:
         console.print("[green]校验通过[/green]" if ok else "[red]校验失败[/red]")
     raise typer.Exit(0 if ok else 1)

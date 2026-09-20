@@ -465,4 +465,5 @@ class TestRedirectCommand:
                 assert result.exit_code == 1
                 payload = json.loads(result.output)
                 assert payload["success"] is False
+                assert payload.get("error"), "failure output must carry non-empty error (#502)"
                 assert any("not found" in e for e in payload["errors"])

@@ -11,7 +11,7 @@ from rich.table import Table
 
 from .store import FragmentStore
 
-# 表格输出用带颜色的 console；JSON 用 _json_console（无 ANSI），便于机器解析
+# 表格输出用带颜色的 console；JSON 用 _json_console（无 ANSI，配 soft_wrap 防折行破坏 JSON），便于机器解析
 console = Console(legacy_windows=False)
 _json_console = Console(legacy_windows=False, highlight=False, markup=False, no_color=True)
 
@@ -34,14 +34,29 @@ def list_cmd(
     try:
         rows = store.query(session_id=session, fragment_type=type, limit=limit)
     except Exception as e:
-        console.print(f"[red]读取碎片失败：{e}[/red]")
+        if output_format == "json":
+            _json_console.print(
+                _json.dumps(
+                    {"success": False, "error": f"读取碎片失败：{e}"},
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                soft_wrap=True,
+            )
+        else:
+            console.print(f"[red]读取碎片失败：{e}[/red]")
         raise typer.Exit(code=1)
     finally:
         store.close()
 
     if output_format == "json":
         _json_console.print(
-            _json.dumps({"fragments": rows, "total": len(rows)}, ensure_ascii=False, indent=2)
+            _json.dumps(
+                {"success": True, "fragments": rows, "total": len(rows)},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            soft_wrap=True,
         )
         return
 
@@ -69,14 +84,32 @@ def show_cmd(
     try:
         row = store.get(fragment_id)
     except Exception as e:
-        console.print(f"[red]读取碎片失败：{e}[/red]")
+        # show 是纯 JSON 命令：错误分支也必须输出 JSON（#502 C2b）
+        _json_console.print(
+            _json.dumps(
+                {"success": False, "error": f"读取碎片失败：{e}"},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            soft_wrap=True,
+        )
         raise typer.Exit(code=1)
     finally:
         store.close()
     if row is None:
-        console.print(f"[red]找不到碎片 ID={fragment_id}[/red]")
+        _json_console.print(
+            _json.dumps(
+                {"success": False, "error": f"找不到碎片 ID={fragment_id}"},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            soft_wrap=True,
+        )
         raise typer.Exit(code=1)
-    _json_console.print(_json.dumps(row, ensure_ascii=False, indent=2))
+    _json_console.print(
+        _json.dumps({"success": True, **row}, ensure_ascii=False, indent=2),
+        soft_wrap=True,
+    )
 
 
 __all__ = ["fragments_app"]

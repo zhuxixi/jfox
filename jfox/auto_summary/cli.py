@@ -38,7 +38,8 @@ from .schedule import _is_within_schedule_window, _parse_hour_window
 def _fmt(table: Optional[Table] = None, json_data: Any = None, fmt: str = "table") -> None:
     """统一的输出路由：fmt=json 时输出 JSON 字符串，否则渲染 Table"""
     if fmt == "json":
-        console.print(_json.dumps(json_data, ensure_ascii=False, indent=2))
+        # soft_wrap=True：禁止 rich 按 80 列折行破坏 JSON（同 bookshelf _emit_json #336）
+        console.print(_json.dumps(json_data, ensure_ascii=False, indent=2), soft_wrap=True)
     elif table is not None:
         console.print(table)
 
@@ -97,7 +98,8 @@ def status(
 
     progress = {
         "total_scannable": total,
-        "success": success,
+        # C4 重命名：曾是 success（int 计数），success 现保留给顶层布尔契约（#502）
+        "succeeded": success,
         "skipped": skipped,
         "pending": pending,
         "failed": failed,
@@ -109,6 +111,7 @@ def status(
     if output_format == "json":
         _fmt(
             json_data={
+                "success": True,
                 "config": cfg.to_dict(),
                 "ledger_file": str(ledger_module.DEFAULT_LEDGER_PATH),
                 "ledger_stats": stats,
@@ -289,7 +292,7 @@ def scan(
     pending = scan_pending()
     if not pending:
         if output_format == "json":
-            _fmt(json_data={"pending": []}, fmt="json")
+            _fmt(json_data={"success": True, "pending": []}, fmt="json")
         else:
             console.print("[dim]无待处理 session[/dim]")
         return
@@ -297,6 +300,7 @@ def scan(
     if output_format == "json":
         _fmt(
             json_data={
+                "success": True,
                 "pending": [
                     {
                         "session_id": sf.session_id,
@@ -306,7 +310,7 @@ def scan(
                         "age_minutes": sf.age_seconds / 60,
                     }
                     for sf in pending
-                ]
+                ],
             },
             fmt="json",
         )
@@ -342,7 +346,7 @@ def run(
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: table, json"),
 ) -> None:
     """手动触发一轮 auto-summary（不依赖 daemon）"""
-    if not _config().enabled and not dry_run:
+    if not _config().enabled and not dry_run and output_format != "json":
         console.print(
             "[yellow]提示：auto-summary 当前处于禁用状态[/yellow]，"
             "本次手动 run 仍会执行，但 daemon 不会自动调度。"
@@ -355,7 +359,10 @@ def run(
             json_data={
                 "scanned": report.scanned,
                 "processed": report.processed,
-                "success": report.success,
+                # C4 重命名：success 曾是 int 计数（report.success），现改为布尔契约；
+                # 计数语义挪到 succeeded（对齐 prompts judge），table 分支不变（#502）
+                "success": True,
+                "succeeded": report.success,
                 "skipped": report.skipped,
                 "failed": report.failed,
                 "items": [

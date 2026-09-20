@@ -38,7 +38,8 @@ uv tool install jfox-cli
 | 把 git 仓库 / PR / issues 导入成素材 | `jfox-ingest` | 导入仓库 / ingest repo |
 | 提炼 fleeting→permanent、清理 inbox、补 wiki link、优化图谱 | `jfox-organize` | 整理 / 提炼 / clean inbox |
 | 诊断主题簇密度、生成/维护 MOC 地图（structure note） | `jfox-moc` | 建 MOC / 知识地图 / structure |
-| 过审 gem-synth 候选宝石、晋升为 permanent 或拒绝归档 | `jfox-promote` | 过审 candidate / promote / L5 晋升 |
+| 判断采集的 prompt、处置判断结果、确认晋升笔记 | `jfox-judge` | 判断 prompt / prompts judge / prompt 积压 |
+| 过审 candidate、晋升为 permanent 或拒绝归档（存量 / 大积压） | `jfox-promote` | 过审 candidate / promote / L5 晋升 |
 | 把当前会话总结存入知识库（存档，不提炼） | `jfox-session-summary` | 保存会话 / save session |
 | 把当前会话里的现状/事实/决策提炼为 permanent（强制去重 + 落库前审阅） | `jfox-session-to-permanent` | 提炼到永久笔记 / session to permanent |
 | 创建 / 切换 / 删除知识库、命令参考、健康检查、daemon | `jfox-common` | 创建知识库 / kb status / 健康检查 |
@@ -49,13 +50,14 @@ uv tool install jfox-cli
 | 发 kimi-plugin | `jfox-release-kimi-plugin` | 发 kimi-plugin / bump kimi version |
 | 三件套编排发版（jfox + cc + kimi） | `jfox-release-all` | 全发 / release all / 三件套发版 |
 
-15 个 skill 一句话职责：
+16 个 skill 一句话职责：
 
 - **jfox-search** — 笔记检索：BM25 / 语义 / 混合搜索 + 知识图谱查询。
 - **jfox-ingest** — git 仓库 → fleeting 素材笔记（git log / PR / issues）。
 - **jfox-organize** — fleeting → permanent 提炼 + 图谱优化（orphans / 补链）。
 - **jfox-moc** — MOC 地图层：诊断主题簇密度、半自动生成/维护 structure note（dry-run 确认制）。
-- **jfox-promote** — gem-synth 候选宝石过审（三模式：客观去重 / 簇级 triage / 单条 A/B/C + 冗余维度）。
+- **jfox-judge** — prompt 判断与端到端沉淀：judge 生成 candidate → 确认晋升 permanent；待解决问题清单闭环。
+- **jfox-promote** — candidate 过审（三模式：客观去重 / 簇级 triage / 单条 A/B/C + 冗余维度；存量与大积压清理）。
 - **jfox-session-summary** — 当前会话 → 知识库笔记（存档，不提炼）。
 - **jfox-session-to-permanent** — 当前会话 → permanent：把当前现状/事实/ADR 沉淀为永久笔记（强制去重 + 落库前审阅）。
 - **jfox-common** — 知识库生命周期 + 笔记 CRUD 权威参考 + 健康检查 + embedding daemon。
@@ -68,12 +70,12 @@ uv tool install jfox-cli
 
 ## 笔记模型（一句话）
 
-JFox 笔记分 fleeting / literature / permanent 三类（另有 session / candidate / structure——MOC 地图笔记），靠 `[[wiki link]]` 互链。完整的模型与提炼流程见 **jfox-organize** skill（Step 1 收件箱分析、Step 2 提炼）；候选宝石的来龙去脉见 **jfox-promote** skill；structure 类型的地图层管理见 **jfox-moc** skill。
+JFox 笔记分 fleeting / literature / permanent 三类（另有 session / candidate / structure——MOC 地图笔记），靠 `[[wiki link]]` 互链。完整的模型与提炼流程见 **jfox-organize** skill（Step 1 收件箱分析、Step 2 提炼）；候选宝石的生成与过审见 **jfox-judge** / **jfox-promote** skill；structure 类型的地图层管理见 **jfox-moc** skill。
 
 ## 典型复合工作流
 
 1. **沉淀新知识**：`jfox-ingest`（导入素材为 fleeting）→ `jfox-organize`（提炼成 permanent + 补 `[[wiki link]]`）→ `jfox-search`（日后检索复用）。
-2. **知识闭环（含 AI 合成）**：碎片采集（后台）→ gem-synth 合成 candidate → `jfox-promote`（过审晋升 permanent）→ `jfox-search`。
+2. **知识闭环（prompt → 笔记）**：hook 全量记录 prompt（后台）→ `jfox-judge`（判断 + 确认晋升 permanent；待解决问题清单）→ `jfox-search`；存量 candidate 积压清理用 `jfox-promote`。
 3. **会话沉淀**：只需存档对话用 `jfox-session-summary`（存为 session 笔记，记录行为历史）；要把这次对话里的当前现状（事实/决策/ADR）提炼为 permanent，用 `jfox-session-to-permanent`（强制去重 + 落库前审阅）。
 4. **知识库维护**：`jfox-common`（§5 体检 / 衰减信号检测）→ `jfox-organize`（清理 orphans / 补链接；图谱优化发现主题密集时交接 jfox-moc）→ `jfox-moc`（建/维护主题地图）。
 5. **发版**：`jfox-ci`（PR 前跑 fast 测试）→ `jfox-release`（bump + CHANGELOG + PR + Release）；多组件同时发用 `jfox-release-all` 编排。

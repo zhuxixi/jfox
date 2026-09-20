@@ -27,6 +27,14 @@ from jfox.utils import atomic_write_json
 logger = logging.getLogger(__name__)
 
 
+def default_backup_root() -> Path:
+    """默认备份根目录，可被 JFOX_BACKUP_ROOT 覆盖（测试隔离，模式同 fragment 的 JFOX_FRAGMENTS_DB）。"""
+    env = os.environ.get("JFOX_BACKUP_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    return Path.home() / ".jfox-backup"
+
+
 class BackupCoordinator:
     """进程级备份进行中标志（仅同进程可见，daemon 内 backup_loop 用）。
 
