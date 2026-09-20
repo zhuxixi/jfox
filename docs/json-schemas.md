@@ -35,27 +35,29 @@ else:
 
 命令均支持 `--json` 或 `--format json`；`--kb <name>` 选择目标知识库。
 
+其中 #519 新增的降级警告 `warnings[]` 元素统一形状：`{"code": "embedding_unavailable", "message": "<安装提示>", "fallback": "keyword" | "bm25_only"}`；缺语义组件的拒绝错误统一携带 `code: "embed_dependency_missing"`（`error` 含 GPU/CPU/pip 三路安装指引）。
+
 | 命令 | 成功顶层字段 | 实体位置 | 失败形状 |
 |------|--------------|----------|----------|
 | `init` | `success, message, name` | 平铺 | `{success, error}` |
-| `add` | `success, id, title, note{id,title,type,filepath,links}` + 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning` | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}}`；其余 `{success, error}` |
-| `search` | `success, query, mode, include_archived, total, results[]` | 列表 `results` | `{success, error}` |
-| `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension}` | 嵌套三段 | `{success, error}` |
+| `add` | `success, id, title, note{id,title,type,filepath,links}` + 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}}`；其余 `{success, error}` |
+| `search` | `success, query, mode, include_archived, total, results[]` + 可选 `warnings[]`（#519 降级时） | 列表 `results` | `{success, error}`；`--mode semantic` 且无语义服务时拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
+| `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension}, embedding{local_package,daemon_running,service_available}`（#519 可用性块） | 嵌套三段 | `{success, error}` |
 | `list` | `success, total, notes[]`（项含 `outgoing,incoming`） | 列表 `notes` | `{success, error}` |
 | `show` | `success` + `id,title,type,created,updated,tags,links,backlinks,topic,filepath,content,content_body` + 可选 `source,archived`、candidate 字段（`gem_level` 等）、溯源字段（`source_fragments` 等） | 顶层平铺 | `{success, error}` |
 | `refs` | 默认：`success, notes[]`；`--search`：`success, query, matches[]`；`--note`：`success, note{id,title,type}, forward_links[], backward_links[]`（悬空项带 `dangling:true`） | 分支各异 | `{success, error}` |
 | `delete` | `success, deleted, title` | 平铺 | 入链守卫：`{success, error, references{frontmatter[],body[],total}}`；其余 `{success, error}` |
 | `archive` / `unarchive` | `success, archived`/`unarchived`, `title` | 平铺 | `{success, error}` |
-| `edit` | `success, note{id,title,type,filepath}` + 可选 `title_changed{old,new}, warnings` | 嵌套 `note` | `{success, error}` |
-| `query` | `success, query, semantic_results, results[]` | 列表 `results` | `{success, error}` |
+| `edit` | `success, note{id,title,type,filepath}` + 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时） | 嵌套 `note` | `{success, error}` |
+| `query` | `success, query, semantic_results, effective_mode, results[]` + 可选 `warnings[]`（#519 降级时 `effective_mode:"keyword"`） | 列表 `results` | `{success, error}` |
 | `graph` | `--stats`：`success, total_nodes, total_edges, avg_degree, isolated_nodes, clusters, top_hubs[]`；`--orphans`：`success, orphans[]`；`--note`：`success, note_id, title, related[]` | 分支各异 | `{success, error}` |
 | `daily` | `success, date, total, notes[]` | 列表 `notes` | `{success, error}` |
 | `inbox` | `success, total, notes[]` | 列表 `notes` | `{success, error}` |
-| `suggest-links` | `success, content, total_suggestions, threshold, suggestions[]` | 列表 `suggestions` | `{success, error}` |
-| `index <action>` | `rebuild`：`success, indexed, bm25_rebuilt, bm25_indexed[, backlinks_*]`；`rebuild-bm25`：`success, indexed`；`status`：`success, total_indexed, last_indexed, pending_changes, vector_store`；`bm25-status`：`success, bm25_index{...}`；`verify`：`success`（语义见特殊语义说明）+ 透传字段 | 平铺 | `{success, error}`（错误分支需显式 `--json` 开启，见特殊语义说明） |
+| `suggest-links` | `success, content, total_suggestions, threshold, suggestions[]` + 可选 `warnings[]`（#519 降级为关键词匹配时） | 列表 `suggestions` | `{success, error}` |
+| `index <action>` | `rebuild`：`success, indexed, semantic_skipped, bm25_rebuilt, bm25_indexed[, backlinks_*]` + 可选 `warnings[]`（#519 无语义服务时 `semantic_skipped:true`、仅重建 BM25）；`rebuild-bm25`：`success, indexed`；`status`：`success, total_indexed, last_indexed, pending_changes, vector_store`；`bm25-status`：`success, bm25_index{...}`；`verify`：`success`（语义见特殊语义说明）+ 透传字段 | 平铺 | `{success, error}`（错误分支需显式 `--json` 开启，见特殊语义说明） |
 | `kb <action>` | `list`：`success, current, knowledge_bases[]`；`create/switch/use/remove/delete/rename`：`success, message`；`current/info`：`success, name, path, total_notes, by_type, created, last_used, description, is_current` | 平铺实体 | `{success, error}`（错误分支需显式 `--json` 开启，见特殊语义说明） |
-| `ingest-log` | `success, repo_path, commits_extracted, imported, failed, total`（空仓库带 `message`） | 平铺计数 | `{success, error}` |
-| `bulk-import` | `success, imported, failed, total`（`--json` 默认开启） | 平铺计数 | `{success, error}` |
+| `ingest-log` | `success, repo_path, commits_extracted, imported, failed, total`（空仓库带 `message`） | 平铺计数 | `{success, error}`；缺语义组件拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
+| `bulk-import` | `success, imported, failed, total`（`--json` 默认开启） | 平铺计数 | `{success, error}`；缺语义组件拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
 | `check` | `success, total, issues[{file,issue,size}]`（发现 issue 时退出码 1，见特殊语义说明） | 列表 `issues` | `{success, error}` |
 | `update` | `success, method, previous_version, current_version, already_latest, command, output, stderr, error`（成功时 `error` 为空串）+ dev 分支 `message` | 平铺 | 同形状 `success:false` |
 | `redirect` | `success, old_id, keep_id, files_changed, frontmatter_links_updated, body_links_updated, backlinks_updated, conflicts[], unreadable_files[], errors[], verification_passed[, dry_run]` | 平铺计数 + 列表 | `{success, error, errors[], conflicts[], unreadable_files[], verification_passed}`（`error` 为首条错误 / 冲突或不可读文件计数摘要 / 验证未通过提示） |

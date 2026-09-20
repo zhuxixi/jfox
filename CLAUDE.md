@@ -13,11 +13,11 @@ JFox is a local-first personal knowledge management CLI tool based on the Zettel
 ## Development Commands
 
 ```bash
-# Install (using uv, recommended)
-uv sync --extra dev
+# Install (using uv, recommended; embed = semantic component, needed for dev)
+uv sync --extra dev --extra embed
 
 # Install (legacy pip fallback)
-pip install -e ".[dev]"
+pip install -e ".[dev,embed]"
 
 # Run tests
 uv run pytest tests/ -v                                # All tests
@@ -130,7 +130,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Test utils** (`tests/utils/`): `temp_kb.py`, `jfox_cli.py` (CLI wrapper), `note_generator.py`
 - **全局配置隔离**: conftest 设 `ZK_CONFIG_PATH`（配合既有 `ZK_KB_ROOT`）指向临时目录，pytest 及其拉起的 CLI 子进程不读写真实 `~/.zk_config.json`（#469，`global_config.py` 的 `DEFAULT_CONFIG_PATH` 支持该 env 覆盖）；`JFOX_SYNTHESIS_DB` 同样无条件指临时路径，防 DedupStore 单例写真实 `~/.zettelkasten/synthesis_log.db`（#483）
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
-- **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`
+- **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`, `no_embed`（#519：需在无 sentence-transformers 环境执行的降级测试，CI Fast 天然满足）
 - **Run single-process** to avoid ChromaDB/model loading conflicts
 - **Test directory reorganization mostly complete**:
   - `tests/unit/` — Pure logic unit tests (25 files)

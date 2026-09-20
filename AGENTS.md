@@ -22,7 +22,7 @@
 | 语言 | Python >= 3.10 |
 | CLI 框架 | Typer >= 0.12.0 |
 | 终端美化 | Rich >= 13.0.0 |
-| 文本嵌入 | sentence-transformers >= 3.0 (bge-small-zh-v1.5 / bge-m3) |
+| 文本嵌入 | sentence-transformers >= 3.0 (bge-small-zh-v1.5 / bge-m3)，现为可选 `[embed]` extra (#519) |
 | 向量数据库 | ChromaDB >= 0.5.0 |
 | 知识图谱 | NetworkX >= 3.0 |
 | 文件监控 | Watchdog >= 3.0 |
@@ -89,11 +89,11 @@ jfox/
 ### 安装开发环境
 
 ```bash
-# 安装（使用 uv，推荐）
-uv sync --extra dev
+# 安装（使用 uv，推荐；embed 为语义组件，开发环境需要）
+uv sync --extra dev --extra embed
 
 # 安装（legacy pip fallback）
-pip install -e ".[dev]"
+pip install -e ".[dev,embed]"
 ```
 
 ### 运行测试

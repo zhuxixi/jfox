@@ -147,6 +147,28 @@ def output_json(data: dict) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def _print_embed_refusal(output_format: str, context: str):
+    """#519 显式语义入口拒绝：JSON 结构化错误（stdout）/ 人类模式 stderr。"""
+    from .embedding_backend import format_embed_hint
+
+    hint = format_embed_hint(context)
+    if output_format == "json":
+        print(output_json({"success": False, "code": "embed_dependency_missing", "error": hint}))
+    else:
+        import sys
+
+        print(f"✗ {hint}", file=sys.stderr)
+
+
+def _embed_warning_payload(engine) -> dict:
+    """#519 降级 warnings 数组元素（fallback=keyword：搜索类降级）。"""
+    return {
+        "code": "embedding_unavailable",
+        "message": engine.last_embed_warning,
+        "fallback": "keyword",
+    }
+
+
 @app.command()
 def init(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="知识库名称（默认: default）"),
@@ -681,6 +703,10 @@ def _add_note_impl(
             if dim_warning:
                 # 并入 JSON 字段而非 stderr print：stderr 在 2>&1 管道里同样污染解析流
                 result["vector_dimension_warning"] = dim_warning
+            # #519 语义组件缺失提示（对齐 vector_dimension_warning 的读取模式）
+            embed_warning = get_vector_store().last_embed_warning
+            if embed_warning:
+                result["semantic_index_warning"] = embed_warning
             print(output_json(result))
         else:
             _print_action_table(
@@ -725,6 +751,12 @@ def _add_note_impl(
             if dim_warning:
                 console.print(f"  [yellow]⚠ {dim_warning}[/yellow]")
                 console.print("  [yellow]笔记已保存，但未进入向量索引。[/yellow]")
+
+            # #519 语义组件缺失提示（对齐 dim warning 的展示模式）
+            embed_warning = get_vector_store().last_embed_warning
+            if embed_warning:
+                console.print(f"  [yellow]⚠ {embed_warning}[/yellow]")
+                console.print("  [yellow]笔记已保存，但未进入语义索引。[/yellow]")
     else:
         raise Exception("Failed to save note")
 
@@ -819,6 +851,18 @@ def _search_impl(
     """搜索笔记的内部实现"""
     from .formatters import OutputFormatter
 
+    # #519 显式语义入口：服务不可用 → 拒绝，不静默换 BM25
+    if search_mode == "semantic":
+        from .embedding_backend import is_embedding_service_available
+
+        if not is_embedding_service_available():
+            _print_embed_refusal(output_format, "语义检索")
+            raise typer.Exit(1)
+
+    from .search_engine import get_search_engine
+
+    engine = get_search_engine()
+
     results = note.search_notes(
         query,
         top_k=top,
@@ -837,6 +881,10 @@ def _search_impl(
     }
 
     if output_format == "json":
+        # #519 降级警告进结构化字段（stdout 不混文本）
+        if engine.last_embed_warning:
+            result["warnings"] = [_embed_warning_payload(engine)]
+        # #502 统一 schema：成功路径携带 success 标志
         print(OutputFormatter.to_json({"success": True, **result}))
     elif output_format == "table":
         mode_display = {
@@ -861,6 +909,10 @@ def _search_impl(
             console.print(f"{i}. [{score:.2f}]{badge} {r['metadata'].get('title', 'Untitled')}")
             console.print(f"   {r['document'][:100]}...")
             console.print()
+
+        # #519 降级提示（人类模式 stdout）
+        if engine.last_embed_warning:
+            console.print(f"[yellow]⚠ {engine.last_embed_warning}[/yellow]")
     elif output_format == "csv":
         # 扁平化结果数据
         flat_results = []
@@ -909,6 +961,12 @@ def _search_impl(
 
             print(f"⚠ {dim_warning}", file=sys.stderr)
 
+    # #519 csv/yaml/paths 模式：降级提示走 stderr，不污染结构化 stdout
+    if engine.last_embed_warning and output_format not in ("json", "table"):
+        import sys
+
+        print(f"⚠ {engine.last_embed_warning}", file=sys.stderr)
+
 
 @app.command()
 def search(
@@ -952,6 +1010,9 @@ def search(
         with use_kb(kb):
             _search_impl(query, top, note_type, tags, search_mode, output_format, include_archived)
 
+    except typer.Exit:
+        # #519 拒绝路径的退出码需透传，否则会被下方 except Exception 二次包装
+        raise
     except Exception as e:
         result = {
             "success": False,
@@ -1086,6 +1147,19 @@ def _status_impl(output_format: str, json_output: bool):
         },
     }
 
+    # #519 语义组件可用性（不触发模型加载）
+    from .daemon.process import is_daemon_running
+    from .embedding_backend import (
+        is_embedding_service_available,
+        is_local_embed_available,
+    )
+
+    result["embedding"] = {
+        "local_package": is_local_embed_available(),
+        "daemon_running": is_daemon_running(),
+        "service_available": is_embedding_service_available(),
+    }
+
     # 处理 --json 快捷方式
     if json_output:
         output_format = "json"
@@ -1109,6 +1183,22 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Backend", backend.resolved_device)
         table.add_row("Model", backend.model_name or "auto (未加载)")
         table.add_row("Dimension", str(backend.dimension))
+        table.add_row(
+            "Embed Component",
+            (
+                "[green]installed[/green]"
+                if result["embedding"]["local_package"]
+                else "[yellow]not installed[/yellow]"
+            ),
+        )
+        table.add_row(
+            "Embed Service",
+            (
+                "[green]available[/green]"
+                if result["embedding"]["service_available"]
+                else "[yellow]unavailable[/yellow]"
+            ),
+        )
 
         console.print(table)
     else:
@@ -1919,6 +2009,13 @@ def _edit_impl(
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
 
+        # #519 语义组件缺失提示（对齐 add 的 JSON 字段模式）
+        from .vector_store import get_vector_store
+
+        embed_warning = get_vector_store().last_embed_warning
+        if embed_warning:
+            result["semantic_index_warning"] = embed_warning
+
         if output_format == "json":
             print(output_json(result))
         else:
@@ -1948,6 +2045,12 @@ def _edit_impl(
                 console.print(
                     f"  [yellow]Warning: Unresolved links - {', '.join(unresolved)}[/yellow]"
                 )
+
+            # #519 语义组件缺失提示（对齐 dim warning 的展示模式）
+            embed_warning = get_vector_store().last_embed_warning
+            if embed_warning:
+                console.print(f"  [yellow]⚠ {embed_warning}[/yellow]")
+                console.print("  [yellow]笔记已更新，但语义索引未刷新。[/yellow]")
     else:
         raise Exception("Failed to update note")
 
@@ -2003,6 +2106,9 @@ def _query_impl(
     json_output: bool,
 ):
     """语义搜索 + 知识图谱联合查询的内部实现"""
+    from .search_engine import get_search_engine
+
+    engine = get_search_engine()
     # 1. 语义搜索
     vector_results = note.search_notes(query_str, top_k=top)
 
@@ -2043,15 +2149,21 @@ def _query_impl(
             }
         )
 
+    degraded = engine.last_embed_warning is not None
     result = {
         "query": query_str,
-        "semantic_results": len(vector_results),
+        "semantic_results": len(vector_results),  # 兼容保留（降级时实为 BM25 计数）
+        "effective_mode": "keyword" if degraded else "hybrid",
         "results": enriched_results,
     }
+    if degraded:
+        result["warnings"] = [_embed_warning_payload(engine)]
 
     if json_output:
         print(output_json({"success": True, **result}))
     else:
+        if degraded:
+            console.print(f"[yellow]⚠ {engine.last_embed_warning}[/yellow]")
         console.print(f"[bold]Query:[/bold] {query_str}")
         console.print(f"[bold]Results:[/bold] {len(enriched_results)}\n")
 
@@ -2088,6 +2200,9 @@ def query(
         with use_kb(kb):
             _query_impl(query_str, top, graph_depth, json_output)
 
+    except typer.Exit:
+        # #519 透传拒绝路径退出码
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
@@ -2359,6 +2474,12 @@ def _suggest_links_impl(
     """推荐链接笔记的内部实现"""
     suggestions = note.suggest_links(content, top_k=top_k, threshold=threshold)
 
+    # #519 降级检测：语义路缺失时引擎会写入告警（关键词匹配照常返回）
+    from .search_engine import get_search_engine
+
+    engine = get_search_engine()
+    degraded = engine.last_embed_warning is not None
+
     result = {
         "content": content[:200] + "..." if len(content) > 200 else content,
         "total_suggestions": len(suggestions),
@@ -2367,8 +2488,13 @@ def _suggest_links_impl(
     }
 
     if output_format == "json":
+        if degraded:
+            result["warnings"] = [_embed_warning_payload(engine)]
+        # #502 统一 schema：成功路径携带 success 标志
         print(output_json({"success": True, **result}))
     else:
+        if degraded:
+            console.print("[yellow]⚠ 语义组件不可用，当前仅使用关键词匹配[/yellow]")
         if suggestions:
             console.print(f"[bold]Suggested links (confidence > {threshold}):[/bold]\n")
             for i, s in enumerate(suggestions, 1):
@@ -2541,9 +2667,23 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
                         console.print(f"  - {err}")
 
         elif action == "rebuild":
-            if output_format != "json":
-                console.print("[yellow]Rebuilding index...[/yellow]")
-            count = indexer.index_all()
+            from .embedding_backend import (
+                format_embed_hint,
+                is_embedding_service_available,
+            )
+
+            semantic_available = is_embedding_service_available()
+            count = 0
+            if semantic_available:
+                if output_format != "json":
+                    console.print("[yellow]Rebuilding index...[/yellow]")
+                count = indexer.index_all()
+            else:
+                # #519：无编码能力时不调用 index_all（它会 reset collection 清空向量库），
+                # 只重建 BM25，既有向量行原样保留
+                logger.info("语义组件不可用，跳过语义索引重建（#519）")
+                if output_format != "json":
+                    console.print("[yellow]语义组件不可用，跳过语义索引重建（#519）[/yellow]")
 
             # 同时重建 BM25 索引
             from . import note as note_module
@@ -2556,9 +2696,18 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             result = {
                 "success": True,
                 "indexed": count,
+                "semantic_skipped": not semantic_available,
                 "bm25_rebuilt": bm25_success,
                 "bm25_indexed": len(notes),
             }
+            if not semantic_available:
+                result["warnings"] = [
+                    {
+                        "code": "embedding_unavailable",
+                        "message": format_embed_hint("重建语义索引"),
+                        "fallback": "bm25_only",
+                    }
+                ]
 
             # 如果指定 --backlinks，重新计算 backlinks
             if backlinks:
@@ -2569,6 +2718,8 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
                 print(output_json(result))
             else:
                 console.print(f"[green]✓[/green] Indexed {count} notes")
+                if not semantic_available:
+                    console.print(f"[yellow]⚠ {format_embed_hint('重建语义索引')}[/yellow]")
                 if bm25_success:
                     console.print(f"[green]✓[/green] BM25 index rebuilt: {len(notes)} notes")
                 else:
@@ -3127,6 +3278,13 @@ def _ingest_log_impl(
     json_output: bool,
 ):
     """从 Git 仓库提取 commit 历史并导入为笔记"""
+    # #519 批量导入走本地模型路径：组件缺失直接拒绝
+    from .embedding_backend import is_local_embed_available
+
+    if not is_local_embed_available():
+        _print_embed_refusal(output_format, "批量导入（ingest-log）")
+        raise typer.Exit(1)
+
     from .git_extractor import commits_to_notes, extract_commits
     from .performance import bulk_import_notes
 
@@ -3205,6 +3363,8 @@ def ingest_log(
         with use_kb(kb):
             _ingest_log_impl(repo_path, limit, note_type, batch_size, output_format, json_output)
 
+    except typer.Exit:
+        raise
     except ValueError as e:
         result = {"success": False, "error": str(e)}
         if output_format == "json":
@@ -3245,6 +3405,27 @@ def bulk_import(
         jfox bulk-import notes.json --kb work --type permanent
     """
     try:
+        # #519 批量导入走本地模型路径：组件缺失直接拒绝（在读文件之前）
+        from .embedding_backend import format_embed_hint, is_local_embed_available
+
+        if not is_local_embed_available():
+            hint = format_embed_hint("批量导入（bulk-import）")
+            if json_output:
+                print(
+                    output_json(
+                        {
+                            "success": False,
+                            "code": "embed_dependency_missing",
+                            "error": hint,
+                        }
+                    )
+                )
+            else:
+                import sys
+
+                print(f"✗ {hint}", file=sys.stderr)
+            raise typer.Exit(1)
+
         import json
 
         # 读取文件
@@ -3272,6 +3453,8 @@ def bulk_import(
             console.print(f"[red]✗[/red] Failed: {result['failed']}")
             console.print(f"Total: {result['total']}")
 
+    except typer.Exit:
+        raise
     except Exception as e:
         result = {"success": False, "error": str(e)}
         if json_output:
@@ -3367,6 +3550,7 @@ def daemon(
         start_daemon,
         stop_daemon,
     )
+    from .embedding_backend import format_embed_hint, is_local_embed_available
 
     def _print_daemon_status():
         """打印 daemon 状态表格"""
@@ -3396,6 +3580,13 @@ def daemon(
             raise typer.Exit(1)
 
         if action == "start":
+            # #519 daemon 必须本地加载模型：组件缺失直接拒绝
+            if not is_local_embed_available():
+                import sys
+
+                print(format_embed_hint("启动 embedding daemon"), file=sys.stderr)
+                raise typer.Exit(1)
+
             # auto-summary 启用检查
             if enable_auto_summary:
                 _pending_auto_summary = True
@@ -3442,6 +3633,13 @@ def daemon(
                 raise typer.Exit(1)
 
         elif action == "restart":
+            # #519 daemon 必须本地加载模型：组件缺失直接拒绝
+            if not is_local_embed_available():
+                import sys
+
+                print(format_embed_hint("重启 embedding daemon"), file=sys.stderr)
+                raise typer.Exit(1)
+
             if enable_auto_summary:
                 _pending_auto_summary = True
             elif no_auto_summary:

@@ -35,6 +35,8 @@ class TestAddFormat:
         # Task 4 (#383) 把 last_dimension_warning 并入 JSON 结果字段后，truthy
         # MagicMock 无法被 json.dumps 序列化；真实值是 None 或 str，对齐 mock。
         mock_vs.return_value.last_dimension_warning = None
+        # Task 6 (#519) 新增 last_embed_warning 读取，同理需对齐 mock。
+        mock_vs.return_value.last_embed_warning = None
 
         cfg = self._make_config(tmp_path)
         mock_global_config.notes_dir = cfg.notes_dir
@@ -224,6 +226,10 @@ class TestEditFormat:
         cfg = self._make_config(tmp_path)
         mock_global_config.notes_dir = cfg.notes_dir
         mock_note_config.notes_dir = cfg.notes_dir
+
+        # Task 6 (#519)：edit 的 JSON 路径新增 last_embed_warning 读取，
+        # truthy MagicMock 会污染 JSON（同 add 的 #383 先例），对齐 mock。
+        mock_vs.return_value.last_embed_warning = None
 
         n = create_note("original", title="EditMe", note_type=NoteType.PERMANENT)
         save_note(n, add_to_index=False)

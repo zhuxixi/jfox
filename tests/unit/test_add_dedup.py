@@ -235,6 +235,8 @@ class TestUntitledPermanentGate:
             patch("jfox.config.config") as mock_global_config,
         ):
             mock_vs.return_value.last_dimension_warning = None
+            # Task 6 (#519)：新增 last_embed_warning 读取，同理对齐 mock
+            mock_vs.return_value.last_embed_warning = None
             mock_global_config.base_dir = cfg.base_dir
             mock_global_config.notes_dir = cfg.notes_dir
             mock_note_config.notes_dir = cfg.notes_dir

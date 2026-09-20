@@ -880,7 +880,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rank-bm25" },
     { name = "rich" },
-    { name = "sentence-transformers" },
     { name = "typer" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
     { name = "uvicorn", extra = ["standard"] },
@@ -895,6 +894,9 @@ dev = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
+]
+embed = [
+    { name = "sentence-transformers" },
 ]
 
 [package.metadata]
@@ -914,13 +916,13 @@ requires-dist = [
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "sentence-transformers", specifier = ">=3.0" },
+    { name = "sentence-transformers", marker = "extra == 'embed'", specifier = ">=3.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
     { name = "watchdog", specifier = ">=3.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["embed", "dev"]
 
 [[package]]
 name = "jinja2"

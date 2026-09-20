@@ -13,6 +13,7 @@ import numpy as np
 from chromadb.config import Settings
 
 from .config import config
+from .embedding_backend import EmbedDependencyMissingError, is_embedding_service_available
 from .models import Note
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ class VectorStore:
         # Set by add_note()/search() when ChromaDB reports dim mismatch;
         # CLI add/search commands print it after their main work.
         self.last_dimension_warning: Optional[str] = None
+        # #519 轻量化安装：语义组件缺失时由 add_note/search 设置，CLI 展示
+        self.last_embed_warning: Optional[str] = None
 
     @staticmethod
     def _dimension_warning_text(error_msg: str) -> Optional[str]:
@@ -147,6 +150,10 @@ class VectorStore:
             logger.debug(f"Added note {note.id} to vector store")
             return True
 
+        except EmbedDependencyMissingError as e:
+            # #519：组件缺失是可降级事实，记录后原样上抛，由调用层决策
+            self.last_embed_warning = str(e)
+            raise
         except Exception as e:
             error_msg = str(e)
             warning = self._dimension_warning_text(error_msg)
@@ -217,6 +224,10 @@ class VectorStore:
 
             return formatted_results
 
+        except EmbedDependencyMissingError as e:
+            # #519：组件缺失是可降级事实，记录后原样上抛，由调用层决策
+            self.last_embed_warning = str(e)
+            raise
         except Exception as e:
             warning = self._dimension_warning_text(str(e))
             if warning:
@@ -243,6 +254,10 @@ class VectorStore:
 
     def add_or_update_note(self, note: Note) -> bool:
         """添加或更新笔记（如果已存在则更新）"""
+        # #519 不变量：编码成功前不得删除既有行。服务不可用时直接走 add_note
+        # （它会抛 EmbedDependencyMissingError 且不产生任何删除副作用）。
+        if not is_embedding_service_available():
+            return self.add_note(note)
         # 先尝试删除旧的（如果存在）
         try:
             collection = self.collection

@@ -96,6 +96,13 @@ class TestIndexKbParamSuccess:
 class TestIndexRebuildIncludesBM25:
     """验证 index rebuild 同时重建 BM25 索引"""
 
+    @pytest.fixture(autouse=True)
+    def _embed_service_available(self):
+        """#519：rebuild 有语义服务守卫（无可用服务时跳过 index_all）；
+        本测试聚焦语义可用路径下的 BM25 联动，恒置服务可用，避免宿主 daemon 环境依赖。"""
+        with patch("jfox.embedding_backend.is_embedding_service_available", return_value=True):
+            yield
+
     @patch("jfox.note.list_notes")
     @patch("jfox.bm25_index.get_bm25_index")
     @patch("jfox.indexer.Indexer")

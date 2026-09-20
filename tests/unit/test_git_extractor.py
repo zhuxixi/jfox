@@ -235,6 +235,13 @@ class TestCommitsToNotes:
 class TestIngestLogCommand:
     """测试 ingest-log CLI 命令"""
 
+    @pytest.fixture(autouse=True)
+    def _local_embed_available(self):
+        """#519：ingest-log 有本地组件守卫（无 [embed] 时拒绝）；
+        本组测试聚焦 git 提取与导入逻辑，恒置组件可用以越过守卫。"""
+        with patch("jfox.embedding_backend.is_local_embed_available", return_value=True):
+            yield
+
     @patch("jfox.performance.bulk_import_notes")
     @patch("jfox.git_extractor.extract_commits")
     def test_ingest_log_basic(self, mock_extract, mock_import, tmp_path):

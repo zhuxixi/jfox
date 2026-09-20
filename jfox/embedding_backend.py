@@ -1,5 +1,6 @@
 """Embedding Backend - 支持 daemon 加速 + GPU (CUDA)"""
 
+import importlib.util
 import logging
 import os
 from pathlib import Path
@@ -8,6 +9,74 @@ from typing import List, Optional
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 语义组件可用性探测（#519 轻量化安装：sentence-transformers 拆入 [embed] extra）
+# ---------------------------------------------------------------------------
+
+_local_embed_available: Optional[bool] = None
+
+
+def is_local_embed_available() -> bool:
+    """本地 sentence-transformers 是否已安装。
+
+    importlib.util.find_spec 探测（不执行 import，毫秒级），
+    结果模块级缓存——包的安装状态在进程生命周期内不变。
+    """
+    global _local_embed_available
+    if _local_embed_available is None:
+        try:
+            _local_embed_available = importlib.util.find_spec("sentence_transformers") is not None
+        except Exception:
+            _local_embed_available = False
+    return _local_embed_available
+
+
+def reset_embed_availability_cache() -> None:
+    """清空本地探测缓存（测试后门）。"""
+    global _local_embed_available
+    _local_embed_available = None
+
+
+def is_embedding_service_available() -> bool:
+    """是否存在可用的 embedding 服务：本地组件或外部 daemon 任一可用。
+
+    本地探测走缓存；daemon 状态每次实时检查（可起可停）。
+    daemon 进程内部（JFOX_DAEMON_PROCESS）只看本地组件，不代理自己。
+    """
+    if is_local_embed_available():
+        return True
+    if os.environ.get("JFOX_DAEMON_PROCESS"):
+        return False
+    try:
+        from .daemon.process import _get_daemon_url, is_daemon_running
+
+        if not is_daemon_running():
+            return False
+        from .daemon.client import DaemonClient
+
+        return DaemonClient(_get_daemon_url()).available
+    except Exception:
+        return False
+
+
+class EmbedDependencyMissingError(RuntimeError):
+    """本地语义组件缺失且无可用 daemon（#519）。message 含安装提示。"""
+
+
+def format_embed_hint(context: str = "") -> str:
+    """拼装统一安装提示文案（纯函数）。context 为场景前缀，如 '语义检索'。"""
+    prefix = context if context else "该操作"
+    return (
+        f"[提示] {prefix}需要语义检索组件（jfox 核心为精简安装，未包含）。\n"
+        '  GPU 机器:  uv tool install "jfox-cli[embed]"\n'
+        '  CPU 机器:  UV_TORCH_BACKEND=cpu uv tool install "jfox-cli[embed]"\n'
+        '  pip 用户:  pip install "jfox-cli[embed]"\n'
+        "             （CPU 机器先执行: pip install torch --index-url "
+        "https://download.pytorch.org/whl/cpu）\n"
+        "补装后运行 `jfox index rebuild` 可补建语义索引。"
+    )
+
 
 # 默认模型
 _GPU_DEFAULT_MODEL = "BAAI/bge-m3"
@@ -108,7 +177,10 @@ class EmbeddingBackend:
             return  # daemon 已持有模型，无需本地加载
 
         try:
-            from sentence_transformers import SentenceTransformer
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError as exc:  # #519 轻量化安装：本地语义组件缺失
+                raise EmbedDependencyMissingError(format_embed_hint("加载本地嵌入模型")) from exc
 
             # Prefer local model dir; on miss, run ModelDownloader fallback chain
             # (HF -> ModelScope -> curl) before hard-loading via network (#374).
