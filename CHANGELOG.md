@@ -2,17 +2,31 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
-## [Unreleased]
+## [1.15.0] - 2026-09-20
 
 ### Features
 
-- **cli**: `--json` 输出轻量统一：全命令顶层补 `success` 布尔、错误分支必出 JSON、`add` 顶层冗余 `id`/`title` 快捷字段、schema 参考文档 `docs/json-schemas.md` (#502)
+- **cli**: unify --json output schema — success flag, JSON errors, schema docs (#502) (#531)
+- **pi-plugin**: pi-coding-agent user prompt capture (#462) (#521)
 
 ### Breaking Changes
 
 - **backup**: `backup list --format json` 由裸数组改为 `{success, items}`，原 `[0]` 索引改为 `.items[0]` (#502)
 - **prompts**: `prompts list` 由裸数组改为 `{success, items}` (#502)
 - **auto-summary**: `run` 顶层 `success`（int 计数）改名为 `succeeded`，`success` 变为布尔（命令完成即 `true`）；`status` 的 `progress.success` 同名改为 `progress.succeeded` (#502)
+
+### Fixes
+
+- **links**: edit 自链过滤 + 字面量剥离——三路径收敛 resolve_wiki_links (#511) (#530)
+- **config**: guard from_dict against non-dict values, backup corrupt config before recovery (#481) (#526)
+- **bm25**: fresh-KB metadata missing logs info instead of warning (#482) (#522)
+
+### Changes
+
+- **skill**: sync skill system #399 — overview cleanup + jfox-judge end-to-end skill (#529)
+- nightly tests: fix 6 failures — rewrite capture-flow tests, dedupe generator, migrate dim-warning assertion (#525)
+
+[1.15.0]: https://github.com/zhuxixi/jfox/compare/v1.14.0...v1.15.0
 
 ## [1.14.0] - 2026-09-07
 
