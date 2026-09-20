@@ -2,17 +2,43 @@
 
 ## Recommended: uv
 
-```bash
-# Clone and install for local development
-git clone https://github.com/zhuxixi/jfox.git
-cd jfox
-uv sync --extra dev
+### Default install (lightweight, CPU-friendly)
 
-# Or install as a global tool
+```bash
+# Install as a global tool: note CRUD, BM25 keyword search, and the knowledge
+# graph. No semantic vector search — no torch/CUDA download, zero nvidia
+# dependencies on CPU-only machines.
+uv tool install "jfox-cli"
+
+# Or install from source
 uv tool install "git+https://github.com/zhuxixi/jfox.git"
 
 # Try without installing
 uvx --from "git+https://github.com/zhuxixi/jfox.git" jfox --help
+```
+
+### Semantic search component (optional)
+
+```bash
+# GPU machines
+uv tool install "jfox-cli[embed]"
+
+# CPU-only machines (UV_TORCH_BACKEND=cpu makes uv resolve the CPU torch
+# build, no CUDA)
+UV_TORCH_BACKEND=cpu uv tool install "jfox-cli[embed]"
+
+# pip users (on CPU machines run first: pip install torch --index-url
+# https://download.pytorch.org/whl/cpu)
+pip install "jfox-cli[embed]"
+```
+
+### For local development
+
+```bash
+# Clone and install for local development
+git clone https://github.com/zhuxixi/jfox.git
+cd jfox
+uv sync --extra dev --extra embed
 ```
 
 Verify:
@@ -25,7 +51,7 @@ jfox --version
 ## Legacy: pip
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,embed]"
 ```
 
 ## Upgrade
@@ -50,9 +76,13 @@ pipx upgrade jfox-cli
 # pip users
 pip install --upgrade jfox-cli
 
-# Development mode (git clone + uv sync --extra dev)
-git pull && uv sync --extra dev
+# Development mode (git clone + uv sync --extra dev --extra embed)
+git pull && uv sync --extra dev --extra embed
 ```
+
+### Upgrading from 1.x
+
+Starting with 2.0, the default install no longer bundles the semantic search component. An in-place upgrade (pip/uv do not uninstall existing packages) usually keeps working unchanged; after rebuilding an environment, jfox prints the same install hint the first time a semantic feature is used. After installing the `[embed]` component, run `jfox index rebuild` to backfill the semantic index.
 
 ## Uninstall
 
@@ -67,7 +97,8 @@ pip uninstall jfox-cli
 ## Requirements
 
 - Python >= 3.10
-- Dependencies: typer, rich, sentence-transformers, chromadb, networkx, watchdog, pyyaml, fastapi, uvicorn
+- Core dependencies: typer, rich, chromadb, networkx, watchdog, pyyaml, fastapi, uvicorn
+- Optional `[embed]` extra: sentence-transformers (+ torch) — required only for semantic vector search
 
 ## Windows PATH
 
