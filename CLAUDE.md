@@ -74,7 +74,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `add_dedup.py` | `jfox add` permanent 落库前双通道防重（#383）：标题通道（非 archived 同标题、大小写不敏感、不限类型）+ 正文余弦 ≥0.95 通道（复用顶层 `jfox/dedup.py`，`daemon_only=True` 绝不回退本地模型加载、仅 daemon 在跑时启用）；闸门自身故障一律放行，非路障 |
 | `search_engine.py` | `HybridSearchEngine` with `SearchMode` enum, RRF fusion |
 | `bm25_index.py` | BM25 keyword search index；写路径 filelock + 原子写 + `write_version` 乐观并发控制，多进程并发写安全（#391/#396） |
-| `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理）；CPU 默认模型 `BAAI/bge-small-zh-v1.5`（512 维，#442），本地模型目录未命中时先走 ModelDownloader 下载链再兜底加载（#374） |
+| `embedding_backend.py` | Sentence-transformers embedding backend（支持 daemon 代理）；CPU 默认模型 `BAAI/bge-small-zh-v1.5`（512 维，#442），本地模型目录未命中时先走 ModelDownloader 下载链再兜底加载（#374）；#519 起该包拆入 `[embed]` extra 可选——`is_embedding_service_available()` 探测（本地 `find_spec` 模块级缓存 + daemon 实时检查），缺失时 `load()` 抛 `EmbedDependencyMissingError`（message 含安装提示），`reset_embed_availability_cache()` 为测试后门 |
 | `daemon/` | Embedding 模型 HTTP 守护进程 (`server.py`/`client.py`/`process.py`)，`jfox daemon start/stop/status` |
 | `embedding_migration.py` | 全 KB 向量维度不匹配检测（#442）：daemon start/restart 时比对各 KB Chroma 集合维度与 daemon 服务维度，发现旧模型建库则交互式逐 KB 提示 rebuild，单 KB 失败不阻断其余 |
 | `fragment/` | 碎片子系统（采集已退役，#498）：detector 分类与 `ingest_event` 采集链删除，仅留 store SQLite(WAL) 与历史回溯 CLI `jfox fragments list/show`；旧 `session_fragments` 表保留供 prompts `backfill` 回填 |
@@ -131,6 +131,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **全局配置隔离**: conftest 设 `ZK_CONFIG_PATH`（配合既有 `ZK_KB_ROOT`）指向临时目录，pytest 及其拉起的 CLI 子进程不读写真实 `~/.zk_config.json`（#469，`global_config.py` 的 `DEFAULT_CONFIG_PATH` 支持该 env 覆盖）；`JFOX_SYNTHESIS_DB` 同样无条件指临时路径，防 DedupStore 单例写真实 `~/.zettelkasten/synthesis_log.db`（#483）
 - **Model caching**: Session-level model cache in conftest.py to avoid 30-60s reload per test
 - **Test markers**: `slow`, `performance`, `integration`, `embedding`, `workflow`, `bulk`, `no_embed`（#519：需在无 sentence-transformers 环境执行的降级测试，CI Fast 天然满足）
+- **无 embed 环境测试三坑**（#519 实测）：① 测 post-gate 流程（daemon start/restart、ingest、index rebuild 后半段）的单测须 monkeypatch `is_local_embed_available` 为 True，否则无 embed 环境 gate short-circuit、目标流程 0 调用；② mock VectorStore 的单测须设 `mock_vs.last_embed_warning = None`（同 #383 dim-warning 先例），否则残留告警断言失败；③ 用例/类命名避开 "search"/"semantic"/"embedding"/"vector"/"query"/"suggest" 子串——conftest collection 过滤先 nodeid lower() 再子串匹配，命中即整组 deselect（类名也算，`TestSearchModes` 因含 "search" 被整类 slow）；pin 零语义场景用 autouse fixture 设 `JFOX_DAEMON_PROCESS=1`（隔离开发机真实 daemon），勿模块级 `os.environ`（collection 阶段写入毒化同进程其他测试文件）
 - **Run single-process** to avoid ChromaDB/model loading conflicts
 - **Test directory reorganization mostly complete**:
   - `tests/unit/` — Pure logic unit tests (25 files)
@@ -204,3 +205,4 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
 - CPU 默认 embedding 模型已从 `all-MiniLM-L6-v2`（384 维）切到 `BAAI/bge-small-zh-v1.5`（512 维，#442）：旧 KB 向量库维度不匹配时 search/add 显式告警不静默失败（`vector_store.last_dimension_warning`），按提示 `jfox index rebuild` 重建该 KB；CI 模型缓存 key 也随模型名（#453）
+- 语义组件缺失降级（#519）：无本地 sentence-transformers 且无 daemon 时，写路径降级继续——`save_note`/`update_note` typed catch `EmbedDependencyMissingError`（文件+BM25 照写、跳过向量索引），`update_note` 改走 `add_or_update_note` 守卫原语（服务不可用不删既有行），`index rebuild` 降级 BM25-only 不重置向量库，add/edit JSON 出 `semantic_index_warning`；读路径显式拒绝——search/query/suggest-links 的 semantic/hybrid 模式 exit 1 + 安装提示；`jfox status` JSON 含 `embedding` 探测节（local_package/daemon_running/service_available）
