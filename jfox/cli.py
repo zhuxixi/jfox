@@ -1898,7 +1898,8 @@ def _strip_frontmatter(raw: str) -> str:
         body = _strip_leading_h1(match.group(1).strip()).strip()
     else:
         body = _strip_leading_h1(raw)
-    if re.match(r"^#[ \t]+\S", body):
+    # ④ 双 H1 校验：与 _strip_leading_h1 同口径（容忍开头的空白空行，#542 CR）
+    if re.match(r"^(?:[ \t]*\n)*#[ \t]+\S", body):
         raise ValueError(
             "输入内容开头存在多个 H1 标题行，疑似结构损坏的笔记（双 H1/嵌套笔记）。"
             "请手动删除多余的 H1 行，或用 --content 直传修复后的内容"

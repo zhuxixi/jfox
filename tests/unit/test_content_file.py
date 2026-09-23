@@ -139,6 +139,16 @@ class TestStripFrontmatterDoubleH1:
         with pytest.raises(ValueError, match="--content"):
             _strip_frontmatter(raw)
 
+    def test_double_h1_whitespace_line_between_raises(self):
+        """no-fm 变体：含空格/制表符的空行分隔的双 H1 同样报错（④与③口径一致，#542 CR）"""
+        with pytest.raises(ValueError, match="多个 H1"):
+            _strip_frontmatter("# A\n \n# B\n正文")
+
+    def test_double_h1_tab_line_between_raises(self):
+        """no-fm 变体：制表符空行分隔的双 H1 同样报错"""
+        with pytest.raises(ValueError, match="多个 H1"):
+            _strip_frontmatter("# A\n\t\n# B\n正文")
+
 
 class TestStripFrontmatterEmpty:
     """剥后为空报错（#541 spec 形态 8，决策 D4）"""
