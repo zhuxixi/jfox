@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from jfox.cli import _read_content_file
+from jfox.cli import _read_content_file, _strip_frontmatter, _strip_leading_h1
 
 
 class TestReadContentFile:
@@ -71,3 +71,33 @@ class TestReadContentFile:
             result = _read_content_file(f.name)
         assert "---" not in result
         assert "Body with BOM" in result
+
+
+class TestStripLeadingH1:
+    """_strip_leading_h1 纯函数（#541）"""
+
+    def test_strips_single_h1(self):
+        assert _strip_leading_h1("# 标题\n正文") == "正文"
+
+    def test_strips_h1_after_leading_blank_lines(self):
+        assert _strip_leading_h1("\n\n# 标题\n正文") == "正文"
+
+    def test_keeps_h2_heading(self):
+        assert _strip_leading_h1("## 小节\n正文") == "## 小节\n正文"
+
+    def test_keeps_hashtag_line(self):
+        assert _strip_leading_h1("#标签\n正文") == "#标签\n正文"
+
+    def test_plain_text_passthrough(self):
+        assert _strip_leading_h1("Hello world") == "Hello world"
+
+
+class TestStripFrontmatterH1Only:
+    """无 frontmatter 时 H1 剥离（#541 主诉，spec 形态 4）"""
+
+    def test_h1_only_no_frontmatter_stripped(self):
+        raw = "# 回灌测试笔记\n\nB 原始正文。\n追加 B。\n"
+        assert _strip_frontmatter(raw) == "B 原始正文。\n追加 B。\n"
+
+    def test_h1_after_leading_blank_lines_stripped(self):
+        assert _strip_frontmatter("\n\n# 标题\n正文") == "正文"

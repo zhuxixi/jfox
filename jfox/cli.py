@@ -1871,17 +1871,31 @@ def unarchive(
         raise typer.Exit(1)
 
 
+def _strip_leading_h1(body: str) -> str:
+    """吃掉开头空行后，至多剥掉一行 H1 标题行（# 后跟空白和非空内容）。
+
+    与 models.from_markdown 读盘侧「无条件剥首个 H1」的口径对齐：
+    标题行之前的空行、标题行之后的换行一并吃掉。不匹配（纯正文、## 二级
+    标题、#标签 行）时逐字节原样返回。
+    """
+    m = re.match(r"^(?:[ \t]*\n)*#[ \t]+\S[^\n]*\n*", body)
+    return body[m.end() :] if m else body
+
+
 def _strip_frontmatter(raw: str) -> str:
-    """如果内容包含 YAML frontmatter，则剥离 frontmatter 和标题行，只返回正文"""
+    """标准化 --content-file 输入为 Note.content 等价物（#541）。
+
+    ① 剥 UTF-8 BOM；② 存在 frontmatter 则剥除；③ 无条件剥至多一行开头 H1
+    ——读盘侧 from_markdown 无条件剥首个 H1，此处补齐写盘输入侧的对称转换。
+    """
     # 去除 UTF-8 BOM
     if raw.startswith("﻿"):
         raw = raw[1:]
     match = re.match(r"^---\n.*?\n---\n+(.*)", raw, re.DOTALL)
-    if not match:
-        return raw
-    body = match.group(1).strip()
-    # 去除 jfox 生成的标题行（# 后跟空格和非空内容，空行结尾）
-    body = re.sub(r"^#[ \t]+\S.*\n*", "", body).strip()
+    if match:
+        body = _strip_leading_h1(match.group(1).strip()).strip()
+    else:
+        body = _strip_leading_h1(raw)
     return body
 
 
