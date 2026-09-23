@@ -101,3 +101,16 @@ class TestStripFrontmatterH1Only:
 
     def test_h1_after_leading_blank_lines_stripped(self):
         assert _strip_frontmatter("\n\n# 标题\n正文") == "正文"
+
+
+class TestStripFrontmatterDoubleH1:
+    """开头连续双 H1 报错（#541 spec 形态 6，决策 D2）"""
+
+    def test_double_h1_no_frontmatter_raises(self):
+        with pytest.raises(ValueError, match="多个 H1"):
+            _strip_frontmatter("# 标题一\n# 标题二\n正文")
+
+    def test_double_h1_with_frontmatter_raises(self):
+        raw = "---\nid: '1'\n---\n\n# 标题一\n\n# 标题二\n\n正文\n"
+        with pytest.raises(ValueError, match="--content"):
+            _strip_frontmatter(raw)

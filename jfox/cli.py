@@ -1886,7 +1886,8 @@ def _strip_frontmatter(raw: str) -> str:
     """标准化 --content-file 输入为 Note.content 等价物（#541）。
 
     ① 剥 UTF-8 BOM；② 存在 frontmatter 则剥除；③ 无条件剥至多一行开头 H1
-    ——读盘侧 from_markdown 无条件剥首个 H1，此处补齐写盘输入侧的对称转换。
+    ——读盘侧 from_markdown 无条件剥首个 H1，此处补齐写盘输入侧的对称转换；
+    ④ 剥后开头仍是 H1（连续双 H1，疑似结构损坏文件）时报错。
     """
     # 去除 UTF-8 BOM
     if raw.startswith("﻿"):
@@ -1896,6 +1897,11 @@ def _strip_frontmatter(raw: str) -> str:
         body = _strip_leading_h1(match.group(1).strip()).strip()
     else:
         body = _strip_leading_h1(raw)
+    if re.match(r"^#[ \t]+\S", body):
+        raise ValueError(
+            "输入内容开头存在多个 H1 标题行，疑似结构损坏的笔记（双 H1/嵌套笔记）。"
+            "请手动删除多余的 H1 行，或用 --content 直传修复后的内容"
+        )
     return body
 
 
