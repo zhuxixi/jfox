@@ -1909,14 +1909,16 @@ def _strip_frontmatter(raw: str) -> str:
 
 
 def _read_content_file(content_file: str) -> str:
-    """从文件或 stdin 读取内容（--content-file 共用逻辑）
+    """从文件或 stdin 读取内容（--content-file 共用逻辑）。
 
-    如果文件包含 YAML frontmatter（如 jfox 笔记文件），自动剥离只保留正文。
+    文件与 stdin 同一语义：统一经 _strip_frontmatter 标准化——剥 frontmatter
+    （如有）、无条件剥至多一行开头 H1（#541）；连续双 H1 或剥后为空会报错。
+    想让正文以井号标题行开头，用 --content 直传（不做任何剥离）。
     """
     if content_file == "-":
         import sys
 
-        return sys.stdin.read()
+        return _strip_frontmatter(sys.stdin.read())
 
     p = Path(content_file)
     if not p.exists():

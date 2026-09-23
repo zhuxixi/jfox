@@ -45,17 +45,41 @@ class TestReadContentFile:
         assert "---" not in result
         assert "Just body text" in result
 
-    def test_stdin_passthrough(self):
-        """stdin 模式（'-'）不应做处理"""
+    def test_stdin_frontmatter_and_h1_stripped(self):
+        """stdin 与文件路径同语义（#541 D1）：frontmatter + H1 剥离"""
         import sys
 
         old_stdin = sys.stdin
         try:
-            sys.stdin = io.StringIO("---\nid: x\n---\nbody")
+            sys.stdin = io.StringIO("---\nid: x\n---\n\n# 标题\n\n正文\n")
             result = _read_content_file("-")
         finally:
             sys.stdin = old_stdin
-        assert "---" in result
+        assert result == "正文"
+
+    def test_stdin_h1_only_stripped(self):
+        """stdin：无 frontmatter 的 H1 开头同样剥离"""
+        import sys
+
+        old_stdin = sys.stdin
+        try:
+            sys.stdin = io.StringIO("# 标题\n\n正文\n")
+            result = _read_content_file("-")
+        finally:
+            sys.stdin = old_stdin
+        assert result == "正文\n"
+
+    def test_stdin_plain_passthrough(self):
+        """stdin：纯正文原样放行"""
+        import sys
+
+        old_stdin = sys.stdin
+        try:
+            sys.stdin = io.StringIO("Hello world")
+            result = _read_content_file("-")
+        finally:
+            sys.stdin = old_stdin
+        assert result == "Hello world"
 
     def test_file_not_found(self):
         """不存在的文件应抛异常"""
