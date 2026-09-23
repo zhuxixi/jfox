@@ -152,3 +152,8 @@ class TestStripFrontmatterEmpty:
 
     def test_blank_lines_only_passthrough(self):
         assert _strip_frontmatter("\n\n") == "\n\n"
+
+    def test_frontmatter_only_raises_empty(self):
+        """fm-only 输入剥后为空同样报错（⑤ 的 fm 变体）"""
+        with pytest.raises(ValueError, match="正文为空"):
+            _strip_frontmatter("---\nid: '1'\n---\n")

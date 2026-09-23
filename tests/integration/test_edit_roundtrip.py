@@ -21,6 +21,7 @@ def _load_note(filepath: str) -> Note:
 
 def _count_structure(filepath: str) -> tuple:
     """返回 (frontmatter 分隔行数, H1 标题行数)"""
+    # 注：全局计数，假定正文不含 fenced code block 与 --- 分隔线（当前受控输入成立）
     lines = Path(filepath).read_text(encoding="utf-8").splitlines()
     fm_delims = sum(1 for line in lines if line == "---")
     h1s = sum(1 for line in lines if line.startswith("# "))
@@ -31,6 +32,7 @@ class TestEditRoundTrip:
     """A6：show → 追加 → edit --content-file 回灌，结构恒定（issue 实验 B 自动化）"""
 
     def test_edit_roundtrip_content_body(self, cli_fast, tmp_path):
+        """content_body 回灌（含 H1、无 frontmatter）：恰好 1 个 fm 块 + 1 个 H1，追加与原文俱在"""
         # 1. 建笔记
         r = cli_fast.add("原始正文第一段。", title="回灌复现笔记")
         assert r.success
@@ -55,6 +57,7 @@ class TestEditRoundTrip:
         assert h1s == 1
         n = _load_note(filepath)
         assert "追加内容 B。" in n.content
+        assert "原始正文第一段。" in n.content
 
     def test_add_content_file_h1_title_derivation(self, cli_fast, tmp_path):
         """A7/D3：add --content-file 传 H1 开头正文，H1 被剥，标题派生自剥后首段"""
