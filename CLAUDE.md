@@ -123,6 +123,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **笔记生命周期事件**: `note.py` 只广播 `post_delete`/`post_archive`/`post_promote`/`post_reject`（`register_lifecycle_hook` + `_dispatch`），绝不 import 特性层；特性层订阅做副作用（如 `dedup_lifecycle.py` 同步 dedup 表、`prompts/lifecycle.py` 同步 judgment）。`register` 在 `jfox/__init__.py` 接线，任何 `import jfox.*` 即订阅就位，库式调用方零成本
 - **源笔记清理统一 archive**: skill 整理/提炼后清理源笔记用 `jfox archive`（软删除，`jfox unarchive` 可回滚误判），不用 `delete --force` 硬删（#436）
 - **`jfox add` permanent 防重**（#383/#483）: 默认开启，标题或正文余弦 ≥0.95 命中即拒绝创建（exit 1，JSON 输出 `skipped: "duplicate"`），`--force` 跳过（迁移/回填用）；开关与阈值在 `~/.zk_config.json` 的 `note_add` 节（`NoteAddConfig`）；embedding 通道仅 daemon 在跑时生效，落库后回灌 dedup 表供后续 add 查重
+- **`--content-file` 输入规范化**（#541/#542）: `jfox add`/`edit` 的 `--content-file`（文件路径与 stdin `-` 同一语义）统一剥 BOM/frontmatter 后**无条件剥首个 H1**（与读盘侧 `from_markdown` 对称——标题走 `--title`，内容文件里别再带 H1 行）；连续双 H1 或剥后为空会报错；要让正文以 `#` 行开头须用 `--content` 直传（不做任何剥离）
 
 ## Test Infrastructure
 
