@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from jfox.cli import _read_content_file
+from jfox.cli import _read_content_file, _strip_frontmatter, _strip_leading_h1
 
 
 class TestReadContentFile:
@@ -45,17 +45,41 @@ class TestReadContentFile:
         assert "---" not in result
         assert "Just body text" in result
 
-    def test_stdin_passthrough(self):
-        """stdin 模式（'-'）不应做处理"""
+    def test_stdin_frontmatter_and_h1_stripped(self):
+        """stdin 与文件路径同语义（#541 D1）：frontmatter + H1 剥离"""
         import sys
 
         old_stdin = sys.stdin
         try:
-            sys.stdin = io.StringIO("---\nid: x\n---\nbody")
+            sys.stdin = io.StringIO("---\nid: x\n---\n\n# 标题\n\n正文\n")
             result = _read_content_file("-")
         finally:
             sys.stdin = old_stdin
-        assert "---" in result
+        assert result == "正文"
+
+    def test_stdin_h1_only_stripped(self):
+        """stdin：无 frontmatter 的 H1 开头同样剥离"""
+        import sys
+
+        old_stdin = sys.stdin
+        try:
+            sys.stdin = io.StringIO("# 标题\n\n正文\n")
+            result = _read_content_file("-")
+        finally:
+            sys.stdin = old_stdin
+        assert result == "正文\n"
+
+    def test_stdin_plain_passthrough(self):
+        """stdin：纯正文原样放行"""
+        import sys
+
+        old_stdin = sys.stdin
+        try:
+            sys.stdin = io.StringIO("Hello world")
+            result = _read_content_file("-")
+        finally:
+            sys.stdin = old_stdin
+        assert result == "Hello world"
 
     def test_file_not_found(self):
         """不存在的文件应抛异常"""
@@ -71,3 +95,75 @@ class TestReadContentFile:
             result = _read_content_file(f.name)
         assert "---" not in result
         assert "Body with BOM" in result
+
+
+class TestStripLeadingH1:
+    """_strip_leading_h1 纯函数（#541）"""
+
+    def test_strips_single_h1(self):
+        assert _strip_leading_h1("# 标题\n正文") == "正文"
+
+    def test_strips_h1_after_leading_blank_lines(self):
+        assert _strip_leading_h1("\n\n# 标题\n正文") == "正文"
+
+    def test_keeps_h2_heading(self):
+        assert _strip_leading_h1("## 小节\n正文") == "## 小节\n正文"
+
+    def test_keeps_hashtag_line(self):
+        assert _strip_leading_h1("#标签\n正文") == "#标签\n正文"
+
+    def test_plain_text_passthrough(self):
+        assert _strip_leading_h1("Hello world") == "Hello world"
+
+
+class TestStripFrontmatterH1Only:
+    """无 frontmatter 时 H1 剥离（#541 主诉，spec 形态 4）"""
+
+    def test_h1_only_no_frontmatter_stripped(self):
+        raw = "# 回灌测试笔记\n\nB 原始正文。\n追加 B。\n"
+        assert _strip_frontmatter(raw) == "B 原始正文。\n追加 B。\n"
+
+    def test_h1_after_leading_blank_lines_stripped(self):
+        assert _strip_frontmatter("\n\n# 标题\n正文") == "正文"
+
+
+class TestStripFrontmatterDoubleH1:
+    """开头连续双 H1 报错（#541 spec 形态 6，决策 D2）"""
+
+    def test_double_h1_no_frontmatter_raises(self):
+        with pytest.raises(ValueError, match="多个 H1"):
+            _strip_frontmatter("# 标题一\n# 标题二\n正文")
+
+    def test_double_h1_with_frontmatter_raises(self):
+        raw = "---\nid: '1'\n---\n\n# 标题一\n\n# 标题二\n\n正文\n"
+        with pytest.raises(ValueError, match="--content"):
+            _strip_frontmatter(raw)
+
+    def test_double_h1_whitespace_line_between_raises(self):
+        """no-fm 变体：含空格/制表符的空行分隔的双 H1 同样报错（④与③口径一致，#542 CR）"""
+        with pytest.raises(ValueError, match="多个 H1"):
+            _strip_frontmatter("# A\n \n# B\n正文")
+
+    def test_double_h1_tab_line_between_raises(self):
+        """no-fm 变体：制表符空行分隔的双 H1 同样报错"""
+        with pytest.raises(ValueError, match="多个 H1"):
+            _strip_frontmatter("# A\n\t\n# B\n正文")
+
+
+class TestStripFrontmatterEmpty:
+    """剥后为空报错（#541 spec 形态 8，决策 D4）"""
+
+    def test_single_h1_line_raises_empty(self):
+        with pytest.raises(ValueError, match="正文为空"):
+            _strip_frontmatter("# 只有标题没有正文")
+
+    def test_empty_string_passthrough(self):
+        assert _strip_frontmatter("") == ""
+
+    def test_blank_lines_only_passthrough(self):
+        assert _strip_frontmatter("\n\n") == "\n\n"
+
+    def test_frontmatter_only_raises_empty(self):
+        """fm-only 输入剥后为空同样报错（⑤ 的 fm 变体）"""
+        with pytest.raises(ValueError, match="正文为空"):
+            _strip_frontmatter("---\nid: '1'\n---\n")
