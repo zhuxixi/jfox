@@ -1887,7 +1887,8 @@ def _strip_frontmatter(raw: str) -> str:
 
     ① 剥 UTF-8 BOM；② 存在 frontmatter 则剥除；③ 无条件剥至多一行开头 H1
     ——读盘侧 from_markdown 无条件剥首个 H1，此处补齐写盘输入侧的对称转换；
-    ④ 剥后开头仍是 H1（连续双 H1，疑似结构损坏文件）时报错。
+    ④ 剥后开头仍是 H1（连续双 H1，疑似结构损坏文件）时报错；
+    ⑤ 剥后为空且原始输入非空时报错（防误传单行标题清空正文）。
     """
     # 去除 UTF-8 BOM
     if raw.startswith("﻿"):
@@ -1902,6 +1903,8 @@ def _strip_frontmatter(raw: str) -> str:
             "输入内容开头存在多个 H1 标题行，疑似结构损坏的笔记（双 H1/嵌套笔记）。"
             "请手动删除多余的 H1 行，或用 --content 直传修复后的内容"
         )
+    if not body and raw.strip():
+        raise ValueError("剥除标题行后正文为空，请确认输入内容是否正确")
     return body
 
 

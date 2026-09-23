@@ -114,3 +114,17 @@ class TestStripFrontmatterDoubleH1:
         raw = "---\nid: '1'\n---\n\n# 标题一\n\n# 标题二\n\n正文\n"
         with pytest.raises(ValueError, match="--content"):
             _strip_frontmatter(raw)
+
+
+class TestStripFrontmatterEmpty:
+    """剥后为空报错（#541 spec 形态 8，决策 D4）"""
+
+    def test_single_h1_line_raises_empty(self):
+        with pytest.raises(ValueError, match="正文为空"):
+            _strip_frontmatter("# 只有标题没有正文")
+
+    def test_empty_string_passthrough(self):
+        assert _strip_frontmatter("") == ""
+
+    def test_blank_lines_only_passthrough(self):
+        assert _strip_frontmatter("\n\n") == "\n\n"
