@@ -2,6 +2,18 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.16.0] - 2026-09-23
+
+### Features
+
+- **install**: split sentence-transformers into [embed] extra with graceful degradation (#519) (#537)
+
+### Fixes
+
+- **cli**: normalize --content-file input - strip leading H1 unconditionally, unify stdin (#541) (#542)
+
+[1.16.0]: https://github.com/zhuxixi/jfox/compare/v1.15.0...v1.16.0
+
 ## [1.15.0] - 2026-09-20
 
 ### Features
