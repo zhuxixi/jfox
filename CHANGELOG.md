@@ -2,6 +2,12 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [Unreleased]
+
+### Fixes
+
+- **note_index**: 剥离改单遍合并正则——反引号包 HTML 注释不再吞后续 wiki link (#548) (#550)
+
 ## [1.16.0] - 2026-09-23
 
 ### Features
