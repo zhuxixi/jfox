@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 # 维基链接正则：匹配 [[标题]] 语法（非贪婪，不支持跨行）
 _WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
 
+# 单次遍历剔除：alternation 顺序即优先级（fenced > HTML 注释 > inline code），
+# 保证 `<!-- -->` 这类「反引号包注释」在首个反引号处被 inline 分支原子吃掉，
+# 不产生相邻空反引号对。禁止拆回多次顺序 re.sub——顺序剔除会让已删除区域
+# 造出新结构（#548：注释删除→空反引号对→inline 跨界吞链接）。
+# 注意：当前三分支在同一扫描位置互斥（fenced 的 ``` 处 inline 必不匹配、HTML 以 `<` 起始），
+# 故今日顺序不改变输出；声明的顺序是防御性文档，约束未来可能在同一位置竞争的分支（如四反引号 fence 变体）。
+_EXCLUSION_RE = re.compile(
+    r"```[\s\S]*?```"  # fenced code block
+    r"|<!--[\s\S]*?-->"  # HTML 注释
+    r"|`[^`]+`",  # inline code（反引号 span）
+)
+
 
 def extract_wiki_links_from_text(text: str) -> List[str]:
     """从文本中提取 [[...]] 格式的维基链接。
@@ -42,15 +54,9 @@ def _normalize_wiki_link_title(link_text: str) -> str:
 def _strip_wiki_link_exclusions(text: str) -> str:
     """移除不应参与 wiki-link 匹配的 Markdown 区域（fenced code block、HTML 注释、inline code）。
 
-    这是轻量级处理，覆盖最常见的误匹配场景；不保证解析所有 Markdown 边界情况。
+    单次遍历（见 _EXCLUSION_RE 注释）；轻量级处理，不保证解析所有 Markdown 边界情况。
     """
-    # fenced code block（支持可选语言标识）
-    text = re.sub(r"```[\s\S]*?```", "", text)
-    # HTML 注释
-    text = re.sub(r"<!--[\s\S]*?-->", "", text)
-    # inline code（反引号 span；须最后处理，避免吃掉 fenced 边界）
-    text = re.sub(r"`[^`]+`", "", text)
-    return text
+    return _EXCLUSION_RE.sub("", text)
 
 
 @dataclass

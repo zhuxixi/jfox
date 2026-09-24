@@ -136,3 +136,31 @@ class TestBacklinksAutoMaintenance:
 
         # 验证 A 没有来自 C 的直接反向链接（只有间接通过 B）
         assert id_c not in backlink_ids_a
+
+
+class TestWikiLinkExclusionOnAdd:
+    """#548：反引号包 HTML 注释不吞落库链接（add → backlink/links 全链路）"""
+
+    def test_add_keeps_link_after_backtick_wrapped_html_comment(self, cli):
+        """A3：add 含触发内容的笔记后，目标收到 backlink、源笔记 links 含目标 id"""
+        # 1. 创建目标笔记
+        target = cli.add("Target content", title="548 Target Note", note_type="permanent")
+        assert target.success
+        target_id = target.data["note"]["id"]
+
+        # 2. 创建源笔记：反引号包 HTML 注释 + 紧随的 wiki link + 后文反引码（触发形态）
+        content = "页首标记 `<!-- print p.X -->` 说明\n\n" "见 [[548 Target Note]] 和 `code`"
+        source = cli.add(content, title="548 Source Note", note_type="permanent")
+        assert source.success
+        source_id = source.data["note"]["id"]
+
+        # 3. 目标笔记必须收到反向链接（issue 症状：backlinks 缺失）
+        refs_result = cli.refs(note_id=target_id)
+        assert refs_result.success
+        backlink_ids = [link["id"] for link in refs_result.data.get("backward_links", [])]
+        assert source_id in backlink_ids, f"backlink 缺失：{backlink_ids}"
+
+        # 4. 源笔记存储的 links 含目标 id（issue 复现口径：show --json 的 links）
+        show_result = cli._run("show", source_id)
+        assert show_result.success
+        assert target_id in (show_result.json() or {}).get("links", [])

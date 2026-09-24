@@ -62,6 +62,56 @@ class TestStripWikiLinkExclusions:
         out = _strip_wiki_link_exclusions("普通 [[链接]] 内容")
         assert "[[链接]]" in out
 
+    # ---- #548 回归：反引号包 HTML 注释塌缩成相邻空反引号对 ----
+
+    def test_backtick_wrapped_html_comment_keeps_following_wiki_link(self):
+        """①/A1：反引号包注释删除后空反引号对不吞后续 wiki link"""
+        text = "页首标记 `<!-- print p.X -->` 说明\n\n见 [[笔记A]] 和 `code`"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[笔记A]]" in out
+
+    def test_double_backtick_comment_pair_bracketing_wiki_link(self):
+        """③/A1：两个「反引号包注释」夹住的链接存活（双塌缩形态）"""
+        text = "`<!-- a -->` [[笔记A]] `<!-- b -->`"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[笔记A]]" in out
+
+    def test_backtick_comment_without_trailing_backtick(self):
+        """②/A2 对照：触发形态但后文无更多反引号（修复前后均正确，防过修）"""
+        text = "页首标记 `<!-- print p.X -->` 见 [[笔记A]]"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[笔记A]]" in out
+
+    def test_fenced_block_with_comment_inside_priority_unchanged(self):
+        """④/A2 对照：fenced 内含 HTML 注释与链接——块内不提取、块外存活（顺序由⑦钉住）"""
+        text = "```\n<!-- c --> [[不应解析]]\n```\n\n见 [[笔记A]]"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[不应解析]]" not in out
+        assert "[[笔记A]]" in out
+
+    def test_inline_code_link_still_not_extracted(self):
+        """⑤/A2 对照：inline code 内的链接仍不提取"""
+        text = "见 `[[不应解析]]` 和 [[笔记A]]"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[不应解析]]" not in out
+        assert "[[笔记A]]" in out
+
+    def test_html_comment_containing_backticks_removed_whole(self):
+        """⑥/A2 对照：注释内含反引号——注释整体剔除、注释外链接存活"""
+        text = "<!-- `code` --> 见 [[笔记A]]"
+        out = _strip_wiki_link_exclusions(text)
+        assert "`code`" not in out
+        assert "[[笔记A]]" in out
+
+    def test_fenced_block_with_inner_backtick_and_link_pins_ordering(self):
+        """⑦/A2 对照：fence 内含反引号与链接——fenced 分支须原子吃掉整块，
+        块内链接不得因 fence 被行内反引号破坏而泄漏；块外链接存活。
+        该用例区分 alternation 顺序（inline 先于 fenced 时会失败）。"""
+        text = "```\ncode `t` [[不应解析]]\n```\n\n见 [[笔记A]] 和 `d`"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[不应解析]]" not in out
+        assert "[[笔记A]]" in out
+
 
 class TestResolveWikiLinks:
     """resolve_wiki_links 统一解析规则（issue #511）"""
