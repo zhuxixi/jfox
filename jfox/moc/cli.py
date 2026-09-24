@@ -583,9 +583,9 @@ def _exact_load(idx: "NoteIndex", note_id: str) -> Optional[Note]:
     note = load_note(Path(meta.filepath))
     if note is None or note.id != note_id:
         return None
-    # from_markdown 不回填 _filepath，filepath 属性按当前标题现算；对 legacy 文件名
-    # （#407/#408 时间戳-微秒-slug 等与标题派生名不一致的文件）会算出不存在的路径，
-    # 把真实笔记误判成 ghost。钉住索引命中的真实磁盘路径后再校验存在性。
+    # #549 起 from_markdown 已钉住加载路径，此 set_filepath 冗余但保留：
+    # 它同时是「索引命中的路径必须真实存在」的防御（防 #407/#408 幽灵误判回归，
+    # 见 tests/integration/test_moc_member_commands.py 的 legacy 用例）。
     note.set_filepath(Path(meta.filepath))
     if not note.filepath.exists():
         return None

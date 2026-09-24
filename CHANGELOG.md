@@ -18,6 +18,8 @@ All notable changes to jfox-cli will be documented in this file.
 
 ### Fixes
 
+- **note**: 加载的笔记钉住真实磁盘路径——文件名与当前字段分家时，补 backlink / rebuild --backlinks / MOC 成员回填不再写出同 ID 双文件，`show`/`delete` 也能正确读写该笔记；`update_note` 改为显式规范化写并在成功后重钉路径 (#549)
+
 - **note_index**: 剥离改单遍合并正则——反引号包 HTML 注释不再吞后续 wiki link (#548) (#550)
 
 ## [1.16.0] - 2026-09-23

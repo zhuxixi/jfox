@@ -90,10 +90,14 @@ class Note:
     embedding: Optional[List[float]] = None  # 向量
     score: Optional[float] = None  # 检索得分
     hop: Optional[int] = None  # 图谱距离
-    _filepath: Optional[Path] = None  # 自定义文件路径（覆盖默认）
+    _filepath: Optional[Path] = None  # 真实磁盘路径 pin（#549：加载时钉住；update_note 成功后重钉）
 
     def set_filepath(self, path: Path):
-        """设置自定义文件路径（用于测试）"""
+        """钉住笔记的真实文件路径。
+
+        #549 起承担生产职责：from_markdown 加载时钉住来源路径（save_note 就地写）；
+        update_note 规范化写成功后重钉到新路径（防陈旧 pin 复活同 ID 双文件）。
+        """
         self._filepath = path
 
     @property
