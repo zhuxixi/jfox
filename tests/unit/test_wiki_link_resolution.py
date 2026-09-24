@@ -83,7 +83,7 @@ class TestStripWikiLinkExclusions:
         assert "[[笔记A]]" in out
 
     def test_fenced_block_with_comment_inside_priority_unchanged(self):
-        """④/A2 对照：fenced 优先级不变——块内链接不提取、块外存活"""
+        """④/A2 对照：fenced 内含 HTML 注释与链接——块内不提取、块外存活（顺序由⑦钉住）"""
         text = "```\n<!-- c --> [[不应解析]]\n```\n\n见 [[笔记A]]"
         out = _strip_wiki_link_exclusions(text)
         assert "[[不应解析]]" not in out
@@ -101,6 +101,15 @@ class TestStripWikiLinkExclusions:
         text = "<!-- `code` --> 见 [[笔记A]]"
         out = _strip_wiki_link_exclusions(text)
         assert "`code`" not in out
+        assert "[[笔记A]]" in out
+
+    def test_fenced_block_with_inner_backtick_and_link_pins_ordering(self):
+        """⑦/A2 对照：fence 内含反引号与链接——fenced 分支须原子吃掉整块，
+        块内链接不得因 fence 被行内反引号破坏而泄漏；块外链接存活。
+        该用例区分 alternation 顺序（inline 先于 fenced 时会失败）。"""
+        text = "```\ncode `t` [[不应解析]]\n```\n\n见 [[笔记A]] 和 `d`"
+        out = _strip_wiki_link_exclusions(text)
+        assert "[[不应解析]]" not in out
         assert "[[笔记A]]" in out
 
 
