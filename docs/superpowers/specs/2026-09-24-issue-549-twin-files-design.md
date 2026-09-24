@@ -1,6 +1,6 @@
 # #549 spec：加载笔记按真实磁盘路径读写（消除同 ID 双文件）
 
-- 状态：**draft v2，待用户确认（spec gate）**
+- 状态：**confirmed v2（用户已批准并实现完成；整分支终审 Ready to merge: Yes）**
 - v2 变更（review 修订）：① U1 重设计为受控演练（v1 的「incident 复刻」在笔记已规范化后验证不了任何东西）；② 补 `update_note` 成功后重钉 pin 契约；③ 补 `save_note` 就地写边界（改 title/topic/type 须走 update_note）；④ A7 补无入链前置；⑤ A3 定为 integration；⑥ 防回归注释列为交付物。
 - issue：zhuxixi/jfox#549
 - 调研依据：`research/root-cause-and-fix-verification.md`（含原型实验 E1–E3）
@@ -77,7 +77,7 @@ update_note(note) → _atomic_write(note.expected_filepath)   # 规范化
 
 ## 4. 可测性拆分设计
 
-- **纯函数层（unit，无需 IO/KB）**：`Note.expected_filepath` 三分支（fleeting / session(topic 优先，空 topic 回退 title) / 其余）；`Note.filepath` 的 pin/非 pin 两态；`from_markdown` 有/无 filepath 的钉与不钉。测试文件 `tests/unit/test_note_path_semantics.py`。
+- **纯函数层（unit，无需 IO/KB）**：`Note.expected_filepath` 三分支（fleeting / session(topic 优先，空 topic 回退 title) / 其余）；`Note.filepath` 的 pin/非 pin 两态；`from_markdown` 有/无 filepath 的钉与不钉。测试文件 `tests/unit/test_note_path_rules.py`。
 - **IO 层（integration，temp KB + mock embedding）**：CLI 级复现矩阵（下表 A4–A8）。夹具手法复用 `tests/unit/test_delete_backlink_cleanup.py:655-695`（`os.rename` 到 `{id}-renamed.md` 制造发散名），不新增抽象层。
 - **护栏（回归）**：既有 `tests/unit/test_edit.py:72-82`（改标题→改名）、`:373-390`（改 type→跨目录）必须保持绿。
 - 命名约束：测试文件/用例名避开子串 `search|semantic|embedding|vector|query|suggest`（`-m "not embedding"` 过滤口径）；用例标题全局唯一（#483 闸门）。
@@ -87,7 +87,7 @@ update_note(note) → _atomic_write(note.expected_filepath)   # 规范化
 
 | ID | 功能点 | 验收方式 | 具体验证 | 通过标准 |
 |----|--------|----------|----------|----------|
-| A1 | `expected_filepath`/`filename` 三分支与 pin 两态 | 自动化（unit） | `uv run pytest tests/unit/test_note_path_semantics.py -m "not embedding"` | 全绿 |
+| A1 | `expected_filepath`/`filename` 三分支与 pin 两态 | 自动化（unit） | `uv run pytest tests/unit/test_note_path_rules.py -m "not embedding"` | 全绿 |
 | A2 | `from_markdown` 钉/不钉 | 自动化（unit） | 同上 | 全绿 |
 | A3 | `update_note` 写规则名 + 删旧（stale 名自愈，单文件）+ 成功后重钉 pin | 自动化（integration） | `uv run pytest tests/integration/test_stale_name_single_file.py`（含自愈用例与「同对象 update 后再 save_note 不复活旧文件」用例） | 全绿，单文件 |
 | A4 | `add` 回填 stale 名笔记：无新文件、backlinks 落真实文件 | 自动化（integration） | `uv run pytest tests/integration/test_stale_name_single_file.py` | 断言 `glob(id*)` 唯一 + backlinks 含链接者 |
@@ -115,7 +115,7 @@ U1 说明（v2）：v1 的「incident 复刻」无效——incident 笔记已被
 - `jfox/models.py`：`from_markdown` 钉路径；新增 `expected_filepath` property；`filepath` docstring。
 - `jfox/note.py`：`update_note` 写盘/改名判据改用 `expected_filepath`（+docstring）；`save_note` docstring 明确就地写。
 - **防回归注释（交付物，#548 教训）**：`filepath` property、`from_markdown`、`update_note` 三处必须留注释，说明「就地写 / 规范化写」两分法、update_note 为何不能用 `note_obj.filepath`（E2b：钉路径后改名判据恒假，`test_edit.py:72-82` 必挂）、以及写盘成功后重钉 pin 的原因——防止未来被「简化」回 `note_obj.filepath`。
-- `tests/unit/test_note_path_semantics.py`（新）。
+- `tests/unit/test_note_path_rules.py`（新）。
 - `tests/integration/test_stale_name_single_file.py`（新，含 A4–A8）。
 - `CHANGELOG.md`：`## [Unreleased]` 加 Fixes 条目。
 - 视情况：`tests/unit/test_edit.py` 增补 stale 自愈用例。

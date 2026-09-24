@@ -295,3 +295,11 @@ git commit -m "docs(changelog): #549 同 ID 双文件修复条目"
 - A1–A9 全部有对应测试且全绿；U1 留待合并后用户点头执行（spec §5）。
 - 快速套件 `tests/ -m "not embedding and not slow"` 全绿。
 - 分支只含 4 个 commit（spec / 核心修复 / 症状层测试 / changelog），主 checkout 零改动。
+
+---
+
+## 执行偏差记录（终审补记）
+
+1. **测试文件名更名**：spec 中的 `tests/unit/test_note_path_semantics.py` 实际落地为 `test_note_path_rules.py`——#483 命名约束要求避开子串 `semantic`（spec 已同步修订）。
+2. **分支为 6 个 commit 而非 4 个**：Task 1 的 lint fix wave（ruff/black）amend 进核心 commit；第 5 个 commit `a5ed229` 为终审挂账的注释债清理（`redirect.py`、`moc/cli.py`、`test_moc_member_commands.py` 纯注释/docstring——reviewer 指出「from_markdown 不回填 `_filepath`」在修复后已成假命题），第 6 个为本修订。前置事实 3 的「不碰 moc/、redirect.py」原指行为代码，注释债清理经 reviewer 建议纳入。
+3. **plan 的用例骨架微调**：`temp_kb_registered` 实为 `tests/utils/temp_kb.py` 的 context manager（非 fixture），A3-2/A8 按计划备注改用 `use_kb(kb_name)` + python 级 note API 模式。
