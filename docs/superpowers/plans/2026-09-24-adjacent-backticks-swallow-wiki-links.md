@@ -24,10 +24,12 @@
 ### Task 1: 合并正则修复 + unit 回归用例①–⑥（A1/A2）
 
 **Files:**
+
 - Modify: `jfox/note_index.py`（`_WIKI_LINK_RE` 定义之后加 `_EXCLUSION_RE`；替换 `_strip_wiki_link_exclusions` 函数体，约 42–53 行）
 - Test: `tests/unit/test_wiki_link_resolution.py`（`TestStripWikiLinkExclusions` 类追加 6 个用例）
 
 **Interfaces:**
+
 - Consumes: 无（首任务）
 - Produces: `_strip_wiki_link_exclusions(text: str) -> str`（签名不变，行为修复）；模块级 `_EXCLUSION_RE`。Task 2 的集成测试经 CLI 间接消费此行为。
 
@@ -132,10 +134,12 @@ git commit -m "fix(note_index): merge exclusion regexes into single pass to stop
 ### Task 2: 集成用例——add 落库后 links/backlink 不丢（A3）
 
 **Files:**
+
 - Modify: `tests/integration/test_backlinks.py`（文件末尾追加测试类）
 - Test: 即本文件
 
 **Interfaces:**
+
 - Consumes: Task 1 修复后的 `_strip_wiki_link_exclusions` 行为（经 `jfox add` → `resolve_wiki_links` 间接消费）；`ZKCLI.add(content, title=, note_type=)`、`ZKCLI.refs(note_id=)`、`ZKCLI._run("show", <id>)`（JSON 输出）。
 - Produces: 无（叶子任务）。
 
