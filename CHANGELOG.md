@@ -2,6 +2,18 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.16.1] - 2026-09-24
+
+### Fixes
+
+- **note_index**: 剥离改单遍合并正则——反引号包 HTML 注释不再吞后续 wiki link (#548) (#550)
+
+### Changes
+
+- **claude.md**: batch refresh — fold in 6 pending auto/claude-md PRs (#520/#524/#527/#532/#540/#545) (#546)
+
+[1.16.1]: https://github.com/zhuxixi/jfox/compare/v1.16.0...v1.16.1
+
 ## [Unreleased]
 
 ### Fixes
