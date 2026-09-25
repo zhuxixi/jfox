@@ -2,6 +2,14 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.16.2] - 2026-09-25
+
+### Fixes
+
+- **note**: 加载笔记钉住真实磁盘路径，update_note 规范化写——消除同 ID 双文件 (#549) (#553)
+
+[1.16.2]: https://github.com/zhuxixi/jfox/compare/v1.16.1...v1.16.2
+
 ## [1.16.1] - 2026-09-24
 
 ### Fixes
