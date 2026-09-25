@@ -193,9 +193,10 @@ def test_add_member_non_permanent_warns_but_applies(seeded_kb):
 def test_add_member_loads_note_with_legacy_filename(seeded_kb):
     """#407/#408 legacy 文件名（与标题派生名不一致）：不得误判 ghost（#505 CR issue-1）。
 
-    from_markdown 不回填 _filepath，filepath 属性按标题现算
+    #549 前 from_markdown 不钉路径，filepath 属性按标题现算
     `20260820000003-zima-three.md`；真实文件用 legacy 名落盘时现算路径不存在，
-    修复前 add-member 会误报 "Member note not found"。
+    当时 add-member 会误报 "Member note not found"。#549 后由 from_markdown 钉路径
+    根治，本用例保留作回归护栏。
     """
     member_three = Note(
         id="20260820000003",

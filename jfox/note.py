@@ -149,7 +149,12 @@ def _atomic_write(filepath: Path, content: str) -> None:
 
 
 def save_note(note: Note, add_to_index: bool = True) -> bool:
-    """保存笔记到文件"""
+    """保存笔记到文件（就地写）。
+
+    注意（#549）：写盘目标是 note.filepath——对从磁盘加载的笔记即「就地写回
+    加载路径」；就地写不保证文件名随字段变化。改 title/topic/type 的意图请用
+    update_note（规范化写：按当前字段现算目标并删除旧文件）。
+    """
     try:
         _atomic_write(note.filepath, note.to_markdown())
 
@@ -590,9 +595,15 @@ def reject_note(note_id: str, reason: Optional[str] = None) -> bool:
 
 def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
     """
-    更新已有笔记
+    更新已有笔记（规范化写，#549）。
 
-    处理：查找旧文件 → 更新 updated 时间戳 → 写入新文件 → 删除旧文件（如路径变化）→ 更新索引
+    处理：查找旧文件 → 更新 updated 时间戳 → 写入规则派生路径（expected_filepath）
+    → 删除旧文件（如路径变化）→ 重钉 pin → 更新索引。
+
+    规范化写语义：写盘目标始终按当前字段（type/title/topic）现算，不用加载时
+    钉住的 filepath——否则钉路径后改名判据恒假，改标题/改 type 不再改名移动
+    （E2b 回归，tests/unit/test_edit.py:72-82、:373-390）。发散名笔记被触碰时
+    由此自然自愈为规则名（单文件）。
 
     Args:
         note_obj: 已修改的 Note 对象（必须已有 id）
@@ -611,13 +622,18 @@ def update_note(note_obj: Note, add_to_index: bool = True) -> bool:
         # 更新时间戳
         note_obj.updated = datetime.now()
 
-        # 写入新文件（filepath 属性根据当前字段生成）
-        _atomic_write(note_obj.filepath, note_obj.to_markdown())
+        # 规范化写（#549）：目标路径按当前字段现算，不看加载 pin。
+        target = note_obj.expected_filepath
+        _atomic_write(target, note_obj.to_markdown())
 
         # 如果文件路径变了（标题修改导致重命名），删除旧文件
-        if old_filepath != note_obj.filepath and old_filepath.exists():
+        if old_filepath != target and old_filepath.exists():
             old_filepath.unlink()
-            logger.info(f"Renamed note file: {old_filepath} -> {note_obj.filepath}")
+            logger.info(f"Renamed note file: {old_filepath} -> {target}")
+
+        # #549：写盘成功后把 pin 重钉到刚写入的路径——否则同一对象随后的
+        # save_note（就地写）会按陈旧 pin 写回旧路径、复活同 id 双文件。
+        note_obj.set_filepath(target)
 
         logger.info(f"Updated note {note_obj.id}")
 

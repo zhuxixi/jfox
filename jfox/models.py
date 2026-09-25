@@ -90,10 +90,14 @@ class Note:
     embedding: Optional[List[float]] = None  # 向量
     score: Optional[float] = None  # 检索得分
     hop: Optional[int] = None  # 图谱距离
-    _filepath: Optional[Path] = None  # 自定义文件路径（覆盖默认）
+    _filepath: Optional[Path] = None  # 真实磁盘路径 pin（#549：加载时钉住；update_note 成功后重钉）
 
     def set_filepath(self, path: Path):
-        """设置自定义文件路径（用于测试）"""
+        """钉住笔记的真实文件路径。
+
+        #549 起承担生产职责：from_markdown 加载时钉住来源路径（save_note 就地写）；
+        update_note 规范化写成功后重钉到新路径（防陈旧 pin 复活同 ID 双文件）。
+        """
         self._filepath = path
 
     @property
@@ -112,11 +116,27 @@ class Note:
 
     @property
     def filepath(self) -> Path:
-        """完整文件路径"""
+        """完整文件路径。
+
+        #549：从磁盘加载的笔记此处返回钉住的真实磁盘路径（可能偏离规则名）；
+        按当前字段现算的规则路径请用 expected_filepath。
+        """
         # 如果设置了自定义路径，优先使用
         if self._filepath is not None:
             return self._filepath
 
+        return self.expected_filepath
+
+    @property
+    def expected_filepath(self) -> Path:
+        """按当前字段现算的规则路径（type 目录 + filename），不看 _filepath pin。
+
+        #549 两分法的另一半：update_note（规范化写）以本属性为写盘目标；
+        filepath 在笔记从磁盘加载时被钉住为真实路径（就地写）。
+        用 note_obj.filepath 代替本属性的已知后果：钉路径后改名判据
+        `old != note.filepath` 恒假，edit --title / 改 type 不再改名移动
+        （tests/unit/test_edit.py:72-82、:373-390 必挂）。
+        """
         from .config import config
 
         base = config.notes_dir / self.type.value
@@ -196,7 +216,8 @@ class Note:
         else:
             updated = datetime.fromisoformat(updated_str)
 
-        return cls(
+        # 先构造再钉路径（见函数尾部 #549 注释）
+        note = cls(
             id=fm.get("id", ""),
             title=fm.get("title", title),
             content=content_text.strip(),
@@ -222,6 +243,13 @@ class Note:
             knowledge_type=fm.get("knowledge_type"),
             status=fm.get("status"),
         )
+        # #549：钉住加载来源的真实磁盘路径。此后 note.filepath 返回真实路径，
+        # save_note（就地写）写回原文件——文件名与当前字段分家时也不会在规则名上
+        # 另写同 id 双文件。需要「按当前字段重新定址」的操作（改标题/改 type）
+        # 请走 note.update_note，其写盘目标用 expected_filepath。
+        if filepath is not None:
+            note._filepath = Path(filepath)
+        return note
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于 JSON 输出）"""

@@ -417,8 +417,9 @@ def _sync_keep_backlinks(
     """把迁移来的来源写入保留笔记的 backlinks，并移除旧笔记残留。
 
     采用 re-read-and-merge：只改 backlinks 字段，避免覆盖并发修改。
-    文件定位用 find_note_file（按 cfg 搜索）；不能依赖 Note.filepath
-    property —— from_markdown 不回填 _filepath，它会退回全局 config 推算路径。
+    文件定位用 find_note_file（按 cfg 搜索）；不依赖 Note.filepath property
+    —— #549 起 from_markdown 已钉住加载路径（Note.filepath 对加载笔记可信），
+    本函数直接操作路径、不加载 Note 对象，保留 find_note_file 定位仍最稳妥。
     """
     from .config import config
     from .note import find_note_file
