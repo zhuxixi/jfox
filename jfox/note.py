@@ -207,6 +207,80 @@ def backlinks_write_needed(
     )
 
 
+def apply_backlinks(
+    snapshot: Note,
+    target_links: Sequence[str],
+    target_backlinks: Sequence[str],
+    cfg: Optional[ZKConfig] = None,
+) -> str:
+    """#561：发现分歧即跳过的 backlinks 窄写（替代 rebuild 的 save_note 整条覆盖）。
+
+    流程：定位文件（快照钉住的真实路径优先，find_note_file 兜底）→ 重读 fresh
+    → 分歧检测（fresh 与快照的序列化结果不一致说明有并发写入，本轮跳过）
+    → 零写入守卫 → 在 fresh 上赋重算值 → 原子写 → 刷新索引 meta。
+
+    Returns:
+        "updated"   写入成功
+        "unchanged" 目标值已在盘上，零写入
+        "skipped"   文件缺失/被并发修改（正常竞态，非故障；下轮 rebuild 自愈）
+        "error"     写盘异常（已捕获并记 warning，不向上抛）
+    """
+    use_config = cfg or config
+
+    # D1：候选路径——快照钉住的真实路径优先；失效或 id 不匹配时 find_note_file 兜底
+    candidates = [snapshot.filepath]
+    fresh: Optional[Note] = None
+    actual_path: Optional[Path] = None
+
+    for path in candidates:
+        if not path.exists():
+            continue
+        loaded = load_note(path)
+        if loaded is not None and loaded.id == snapshot.id:
+            fresh, actual_path = loaded, path
+            break
+
+    if fresh is None:
+        fallback = find_note_file(use_config, snapshot.id)
+        if fallback is not None and fallback.exists() and fallback != snapshot.filepath:
+            loaded = load_note(fallback)
+            if loaded is not None and loaded.id == snapshot.id:
+                fresh, actual_path = loaded, fallback
+
+    if fresh is None or actual_path is None:
+        logger.info(
+            "Skipped backlinks write for %s: 文件缺失或已改名（missing，下轮 rebuild 自愈）",
+            snapshot.id,
+        )
+        return "skipped"
+
+    # D2'：发现分歧即跳过——并发改动优先，本轮不碰这条笔记
+    if fresh.to_markdown() != snapshot.to_markdown():
+        logger.info(
+            "Skipped backlinks write for %s: 检测到并发修改（diverged，下轮 rebuild 自愈）",
+            snapshot.id,
+        )
+        return "skipped"
+
+    # D4：零写入守卫
+    if not backlinks_write_needed(fresh.links, fresh.backlinks, target_links, target_backlinks):
+        return "unchanged"
+
+    fresh.links = sorted(set(target_links))
+    fresh.backlinks = sorted(set(target_backlinks))
+    try:
+        _atomic_write(actual_path, fresh.to_markdown())
+    except Exception as e:
+        logger.warning("Failed to write backlinks for %s: %s", snapshot.id, e)
+        return "error"
+
+    # D6：刷新索引 meta，与 #422 的 delete/promote 修复保持一致
+    from .note_index import get_note_index
+
+    get_note_index(use_config).update_note_meta(fresh)
+    return "updated"
+
+
 def load_note(filepath: Path) -> Optional[Note]:
     """从文件加载笔记"""
     try:
