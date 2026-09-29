@@ -30,6 +30,8 @@ All notable changes to jfox-cli will be documented in this file.
 
 - **note_index**: 剥离改单遍合并正则——反引号包 HTML 注释不再吞后续 wiki link (#548) (#550)
 
+- **index**: `index rebuild --backlinks` 写回改为「重读→分歧检测→原子写」：检测到并发修改或文件缺失的笔记本轮跳过（计入新 JSON 字段 `backlinks_skipped`，下轮重建自愈），并发 `edit` 的正文不再被旧快照静默覆盖 (#561)
+
 ## [1.16.0] - 2026-09-23
 
 ### Features
