@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import yaml
 
@@ -190,6 +190,21 @@ def save_note(note: Note, add_to_index: bool = True) -> bool:
     except Exception as e:
         logger.error(f"Failed to save note: {e}")
         return False
+
+
+def backlinks_write_needed(
+    links: Sequence[str],
+    backlinks: Sequence[str],
+    target_links: Sequence[str],
+    target_backlinks: Sequence[str],
+) -> bool:
+    """零写入守卫（#561）：重算目标值与现有值（各自排序去重后）是否不同。
+
+    纯函数，无 I/O。供 apply_backlinks 在重读 fresh 后判断是否需要写盘。
+    """
+    return sorted(set(links)) != sorted(set(target_links)) or sorted(set(backlinks)) != sorted(
+        set(target_backlinks)
+    )
 
 
 def load_note(filepath: Path) -> Optional[Note]:
