@@ -400,7 +400,7 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
 
     Returns:
         统计信息字典，包含 backlinks_rebuilt, backlinks_updated, backlinks_total,
-        backlinks_failed, unresolved_links 等字段
+        backlinks_failed, backlinks_skipped, unresolved_links 等字段
     """
     if output_format != "json":
         console.print("[yellow]Rebuilding backlinks...[/yellow]")
@@ -415,6 +415,7 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
             "backlinks_updated": 0,
             "backlinks_total": 0,
             "backlinks_failed": 0,
+            "backlinks_skipped": 0,
             "unresolved_links": [],
         }
 
@@ -449,32 +450,36 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
                 new_backlinks[target_id].append(n.id)
 
     # 第三阶段：比较并写回变化的笔记
+    # #561：写回走 apply_backlinks（重读→分歧检测→原子写），并发改动不再被快照覆盖。
+    # 注意：不得原地修改 n.links / n.backlinks——分歧检测以快照为比对基准（D8）。
     updated_count = 0
     failed_count = 0
-    changed_note_ids: List[str] = []
+    skipped_count = 0
 
     for n in notes:
-        # list 命令函数已重命名为 list_notes，不再遮蔽 built-in list()。
-        # 保留切片复制以避免原地修改遍历中的列表。
-        old_links = n.links[:]
-        old_backlinks = n.backlinks[:]
         new_links_sorted = merged_links[n.id]
         new_backlinks_sorted = sorted(new_backlinks[n.id])
 
-        if sorted(old_links) != new_links_sorted or sorted(old_backlinks) != new_backlinks_sorted:
-            # 排序后写回，保证 frontmatter 顺序稳定
-            n.links = new_links_sorted
-            n.backlinks = new_backlinks_sorted
+        if sorted(n.links) != new_links_sorted or sorted(n.backlinks) != new_backlinks_sorted:
             try:
-                if note.save_note(n, add_to_index=False):
-                    updated_count += 1
-                    changed_note_ids.append(n.id)
-                else:
-                    failed_count += 1
-                    logger.warning(f"Failed to save note {n.id} during backlinks rebuild")
+                status = note.apply_backlinks(n, new_links_sorted, new_backlinks_sorted)
             except Exception as e:
                 failed_count += 1
-                logger.warning(f"Failed to save note {n.id} during backlinks rebuild: {e}")
+                logger.warning(
+                    f"Failed to write backlinks for note {n.id} during backlinks rebuild: {e}"
+                )
+                continue
+            if status == "updated":
+                updated_count += 1
+            elif status == "skipped":
+                # 并发修改/文件缺失：正常竞态非故障，下轮 rebuild 自愈（D7）
+                skipped_count += 1
+            elif status == "error":
+                failed_count += 1
+                logger.warning(
+                    f"Failed to write backlinks for note {n.id} during backlinks rebuild"
+                )
+            # "unchanged"：并发方已写入目标值，不计数
 
     # 去重未解析链接并保持顺序
     seen_unresolved = set()
@@ -492,6 +497,11 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
             console.print(
                 f"[yellow]⚠[/yellow] {failed_count} note(s) failed to save during backlinks rebuild"
             )
+        if skipped_count > 0:
+            console.print(
+                f"[dim]Skipped {skipped_count} note(s) "
+                f"(concurrent change or missing file; will heal on next rebuild)[/dim]"
+            )
         if unresolved_unique:
             console.print(
                 f"[yellow]⚠[/yellow] Unresolved links: {', '.join(unresolved_unique[:5])}"
@@ -504,6 +514,7 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
         "backlinks_updated": updated_count,
         "backlinks_total": total,
         "backlinks_failed": failed_count,
+        "backlinks_skipped": skipped_count,
         "unresolved_links": unresolved_unique,
     }
 

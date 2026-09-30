@@ -60,13 +60,13 @@ def _make_index(notes):
 class TestRebuildBacklinksImpl:
     """_rebuild_backlinks_impl 单元测试"""
 
-    @patch("jfox.note.save_note")
+    @patch("jfox.note.apply_backlinks")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
     def test_rebuild_updates_changed_links_and_backlinks(
-        self, mock_list_notes, mock_get_index, mock_save_note
+        self, mock_list_notes, mock_get_index, mock_apply
     ):
-        """links/backlinks 变化时，应调用 save_note 写回；forward links 与解析结果合并"""
+        """links/backlinks 变化时，应调用 apply_backlinks 窄写回；forward links 与解析结果合并"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
 
@@ -77,6 +77,7 @@ class TestRebuildBacklinksImpl:
 
         mock_list_notes.return_value = [note_a, note_b]
         mock_get_index.return_value = _make_index([note_a, note_b])
+        mock_apply.return_value = "updated"
 
         result = _rebuild_backlinks_impl(output_format="json")
 
@@ -87,19 +88,21 @@ class TestRebuildBacklinksImpl:
         assert result["backlinks_failed"] == 0
         assert result["unresolved_links"] == []
 
-        # 验证 save_note 被调用两次，且未重新加入索引
-        assert mock_save_note.call_count == 2
-        saved_by_id = {call.args[0].id: call.args[0] for call in mock_save_note.call_args_list}
-        assert saved_by_id[note_a.id].backlinks == [note_b.id]
-        assert saved_by_id[note_b.id].links == [note_a.id]
-        for call in mock_save_note.call_args_list:
-            assert call.kwargs.get("add_to_index") is False
+        # 验证 apply_backlinks 被调用两次，位置参数为 (笔记对象, 合并后 links, 重算 backlinks)
+        assert mock_apply.call_count == 2
+        calls_by_id = {call.args[0].id: call for call in mock_apply.call_args_list}
+        assert calls_by_id[note_a.id].args[0] is note_a
+        assert calls_by_id[note_a.id].args[1] == []
+        assert calls_by_id[note_a.id].args[2] == [note_b.id]
+        assert calls_by_id[note_b.id].args[0] is note_b
+        assert calls_by_id[note_b.id].args[1] == [note_a.id]
+        assert calls_by_id[note_b.id].args[2] == []
 
-    @patch("jfox.note.save_note")
+    @patch("jfox.note.apply_backlinks")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
-    def test_rebuild_skips_unchanged_notes(self, mock_list_notes, mock_get_index, mock_save_note):
-        """backlinks 未变化时，不应调用 save_note"""
+    def test_rebuild_skips_unchanged_notes(self, mock_list_notes, mock_get_index, mock_apply):
+        """backlinks 未变化时，不应调用 apply_backlinks"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
 
@@ -126,14 +129,12 @@ class TestRebuildBacklinksImpl:
         assert result["backlinks_updated"] == 0
         assert result["backlinks_failed"] == 0
         assert result["unresolved_links"] == []
-        mock_save_note.assert_not_called()
+        mock_apply.assert_not_called()
 
-    @patch("jfox.note.save_note")
+    @patch("jfox.note.apply_backlinks")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
-    def test_rebuild_reports_unresolved_links(
-        self, mock_list_notes, mock_get_index, mock_save_note
-    ):
+    def test_rebuild_reports_unresolved_links(self, mock_list_notes, mock_get_index, mock_apply):
         """无法解析的 wiki 链接应被报告"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
@@ -155,10 +156,10 @@ class TestRebuildBacklinksImpl:
         assert result["backlinks_updated"] == 0
         assert result["backlinks_failed"] == 0
 
-    @patch("jfox.note.save_note")
+    @patch("jfox.note.apply_backlinks")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
-    def test_rebuild_empty_notes(self, mock_list_notes, mock_get_index, mock_save_note):
+    def test_rebuild_empty_notes(self, mock_list_notes, mock_get_index, mock_apply):
         """空知识库时应返回零值且不报错"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
@@ -171,13 +172,14 @@ class TestRebuildBacklinksImpl:
         assert result["backlinks_total"] == 0
         assert result["backlinks_updated"] == 0
         assert result["backlinks_failed"] == 0
+        assert result["backlinks_skipped"] == 0
         assert result["unresolved_links"] == []
-        mock_save_note.assert_not_called()
+        mock_apply.assert_not_called()
 
-    @patch("jfox.note.save_note")
+    @patch("jfox.note.apply_backlinks")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
-    def test_rebuild_filters_self_links(self, mock_list_notes, mock_get_index, mock_save_note):
+    def test_rebuild_filters_self_links(self, mock_list_notes, mock_get_index, mock_apply):
         """自链接 [[Note A]] 不应产生自指边"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
@@ -192,13 +194,13 @@ class TestRebuildBacklinksImpl:
         assert result["backlinks_total"] == 1
         assert result["backlinks_updated"] == 0
         assert result["unresolved_links"] == []
-        mock_save_note.assert_not_called()
+        mock_apply.assert_not_called()
 
-    @patch("jfox.note.save_note")
+    @patch("jfox.note.apply_backlinks")
     @patch("jfox.note_index.get_note_index")
     @patch("jfox.note.list_notes")
-    def test_rebuild_includes_failed_count(self, mock_list_notes, mock_get_index, mock_save_note):
-        """save_note 失败时，backlinks_failed 应被统计并包含在 JSON 输出中"""
+    def test_rebuild_includes_failed_count(self, mock_list_notes, mock_get_index, mock_apply):
+        """apply_backlinks 返回 error 时，backlinks_failed 应被统计并包含在 JSON 输出中"""
         import jfox.cli  # noqa: F401
         from jfox.cli import _rebuild_backlinks_impl
 
@@ -209,10 +211,82 @@ class TestRebuildBacklinksImpl:
 
         mock_list_notes.return_value = [note_a, note_b]
         mock_get_index.return_value = _make_index([note_a, note_b])
-        mock_save_note.return_value = False
+        mock_apply.return_value = "error"
 
         result = _rebuild_backlinks_impl(output_format="json")
 
         assert result["backlinks_total"] == 2
         assert result["backlinks_updated"] == 0
         assert result["backlinks_failed"] == 2
+
+    @patch("jfox.note.apply_backlinks")
+    @patch("jfox.note_index.get_note_index")
+    @patch("jfox.note.list_notes")
+    def test_rebuild_failed_count_on_apply_exception(
+        self, mock_list_notes, mock_get_index, mock_apply
+    ):
+        """apply_backlinks 抛异常时应计入 backlinks_failed 且不向外抛出（对齐旧 save_note 兜底语义）"""
+        import jfox.cli  # noqa: F401
+        from jfox.cli import _rebuild_backlinks_impl
+
+        note_a = _FakeNote(id="202601010000000001", title="Note A", content="Content A")
+        note_b = _FakeNote(
+            id="202601010000000002", title="Note B", content="Note B references [[Note A]]"
+        )
+
+        mock_list_notes.return_value = [note_a, note_b]
+        mock_get_index.return_value = _make_index([note_a, note_b])
+        mock_apply.side_effect = Exception("boom")
+
+        result = _rebuild_backlinks_impl(output_format="json")
+
+        assert result["backlinks_total"] == 2
+        assert result["backlinks_updated"] == 0
+        assert result["backlinks_failed"] == 2
+
+    @patch("jfox.note.apply_backlinks")
+    @patch("jfox.note_index.get_note_index")
+    @patch("jfox.note.list_notes")
+    def test_rebuild_dispatches_skipped_and_updated(
+        self, mock_list_notes, mock_get_index, mock_apply
+    ):
+        """A5：updated/skipped 分派到 backlinks_updated / backlinks_skipped，互不混淆"""
+        import jfox.cli  # noqa: F401
+        from jfox.cli import _rebuild_backlinks_impl
+
+        note_a = _FakeNote(id="202601010000000001", title="Note A", content="Content A")
+        note_b = _FakeNote(
+            id="202601010000000002", title="Note B", content="Note B references [[Note A]]"
+        )
+        mock_list_notes.return_value = [note_a, note_b]
+        mock_get_index.return_value = _make_index([note_a, note_b])
+        mock_apply.side_effect = ["updated", "skipped"]
+
+        result = _rebuild_backlinks_impl(output_format="json")
+
+        assert result["backlinks_updated"] == 1
+        assert result["backlinks_skipped"] == 1
+        assert result["backlinks_failed"] == 0
+
+    @patch("jfox.note.apply_backlinks")
+    @patch("jfox.note_index.get_note_index")
+    @patch("jfox.note.list_notes")
+    def test_rebuild_no_skipped_line_when_zero(
+        self, mock_list_notes, mock_get_index, mock_apply, capsys
+    ):
+        """Review Focus 5：skipped=0 时 table 输出不出现 skipped 提示行"""
+        import jfox.cli  # noqa: F401
+        from jfox.cli import _rebuild_backlinks_impl
+
+        note_a = _FakeNote(id="202601010000000001", title="Note A", content="Content A")
+        note_b = _FakeNote(
+            id="202601010000000002", title="Note B", content="Note B references [[Note A]]"
+        )
+        mock_list_notes.return_value = [note_a, note_b]
+        mock_get_index.return_value = _make_index([note_a, note_b])
+        mock_apply.return_value = "updated"
+
+        _rebuild_backlinks_impl(output_format="table")
+
+        out = capsys.readouterr().out
+        assert "Skipped" not in out
