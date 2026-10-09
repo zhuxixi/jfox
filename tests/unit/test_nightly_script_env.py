@@ -74,3 +74,9 @@ class TestNightlyScriptEnv:
         assert 'if [[ "$DRY_RUN" -eq 1 || -n "$NIGHTLY_REF" ]]; then' in text  # 备份检查门
         assert 'if [[ -n "$NIGHTLY_REF" ]]; then' in text  # 失败分支不提 issue 门
         assert text.count('-n "$NIGHTLY_REF"') >= 2
+
+    def test_design_doc_install_command_includes_embed(self):
+        doc = (
+            REPO_ROOT / "docs/superpowers/specs/2026-07-28-nightly-fulltest-design.md"
+        ).read_text(encoding="utf-8")
+        assert "uv sync --frozen --extra dev --extra embed" in doc
