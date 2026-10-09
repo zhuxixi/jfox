@@ -61,3 +61,13 @@ class TestNightlyScriptEnv:
 
     def test_env_failure_exit_code_skips_issue_creation(self):
         assert '"$rc" -eq 4' in self._script()
+
+    def test_ref_debug_mode_present(self):
+        text = self._script()
+        assert "--ref)" in text
+        assert "${NIGHTLY_REF:-origin/main}" in text
+
+    def test_ref_mode_skips_backup_and_issue_filing(self):
+        text = self._script()
+        # 备份检查与提 issue 两处都必须让位于调试模式
+        assert '-n "$NIGHTLY_REF"' in text

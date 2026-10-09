@@ -15,15 +15,20 @@ mkdir -p "$LOG_DIR"
 
 DRY_RUN=0
 KEEP_WORKTREE=0
+NIGHTLY_REF=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --keep-worktree) KEEP_WORKTREE=1; shift ;;
+    --ref)
+      [[ $# -ge 2 ]] || { echo "--ref 需要参数" >&2; exit 2; }
+      NIGHTLY_REF="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,5p' "$0" >&2
-      echo "Usage: $0 [--dry-run] [--keep-worktree]" >&2
+      echo "Usage: $0 [--dry-run] [--keep-worktree] [--ref <git-ref>]" >&2
       echo "  --dry-run        跳过真实 pytest，用人造失败验证 issue 流程" >&2
       echo "  --keep-worktree  跑完不删 worktree（调试）" >&2
+      echo "  --ref <git-ref>  调试模式：测指定 ref 而非 origin/main（跳过备份检查、失败不提 issue）" >&2
       exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -42,8 +47,8 @@ flock -n 9 || { echo "SKIP: 另一个 nightly_test 正在跑"; exit 0; }
 log() { printf '[%s] %s\n' "$(date '+%F %T %z')" "$*"; }
 
 # --- 前置：备份检查（#338）---
-if [[ "$DRY_RUN" -eq 1 ]]; then
-  log "DRY_RUN: 跳过备份检查"
+if [[ "$DRY_RUN" -eq 1 || -n "$NIGHTLY_REF" ]]; then
+  log "调试模式（DRY_RUN/--ref）：跳过备份检查"
 else
   if python3 "$REPO_ROOT/scripts/nightly_test_helpers.py" check-backup "$BACKUP_STATE"; then
     log "今日备份已确认，继续"
@@ -80,7 +85,8 @@ run_tests() {
 
   wt="$LOG_DIR/worktree-$ts"
   git -C "$REPO_ROOT" fetch -q origin main
-  git -C "$REPO_ROOT" worktree add -q --detach "$wt" origin/main
+  local ref="${NIGHTLY_REF:-origin/main}"
+  git -C "$REPO_ROOT" worktree add -q --detach "$wt" "$ref"
   # worktree 已落盘，立即布防 EXIT trap：之后的 mktemp 若失败（set -e 退出），
   # cleanup 仍会回收已添加的 worktree，杜绝泄漏窗口。
   trap cleanup EXIT
@@ -208,6 +214,10 @@ else
   if [[ "$rc" -eq 4 ]]; then
     log "环境失败 (rc=4)，不提 issue——原因见上方日志"
     exit 4
+  fi
+  if [[ -n "$NIGHTLY_REF" ]]; then
+    log "--ref 调试模式：失败不提 issue（完整日志: $PYTEST_OUT）"
+    exit 1
   fi
   log "测试失败 (rc=$rc)，提 issue"
   report_failure "$PYTEST_OUT" || log "WARN: 提 issue 失败，见本地告警"
