@@ -157,7 +157,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
-**Local nightly full-test**（#263/#361，非 GitHub Action）：`scripts/nightly_test.sh` 是本机 crontab 定时任务（crontab 行装本机、不进仓库），每周二 09:00 跑 CI `test-fast` 跳过的全量 pytest（performance/bulk/slow/embedding）——成功静默，失败按签名去重复用带 `nightly-test-failure` label 的 issue。前置：今日 #338 备份须成功（读 `~/.jfox-backup/state.json` 的 `last_ok`，否则 `SKIP: 今日备份未确认` 退出）。纯逻辑在 `scripts/nightly_test_helpers.py`（单测 `tests/unit/test_nightly_test_helpers.py`）；`--dry-run` 用人造失败走 issue 流程、不跑真实 pytest。
+**Local nightly full-test**（#263/#361，非 GitHub Action）：`scripts/nightly_test.sh` 是本机 crontab 定时任务（crontab 行装本机、不进仓库），每周二 09:00 跑 CI `test-fast` 跳过的全量 pytest（performance/bulk/slow/embedding）——成功静默，失败按签名去重复用带 `nightly-test-failure` label 的 issue。前置：今日 #338 备份须成功（读 `~/.jfox-backup/state.json` 的 `last_ok`，否则 `SKIP: 今日备份未确认` 退出）。纯逻辑在 `scripts/nightly_test_helpers.py`（单测 `tests/unit/test_nightly_test_helpers.py`）；`--dry-run` 用人造失败走 issue 流程、不跑真实 pytest；`--ref <git-ref>` 调试模式测指定 ref（跳过备份检查、失败不提 issue，#565）。worktree 内 `uv sync --frozen --extra dev --extra embed` 且跑前 `check-embed-env` fail-fast——#519 拆出 `[embed]` 后漏装 extra 则 embedding 测试全降级，缺组件 exit 4 = 环境失败、不提 issue（#559）。
 
 ## Release Tooling
 
