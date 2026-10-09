@@ -76,7 +76,8 @@ class TestIndexKbParamSuccess:
         result = runner.invoke(app, ["index", "status", "--kb", cli.kb_name, "--json"])
         assert result.exit_code == 0, f"Expected success but got: {result.output}"
         data = json.loads(result.output.strip())
-        assert "total_indexed" in data
+        assert "bm25_indexed" in data
+        assert "last_rebuild" in data
 
     def test_verify_with_valid_kb(self, cli):
         """index verify --kb <存在的知识库> 应正常执行"""
