@@ -7,10 +7,12 @@ from pathlib import Path
 # 让 tests 能 import scripts/ 下的模块
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
+import nightly_test_helpers
 from nightly_test_helpers import (
     check_backup_last_ok,
     compute_signature,
     decide_issue_action,
+    embed_components_available,
     extract_failures,
 )
 
@@ -137,3 +139,59 @@ def test_check_backup_false_when_other_day(tmp_path):
 
 def test_check_backup_false_when_missing(tmp_path):
     assert check_backup_last_ok(tmp_path / "nope.json", date(2026, 7, 28)) is False
+
+
+class TestEmbedComponentsAvailable:
+    """A1: embed 组件探测纯函数（假 importer 注入，不碰真实环境）。"""
+
+    @staticmethod
+    def _fake_importer(available: set[str]):
+        def _import(name: str):
+            if name not in available:
+                raise ImportError(f"No module named {name!r}")
+            return object()
+
+        return _import
+
+    def test_all_present(self):
+        ok, missing = embed_components_available(
+            self._fake_importer({"torch", "sentence_transformers"})
+        )
+        assert ok is True
+        assert missing == []
+
+    def test_all_missing(self):
+        ok, missing = embed_components_available(self._fake_importer(set()))
+        assert ok is False
+        assert missing == ["torch", "sentence_transformers"]
+
+    def test_partial_missing_keeps_order(self):
+        ok, missing = embed_components_available(self._fake_importer({"torch"}))
+        assert ok is False
+        assert missing == ["sentence_transformers"]
+
+
+class TestCliCheckEmbedEnv:
+    """A2: check-embed-env 子命令分发（argv 注入 + 探测函数打桩）。"""
+
+    def test_ok_returns_zero_without_output(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["nightly_test_helpers.py", "check-embed-env"])
+        monkeypatch.setattr(
+            nightly_test_helpers,
+            "embed_components_available",
+            lambda: (True, []),
+        )
+        assert nightly_test_helpers._cli() == 0
+        assert capsys.readouterr().out == ""
+
+    def test_missing_returns_one_and_lists_components(self, monkeypatch, capsys):
+        monkeypatch.setattr(sys, "argv", ["nightly_test_helpers.py", "check-embed-env"])
+        monkeypatch.setattr(
+            nightly_test_helpers,
+            "embed_components_available",
+            lambda: (False, ["torch", "sentence_transformers"]),
+        )
+        assert nightly_test_helpers._cli() == 1
+        out = capsys.readouterr().out
+        assert "torch" in out
+        assert "sentence_transformers" in out

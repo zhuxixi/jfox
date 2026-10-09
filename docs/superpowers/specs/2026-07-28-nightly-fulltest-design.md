@@ -34,7 +34,7 @@ scripts/nightly_test.sh  ← 仓内，走 PR，全权负责
       ├─ 1. 前置检查：backup last_ok（D4）＋ git/uv/gh 可用性
       ├─ 2. fetch origin/main → git worktree add 临时 worktree
       ├─ 3. export HOME=沙箱 + HF_HOME=真实缓存（D7，避免重下 bge-m3）
-      ├─ 4. cd worktree → uv sync --frozen
+      ├─ 4. cd worktree → uv sync --frozen --extra dev --extra embed
       ├─ 5. uv run pytest tests/ -v --tb=short（全量 ~1249，pytest.ini addopts 已含）
       ├─ 6a. 成功 → 删 worktree → 静默 exit 0（stdout 空）
       └─ 6b. 失败 → 提取摘要 → gh issue 去重（D5）→ 删 worktree → exit 1
@@ -53,7 +53,7 @@ scripts/nightly_test.sh  ← 仓内，走 PR，全权负责
 3. **备份前置检查**：读 `~/.jfox-backup/state.json`（#338 `loop.py:42-48`）。state schema = `{last_run: ISO时间, last_ok: bool, last_archive}`。要求 `last_ok == true` **且** `last_run[:10] == 今天`；不满足 → skip，stdout 打 `SKIP: backup not confirmed (last_run=<...>, last_ok=<...>)`，exit 0。
 4. **fresh worktree**：在主仓库 `git fetch origin main` → `git worktree add "$TMPDIR/jfox-nightly-$(date +%s)" origin/main`（detached 或新分支 `nightly-test/<ts>`，绝不 checkout 到本地 main）。
 5. **换假 HOME**：`SANDBOX=$(mktemp -d)` → `export HOME="$SANDBOX"` → `export HF_HOME="$REAL_HOME/.cache/huggingface"`（保留已缓存 `BAAI/bge-m3` ~2GB，避免重下；也 export `HF_HUB_CACHE` 等同类路径指回真实缓存）。
-6. **装依赖**：`cd worktree && uv sync --frozen --extra dev`（守 lockfile，不漂移）。
+6. **装依赖**：`cd worktree && uv sync --frozen --extra dev --extra embed`（守 lockfile，不漂移；issue #519 拆出 [embed] 后全量测试须显式安装，曾漏改致 #559）。装完跑 `check-embed-env` 守卫，缺组件即 rc=4 失败、不提 issue。
 7. **跑测试**：`uv run pytest tests/ -v --tb=short -ra`（pytest.ini 已含 `timeout=120`/`--strict-markers`）。捕获 stdout+exit code 到日志文件。
 8. **清理**：`git worktree remove --force` + `rm -rf "$SANDBOX"`（finally 语义，无论成败）。
 9. **结果分发**：

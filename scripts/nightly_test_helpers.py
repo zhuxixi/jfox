@@ -8,11 +8,13 @@ bash 编排脚本 scripts/nightly_test.sh 通过本模块的 CLI dispatcher 调�
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import re
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any, Callable
 
 # pytest -ra 汇总行形如：FAILED <nodeid> - <reason>
 _FAILED_RE = re.compile(r"^FAILED\s+(\S+?)(?:\s+-\s+|$)", re.MULTILINE)
@@ -67,10 +69,30 @@ def check_backup_last_ok(state_path: Path, today: date) -> bool:
     return last_run[:10] == today.isoformat()
 
 
+def embed_components_available(
+    import_module: Callable[[str], Any] = importlib.import_module,
+) -> tuple[bool, list[str]]:
+    """#559: 探测全量测试所需 embed 组件是否可导入（依赖注入，便于单测）。
+
+    Returns:
+        (是否全部可用, 缺失组件清单；固定顺序 torch → sentence_transformers)
+    """
+    missing: list[str] = []
+    for name in ("torch", "sentence_transformers"):
+        try:
+            import_module(name)
+        except ImportError:
+            missing.append(name)
+    return (not missing, missing)
+
+
 def _cli() -> int:
     """供 bash 脚本调用的 CLI。用法见各分支 stderr --help。"""
     if len(sys.argv) < 2:
-        print("usage: nightly_test_helpers.py {check-backup|signature|decide} ...", file=sys.stderr)
+        print(
+            "usage: nightly_test_helpers.py {check-backup|signature|decide|check-embed-env} ...",
+            file=sys.stderr,
+        )
         return 2
     cmd = sys.argv[1]
     if cmd == "check-backup":
@@ -90,6 +112,12 @@ def _cli() -> int:
         action, num = decide_issue_action(sys.argv[2], issues)
         print(f"{action}\t{num if num is not None else ''}")
         return 0
+    if cmd == "check-embed-env":
+        # 退出码 0=组件齐，1=有缺失（stdout 列缺失清单，供 nightly 日志定位）
+        ok, missing = embed_components_available()
+        if not ok:
+            print("missing: " + ", ".join(missing))
+        return 0 if ok else 1
     print(f"unknown command: {cmd}", file=sys.stderr)
     return 2
 
