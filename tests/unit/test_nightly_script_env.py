@@ -69,5 +69,8 @@ class TestNightlyScriptEnv:
 
     def test_ref_mode_skips_backup_and_issue_filing(self):
         text = self._script()
-        # 备份检查与提 issue 两处都必须让位于调试模式
-        assert '-n "$NIGHTLY_REF"' in text
+        # 备份检查与提 issue 两处都必须让位于调试模式。
+        # 逐一锚定两处守卫：整体 `in` 断言只命中一处时，删除另一处的回归不会被发现。
+        assert 'if [[ "$DRY_RUN" -eq 1 || -n "$NIGHTLY_REF" ]]; then' in text  # 备份检查门
+        assert 'if [[ -n "$NIGHTLY_REF" ]]; then' in text  # 失败分支不提 issue 门
+        assert text.count('-n "$NIGHTLY_REF"') >= 2
