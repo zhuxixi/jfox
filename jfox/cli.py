@@ -2641,6 +2641,12 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         notes = note_module.list_notes(limit=10000, include_archived=True)
         success = bm25_index.rebuild_from_notes(notes)
 
+        # #539：成功路径落盘索引状态（失败不写）
+        if success:
+            from .index_state import build_rebuild_state, save_index_state
+
+            save_index_state(build_rebuild_state(semantic=False, notes=len(notes)), config)
+
         result = {
             "success": success,
             "indexed": len(notes),
@@ -2734,6 +2740,15 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             bm25_index = get_bm25_index()
             notes = note_module.list_notes(limit=10000, include_archived=True)
             bm25_success = bm25_index.rebuild_from_notes(notes)
+
+            # #539：成功路径落盘索引状态（失败不写）
+            if bm25_success:
+                from .index_state import build_rebuild_state, save_index_state
+
+                save_index_state(
+                    build_rebuild_state(semantic=semantic_available, notes=len(notes)),
+                    config,
+                )
 
             result = {
                 "success": True,
