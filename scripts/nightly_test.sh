@@ -115,8 +115,13 @@ run_tests() {
     else
       log "WARN: HF cache $real_hf 不存在，测试可能重下 bge-m3"
     fi
-    # 守 lockfile，不漂移依赖
-    uv sync --frozen --extra dev
+    # 守 lockfile，不漂移依赖；#519 拆出 [embed] 后全量测试须显式装（#559）
+    uv sync --frozen --extra dev --extra embed
+    # #559 fail-fast：embed 组件缺失立即失败，避免 9 个误导性测试失败 + 垃圾 issue
+    if ! uv run --no-sync python scripts/nightly_test_helpers.py check-embed-env; then
+      log "ERROR: 全量环境缺 embed 组件——检查 uv sync 是否带 --extra embed（#519/#559）"
+      exit 4
+    fi
     uv run pytest tests/ -v --tb=short -ra
   )
 }
@@ -200,6 +205,10 @@ if run_tests >"$PYTEST_OUT" 2>&1; then
   exit 0
 else
   rc=$?
+  if [[ "$rc" -eq 4 ]]; then
+    log "环境失败 (rc=4)，不提 issue——原因见上方日志"
+    exit 4
+  fi
   log "测试失败 (rc=$rc)，提 issue"
   report_failure "$PYTEST_OUT" || log "WARN: 提 issue 失败，见本地告警"
   exit 1
