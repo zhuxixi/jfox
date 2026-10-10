@@ -2,6 +2,16 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.16.3] - 2026-10-10
+
+### Fixes
+
+- **index**: status shows only persistent real state — drop watcher counters, add bm25_indexed/last_rebuild (#539) (#567)
+- **nightly**: install [embed] extra, fail-fast env guard, --ref debug mode (#559) (#565)
+- **index**: rebuild --backlinks 写回改重读+分歧检测窄写，修复并发 edit 正文被静默覆盖 (#561) (#562)
+
+[1.16.3]: https://github.com/zhuxixi/jfox/compare/v1.16.2...v1.16.3
+
 ## [1.16.2] - 2026-09-25
 
 ### Fixes
