@@ -160,6 +160,15 @@ def _print_embed_refusal(output_format: str, context: str):
         print(f"✗ {hint}", file=sys.stderr)
 
 
+def _index_status_payload(vs_stats: dict, bm25_stats: dict, state: Optional[dict]) -> dict:
+    """#539 组装 index status 输出（纯函数，JSON/table 两态共用取数源）。"""
+    return {
+        "vector_store": vs_stats,
+        "bm25_indexed": bm25_stats.get("indexed", 0),
+        "last_rebuild": (state or {}).get("last_rebuild"),
+    }
+
+
 def _embed_warning_payload(engine) -> dict:
     """#519 降级 warnings 数组元素（fallback=keyword：搜索类降级）。"""
     return {
@@ -2632,6 +2641,12 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         notes = note_module.list_notes(limit=10000, include_archived=True)
         success = bm25_index.rebuild_from_notes(notes)
 
+        # #539：成功路径落盘索引状态（失败不写）
+        if success:
+            from .index_state import build_rebuild_state, save_index_state
+
+            save_index_state(build_rebuild_state(semantic=False, notes=len(notes)), config)
+
         result = {
             "success": success,
             "indexed": len(notes),
@@ -2676,32 +2691,28 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
         indexer = Indexer(config, vector_store)
 
         if action == "status":
-            stats = indexer.get_stats()
-            vs_stats = vector_store.get_stats()
+            # #539：只显示真实持久化状态（watcher 内存计数器在 CLI 一次性进程中
+            # 结构性读不到非零值，已删除）
+            from .bm25_index import get_bm25_index
+            from .index_state import load_index_state
 
-            result = {
-                "total_indexed": stats.total_indexed,
-                "last_indexed": (stats.last_indexed.isoformat() if stats.last_indexed else None),
-                "pending_changes": stats.pending_changes,
-                "vector_store": vs_stats,
-            }
+            vs_stats = vector_store.get_stats()
+            bm25_stats = get_bm25_index().get_stats()
+            state = load_index_state(config)
+            payload = _index_status_payload(vs_stats, bm25_stats, state)
 
             if output_format == "json":
-                print(output_json({"success": True, **result}))
+                print(output_json({"success": True, **payload}))
             else:
                 table = Table(title="Index Status")
                 table.add_column("Property", style="cyan")
                 table.add_column("Value", style="green")
-                table.add_row("Total Indexed", str(stats.total_indexed))
-                table.add_row("Last Indexed", str(stats.last_indexed or "Never"))
-                table.add_row("Pending Changes", str(stats.pending_changes))
-                table.add_row("Vector Store Notes", str(vs_stats.get("total_notes", 0)))
+                table.add_row(
+                    "Vector Store Notes", str(payload["vector_store"].get("total_notes", 0))
+                )
+                table.add_row("BM25 Indexed", str(payload["bm25_indexed"]))
+                table.add_row("Last Rebuild", str(payload["last_rebuild"] or "Never"))
                 console.print(table)
-
-                if stats.errors:
-                    console.print("\n[yellow]Recent Errors:[/yellow]")
-                    for err in stats.errors[-5:]:
-                        console.print(f"  - {err}")
 
         elif action == "rebuild":
             from .embedding_backend import (
@@ -2729,6 +2740,15 @@ def _index_impl(action: str, output_format: str, backlinks: bool = False):
             bm25_index = get_bm25_index()
             notes = note_module.list_notes(limit=10000, include_archived=True)
             bm25_success = bm25_index.rebuild_from_notes(notes)
+
+            # #539：成功路径落盘索引状态（失败不写）
+            if bm25_success:
+                from .index_state import build_rebuild_state, save_index_state
+
+                save_index_state(
+                    build_rebuild_state(semantic=semantic_available, notes=len(notes)),
+                    config,
+                )
 
             result = {
                 "success": True,
