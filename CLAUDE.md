@@ -69,6 +69,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `model_downloader.py` | Embedding 模型下载与缓存管理 |
 | `note_index.py` | 笔记索引管理（文件名↔ID 映射） |
 | `indexer.py` | File monitoring (watchdog) + incremental indexing |
+| `index_state.py` | 索引状态持久层（#539）：`.zk/index_state.json` 原子写；`index rebuild`/`rebuild-bm25` 成功后落盘，`index status` 的 `last_rebuild`/`bm25_indexed` 事实来源（watcher 内存计数器已删，status 只报持久化真实状态） |
 | `note.py` | Markdown file CRUD with YAML frontmatter |
 | `models.py` | `Note` data model with frontmatter serialization |
 | `add_dedup.py` | `jfox add` permanent 落库前双通道防重（#383）：标题通道（非 archived 同标题、大小写不敏感、不限类型）+ 正文余弦 ≥0.95 通道（复用顶层 `jfox/dedup.py`，`daemon_only=True` 绝不回退本地模型加载、仅 daemon 在跑时启用）；闸门自身故障一律放行，非路障 |
