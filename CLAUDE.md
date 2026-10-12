@@ -69,6 +69,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | `model_downloader.py` | Embedding 模型下载与缓存管理 |
 | `note_index.py` | 笔记索引管理（文件名↔ID 映射） |
 | `indexer.py` | File monitoring (watchdog) + incremental indexing |
+| `index_state.py` | 索引状态持久层（#539）：`.zk/index_state.json` 原子写；`index rebuild`/`rebuild-bm25` 成功后落盘，`index status` 的 `last_rebuild`/`bm25_indexed` 事实来源（watcher 内存计数器已删，status 只报持久化真实状态） |
 | `note.py` | Markdown file CRUD with YAML frontmatter |
 | `models.py` | `Note` data model with frontmatter serialization |
 | `add_dedup.py` | `jfox add` permanent 落库前双通道防重（#383）：标题通道（非 archived 同标题、大小写不敏感、不限类型）+ 正文余弦 ≥0.95 通道（复用顶层 `jfox/dedup.py`，`daemon_only=True` 绝不回退本地模型加载、仅 daemon 在跑时启用）；闸门自身故障一律放行，非路障 |
@@ -157,7 +158,7 @@ Four jobs in `.github/workflows/integration-test.yml`:
 
 **Release** workflow in `.github/workflows/publish.yml`: publishes to PyPI on GitHub release publication.
 
-**Local nightly full-test**（#263/#361，非 GitHub Action）：`scripts/nightly_test.sh` 是本机 crontab 定时任务（crontab 行装本机、不进仓库），每周二 09:00 跑 CI `test-fast` 跳过的全量 pytest（performance/bulk/slow/embedding）——成功静默，失败按签名去重复用带 `nightly-test-failure` label 的 issue。前置：今日 #338 备份须成功（读 `~/.jfox-backup/state.json` 的 `last_ok`，否则 `SKIP: 今日备份未确认` 退出）。纯逻辑在 `scripts/nightly_test_helpers.py`（单测 `tests/unit/test_nightly_test_helpers.py`）；`--dry-run` 用人造失败走 issue 流程、不跑真实 pytest。
+**Local nightly full-test**（#263/#361，非 GitHub Action）：`scripts/nightly_test.sh` 是本机 crontab 定时任务（crontab 行装本机、不进仓库），每周二 09:00 跑 CI `test-fast` 跳过的全量 pytest（performance/bulk/slow/embedding）——成功静默，失败按签名去重复用带 `nightly-test-failure` label 的 issue。前置：今日 #338 备份须成功（读 `~/.jfox-backup/state.json` 的 `last_ok`，否则 `SKIP: 今日备份未确认` 退出）。纯逻辑在 `scripts/nightly_test_helpers.py`（单测 `tests/unit/test_nightly_test_helpers.py`）；`--dry-run` 用人造失败走 issue 流程、不跑真实 pytest；`--ref <git-ref>` 调试模式测指定 ref（跳过备份检查、失败不提 issue，#565）。worktree 内 `uv sync --frozen --extra dev --extra embed` 且跑前 `check-embed-env` fail-fast——#519 拆出 `[embed]` 后漏装 extra 则 embedding 测试全降级，缺组件 exit 4 = 环境失败、不提 issue（#559）。
 
 ## Release Tooling
 
@@ -207,7 +208,10 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
 - JSON 模式（`cli.py` `_json_mode_requested` 兼容 `--json`/`-f json`/`-fjson`/`--format=json`，重复 flag 取后者）下 CLI 入口统一 `logging.disable(CRITICAL)` + `TQDM_DISABLE=1`，保证 `--json 2>&1 | jq` 合流后仍是纯 JSON（#383 根因 A：INFO/tqdm 噪声曾令调用方解析失败、误判后重跑产生重复笔记）；命令内告警并入 JSON 字段（如 add 的 `vector_dimension_warning`）而非 stderr print——stderr 在 2>&1 管道同样污染解析流
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：写盘前按真实磁盘路径 re-read-and-merge——重读 fresh 再合并写回，文件名发散不产生同 id 双文件、与常驻 daemon 并发写不丢更新（#392/#422）；单 target 写盘失败仅 warning 不中断，悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
+- 笔记双写路径契约（#549）：`from_markdown` 加载时钉住真实磁盘路径——加载笔记的 `note.filepath` 即真实路径（legacy 发散名不误算），按当前字段现算的规则路径用 `expected_filepath`；`save_note` 就地写（写回 pin 路径、不随字段改名），`update_note` 规范化写（目标 `expected_filepath`，路径变化删旧文件并重钉 pin，发散名笔记被触碰即自愈为规则名）——改 title/type 必须走 `update_note`，写盘目标误用 `note.filepath` 会让改名判据恒假、edit --title 不再移动文件
+- backlinks 批量写回统一走 `note.apply_backlinks()` 窄写原语（#561/#562）：定位（快照钉住路径优先）→ 重读 fresh → 与快照序列化比对，发现并发分歧即本轮跳过（返回 `"skipped"` 属正常竞态非故障，下轮 rebuild 自愈）→ 零写入守卫 → 原子写；`index rebuild --backlinks` 不得用 `save_note` 从陈旧快照整条覆盖（曾静默吞并发 edit 的正文），调用方也别原地改快照的 `links`/`backlinks`（分歧检测以快照为比对基准）；rebuild JSON 统计含 `backlinks_skipped`
 - `HybridSearchEngine` 构造时仅对自取的 BM25 单例做一次 stale 检查并 reload（磁盘被其他进程写过则刷新快照）；显式传入的 `bm25_index` 实例归调用方所有、不隐式 reload——长驻进程须自行周期重建引擎或调 `check_stale_and_reload`（#391）
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
 - CPU 默认 embedding 模型已从 `all-MiniLM-L6-v2`（384 维）切到 `BAAI/bge-small-zh-v1.5`（512 维，#442）：旧 KB 向量库维度不匹配时 search/add 显式告警不静默失败（`vector_store.last_dimension_warning`），按提示 `jfox index rebuild` 重建该 KB；CI 模型缓存 key 也随模型名（#453）
 - 语义组件缺失降级（#519）：无本地 sentence-transformers 且无 daemon 时，写路径降级继续——`save_note`/`update_note` typed catch `EmbedDependencyMissingError`（文件+BM25 照写、跳过向量索引），`update_note` 改走 `add_or_update_note` 守卫原语（服务不可用不删既有行），`index rebuild` 降级 BM25-only 不重置向量库，add/edit JSON 出 `semantic_index_warning`；读路径显式拒绝——search/query/suggest-links 的 semantic/hybrid 模式 exit 1 + 安装提示；`jfox status` JSON 含 `embedding` 探测节（local_package/daemon_running/service_available）
+- Wiki-link 排除区剥离（`note_index.py` `_strip_wiki_link_exclusions`，`resolve_wiki_links()` 链路第一步）必须保持单遍合并正则 `_EXCLUSION_RE`（alternation 顺序即优先级：fenced > HTML 注释 > inline code），勿拆回多次顺序 `re.sub`——顺序剔除会让已删区域拼出新结构再被后续 pass 跨界吞掉（#548：反引号包 HTML 注释，注释先删留空反引号对，inline 分支吞相邻 wiki link，#550 修复）；回归测试 `tests/unit/test_wiki_link_resolution.py`
