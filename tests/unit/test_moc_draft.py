@@ -685,3 +685,33 @@ class TestDocHelper:
     def test_stripped_has_no_trailing_newline(self):
         assert _doc("## g", "", "- [[a|b]]", stripped=True) == "## g\n\n- [[a|b]]"
         assert _doc("## 末尾空分组", stripped=True) == "## 末尾空分组"
+
+
+class TestUpsertStrippedInput:
+    """内存表示（strip 后末行无换行）输入的 upsert 行为（issue #547，A1~A4）。"""
+
+    def test_s1_first_insert_keeps_blank_line_after_heading(self):
+        content = _doc("## 既有的分组", "", "- [[m1|成员一]]", "", "## 末尾空分组", stripped=True)
+        r = upsert_member_line(content, "m2", "成员二", [], "末尾空分组", legacy_title_unique=True)
+        assert r.changed is True
+        assert "## 末尾空分组\n\n- [[m2|成员二]]\n" in r.content
+
+    def test_s2_second_insert_keeps_rows_separate(self):
+        content = _doc("## 既有的分组", "", "- [[m1|成员一]]", "", "## 末尾空分组", stripped=True)
+        r1 = upsert_member_line(content, "m2", "成员二", [], "末尾空分组", legacy_title_unique=True)
+        # 模拟落盘再加载：to_markdown 补 \n，from_markdown strip
+        c2 = (r1.content + "\n").strip()
+        r2 = upsert_member_line(c2, "m3", "成员三", [], "末尾空分组", legacy_title_unique=True)
+        assert "]]\n- [[" in r2.content
+        assert "]]- [[" not in r2.content
+
+    def test_s3_append_new_group_keeps_blank_line(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", stripped=True)
+        r = upsert_member_line(content, "m2", "成员二", [], "组B", legacy_title_unique=True)
+        assert "]]\n\n## 组B\n" in r.content
+
+    def test_a4_idempotent_returns_input_verbatim(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", stripped=True)
+        r = upsert_member_line(content, "m1", "成员一", [], "组A", legacy_title_unique=True)
+        assert r.changed is False
+        assert r.content == content  # D6：幂等分支返回原参数，不经规范化改写

@@ -428,8 +428,7 @@ def upsert_member_line(
     if group is not None:
         _validate_explicit_group(group)
 
-    lines = content.splitlines(keepends=True)
-    ending = _detect_ending(lines)
+    lines, ending = _normalize_lines(content)
     sections, rows = _scan_body(lines)
 
     canonical_rows = [row for row in rows if row.target == note_id]
