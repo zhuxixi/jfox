@@ -715,3 +715,20 @@ class TestUpsertStrippedInput:
         r = upsert_member_line(content, "m1", "成员一", [], "组A", legacy_title_unique=True)
         assert r.changed is False
         assert r.content == content  # D6：幂等分支返回原参数，不经规范化改写
+
+
+class TestRemoveStrippedInput:
+    """内存表示输入的 remove 行为锁定（issue #547，A9）。"""
+
+    def test_remove_row_from_stripped_input(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", "- [[m2|成员二]]", stripped=True)
+        r = remove_member_lines(content, "m2", "成员二", legacy_title_unique=True)
+        assert r.changed is True
+        assert "- [[m2|成员二]]" not in r.content
+        assert "- [[m1|成员一]]" in r.content
+
+    def test_no_match_returns_input_verbatim(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", stripped=True)
+        r = remove_member_lines(content, "m9", "成员九", legacy_title_unique=True)
+        assert r.changed is False
+        assert r.content == content  # R2-D2：no-match 早退原样返回入参（内存表示）

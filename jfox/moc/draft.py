@@ -525,7 +525,8 @@ def remove_member_lines(
     - 删行后只剩空白的普通组连同标题删除；含说明文字、子标题、代码或其他
       Markdown 的组保留标题；系统区段标题永不删除。
     """
-    lines = content.splitlines(keepends=True)
+    # 仅借规范化恢复不变量（内存表示末行无尾换行），不引入 ending——只删不插（spec D5）
+    lines, _ = _normalize_lines(content)
     _sections, rows = _scan_body(lines)
 
     canonical_rows = [row for row in rows if row.target == note_id]
