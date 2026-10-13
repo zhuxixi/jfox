@@ -150,5 +150,5 @@ CLI `_add_member_impl` → `_exact_load`（内存表示）→ `upsert_member_lin
 |------|------|
 | 输出尾部多一个 `\n` 改变文件 diff 噪音 | 只影响 add-member 触碰的 MOC；`\n\n` 结尾是稳定收敛态，一次变更后不再抖动 |
 | `_doc()` 改动破坏现有测试 | 默认参数行为不变（A5 锁定），新参数仅新用例使用 |
-| 隐藏调用方依赖「内存表示输出」 | 全仓检索 `upsert_member_line|remove_member_lines` 调用点仅 `moc/cli.py`（调研已核）；spec 契约显式化 |
+| 隐藏调用方依赖「内存表示输出」 | 全仓检索 `upsert_member_line\|remove_member_lines` 调用点仅 `moc/cli.py`（调研已核）；spec 契约显式化 |
 | CRLF 环境未覆盖 | A6 锁定；CI Linux + Windows 双跑（Fast job） |
