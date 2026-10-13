@@ -223,9 +223,15 @@ def test_filter_live_members_recounts_total_members():
 # ---------------------------------------------------------------------------
 
 
-def _doc(*lines: str) -> str:
-    """按渲染格式拼一个 MOC 正文样本。"""
-    return "\n".join(lines) + "\n"
+def _doc(*lines: str, stripped: bool = False) -> str:
+    """按渲染格式拼一个 MOC 正文样本。
+
+    stripped=True 时返回 "\n".join(lines).strip()，模拟 from_markdown
+    strip() 后的内存表示（末行无尾换行；对本 spec 构造的无首尾空白样例
+    与 rstrip("\n") 等价）。
+    """
+    text = "\n".join(lines)
+    return text.strip() if stripped else text + "\n"
 
 
 @pytest.mark.parametrize(
@@ -625,3 +631,57 @@ def test_result_dataclasses_are_frozen_contracts():
         up.changed = True  # type: ignore[misc]
     with pytest.raises(Exception):
         rm.changed = True  # type: ignore[misc]
+
+
+class TestNormalizeLines:
+    """_normalize_lines 直测（spec §5，挂 A6/A8 用例展开）。"""
+
+    def test_empty_string_noop(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("") == ([], "\n")
+
+    def test_whitespace_only(self):
+        from jfox.moc.draft import _normalize_lines
+
+        lines, ending = _normalize_lines("   ")
+        assert lines == ["   \n"]
+        assert ending == "\n"
+
+    def test_single_line_without_newline(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("abc") == (["abc\n"], "\n")
+
+    def test_multi_line_last_without_newline(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("a\nb") == (["a\n", "b\n"], "\n")
+
+    def test_already_terminated_is_noop(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("a\n") == (["a\n"], "\n")
+
+    def test_crlf_ending_detected_and_appended(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("a\r\nb") == (["a\r\n", "b\r\n"], "\r\n")
+
+    def test_mixed_endings_first_wins(self):
+        from jfox.moc.draft import _normalize_lines
+
+        lines, ending = _normalize_lines("a\r\nb\nc")
+        assert ending == "\r\n"
+        assert lines == ["a\r\n", "b\n", "c\r\n"]
+
+
+class TestDocHelper:
+    """_doc 助手 stripped 参数语义锁定。"""
+
+    def test_default_unchanged(self):
+        assert _doc("## g", "", "- [[a|b]]") == "## g\n\n- [[a|b]]\n"
+
+    def test_stripped_has_no_trailing_newline(self):
+        assert _doc("## g", "", "- [[a|b]]", stripped=True) == "## g\n\n- [[a|b]]"
+        assert _doc("## 末尾空分组", stripped=True) == "## 末尾空分组"
