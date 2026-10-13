@@ -732,3 +732,23 @@ class TestRemoveStrippedInput:
         r = remove_member_lines(content, "m9", "成员九", legacy_title_unique=True)
         assert r.changed is False
         assert r.content == content  # R2-D2：no-match 早退原样返回入参（内存表示）
+
+
+class TestUpsertEdgeAcceptance:
+    """spec §5 upsert 层验收补全（issue #547，A6 后半 / A8）。"""
+
+    def test_a8_upsert_empty_content_builds_other_group(self):
+        r = upsert_member_line("", "m1", "成员一", [], None, legacy_title_unique=True)
+        assert r.changed is True
+        assert "## 其他\n\n- [[m1|成员一]]\n" in r.content
+        assert r.content.endswith("\n")  # 输出文件表示（D3）
+
+    def test_a8_upsert_whitespace_only_content(self):
+        r = upsert_member_line("   ", "m1", "成员一", [], None, legacy_title_unique=True)
+        assert r.changed is True
+        assert "## 其他\n\n- [[m1|成员一]]\n" in r.content
+
+    def test_a6_upsert_crlf_inserted_row_uses_crlf(self):
+        content = "## 组A\r\n\r\n- [[m1|成员一]]"  # CRLF 正文 + strip 后末行无换行
+        r = upsert_member_line(content, "m2", "成员二", [], "组A", legacy_title_unique=True)
+        assert "- [[m2|成员二]]\r\n" in r.content
