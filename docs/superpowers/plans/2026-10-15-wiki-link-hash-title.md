@@ -438,14 +438,51 @@ git -C "$WT" commit -m "fix(cli): resolve_wiki_links uses candidate-order resolu
 在 `tests/unit/test_note_index.py` 的 `test_find_notes_referencing_title_*` 系列附近追加：
 
 ```python
-    def test_find_notes_referencing_title_hash_in_title(self, tmp_path):
+    def test_find_notes_referencing_title_hash_in_title(self, kb_with_wiki_links):
         """A8：正文用 [[完整标题（含#）]] 引用时能被反查识别（issue #458）"""
-        # 复用本文件既有的索引构造 helper（与 test_find_notes_referencing_title_alias_and_anchor 同款）
-        # 目标标题含 #；引用方正文写完整标题
-        # 断言：目标笔记出现在 find_notes_referencing_title(目标标题) 的结果里
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        (note_dir / "20260428006.md").write_text(
+            "---\n"
+            "id: '20260428006'\n"
+            "title: 'jfox 增量索引修复方案（#387）：verify 差集'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:06:00'\n"
+            "updated: '2026-04-28T00:06:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n目标笔记正文\n",
+            encoding="utf-8",
+        )
+        (note_dir / "20260428007.md").write_text(
+            "---\n"
+            "id: '20260428007'\n"
+            "title: '引用方'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:07:00'\n"
+            "updated: '2026-04-28T00:07:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n"
+            "参见 [[jfox 增量索引修复方案（#387）：verify 差集]] 与 [[目标笔记#章节]]。\n",
+            encoding="utf-8",
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        ids = {
+            m.id
+            for m in idx.find_notes_referencing_title("jfox 增量索引修复方案（#387）：verify 差集")
+        }
+        assert "20260428007" in ids
 ```
 
-> 实现时按 `test_find_notes_referencing_title_alias_and_anchor`（`tests/unit/test_note_index.py:394-418`）的既有构造方式补齐本用例的 fixture 代码——该用例已演示如何造「两条笔记 + 索引」并断言反查结果。
+> 放在 `TestFindNotesReferencingTitle` 类内、`test_find_notes_referencing_title_alias_and_anchor`（`tests/unit/test_note_index.py:394-418`）之后；该文件已导入 `NoteIndex` 与 `NoteType`，`kb_with_wiki_links` 是同文件既有 fixture。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -509,16 +546,33 @@ git -C "$WT" commit -m "fix(note_index): find_notes_referencing_title consumes c
 在 `tests/unit/test_note_promote.py` 追加：
 
 ```python
-    def test_promote_links_hash_title_and_anchor_form(self, temp_kb, cli):
-        """A6：candidate 正文含 [[含#完整标题]] 与 [[标题#章节]] 时，promote 后 links 含正确目标"""
-        # 1) 建一条 permanent（标题含 #，如 "jfox 增量索引修复方案（#387）"）→ 记 id
-        # 2) 建一条 permanent 纯标题笔记 "某章节笔记"
-        # 3) 建一条 candidate，正文写 [[jfox 增量索引修复方案（#387）]] 与 [[某章节笔记#小节]]
-        # 4) promote 该 candidate
-        # 5) 断言 promoted 笔记的 links 同时含上面两个目标 id
+def test_promote_links_hash_title():
+    """A6：正文含 [[含#完整标题]] 时 promote 后 links 含正确目标（issue #458）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note(
+                "目标内容", title="jfox 增量索引修复方案（#387）", note_type=NoteType.PERMANENT
+            )
+            save_note(target, add_to_index=False)
+            c = _make_candidate("引用含#标题", "讲讲 [[jfox 增量索引修复方案（#387）]] 的事")
+            promote_note(c.id)
+            assert target.id in load_note_by_id(c.id).links
+
+
+def test_promote_links_hash_anchor_variant():
+    """A6：正文含 [[标题#章节]] 锚点形态时 promote 后 links 含正确目标"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note(
+                "目标内容", title="某章节笔记", note_type=NoteType.PERMANENT
+            )
+            save_note(target, add_to_index=False)
+            c = _make_candidate("引用锚点", "讲讲 [[某章节笔记#小节]] 的事")
+            promote_note(c.id)
+            assert target.id in load_note_by_id(c.id).links
 ```
 
-> 实现时按本文件既有用例（`test_promote_backfills_backlinks_to_targets`，`tests/unit/test_note_promote.py:117-134`）的构造方式补齐 fixture 与断言。
+> 放在 `tests/unit/test_note_promote.py` 的 `test_promote_sets_forward_links` 之后；保持该文件的**模块级** `def test_*` 风格（不是类方法）。`temp_kb_registered` / `use_kb` / `create_note` / `save_note` / `_make_candidate` / `promote_note` / `load_note_by_id` / `NoteType` 均已在文件顶部导入。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -832,7 +886,7 @@ git -C "$WT" commit -m "refactor(note_index): drop legacy truncated link extract
 
 无遗漏项。
 
-**2. Placeholder scan：** 两处测试用例的 fixture 代码用引用既有用例的方式给出（Task 4 Step 1、Task 5 Step 1），并明确指向具体文件与行号的同款构造方式——不是「TODO」，而是「照抄仓内既有 fixture 构造」的可执行指引。其余步骤均含完整代码。
+**2. Placeholder scan：** 无占位符——所有测试与实现步骤均含完整可执行代码（Task 4/5 的测试在 v2 已补齐，不再用「照既有用例」的引用式描述）。
 
 **3. Type consistency：**
 
