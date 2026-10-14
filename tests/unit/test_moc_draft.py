@@ -223,9 +223,15 @@ def test_filter_live_members_recounts_total_members():
 # ---------------------------------------------------------------------------
 
 
-def _doc(*lines: str) -> str:
-    """按渲染格式拼一个 MOC 正文样本。"""
-    return "\n".join(lines) + "\n"
+def _doc(*lines: str, stripped: bool = False) -> str:
+    """按渲染格式拼一个 MOC 正文样本。
+
+    stripped=True 时返回 "\n".join(lines).strip()，模拟 from_markdown
+    strip() 后的内存表示（末行无尾换行；对本 spec 构造的无首尾空白样例
+    与 rstrip("\n") 等价）。
+    """
+    text = "\n".join(lines)
+    return text.strip() if stripped else text + "\n"
 
 
 @pytest.mark.parametrize(
@@ -625,3 +631,124 @@ def test_result_dataclasses_are_frozen_contracts():
         up.changed = True  # type: ignore[misc]
     with pytest.raises(Exception):
         rm.changed = True  # type: ignore[misc]
+
+
+class TestNormalizeLines:
+    """_normalize_lines 直测（spec §5，挂 A6/A8 用例展开）。"""
+
+    def test_empty_string_noop(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("") == ([], "\n")
+
+    def test_whitespace_only(self):
+        from jfox.moc.draft import _normalize_lines
+
+        lines, ending = _normalize_lines("   ")
+        assert lines == ["   \n"]
+        assert ending == "\n"
+
+    def test_single_line_without_newline(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("abc") == (["abc\n"], "\n")
+
+    def test_multi_line_last_without_newline(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("a\nb") == (["a\n", "b\n"], "\n")
+
+    def test_already_terminated_is_noop(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("a\n") == (["a\n"], "\n")
+
+    def test_crlf_ending_detected_and_appended(self):
+        from jfox.moc.draft import _normalize_lines
+
+        assert _normalize_lines("a\r\nb") == (["a\r\n", "b\r\n"], "\r\n")
+
+    def test_mixed_endings_first_wins(self):
+        from jfox.moc.draft import _normalize_lines
+
+        lines, ending = _normalize_lines("a\r\nb\nc")
+        assert ending == "\r\n"
+        assert lines == ["a\r\n", "b\n", "c\r\n"]
+
+
+class TestDocHelper:
+    """_doc 助手 stripped 参数语义锁定。"""
+
+    def test_default_unchanged(self):
+        assert _doc("## g", "", "- [[a|b]]") == "## g\n\n- [[a|b]]\n"
+
+    def test_stripped_has_no_trailing_newline(self):
+        assert _doc("## g", "", "- [[a|b]]", stripped=True) == "## g\n\n- [[a|b]]"
+        assert _doc("## 末尾空分组", stripped=True) == "## 末尾空分组"
+
+
+class TestUpsertStrippedInput:
+    """内存表示（strip 后末行无换行）输入的 upsert 行为（issue #547，A1~A4）。"""
+
+    def test_s1_first_insert_keeps_blank_line_after_heading(self):
+        content = _doc("## 既有的分组", "", "- [[m1|成员一]]", "", "## 末尾空分组", stripped=True)
+        r = upsert_member_line(content, "m2", "成员二", [], "末尾空分组", legacy_title_unique=True)
+        assert r.changed is True
+        assert "## 末尾空分组\n\n- [[m2|成员二]]\n" in r.content
+
+    def test_s2_second_insert_keeps_rows_separate(self):
+        content = _doc("## 既有的分组", "", "- [[m1|成员一]]", "", "## 末尾空分组", stripped=True)
+        r1 = upsert_member_line(content, "m2", "成员二", [], "末尾空分组", legacy_title_unique=True)
+        # 模拟落盘再加载：to_markdown 补 \n，from_markdown strip
+        c2 = (r1.content + "\n").strip()
+        r2 = upsert_member_line(c2, "m3", "成员三", [], "末尾空分组", legacy_title_unique=True)
+        assert "]]\n- [[" in r2.content
+        assert "]]- [[" not in r2.content
+
+    def test_s3_append_new_group_keeps_blank_line(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", stripped=True)
+        r = upsert_member_line(content, "m2", "成员二", [], "组B", legacy_title_unique=True)
+        assert "]]\n\n## 组B\n" in r.content
+
+    def test_a4_idempotent_returns_input_verbatim(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", stripped=True)
+        r = upsert_member_line(content, "m1", "成员一", [], "组A", legacy_title_unique=True)
+        assert r.changed is False
+        assert r.content == content  # D6：幂等分支返回原参数，不经规范化改写
+
+
+class TestRemoveStrippedInput:
+    """内存表示输入的 remove 行为锁定（issue #547，A9）。"""
+
+    def test_remove_row_from_stripped_input(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", "- [[m2|成员二]]", stripped=True)
+        r = remove_member_lines(content, "m2", "成员二", legacy_title_unique=True)
+        assert r.changed is True
+        assert "- [[m2|成员二]]" not in r.content
+        assert "- [[m1|成员一]]" in r.content
+
+    def test_no_match_returns_input_verbatim(self):
+        content = _doc("## 组A", "", "- [[m1|成员一]]", stripped=True)
+        r = remove_member_lines(content, "m9", "成员九", legacy_title_unique=True)
+        assert r.changed is False
+        assert r.content == content  # R2-D2：no-match 早退原样返回入参（内存表示）
+
+
+class TestUpsertEdgeAcceptance:
+    """spec §5 upsert 层验收补全（issue #547，A6 后半 / A8）。"""
+
+    def test_a8_upsert_empty_content_builds_other_group(self):
+        r = upsert_member_line("", "m1", "成员一", [], None, legacy_title_unique=True)
+        assert r.changed is True
+        assert "## 其他\n\n- [[m1|成员一]]\n" in r.content
+        assert r.content.endswith("\n")  # 输出文件表示（D3）
+
+    def test_a8_upsert_whitespace_only_content(self):
+        r = upsert_member_line("   ", "m1", "成员一", [], None, legacy_title_unique=True)
+        assert r.changed is True
+        assert "## 其他\n\n- [[m1|成员一]]\n" in r.content
+
+    def test_a6_upsert_crlf_inserted_row_uses_crlf(self):
+        content = "## 组A\r\n\r\n- [[m1|成员一]]"  # CRLF 正文 + strip 后末行无换行
+        r = upsert_member_line(content, "m2", "成员二", [], "组A", legacy_title_unique=True)
+        assert "- [[m2|成员二]]\r\n" in r.content

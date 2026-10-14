@@ -15,6 +15,7 @@ from jfox.note_index import get_note_index
 
 MEMBER_ONE = "20260820000001"
 MEMBER_TWO = "20260820000002"
+MEMBER_THREE = "20260820000003"
 MOC_ID = "20260821000001"
 
 
@@ -297,3 +298,45 @@ def test_remove_last_member_deletes_empty_group(seeded_kb):
     assert "## zima" not in moc.content  # 删行后组体只剩空白 → 连标题删除
     assert "## 近期活动" in moc.content
     assert moc.links == []
+
+
+def test_add_member_twice_to_trailing_empty_group(seeded_kb):
+    """Issue #547 A10：末尾空分组连续两次 add-member（不同成员），
+    盘上标题后空行存在、成员行独立、正文区以 ]]\n\n 结尾、重载环路收敛。"""
+    # 成员三（permanent）现建，模式同 test_add_member_non_permanent_warns_but_applies
+    three = Note(
+        id=MEMBER_THREE,
+        title="Zima Three",
+        content="content of Zima Three",
+        type=NoteType.PERMANENT,
+        created=dt(2026, 8, 20),
+        updated=dt(2026, 8, 20),
+        tags=["zima"],
+    )
+    three.set_filepath(seeded_kb.notes_dir / "permanent" / f"{MEMBER_THREE}-zima-three.md")
+    _atomic_write(three.filepath, three.to_markdown())
+
+    # 重置 MOC 正文：末尾空分组（内存表示写入，to_markdown 落盘补 \n）
+    moc = _reload(seeded_kb)
+    moc.content = "## zima\n\n- [[20260820000001|Zima One]] — 3 links\n\n## 末尾空分组"
+    _atomic_write(moc.filepath, moc.to_markdown())
+
+    p1 = _add_member_impl(seeded_kb, MOC_ID, MEMBER_TWO, "末尾空分组")
+    assert p1["success"] is True and p1["applied"] is True
+    p2 = _add_member_impl(seeded_kb, MOC_ID, MEMBER_THREE, "末尾空分组")
+    assert p2["success"] is True and p2["applied"] is True
+
+    text = _moc_file(seeded_kb).read_text(encoding="utf-8")
+    assert "## 末尾空分组\n\n- [[" in text  # 标题后空行存在（S1 修复）
+    assert "]]\n- [[" in text  # 两成员行各自独立（S2 修复）
+    assert "]]- [[" not in text
+    assert text.endswith("]]\n\n")  # D3 收敛态：content 尾换行 + to_markdown 补 \n
+
+    # 环路收敛：重载后 content 与期望的 strip 态精确相等（无累积漂移）
+    moc2 = _reload(seeded_kb)
+    assert moc2.content == (
+        "## zima\n\n- [[20260820000001|Zima One]] — 3 links\n\n"
+        "## 末尾空分组\n\n"
+        "- [[20260820000002|Zima Two]]\n"
+        "- [[20260820000003|Zima Three]]"
+    )

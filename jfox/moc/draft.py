@@ -281,6 +281,20 @@ def _detect_ending(lines: List[str]) -> str:
     return "\n"
 
 
+def _normalize_lines(content: str) -> tuple[List[str], str]:
+    """宽容输入契约：文件/内存表示均接受；返回每行自带尾换行的行列表与 ending。
+
+    - 空 content → 空列表（no-op，spec D2）。
+    - lines 非空且末行无尾换行（内存表示）→ 末行补 ending。
+    - ending 跟随 _detect_ending 检测到的首个换行风格（spec D4）。
+    """
+    lines = content.splitlines(keepends=True)
+    ending = _detect_ending(lines)
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] = lines[-1] + ending
+    return lines, ending
+
+
 def _scan_body(lines: List[str]) -> tuple[List[_Section], List[_BodyRow]]:
     """逐行扫描正文：顶层 H2 区段 + 区段内成员行。
 
@@ -414,8 +428,7 @@ def upsert_member_line(
     if group is not None:
         _validate_explicit_group(group)
 
-    lines = content.splitlines(keepends=True)
-    ending = _detect_ending(lines)
+    lines, ending = _normalize_lines(content)
     sections, rows = _scan_body(lines)
 
     canonical_rows = [row for row in rows if row.target == note_id]
@@ -512,7 +525,8 @@ def remove_member_lines(
     - 删行后只剩空白的普通组连同标题删除；含说明文字、子标题、代码或其他
       Markdown 的组保留标题；系统区段标题永不删除。
     """
-    lines = content.splitlines(keepends=True)
+    # 仅借规范化恢复不变量（内存表示末行无尾换行），不引入 ending——只删不插（spec D5）
+    lines, _ = _normalize_lines(content)
     _sections, rows = _scan_body(lines)
 
     canonical_rows = [row for row in rows if row.target == note_id]
