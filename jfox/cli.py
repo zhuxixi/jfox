@@ -359,6 +359,44 @@ def find_note_id_by_title_or_id(
     return None
 
 
+def resolve_link_target(candidates: List[str]) -> Optional[str]:
+    """按候选顺序解析 wiki-link 目标。
+
+    对每个候选依次试「精确 ID → 精确标题（大小写不敏感）」；命中即返回。
+    全部候选都不中时，**只对 candidates[0]（完整原文）做子串兜底**——
+    不对 `#` 前缀做子串匹配：前缀过短会把「本该悬空」的链接静默指向无关笔记
+    并随索引顺序漂移（issue #458 的第二种后果）。
+
+    Args:
+        candidates: split_wiki_target 产出的候选列表（顺序即优先级）
+
+    Returns:
+        命中的 note id，或 None（悬空）
+    """
+    from .note_index import get_note_index
+
+    if not candidates:
+        return None
+
+    idx = get_note_index()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        meta = idx.find_by_id(candidate) or idx.find_by_title(candidate)
+        if meta:
+            return meta.id
+
+    # 子串兜底：只对完整原文。非 # 链接的原文即前缀，行为与既有实现一致；
+    # # 类链接改用完整原文子串，比旧的前缀子串更specific、不再时序脆弱。
+    fallback = candidates[0].lower()
+    if not fallback:
+        return None
+    for meta in idx.get_all_meta():
+        if fallback in meta.title.lower():
+            return meta.id
+    return None
+
+
 def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[List[str], List[str]]:
     """统一解析正文 wiki links：先剥离代码块/注释，再解析，过滤自链并去重。
 
