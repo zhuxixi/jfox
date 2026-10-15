@@ -22,7 +22,7 @@ import yaml
 
 from .config import ZKConfig
 from .note import _atomic_write, load_note_by_id
-from .note_index import _normalize_wiki_link_title, get_note_index
+from .note_index import get_note_index, split_wiki_target
 
 logger = logging.getLogger(__name__)
 
@@ -130,13 +130,18 @@ def _mask_exclusions(text: str) -> str:
 def _link_matches_old(inner: str, old_id: str, old_title: str) -> bool:
     """判断一个 wiki link 内容是否精确指向旧笔记。
 
-    只接受精确 ID 或精确标题匹配；不做 substring 模糊匹配，
-    避免把 [[Foo]] 误判为对 "Foo Bar" 的引用。
+    对每个候选（完整原文 / `#` 前缀）做精确 ID 或精确标题匹配；
+    **不做 substring 模糊匹配**，避免把 [[Foo]] 误判为对 "Foo Bar" 的引用。
+    候选契约见 jfox/note_index.split_wiki_target（issue #458）。
     """
-    target = _normalize_wiki_link_title(inner)
-    if target == old_id:
-        return True
-    return bool(old_title) and target.casefold() == old_title.casefold()
+    for target in split_wiki_target(inner):
+        if not target:
+            continue
+        if target == old_id:
+            return True
+        if old_title and target.casefold() == old_title.casefold():
+            return True
+    return False
 
 
 def _rewritten_inner(inner: str, keep_id: str) -> str:
