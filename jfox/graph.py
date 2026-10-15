@@ -16,7 +16,7 @@ from rich.console import Console
 
 from .config import ZKConfig
 from .models import Note
-from .note_index import extract_wiki_links_from_text
+from .note_index import extract_wiki_link_targets
 
 console = Console()
 
@@ -94,32 +94,36 @@ class KnowledgeGraph:
 
         # Third pass: extract and add wiki links from content [[...]]
         for note_id, note in self._note_cache.items():
-            wiki_links = extract_wiki_links_from_text(note.content)
-            for link_text in wiki_links:
-                linked_id = self._resolve_link(link_text)
+            for candidates in extract_wiki_link_targets(note.content):
+                linked_id = self._resolve_link(candidates)
                 if linked_id and linked_id in self._note_cache:
-                    # Add edge if not already exists
                     if not self.graph.has_edge(note_id, linked_id):
                         self.graph.add_edge(note_id, linked_id, type="wiki_link")
 
         return self
 
-    def _resolve_link(self, link_text: str) -> Optional[str]:
-        """Resolve a link text to a note ID."""
-        # First try exact ID match
-        if link_text in self._note_cache:
-            return link_text
+    def _resolve_link(self, candidates: List[str]) -> Optional[str]:
+        """按候选顺序解析一个 wiki-link 目标（候选契约见 jfox/note_index.split_wiki_target）。
 
-        # Then try exact title match
+        每个候选先试精确 ID 再试精确标题（大小写不敏感）；全不中时只对
+        candidates[0]（完整原文）做子串兜底——前缀不参与子串，避免误连
+        （issue #458）。返回 None 表示悬空。
+        """
+        for candidate in candidates:
+            if not candidate:
+                continue
+            if candidate in self._note_cache:
+                return candidate
+            for note_id, note in self._note_cache.items():
+                if note.title.casefold() == candidate.casefold():
+                    return note_id
+
+        fallback = (candidates[0] if candidates else "").casefold()
+        if not fallback:
+            return None
         for note_id, note in self._note_cache.items():
-            if note.title.lower() == link_text.lower():
+            if fallback in note.title.casefold():
                 return note_id
-
-        # Finally try substring match as fallback
-        for note_id, note in self._note_cache.items():
-            if link_text.lower() in note.title.lower():
-                return note_id
-
         return None
 
     def _parse_note_file(self, file_path: Path) -> Optional[Note]:
