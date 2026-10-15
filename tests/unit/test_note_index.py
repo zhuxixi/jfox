@@ -421,6 +421,49 @@ class TestNoteIndexFindNotesReferencingTitle:
 
         assert "20260428005" in ids
 
+    def test_find_notes_referencing_title_hash_in_title(self, kb_with_wiki_links):
+        """A8：正文用 [[完整标题（含#）]] 引用时能被反查识别（issue #458）"""
+        cfg = kb_with_wiki_links
+        note_dir = cfg.notes_dir / NoteType.PERMANENT.value
+        note_dir.mkdir(parents=True, exist_ok=True)
+
+        (note_dir / "20260428006.md").write_text(
+            "---\n"
+            "id: '20260428006'\n"
+            "title: 'jfox 增量索引修复方案（#387）：verify 差集'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:06:00'\n"
+            "updated: '2026-04-28T00:06:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n目标笔记正文\n",
+            encoding="utf-8",
+        )
+        (note_dir / "20260428007.md").write_text(
+            "---\n"
+            "id: '20260428007'\n"
+            "title: '引用方'\n"
+            "type: permanent\n"
+            "created: '2026-04-28T00:07:00'\n"
+            "updated: '2026-04-28T00:07:00'\n"
+            "tags: []\n"
+            "links: []\n"
+            "backlinks: []\n"
+            "---\n\n"
+            "参见 [[jfox 增量索引修复方案（#387）：verify 差集]] 与 [[目标笔记#章节]]。\n",
+            encoding="utf-8",
+        )
+
+        idx = NoteIndex(cfg)
+        idx.rebuild()
+
+        ids = {
+            m.id
+            for m in idx.find_notes_referencing_title("jfox 增量索引修复方案（#387）：verify 差集")
+        }
+        assert "20260428007" in ids
+
     def test_find_notes_referencing_title_skips_code_block_and_comment(self, kb_with_wiki_links):
         """fenced code block 和 HTML 注释中的 [[...]] 不应被误判"""
         cfg = kb_with_wiki_links

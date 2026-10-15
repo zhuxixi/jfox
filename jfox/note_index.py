@@ -283,7 +283,7 @@ class NoteIndex:
         Returns:
             引用了该标题的 NoteMeta 列表
         """
-        title_lower = title.lower()
+        title_lower = title.casefold()
         results: List[NoteMeta] = []
 
         for meta in self._by_id.values():
@@ -293,8 +293,11 @@ class NoteIndex:
 
             body = _read_body_after_frontmatter(filepath)
             body = _strip_wiki_link_exclusions(body)
-            for link_text in extract_wiki_links_from_text(body):
-                if link_text.lower() == title_lower:
+            for candidates in extract_wiki_link_targets(body):
+                # 成员判断：任一候选 casefold 后等于目标标题即算引用。
+                # 「任一」而非「首个命中」是对的——这里问的是「正文是否引用了该标题」，
+                # 完整原文与 # 前缀都可能是引用形态（[[标题]] 与 [[标题#锚点]] 都算）。
+                if any(c.casefold() == title_lower for c in candidates if c):
                     results.append(meta)
                     break
 
