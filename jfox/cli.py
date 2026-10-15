@@ -305,13 +305,6 @@ def _print_action_table(action: str, fields: dict):
     console.print(table)
 
 
-def extract_wiki_links(content: str) -> List[str]:
-    """从内容中提取 [[...]] 格式的维基链接"""
-    from .note_index import extract_wiki_links_from_text
-
-    return extract_wiki_links_from_text(content)
-
-
 def find_note_id_by_title_or_id(
     title_or_id: str, all_notes: Optional[list] = None
 ) -> Optional[str]:

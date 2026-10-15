@@ -31,18 +31,6 @@ _EXCLUSION_RE = re.compile(
 )
 
 
-def extract_wiki_links_from_text(text: str) -> List[str]:
-    """从文本中提取 [[...]] 格式的维基链接。
-
-    支持常见变体：
-    - [[标题]]
-    - [[标题|别名]] -> 取标题部分
-    - [[标题#锚点]] -> 取标题部分
-    """
-    raw_links = [m.group(1).strip() for m in _WIKI_LINK_RE.finditer(text)]
-    return [_normalize_wiki_link_title(link) for link in raw_links]
-
-
 def split_wiki_target(link_text: str) -> List[str]:
     """把一个 wiki-link 的目标拆成按优先级排列的候选。
 
@@ -62,20 +50,11 @@ def split_wiki_target(link_text: str) -> List[str]:
 
 
 def extract_wiki_link_targets(text: str) -> List[List[str]]:
-    """提取每个 wiki-link 的候选目标列表（顺序即优先级）。
+    """提取每个 wiki-link 的候选目标列表（顺序即优先级，候选语义见 split_wiki_target）。
 
-    不做剔除（fenced code block / HTML 注释 / inline code），调用方自行预处理——
-    与既有 extract_wiki_links_from_text 的职责边界保持一致。
+    不做剔除（fenced code block / HTML 注释 / inline code），调用方自行预处理。
     """
     return [split_wiki_target(m.group(1).strip()) for m in _WIKI_LINK_RE.finditer(text)]
-
-
-def _normalize_wiki_link_title(link_text: str) -> str:
-    """把 [[标题|别名]] / [[标题#锚点]] 归一化为纯标题。"""
-    # 先取管道符左侧的显示标题/目标
-    target = link_text.split("|", 1)[0]
-    # 再取锚点左侧的标题主体
-    return target.split("#", 1)[0].strip()
 
 
 def _strip_wiki_link_exclusions(text: str) -> str:
