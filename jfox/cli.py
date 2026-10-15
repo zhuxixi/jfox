@@ -402,34 +402,35 @@ def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[Lis
 
     规则（edit/add/rebuild 三路径共用，杜绝规则漂移）：
     1. _strip_wiki_link_exclusions 剥离 fenced code block / HTML 注释 / inline code
-    2. find_note_id_by_title_or_id 三级匹配（精确 ID → 精确标题 → 标题包含）
+    2. resolve_link_target 候选序匹配（完整原文 → # 前缀逐候选精确 ID/标题，
+       子串兜底只对完整原文）
     3. target_id == self_id 跳过（自链过滤）
     4. resolved 去重（保序）
-    5. 找不到目标的进 unresolved
+    5. 找不到目标的进 unresolved（记录完整原文，保持用户可读）
 
     Args:
         content: 笔记正文（原文，不会被修改）
         self_id: 当前笔记 ID，用于自链过滤；add 场景传 None（新笔记尚未入索引，
-                 find_note_id_by_title_or_id 不可能命中自身）
+                 resolve_link_target 不可能命中自身）
 
     Returns:
         (resolved_links, unresolved_titles)
     """
-    from .note_index import _strip_wiki_link_exclusions
+    from .note_index import _strip_wiki_link_exclusions, extract_wiki_link_targets
 
     stripped = _strip_wiki_link_exclusions(content)
-    wiki_links = extract_wiki_links(stripped)
     resolved_links: List[str] = []
     unresolved: List[str] = []
-    for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text)
+    for candidates in extract_wiki_link_targets(stripped):
+        target_id = resolve_link_target(candidates)
         if target_id:
             if target_id == self_id:
                 continue
             if target_id not in resolved_links:
                 resolved_links.append(target_id)
         else:
-            unresolved.append(link_text)
+            # 报告完整原文（candidates[0]），保持用户可读
+            unresolved.append(candidates[0])
     return resolved_links, unresolved
 
 
