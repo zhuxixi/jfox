@@ -577,12 +577,13 @@ def promote_note(note_id: str) -> bool:
 
     清 status/gem_level/confidence/knowledge_type/reject_reason；**保留 source_fragments/grounded_by**
     做溯源（满足 #249「可追溯到来源碎片」），由 to_markdown 在非空时跨类型写入 frontmatter。
-    backlinks 增量回填：解析正文 [[...]]（先剥 code block/HTML 注释防误匹配）→ 精确标题匹配
-    → 设本笔记 links + 把本笔记加进各 target 的 backlinks。
+    backlinks 增量回填：解析正文 [[...]]（先剥 code block/HTML 注释防误匹配）→ 按候选序精确
+    标题匹配（完整原文优先覆盖含 # 标题，# 前缀次之，首个命中即止）→ 设本笔记 links +
+    把本笔记加进各 target 的 backlinks。
     """
     from .note_index import (
         _strip_wiki_link_exclusions,
-        extract_wiki_links_from_text,
+        extract_wiki_link_targets,
         get_note_index,
     )
 
@@ -594,24 +595,33 @@ def promote_note(note_id: str) -> bool:
         logger.warning(f"Note {note_id} is not a candidate (type={n.type.value})")
         return False
 
-    # forward links 来源（spec §2.1）：正文 [[标题]] + frontmatter grounded_by 参考笔记，合并去重。
-    # 先剥 fenced code block/HTML 注释避免字面量 [[标题]] 误匹配；精确标题匹配，不子串 fallback。
+    # forward links 来源（spec §2.1）：正文 [[...]] 候选 + frontmatter grounded_by 参考笔记，合并去重。
+    # 先剥 fenced code block/HTML 注释避免字面量误匹配；精确标题匹配，不子串 fallback。
+    # 每个链接按候选顺序试：完整原文优先（覆盖标题本身含 #），# 前缀次之（锚点语义）；
+    # 首个命中即止——不能把两个候选都当独立标题试，否则前缀可能额外命中别的笔记（#458）。
     idx = get_note_index()
     target_ids: List[str] = []
-    link_titles = extract_wiki_links_from_text(_strip_wiki_link_exclusions(n.content)) + list(
-        n.grounded_by or []
-    )
-    for title in link_titles:
+    for candidates in extract_wiki_link_targets(_strip_wiki_link_exclusions(n.content)):
+        for candidate in candidates:
+            if not candidate:
+                continue
+            tm = idx.find_by_title(candidate)
+            if (
+                tm is None or tm.id == n.id
+            ):  # 自链过滤（既有行为）：命中本笔记视同未命中，试下一候选
+                continue
+            if tm.id not in target_ids:
+                target_ids.append(tm.id)
+            break
+    for raw in list(n.grounded_by or []):
         if (
-            not isinstance(title, str) or not title
+            not isinstance(raw, str) or not raw
         ):  # 过滤非 str/空串（YAML null/int/bool、LLM 脏数据）防 .lower() 崩
             continue
-        tm = idx.find_by_title(title)
-        if tm is None:
-            # spec §6：链接目标不存在 → 警告不阻塞（round-4 issue-5）
-            logger.warning(f"promote {note_id}: 链接目标 [[{title}]] 不存在，跳过")
+        tm = idx.find_by_title(raw)
+        if tm is None or tm.id == n.id:  # 自链过滤（既有行为，与正文链接口径一致）
             continue
-        if tm.id != n.id and tm.id not in target_ids:
+        if tm.id not in target_ids:
             target_ids.append(tm.id)
 
     # 改 type + 清 candidate 生命周期字段；**保留 source_fragments/grounded_by 做溯源**

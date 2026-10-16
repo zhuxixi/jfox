@@ -31,24 +31,30 @@ _EXCLUSION_RE = re.compile(
 )
 
 
-def extract_wiki_links_from_text(text: str) -> List[str]:
-    """从文本中提取 [[...]] 格式的维基链接。
+def split_wiki_target(link_text: str) -> List[str]:
+    """把一个 wiki-link 的目标拆成按优先级排列的候选。
 
-    支持常见变体：
-    - [[标题]]
-    - [[标题|别名]] -> 取标题部分
-    - [[标题#锚点]] -> 取标题部分
+    含 `#` 时返回 [完整原文, 前缀]；无 `#` 时返回 [原文]。
+    alias（`|` 左侧）在此剥离。空前缀不产生空候选。
+
+    候选顺序即解析优先级：完整原文优先（覆盖「标题本身含 #」），
+    `#` 前缀次之（保留既有锚点语义）。见 issue #458 设计文档
+    「核心契约变更」——注意本函数**不做截断**，截断语义由调用方按候选顺序实现。
     """
-    raw_links = [m.group(1).strip() for m in _WIKI_LINK_RE.finditer(text)]
-    return [_normalize_wiki_link_title(link) for link in raw_links]
+    raw = link_text.split("|", 1)[0].strip()
+    if "#" in raw:
+        prefix = raw.split("#", 1)[0].strip()
+        if prefix and prefix != raw:
+            return [raw, prefix]
+    return [raw]
 
 
-def _normalize_wiki_link_title(link_text: str) -> str:
-    """把 [[标题|别名]] / [[标题#锚点]] 归一化为纯标题。"""
-    # 先取管道符左侧的显示标题/目标
-    target = link_text.split("|", 1)[0]
-    # 再取锚点左侧的标题主体
-    return target.split("#", 1)[0].strip()
+def extract_wiki_link_targets(text: str) -> List[List[str]]:
+    """提取每个 wiki-link 的候选目标列表（顺序即优先级，候选语义见 split_wiki_target）。
+
+    不做剔除（fenced code block / HTML 注释 / inline code），调用方自行预处理。
+    """
+    return [split_wiki_target(m.group(1).strip()) for m in _WIKI_LINK_RE.finditer(text)]
 
 
 def _strip_wiki_link_exclusions(text: str) -> str:
@@ -256,7 +262,7 @@ class NoteIndex:
         Returns:
             引用了该标题的 NoteMeta 列表
         """
-        title_lower = title.lower()
+        title_lower = title.casefold()
         results: List[NoteMeta] = []
 
         for meta in self._by_id.values():
@@ -266,8 +272,11 @@ class NoteIndex:
 
             body = _read_body_after_frontmatter(filepath)
             body = _strip_wiki_link_exclusions(body)
-            for link_text in extract_wiki_links_from_text(body):
-                if link_text.lower() == title_lower:
+            for candidates in extract_wiki_link_targets(body):
+                # 成员判断：任一候选 casefold 后等于目标标题即算引用。
+                # 「任一」而非「首个命中」是对的——这里问的是「正文是否引用了该标题」，
+                # 完整原文与 # 前缀都可能是引用形态（[[标题]] 与 [[标题#锚点]] 都算）。
+                if any(c.casefold() == title_lower for c in candidates if c):
                     results.append(meta)
                     break
 

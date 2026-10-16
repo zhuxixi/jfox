@@ -305,13 +305,6 @@ def _print_action_table(action: str, fields: dict):
     console.print(table)
 
 
-def extract_wiki_links(content: str) -> List[str]:
-    """从内容中提取 [[...]] 格式的维基链接"""
-    from .note_index import extract_wiki_links_from_text
-
-    return extract_wiki_links_from_text(content)
-
-
 def find_note_id_by_title_or_id(
     title_or_id: str, all_notes: Optional[list] = None
 ) -> Optional[str]:
@@ -359,39 +352,78 @@ def find_note_id_by_title_or_id(
     return None
 
 
+def resolve_link_target(candidates: List[str]) -> Optional[str]:
+    """按候选顺序解析 wiki-link 目标。
+
+    对每个候选依次试「精确 ID → 精确标题（大小写不敏感）」；命中即返回。
+    全部候选都不中时，**只对 candidates[0]（完整原文）做子串兜底**——
+    不对 `#` 前缀做子串匹配：前缀过短会把「本该悬空」的链接静默指向无关笔记
+    并随索引顺序漂移（issue #458 的第二种后果）。
+
+    Args:
+        candidates: split_wiki_target 产出的候选列表（顺序即优先级）
+
+    Returns:
+        命中的 note id，或 None（悬空）
+    """
+    from .note_index import get_note_index
+
+    if not candidates:
+        return None
+
+    idx = get_note_index()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        meta = idx.find_by_id(candidate) or idx.find_by_title(candidate)
+        if meta:
+            return meta.id
+
+    # 子串兜底：只对完整原文。非 # 链接的原文即前缀，行为与既有实现一致；
+    # # 类链接改用完整原文子串，比旧的前缀子串更specific、不再时序脆弱。
+    fallback = candidates[0].lower()
+    if not fallback:
+        return None
+    for meta in idx.get_all_meta():
+        if fallback in meta.title.lower():
+            return meta.id
+    return None
+
+
 def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[List[str], List[str]]:
     """统一解析正文 wiki links：先剥离代码块/注释，再解析，过滤自链并去重。
 
     规则（edit/add/rebuild 三路径共用，杜绝规则漂移）：
     1. _strip_wiki_link_exclusions 剥离 fenced code block / HTML 注释 / inline code
-    2. find_note_id_by_title_or_id 三级匹配（精确 ID → 精确标题 → 标题包含）
+    2. resolve_link_target 候选序匹配（完整原文 → # 前缀逐候选精确 ID/标题，
+       子串兜底只对完整原文）
     3. target_id == self_id 跳过（自链过滤）
     4. resolved 去重（保序）
-    5. 找不到目标的进 unresolved
+    5. 找不到目标的进 unresolved（记录完整原文，保持用户可读）
 
     Args:
         content: 笔记正文（原文，不会被修改）
         self_id: 当前笔记 ID，用于自链过滤；add 场景传 None（新笔记尚未入索引，
-                 find_note_id_by_title_or_id 不可能命中自身）
+                 resolve_link_target 不可能命中自身）
 
     Returns:
         (resolved_links, unresolved_titles)
     """
-    from .note_index import _strip_wiki_link_exclusions
+    from .note_index import _strip_wiki_link_exclusions, extract_wiki_link_targets
 
     stripped = _strip_wiki_link_exclusions(content)
-    wiki_links = extract_wiki_links(stripped)
     resolved_links: List[str] = []
     unresolved: List[str] = []
-    for link_text in wiki_links:
-        target_id = find_note_id_by_title_or_id(link_text)
+    for candidates in extract_wiki_link_targets(stripped):
+        target_id = resolve_link_target(candidates)
         if target_id:
             if target_id == self_id:
                 continue
             if target_id not in resolved_links:
                 resolved_links.append(target_id)
         else:
-            unresolved.append(link_text)
+            # 报告完整原文（candidates[0]），保持用户可读
+            unresolved.append(candidates[0])
     return resolved_links, unresolved
 
 

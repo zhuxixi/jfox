@@ -134,6 +134,30 @@ def test_promote_sets_forward_links():
             assert target.id in load_note_by_id(c.id).links
 
 
+def test_promote_links_hash_title():
+    """A6：正文含 [[含#完整标题]] 时 promote 后 links 含正确目标（issue #458）"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note(
+                "目标内容", title="jfox 增量索引修复方案（#387）", note_type=NoteType.PERMANENT
+            )
+            save_note(target, add_to_index=False)
+            c = _make_candidate("引用含#标题", "讲讲 [[jfox 增量索引修复方案（#387）]] 的事")
+            promote_note(c.id)
+            assert target.id in load_note_by_id(c.id).links
+
+
+def test_promote_links_hash_anchor_variant():
+    """A6：正文含 [[标题#章节]] 锚点形态时 promote 后 links 含正确目标"""
+    with temp_kb_registered() as kb_name:
+        with use_kb(kb_name):
+            target = create_note("目标内容", title="某章节笔记", note_type=NoteType.PERMANENT)
+            save_note(target, add_to_index=False)
+            c = _make_candidate("引用锚点", "讲讲 [[某章节笔记#小节]] 的事")
+            promote_note(c.id)
+            assert target.id in load_note_by_id(c.id).links
+
+
 def test_promote_rejects_non_candidate():
     with temp_kb_registered() as kb_name:
         with use_kb(kb_name):

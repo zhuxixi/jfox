@@ -379,6 +379,19 @@ class TestRewriteBodyLinks:
         assert count == 1
 
 
+class TestLinkMatchesOld:
+    """_link_matches_old 候选契约（issue #458 A4）：精确 ID/标题匹配，不做子串模糊匹配"""
+
+    def test_hash_title_exact_match(self):
+        """A4：含 # 的旧标题仍能被精确匹配（候选前缀命中），且不引入子串匹配"""
+        from jfox.redirect import _link_matches_old
+
+        assert _link_matches_old("旧概念#锚点", "ID1", "旧概念") is True
+        assert _link_matches_old("旧概念#锚点", "ID1", "旧概念") is True
+        # 子串仍不算匹配（test_no_substring_match 的契约，含 # 形态也不放宽）
+        assert _link_matches_old("旧概念延伸#锚点", "ID1", "旧概念") is False
+
+
 class TestRedirectCommand:
     """CLI 端到端（CliRunner + --kb）"""
 
