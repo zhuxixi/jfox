@@ -166,7 +166,7 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 | 中确信 | S1/S3/S4 过，S2 灰色区或证据偏弱 | 走 Step 4 人工确认 |
 | 低/排除 | S3 排除类、S1/S2 失败、S5 触发 | 走 Step 4 人工确认 |
 
-审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。随时回查：`jfox list --tag auto-distilled`。
+审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。veto 路径：`jfox edit` / `jfox delete`。随时回查：`jfox list --tag auto-distilled`。
 
 ### Step 4: 用户审阅（硬约束）
 
@@ -297,6 +297,7 @@ jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
 ```
 
 - **不传 `--force`**：若返回 `skipped: duplicate`（#383 防重闸门命中），该条降级人工确认，其余候选不受影响。
+- 自动档正文必须含「## 依据」锚点段（记录核心事实的出处，与 S1 对应）。
 - 自动档跳过 MOC 归属问询；落库后在审计清单里提示用户可用 `jfox moc update` 批量兜底归属。
 - 判断不了档位时按中/低档处理（fail-closed）。
 
