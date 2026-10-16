@@ -47,7 +47,7 @@
 | 中确信 | S1/S3/S4 过，S2 灰色区或证据偏弱 | 走 Step 4 人工确认 |
 | 低/排除 | S3 排除类、S1/S2 失败、S5 触发 | 走 Step 4 人工确认 |
 
-审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。随时回查：`jfox list --tag auto-distilled`。
+审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。veto 路径：`jfox edit` / `jfox delete`。随时回查：`jfox list --tag auto-distilled`。
 ````
 
 ### 替换块 B「Step 4 首句」
@@ -79,6 +79,7 @@ jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
 ```
 
 - **不传 `--force`**：若返回 `skipped: duplicate`（#383 防重闸门命中），该条降级人工确认，其余候选不受影响。
+- 自动档正文必须含「## 依据」锚点段（记录核心事实的出处，与 S1 对应）。
 - 自动档跳过 MOC 归属问询；落库后在审计清单里提示用户可用 `jfox moc update` 批量兜底归属。
 - 判断不了档位时按中/低档处理（fail-closed）。
 ````
@@ -145,7 +146,7 @@ Expected: 0 issues
 
 ```bash
 f=skills-recommend/pi/jfox-session-to-permanent/SKILL.md
-for clause in "Step 3.5" "S1 证据锚点" "S2 去重余量" "S3 类型白名单" "S4 只新增不覆盖" "S5 fail-closed" "auto-distilled" "熔断" "空结果或无 score 字段" "自评置信度" "默认行为不变" "moc update"; do
+for clause in "Step 3.5" "S1 证据锚点" "## 依据" "S2 去重余量" "S3 类型白名单" "S4 只新增不覆盖" "S5 fail-closed" "auto-distilled" "熔断" "空结果或无 score 字段" "自评置信度" "默认行为不变" "moc update"; do
   grep -q "$clause" "$f" && echo "OK: $clause" || echo "MISSING: $clause"
 done
 ```
@@ -211,7 +212,7 @@ Expected: 0 issues
 ```bash
 for f in skills-recommend/pi/jfox-session-to-permanent/SKILL.md packages/cc-plugin/skills/session-to-permanent/SKILL.md packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md; do
   echo "== $f"
-  for clause in "Step 3.5" "S1 证据锚点" "S2 去重余量" "S3 类型白名单" "S4 只新增不覆盖" "S5 fail-closed" "auto-distilled" "熔断" "空结果或无 score 字段" "自评置信度" "默认行为不变" "moc update" "本次高置信度笔记直接写"; do
+  for clause in "Step 3.5" "S1 证据锚点" "## 依据" "S2 去重余量" "S3 类型白名单" "S4 只新增不覆盖" "S5 fail-closed" "auto-distilled" "熔断" "空结果或无 score 字段" "自评置信度" "默认行为不变" "moc update" "本次高置信度笔记直接写"; do
     grep -q "$clause" "$f" || echo "  MISSING: $clause"
   done
 done
@@ -267,5 +268,6 @@ Expected: 每份「严禁未经审阅」命中 1；三份均含「默认关」�
 
 - **Spec 覆盖**：spec §3 信号 → 块 A；§4 分流 → 块 A 第三张表；§5 审计/熔断 → 块 A 末段 + 块 C；§6 默认关 → 块 A 首段 + 块 E；§7 D7 → 块 C；§10 A1–A4 → Tasks 1–4，U1–U4 → Task 5。无遗漏。
 - **落点说明**：spec §2 数据流中「Step 2 去重（新增：补查 candidate）」统一实现在 Gate 的 S2③（仅授权会话执行），Step 2 主体不变——与 spec §3 S2③ 一致，避免默认路径多跑查询。
+- **落点说明（Step 3 锚点）**：spec §2 数据流中「Step 3 起草（新增：每条草稿强制「依据锚点」）」统一实现在 Gate 的 S1（自动档判定时校验锚点，并要求自动档正文带「## 依据」段），未改变默认路径的起草行为——与 spec §6「默认关」一致。
 - **占位符扫描**：无 TBD/TODO；所有插入文本为成稿。
 - **一致性**：块 A–E 中的命令与标签（`auto-distilled`、`--mode semantic`、`moc update`、`daemon status`）与 spec §3/§5/§10 完全一致。
