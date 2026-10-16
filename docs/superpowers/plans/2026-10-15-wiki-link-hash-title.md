@@ -44,10 +44,12 @@
 ### Task 1: 提取层候选契约（纯函数）
 
 **Files:**
+
 - Modify: `jfox/note_index.py`（新增 `split_wiki_target` / `extract_wiki_link_targets`，接在 `extract_wiki_links_from_text` 之后）
 - Test: `tests/unit/test_wiki_link_target.py`（新建）
 
 **Interfaces:**
+
 - Consumes: 既有 `_WIKI_LINK_RE`（`jfox/note_index.py:19`）
 - Produces:
   - `split_wiki_target(link_text: str) -> List[str]` —— 含 `#` 返回 `[完整原文, 前缀]`，否则 `[原文]`；空 `#` 前缀不产生空候选
@@ -159,10 +161,12 @@ git -C "$WT" commit -m "feat(note_index): add wiki-link candidate contract split
 ### Task 2: 解析契约 `resolve_link_target`
 
 **Files:**
+
 - Modify: `jfox/cli.py`（在 `find_note_id_by_title_or_id` 之后新增 `resolve_link_target`；`List`/`Optional` 已在文件内导入）
 - Test: `tests/unit/test_wiki_link_target.py`（追加 `TestResolveLinkTarget`）
 
 **Interfaces:**
+
 - Consumes: `split_wiki_target`（Task 1）；`NoteIndex.find_by_id` / `find_by_title` / `get_all_meta`
 - Produces: `resolve_link_target(candidates: List[str]) -> Optional[str]`
 
@@ -331,10 +335,12 @@ git -C "$WT" commit -m "feat(cli): add resolve_link_target candidate-order resol
 ### Task 3: 迁移 `resolve_wiki_links`（frontmatter links 写入路径）
 
 **Files:**
+
 - Modify: `jfox/cli.py:378-395`（`resolve_wiki_links` 函数体）
 - Test: `tests/integration/test_wiki_link_hash_title.py`（新建，A5）
 
 **Interfaces:**
+
 - Consumes: `extract_wiki_link_targets`（Task 1）、`resolve_link_target`（Task 2）、`_strip_wiki_link_exclusions`
 - Produces: `resolve_wiki_links(content, self_id=None) -> Tuple[List[str], List[str]]`（签名不变）
 
@@ -424,10 +430,12 @@ git -C "$WT" commit -m "fix(cli): resolve_wiki_links uses candidate-order resolu
 ### Task 4: 迁移 `find_notes_referencing_title`（backlink 回填反查）
 
 **Files:**
+
 - Modify: `jfox/note_index.py:269`（`find_notes_referencing_title` 的提取循环）
 - Test: `tests/unit/test_note_index.py`（追加含 `#` 用例）
 
 **Interfaces:**
+
 - Consumes: `extract_wiki_link_targets`（Task 1）
 - Produces: `find_notes_referencing_title(title) -> List[NoteMeta]`（签名与语义不变：精确标题匹配、大小写不敏感）
 
@@ -532,10 +540,12 @@ git -C "$WT" commit -m "fix(note_index): find_notes_referencing_title consumes c
 ### Task 5: 迁移 `promote_note`（candidate → permanent 的 forward links）
 
 **Files:**
+
 - Modify: `jfox/note.py:601`（`link_titles` 构造与 `find_by_title` 循环）
 - Test: `tests/unit/test_note_promote.py`（追加含 `#` 锚点用例）
 
 **Interfaces:**
+
 - Consumes: `extract_wiki_link_targets`（Task 1）
 - Produces: `promote_note(...)` 行为不变（精确标题匹配、**无子串兜底**），新增对含 `#` 完整标题的支持
 
@@ -631,10 +641,12 @@ git -C "$WT" commit -m "fix(note): promote_note resolves wiki links by candidate
 ### Task 6: 迁移 `KnowledgeGraph` 建边
 
 **Files:**
+
 - Modify: `jfox/graph.py:97`（提取）与 `jfox/graph.py:107-125`（`_resolve_link`）
 - Test: `tests/integration/test_wiki_link_hash_title.py`（追加图谱用例）
 
 **Interfaces:**
+
 - Consumes: `extract_wiki_link_targets`（Task 1）
 - Produces: `KnowledgeGraph._resolve_link(candidates: List[str]) -> Optional[str]`（**签名从 `str` 改为 `List[str]`**）；`KnowledgeGraph.build() -> KnowledgeGraph` 行为不变
 
@@ -730,10 +742,12 @@ git -C "$WT" commit -m "fix(graph): resolve wiki-link candidates and keep substr
 ### Task 7: `redirect` 消费候选契约（保持精确匹配语义）
 
 **Files:**
+
 - Modify: `jfox/redirect.py:136`（`_link_matches_old`）；import 行 `jfox/redirect.py:25`
 - Test: `tests/unit/test_redirect.py`（追加含 `#` 锚点用例）
 
 **Interfaces:**
+
 - Consumes: `split_wiki_target`（Task 1）
 - Produces: `_link_matches_old(inner, old_id, old_title) -> bool`（签名不变；**语义不变：仍只做精确匹配、不做子串模糊匹配**）
 
@@ -803,11 +817,13 @@ git -C "$WT" commit -m "refactor(redirect): consume wiki-link candidate contract
 ### Task 8: 清理旧提取函数族 + 全量回归
 
 **Files:**
+
 - Modify: `jfox/note_index.py`（删除 `extract_wiki_links_from_text`，若仍有调用方则改为转调取 `candidates[0]`）
 - Modify: `jfox/cli.py`（删除 `extract_wiki_links` 包装，`cli.py:309-312`）
 - Test: 全量单元 + 相关集成
 
 **Interfaces:**
+
 - Consumes: Task 3–7 已迁移的全部消费者
 - Produces: 无新接口；移除旧提取入口，杜绝「继续吃截断文本」的通道
 
@@ -816,10 +832,12 @@ git -C "$WT" commit -m "refactor(redirect): consume wiki-link candidate contract
 - [ ] **Step 1: 确认旧函数已无产品调用方**
 
 Run:
+
 ```bash
 cd /home/elling/git-repo/github/jfox/.pi/worktrees/issue-458-wiki-link-hash-title
 grep -rn "extract_wiki_links_from_text\|cli.extract_wiki_links\|from .note_index import.*extract_wiki_links\|import extract_wiki_links" jfox/ | grep -v "def extract_wiki_link"
 ```
+
 Expected: 只应剩 `note_index.py` 的定义本身与（可能的）测试引用。若仍有产品调用方，**停下来**——说明前序 task 漏迁移，补完再继续。
 
 - [ ] **Step 2: 删除旧函数与包装**
@@ -835,21 +853,25 @@ Expected: 若报 `ImportError` / `AttributeError` 指向 `extract_wiki_links_fro
 - [ ] **Step 4: 跑全量单元与集成回归**
 
 Run:
+
 ```bash
 cd /home/elling/git-repo/github/jfox/.pi/worktrees/issue-458-wiki-link-hash-title
 uv run pytest tests/unit tests/integration -q --no-header 2>&1 | tail -25
 ```
+
 Expected: 全绿。**A6 的通过标准**：以下五个文件必须全绿——
 `tests/unit/test_wiki_link_resolution.py`、`tests/unit/test_note_index.py`、`tests/unit/test_rebuild_backlinks_impl.py`、`tests/unit/test_note_promote.py`、`tests/unit/test_add_backfill_links.py`；其中 `test_note_index.py:394-418`（别名+锚点）与 `:340`（大小写不敏感）必须通过。
 
 - [ ] **Step 5: 运行 lint 与格式检查**
 
 Run:
+
 ```bash
 cd /home/elling/git-repo/github/jfox/.pi/worktrees/issue-458-wiki-link-hash-title
 uv run black --check jfox/ tests/
 uv run ruff check jfox/ tests/
 ```
+
 Expected: 无输出（通过）。有报错则 `uv run black jfox/ tests/` 后重跑。
 
 - [ ] **Step 6: 提交**

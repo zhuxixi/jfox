@@ -145,8 +145,8 @@ def _member_link(note_id: str, title: str) -> str:
 
 **截断点在单点，但传播路径经提取层到四个消费者**。四个消费者全部纳入本 spec 的改动与验收：
 
-| 消费者 | 路径 | 用途 | 验收 ID |
-|---|---|---|---|
+| 消费者 | 用途 | 验收 ID |
+|---|---|---|
 | `cli.py:383` → `resolve_wiki_links` | add / edit / rebuild 落 frontmatter links | A3 / A5 |
 | `note_index.py:269` → `find_notes_referencing_title`（`cli.py:635` backfill 消费） | backlink 回填反查 | A8 |
 | `note.py:601`（`promote_note` 内） | note 层链接解析 | A6（含 `test_note_promote.py`） |
