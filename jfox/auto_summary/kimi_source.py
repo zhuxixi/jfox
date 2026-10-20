@@ -137,6 +137,7 @@ class KimiCodeSource:
                     mtime=mtime,
                     size_bytes=size,
                     source="kimi",
+                    agent="kimi-code",
                 )
 
     def extract_dialog(self, sf: SessionFile) -> ExtractedDialog:
