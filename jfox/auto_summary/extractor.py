@@ -144,6 +144,12 @@ def extract_dialog(
                         result.started_at = ts
                     result.ended_at = ts
 
+                msg = rec.get("message")
+                if isinstance(msg, dict):
+                    model = msg.get("model")
+                    if isinstance(model, str) and model:
+                        result.agent_model = model
+
                 extracted = _extract_role_and_text(rec)
                 if extracted is None:
                     continue

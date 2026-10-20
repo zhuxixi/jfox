@@ -495,3 +495,63 @@ class TestRunClaudeInterruptible:
 
             with pytest.raises(RuntimeError, match="exited 1"):
                 _run_claude(**self._default_kwargs(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# #578：agent / session_file / agent_model 透传
+# ---------------------------------------------------------------------------
+
+from dataclasses import replace
+
+
+def test_summarize_one_passes_agent_fields(tmp_path, ledger, fake_cfg):
+    sf = replace(_make_session_jsonl(tmp_path, sid="agent001"), agent="pi-coding-agent")
+    inner = {"skip": False, "title": "T", "topic": "", "summary_md": "S", "tags": []}
+    fake_stdout = json.dumps({"result": json.dumps(inner)})
+
+    with (
+        patch.object(runner_module, "_resolve_claude_binary", return_value="claude"),
+        patch("subprocess.Popen", return_value=_make_popen_mock(stdout=fake_stdout)),
+        patch.object(runner_module, "_save_session_note", return_value="n1") as save,
+    ):
+        result = summarize_one(sf, cfg=fake_cfg, ledger=ledger)
+
+    assert result.outcome == SummaryOutcome.SUCCESS
+    kwargs = save.call_args.kwargs
+    assert kwargs["agent"] == "pi-coding-agent"
+    assert kwargs["session_file"] == str(sf.path)
+    assert kwargs["topic"] == "pi-coding-agent-session"
+
+
+def test_save_session_note_forwards_fields():
+    from contextlib import nullcontext
+
+    new_note = MagicMock()
+    new_note.id = "n1"
+    with (
+        patch("jfox.config.use_kb", return_value=nullcontext()),
+        patch("jfox.note.create_note", return_value=new_note) as create,
+        patch("jfox.note.save_note", return_value=True),
+    ):
+        note_id = runner_module._save_session_note(
+            "正文",
+            "T",
+            ["session"],
+            "t",
+            None,
+            agent="pi-coding-agent",
+            session_file="/tmp/s.jsonl",
+            agent_model="p/m",
+        )
+
+    assert note_id == "n1"
+    kwargs = create.call_args.kwargs
+    assert kwargs["agent"] == "pi-coding-agent"
+    assert kwargs["session_file"] == "/tmp/s.jsonl"
+    assert kwargs["agent_model"] == "p/m"
+
+
+def test_prompts_are_source_neutral():
+    from jfox.auto_summary.runner import SYSTEM_PROMPT
+
+    assert "Claude Code" not in SYSTEM_PROMPT
