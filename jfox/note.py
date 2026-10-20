@@ -92,6 +92,9 @@ def create_note(
     links: Optional[List[str]] = None,
     source: Optional[str] = None,
     topic: Optional[str] = None,
+    agent: Optional[str] = None,
+    session_file: Optional[str] = None,
+    agent_model: Optional[str] = None,
 ) -> Note:
     """创建新笔记"""
     note_id = generate_id()
@@ -112,6 +115,9 @@ def create_note(
         backlinks=[],
         source=source,
         topic=topic,
+        agent=agent,
+        session_file=session_file,
+        agent_model=agent_model,
     )
 
     return note
