@@ -42,11 +42,16 @@ def test_pi_session_dirs_non_list_becomes_none():
     assert AutoSummaryConfig.from_dict({"pi_session_dirs": "oops"}).pi_session_dirs is None
 
 
-def test_resolve_pi_session_dirs_prefers_explicit_config():
+def test_resolve_pi_session_dirs_prefers_explicit_config(tmp_path):
+    from pathlib import Path
+
     from jfox.auto_summary.sources import resolve_pi_session_dirs
 
-    cfg = AutoSummaryConfig(pi_session_dirs=["/tmp/a", "/tmp/b"])
-    assert [str(p) for p in resolve_pi_session_dirs(cfg)] == ["/tmp/a", "/tmp/b"]
+    dirs = [str(tmp_path / "a"), str(tmp_path / "b")]
+    cfg = AutoSummaryConfig(pi_session_dirs=dirs)
+    assert [str(p) for p in resolve_pi_session_dirs(cfg)] == [
+        str(Path(d).expanduser().resolve()) for d in dirs
+    ]
 
 
 def test_resolve_pi_session_dirs_respects_env(tmp_path, monkeypatch):
