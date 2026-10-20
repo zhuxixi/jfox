@@ -109,3 +109,64 @@ def test_extract_dialog_from_file(tmp_path):
     assert result.started_at == HEADER["timestamp"]
     assert result.ended_at == "2026-10-19T00:01:00.000Z"
     assert result.agent_model == "x/y"
+
+
+def test_model_ignores_abandoned_branch():
+    """分支会话中放弃分支的 model_change 不应被当作会话模型。"""
+    entries = [
+        HEADER,
+        {
+            "type": "model_change",
+            "id": "mc1",
+            "parentId": None,
+            "provider": "keep",
+            "modelId": "kept",
+        },
+        _msg("a", "mc1", "user", "hello"),
+        _msg("b", "a", "assistant", "hi"),
+        {
+            "type": "model_change",
+            "id": "mc2",
+            "parentId": "a",
+            "provider": "abandoned",
+            "modelId": "stale",
+        },
+        _msg("c", "b", "user", "next"),
+    ]
+    # 文件顺序取最后一条会拿到放弃分支的模型（错误答案）
+    assert model_from_branch(entries) == "abandoned/stale"
+    # 活跃分支只含 mc1 / a / b / c
+    assert model_from_branch(active_branch(entries)) == "keep/kept"
+
+
+def test_extract_prefers_active_branch_model(tmp_path):
+    p = tmp_path / "view_branch.jsonl"
+    rows = [
+        HEADER,
+        {
+            "type": "model_change",
+            "id": "mc1",
+            "parentId": None,
+            "provider": "keep",
+            "modelId": "kept",
+        },
+        _msg("a", "mc1", "user", "hello"),
+        _msg("b", "a", "assistant", "hi"),
+        {
+            "type": "model_change",
+            "id": "mc2",
+            "parentId": "a",
+            "provider": "abandoned",
+            "modelId": "stale",
+        },
+        _msg("c", "b", "user", "next"),
+    ]
+    p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    assert extract_pi_dialog(p).agent_model == "keep/kept"
+
+
+def test_extract_falls_back_when_branch_has_no_model_change(tmp_path):
+    p = tmp_path / "view_nomc.jsonl"
+    rows = [HEADER, _msg("a", None, "user", "hello"), _msg("b", "a", "assistant", "hi")]
+    p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    assert extract_pi_dialog(p).agent_model is None

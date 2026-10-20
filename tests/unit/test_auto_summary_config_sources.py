@@ -68,3 +68,13 @@ def test_resolve_pi_session_dirs_dedupes(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOARD_ROOT", str(tmp_path))
     dirs = resolve_pi_session_dirs(AutoSummaryConfig())
     assert len(dirs) == 1
+
+
+def test_pi_session_dirs_filters_non_string_elements():
+    cfg = AutoSummaryConfig.from_dict({"pi_session_dirs": ["/tmp/ok", 42, "", None]})
+    assert cfg.pi_session_dirs == ["/tmp/ok"]
+
+
+def test_pi_session_dirs_all_invalid_becomes_none():
+    cfg = AutoSummaryConfig.from_dict({"pi_session_dirs": [42, None, ""]})
+    assert cfg.pi_session_dirs is None

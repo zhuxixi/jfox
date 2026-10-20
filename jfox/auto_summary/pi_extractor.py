@@ -157,9 +157,9 @@ def extract_pi_dialog(
     ) = dialog_from_branch(branch, max_dialog_chars)
     if ended_at:
         result.ended_at = ended_at
-    # 用全部条目而非活跃分支：model_change 可能没有 id/parentId（真实文件里部分条目如此），
-    # 会话级模型以文件顺序的最后一次 model_change 为准。
-    result.agent_model = model_from_branch(entries)
+    # 优先沿活跃分支取模型（分支会话中放弃分支的 model_change 不应生效）；
+    # 活跃分支缺失 model_change 时回退全文件序。
+    result.agent_model = model_from_branch(branch) or model_from_branch(entries)
     if result.project_dir_name is None:
         result.project_dir_name = path.parent.name
     return result
