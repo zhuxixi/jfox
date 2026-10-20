@@ -65,7 +65,7 @@ jfox add "<markdown-escaped-summary>" \
 - 总结内容已在上方以普通文本展示，供用户阅读；如需修改，事后用 `jfox edit`
 - 内容中的双引号需要转义，或使用 `--content-file` 从临时文件读取
 
-**agent 溯源（#578）**：`--agent claude-code` 记录来源；能定位到 transcript 时再补 `--session-path`，否则省略。
+**agent 溯源（#578）**：`--agent claude-code` 记录来源；能定位到 transcript 时再补 `--session-path`，知道模型时可用 `--agent-model provider/model`，两者都拿不到就省略。
 
 ### Step 3: 处理长内容
 
