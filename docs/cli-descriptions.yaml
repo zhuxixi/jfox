@@ -6,7 +6,7 @@ commands:
   "jfox archive":
     description: "Archive a note without permanently deleting its file."
   "jfox auto-summary":
-    description: "Manage automatic summaries of completed Claude Code sessions."
+    description: "Manage automatic summaries of completed coding-agent sessions (Claude Code, Kimi Code, pi)."
   "jfox auto-summary disable":
     description: "Disable the auto-summary background loop without clearing its ledger."
   "jfox auto-summary enable":

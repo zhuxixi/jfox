@@ -42,7 +42,7 @@ JFox is designed to keep its core knowledge-management workflow local rather tha
 - **Knowledge refinement** — Record user prompts verbatim, classify them on demand with a configurable judge, and promote candidates into permanent notes.
 - **Local bookshelf assets** — Keep PDFs, extracted bundles, and book metadata together without mixing them into the note index.
 - **Multiple knowledge bases** — Separate work, personal, research, or project knowledge while keeping the same CLI.
-- **Operational safeguards** — Use an embedding daemon, rolling backups, archive/unarchive, and optional Claude Code session auto-summary when you need them.
+- **Operational safeguards** — Use an embedding daemon, rolling backups, archive/unarchive, and optional coding-agent session auto-summary when you need them.
 
 ## Quick Start
 
@@ -159,7 +159,7 @@ Judge execution is explicit: it runs only when you invoke `jfox prompts judge`. 
 
 Use `jfox archive` and `jfox unarchive` when a note should leave or return to the active workflow without being permanently deleted. Use multiple knowledge bases to keep unrelated contexts separate.
 
-The backup system can create, verify, and restore rolling snapshots of your knowledge-base data. Use `jfox backup restore SNAPSHOT` to restore a knowledge-base state from a snapshot. The embedding daemon keeps the local model available between commands, while optional auto-summary can turn finished Claude Code sessions into `session` notes.
+The backup system can create, verify, and restore rolling snapshots of your knowledge-base data. Use `jfox backup restore SNAPSHOT` to restore a knowledge-base state from a snapshot. The embedding daemon keeps the local model available between commands, while optional auto-summary can turn finished Claude Code / Kimi Code / pi sessions into `session` notes.
 
 These operational features are opt-in or explicit actions. Review [Privacy](#privacy) before enabling auto-summary, and review [Installation and Development](#installation-and-development) for troubleshooting and model-download details.
 
@@ -346,7 +346,7 @@ JFox is local-first, but not every optional integration is offline:
 
 - Notes, indexes, and core note, search, and graph operations run locally by default.
 - The embedding model may need to be downloaded the first time it is used. After that, it can be reused from the local cache.
-- The optional auto-summary feature invokes `claude -p` to summarize finished Claude Code sessions.
+- The optional auto-summary feature invokes `claude -p` to summarize finished coding-agent sessions (Claude Code, Kimi Code, pi).
 - Auto-summary sends the selected session text to Anthropic through the Claude Code CLI. Enable it only when that data flow is acceptable to you.
 
 You control which optional services to enable. Services that support knowledge-base selection expose their own target-knowledge-base settings.
