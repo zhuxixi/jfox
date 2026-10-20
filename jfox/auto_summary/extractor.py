@@ -26,6 +26,7 @@ class ExtractedDialog:
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
     project_dir_name: Optional[str] = None
+    agent_model: Optional[str] = None  # 会话使用的模型（provider/modelId）
     user_turn_count: int = 0
     assistant_turn_count: int = 0
     truncated: bool = False
