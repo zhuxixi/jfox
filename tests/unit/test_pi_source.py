@@ -28,7 +28,9 @@ def _write(path, sid, cwd="/repo/proj", pad=6000):
         "timestamp": "2026-10-19T00:01:00Z",
         "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]},
     }
-    path.write_text(json.dumps(header) + "\n" + json.dumps(msg) + "\n" + "x" * pad, encoding="utf-8")
+    path.write_text(
+        json.dumps(header) + "\n" + json.dumps(msg) + "\n" + "x" * pad, encoding="utf-8"
+    )
     old = time.time() - 3600
     os.utime(path, (old, old))
 

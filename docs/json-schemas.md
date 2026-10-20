@@ -40,7 +40,7 @@ else:
 | 命令 | 成功顶层字段 | 实体位置 | 失败形状 |
 |------|--------------|----------|----------|
 | `init` | `success, message, name` | 平铺 | `{success, error}` |
-| `add` | `success, id, title, note{id,title,type,filepath,links} + 可选 `agent,session_file,agent_model`（#578）` + 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}}`；其余 `{success, error}` |
+| `add` | `success, id, title, note{id,title,type,filepath,links}` + 可选 `agent,session_file,agent_model`（#578）+ 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}}`；其余 `{success, error}` |
 | `search` | `success, query, mode, include_archived, total, results[]` + 可选 `warnings[]`（#519 降级时） | 列表 `results` | `{success, error}`；`--mode semantic` 且无语义服务时拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
 | `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension}, embedding{local_package,daemon_running,service_available}`（#519 可用性块） | 嵌套三段 | `{success, error}` |
 | `list` | `success, total, notes[]`（项含 `outgoing,incoming`） | 列表 `notes` | `{success, error}` |

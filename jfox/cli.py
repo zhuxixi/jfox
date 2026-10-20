@@ -849,7 +849,9 @@ def add(
     ),
     topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型必填）"),
     agent: Optional[str] = typer.Option(
-        None, "--agent", help="产生该会话的 coding agent（claude-code / kimi-code / pi-coding-agent）"
+        None,
+        "--agent",
+        help="产生该会话的 coding agent（claude-code / kimi-code / pi-coding-agent）",
     ),
     session_path: Optional[str] = typer.Option(
         None, "--session-path", help="agent 原始 session 文件绝对路径"

@@ -12,7 +12,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Iterator, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 

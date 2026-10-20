@@ -50,14 +50,15 @@ def test_resolve_pi_session_dirs_prefers_explicit_config():
 
 
 def test_resolve_pi_session_dirs_respects_env(tmp_path, monkeypatch):
-    import os
-
     from jfox.auto_summary.sources import resolve_pi_session_dirs
 
     monkeypatch.setenv("PI_CODING_AGENT_SESSION_DIR", str(tmp_path / "official"))
     monkeypatch.setenv("AGENT_BOARD_ROOT", str(tmp_path / "board"))
     dirs = [str(p) for p in resolve_pi_session_dirs(AutoSummaryConfig())]
-    assert dirs == [str((tmp_path / "official").resolve()), str((tmp_path / "board" / "sessions").resolve())]
+    assert dirs == [
+        str((tmp_path / "official").resolve()),
+        str((tmp_path / "board" / "sessions").resolve()),
+    ]
 
 
 def test_resolve_pi_session_dirs_dedupes(monkeypatch, tmp_path):

@@ -73,7 +73,9 @@ class Note:
     backlinks: List[str] = field(default_factory=list)  # 反向链接
     source: Optional[str] = None  # 来源（文献笔记）
     topic: Optional[str] = None  # 会话主题（session 类型）
-    agent: Optional[str] = None  # 产生会话的 coding agent（claude-code / kimi-code / pi-coding-agent）
+    agent: Optional[str] = (
+        None  # 产生会话的 coding agent（claude-code / kimi-code / pi-coding-agent）
+    )
     session_file: Optional[str] = None  # agent 原始 session 文件绝对路径
     agent_model: Optional[str] = None  # 会话使用的模型（provider/modelId）
     archived: bool = False  # 是否已归档（软删除标记）

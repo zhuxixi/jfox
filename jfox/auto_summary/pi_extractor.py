@@ -114,7 +114,9 @@ def model_from_branch(branch: Iterable[dict]) -> Optional[str]:
     return model
 
 
-def extract_pi_dialog(path: Path, max_dialog_chars: int = DEFAULT_MAX_DIALOG_CHARS) -> ExtractedDialog:
+def extract_pi_dialog(
+    path: Path, max_dialog_chars: int = DEFAULT_MAX_DIALOG_CHARS
+) -> ExtractedDialog:
     result = ExtractedDialog()
     entries: list = []
     try:

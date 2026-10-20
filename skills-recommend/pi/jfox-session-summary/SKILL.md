@@ -71,7 +71,6 @@ jfox add "<markdown-escaped-summary>" \
 
 **agent 溯源（#578）**：上面三个参数记录「谁产生的会话」与「原始 transcript 在哪」。`PI_SESSION_FILE` 是当前 session 文件的绝对路径（agent-board 托管的会话也指向正确位置），`PI_PROVIDER` / `PI_MODEL` 是当前模型；变量为空时省略对应参数即可，不要写入空字符串。
 
-
 ### Step 3: 处理长内容
 
 如果总结超过 500 字或包含特殊字符，优先使用 `--content-file`：

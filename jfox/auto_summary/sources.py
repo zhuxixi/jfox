@@ -76,8 +76,7 @@ def resolve_pi_session_dirs(cfg: AutoSummaryConfig) -> list[Path]:
         or (Path.home() / ".pi" / "agent" / "sessions")
     ).expanduser()
     board_root = Path(
-        os.environ.get("AGENT_BOARD_ROOT")
-        or (Path.home() / ".pi" / "agent" / "agent-board")
+        os.environ.get("AGENT_BOARD_ROOT") or (Path.home() / ".pi" / "agent" / "agent-board")
     ).expanduser()
     board = board_root / "sessions"
 
@@ -120,9 +119,7 @@ def get_sources(
             if roots:
                 sources.append(PiCodeSource(roots))
             else:
-                logger.info(
-                    "跳过 pi 来源：目录均不存在 %s", resolve_pi_session_dirs(cfg)
-                )
+                logger.info("跳过 pi 来源：目录均不存在 %s", resolve_pi_session_dirs(cfg))
         else:
             logger.warning("未知 session source: %s（已忽略）", name)
     return sources

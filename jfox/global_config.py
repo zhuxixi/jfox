@@ -129,7 +129,9 @@ class AutoSummaryConfig:
     skip_after_days: int = 0  # 0 表示不跳过任何 session；可自行设置上限
     claude_timeout_seconds: int = 120  # claude -p 调用超时
     claude_binary: Optional[str] = None  # claude 命令路径；None 表示从 PATH 解析
-    session_sources: List[str] = field(default_factory=lambda: ["claude", "kimi", "pi"])  # 启用的扫描来源
+    session_sources: List[str] = field(
+        default_factory=lambda: ["claude", "kimi", "pi"]
+    )  # 启用的扫描来源
     kimi_sessions_dir: Optional[str] = None  # None → ~/.kimi-code/sessions
     pi_session_dirs: Optional[List[str]] = None  # None → 官方目录 + agent-board 目录
 
