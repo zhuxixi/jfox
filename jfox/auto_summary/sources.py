@@ -6,12 +6,14 @@ Session 来源抽象：把 Claude Code / Kimi Code 的「扫描 + 对话提取�
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Iterator, Optional, Protocol, runtime_checkable
 
 from ..global_config import AutoSummaryConfig
 from .extractor import ExtractedDialog, extract_dialog
 from .kimi_source import KimiCodeSource
+from .pi_source import PiCodeSource
 from .scanner import SessionFile, default_claude_projects_dir, iter_session_files
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,29 @@ def kimi_sessions_dir(cfg: AutoSummaryConfig) -> Path:
     return (Path.home() / ".kimi-code" / "sessions").resolve()
 
 
+def resolve_pi_session_dirs(cfg: AutoSummaryConfig) -> list[Path]:
+    """显式配置优先；否则官方根 + agent-board 根，尊重两个 env，去重。"""
+    if cfg.pi_session_dirs:
+        return [Path(p).expanduser().resolve() for p in cfg.pi_session_dirs]
+
+    official = Path(
+        os.environ.get("PI_CODING_AGENT_SESSION_DIR")
+        or (Path.home() / ".pi" / "agent" / "sessions")
+    ).expanduser()
+    board_root = Path(
+        os.environ.get("AGENT_BOARD_ROOT")
+        or (Path.home() / ".pi" / "agent" / "agent-board")
+    ).expanduser()
+    board = board_root / "sessions"
+
+    dirs: list[Path] = []
+    for d in (official, board):
+        resolved = d.resolve()
+        if resolved not in dirs:
+            dirs.append(resolved)
+    return dirs
+
+
 def get_sources(
     cfg: AutoSummaryConfig, claude_projects_dir: Optional[Path] = None
 ) -> list[SessionSource]:
@@ -90,6 +115,14 @@ def get_sources(
                 sources.append(KimiCodeSource(kdir))
             else:
                 logger.info("跳过 kimi 来源：目录不存在 %s", kdir)
+        elif name == "pi":
+            roots = [d for d in resolve_pi_session_dirs(cfg) if d.is_dir()]
+            if roots:
+                sources.append(PiCodeSource(roots))
+            else:
+                logger.info(
+                    "跳过 pi 来源：目录均不存在 %s", resolve_pi_session_dirs(cfg)
+                )
         else:
             logger.warning("未知 session source: %s（已忽略）", name)
     return sources
@@ -105,4 +138,6 @@ def extract_dialog_for(sf: SessionFile, cfg: AutoSummaryConfig) -> ExtractedDial
         return ClaudeCodeSource().extract_dialog(sf)
     if sf.source == "kimi":
         return KimiCodeSource(kimi_sessions_dir(cfg)).extract_dialog(sf)
+    if sf.source == "pi":
+        return PiCodeSource([sf.path.parent]).extract_dialog(sf)
     raise ValueError(f"没有启用的来源匹配 source={sf.source!r}")

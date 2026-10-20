@@ -129,8 +129,9 @@ class AutoSummaryConfig:
     skip_after_days: int = 0  # 0 表示不跳过任何 session；可自行设置上限
     claude_timeout_seconds: int = 120  # claude -p 调用超时
     claude_binary: Optional[str] = None  # claude 命令路径；None 表示从 PATH 解析
-    session_sources: List[str] = field(default_factory=lambda: ["claude", "kimi"])  # 启用的扫描来源
+    session_sources: List[str] = field(default_factory=lambda: ["claude", "kimi", "pi"])  # 启用的扫描来源
     kimi_sessions_dir: Optional[str] = None  # None → ~/.kimi-code/sessions
+    pi_session_dirs: Optional[List[str]] = None  # None → 官方目录 + agent-board 目录
 
     # 调度时间窗口配置（Issue #298）
     schedule_enabled: bool = False  # 是否启用运行时间窗口
@@ -226,9 +227,14 @@ class AutoSummaryConfig:
             session_sources=(
                 list(data["session_sources"])
                 if isinstance(data.get("session_sources"), list)
-                else ["claude", "kimi"]
+                else ["claude", "kimi", "pi"]
             ),
             kimi_sessions_dir=data.get("kimi_sessions_dir"),
+            pi_session_dirs=(
+                list(data["pi_session_dirs"])
+                if isinstance(data.get("pi_session_dirs"), list)
+                else None
+            ),
             schedule_enabled=bool(data.get("schedule_enabled", False)),
             schedule_weekday_start_hour=_safe_int(data.get("schedule_weekday_start_hour"), 0),
             schedule_weekday_end_hour=_safe_int(data.get("schedule_weekday_end_hour"), 6),

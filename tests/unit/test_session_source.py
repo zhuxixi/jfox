@@ -23,7 +23,10 @@ def test_session_key_format():
 
 
 def test_get_sources_skips_missing_dirs(tmp_path):
-    cfg = AutoSummaryConfig(kimi_sessions_dir=str(tmp_path / "no-kimi"))
+    cfg = AutoSummaryConfig(
+        kimi_sessions_dir=str(tmp_path / "no-kimi"),
+        pi_session_dirs=[str(tmp_path / "no-pi")],
+    )
     with patch(
         "jfox.auto_summary.sources.default_claude_projects_dir", return_value=tmp_path / "no-claude"
     ):
@@ -33,7 +36,10 @@ def test_get_sources_skips_missing_dirs(tmp_path):
 
 def test_get_sources_includes_kimi_when_dir_exists(tmp_path):
     (tmp_path / "kimi").mkdir()
-    cfg = AutoSummaryConfig(kimi_sessions_dir=str(tmp_path / "kimi"))
+    cfg = AutoSummaryConfig(
+        kimi_sessions_dir=str(tmp_path / "kimi"),
+        pi_session_dirs=[str(tmp_path / "no-pi")],
+    )
     with patch(
         "jfox.auto_summary.sources.default_claude_projects_dir", return_value=tmp_path / "no-claude"
     ):
