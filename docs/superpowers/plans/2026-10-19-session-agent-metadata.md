@@ -1260,35 +1260,34 @@ def _seed(root: Path, sid: str = "uuid-1", age_secs: int = 3600) -> Path:
     return path
 
 
-def test_pi_session_end_to_end(tmp_path, cli):
+def test_pi_session_end_to_end(tmp_path, monkeypatch):
     root = tmp_path / "sessions"
     root.mkdir()
     session_path = _seed(root)
-    cfg = AutoSummaryConfig(
-        session_sources=["pi"], pi_session_dirs=[str(root)], target_kb=cli.kb_name
-    )
-    ledger = Ledger(path=tmp_path / "ledger.json")
 
-    pending = runner.scan_pending(cfg=cfg, ledger=ledger)
-    assert [p.session_id for p in pending] == ["uuid-1"]
+    with temp_kb_registered() as kb_name:
+        cfg = AutoSummaryConfig(
+            session_sources=["pi"], pi_session_dirs=[str(root)], target_kb=kb_name
+        )
+        ledger = Ledger(path=tmp_path / "ledger.json")
 
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(
+        pending = runner.scan_pending(cfg=cfg, ledger=ledger)
+        assert [p.session_id for p in pending] == ["uuid-1"]
+
+        monkeypatch.setattr(
         runner,
         "_invoke_claude",
         lambda extracted_dialog_text, cfg: json.dumps(
             {"skip": False, "title": "Pi 会话", "topic": "", "summary_md": "## 背景\n x", "tags": []}
         ),
     )
-    try:
         result = runner.summarize_one(pending[0], cfg=cfg, ledger=ledger)
-    finally:
-        monkeypatch.undo()
-    assert result.outcome == runner.SummaryOutcome.SUCCESS
+        assert result.outcome == runner.SummaryOutcome.SUCCESS
 
-    from jfox.note import load_note_by_id
+        from jfox.note import load_note_by_id
 
-    note = load_note_by_id(result.note_id)
+        with use_kb(kb_name):
+            note = load_note_by_id(result.note_id)
     assert note.agent == "pi-coding-agent"
     assert note.session_file == str(session_path)
     assert note.agent_model == "deepseek/deepseek-flash"
