@@ -2,6 +2,7 @@
 name: jfox-session-to-permanent
 description: |
   Use when user wants to distill reusable knowledge from the current conversation into permanent notes — capturing current state (project facts, file/script locations, architecture decisions/ADR, design rationale, how things stand now) plus tool usage, gotchas, debug patterns. Unlike session-summary (a log of actions: what you did) and organize (refine notes already piled in the inbox), this skill distills current-state facts from the live conversation into permanent notes, dedups against existing ones, and writes after explicit user review.
+  支持会话内授权后对高确信度笔记免人工确认自动落库（分级闸门，默认关）。
   Triggers on: "session to permanent", "提炼到永久笔记", "会话沉淀永久笔记",
   "把这次对话沉淀成永久笔记", "提炼会话知识", "distill session to permanent",
   "会话提炼", "沉淀永久笔记", "提炼永久笔记".
@@ -143,9 +144,33 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 **嵌入 wiki links**：把 Step 2 查到的关联笔记用 `[[精确标题]]` 嵌进正文（wiki link 必须精确匹配目标笔记标题，短链会悬空——见 `jfox-promote` §6）。
 
+### Step 3.5: 高确信度闸门（默认关，仅当用户会话内授权时启用）
+
+**默认行为不变**：除非用户在当前会话明确授权（如「本次高置信度笔记直接写」），本步骤整节省略，所有草稿照旧走 Step 4 人工确认；授权仅对当前会话生效，后续会话需重新授权。
+
+授权后，对本批每条草稿逐一评估五个信号；**全部通过 = 高确信度**，可直接落库；任一不通过按表中规则降级。判定只用可核验的机械信号，**不采信任何自评置信度**（自评值至多作报告字段，不参与分档）。
+
+| 信号 | 判定标准 | 失败时 |
+|------|----------|--------|
+| S1 证据锚点 | 每条核心事实有出处：文件路径类事实用 `test -e <path>` 实测存在；命令类须本会话实际执行过；issue/PR 号真实可查；用户原话会话中有 | 降人工档 |
+| S2 去重余量 | ① `jfox search --type permanent` 无「已覆盖」命中；② 追加 `jfox search "<草稿一句话摘要>" --mode semantic --json` 读最高分（cosine 量纲）：<0.5 通过；0.5–0.65 灰色区降人工；≥0.65 降人工并按「可补充/已覆盖」走原流程（阈值为初始值，dogfood 校准）；**空结果或无 score 字段 = 信号缺失 → 降人工，不得当作「无重复」通过**；③ 补查 `jfox search --type candidate` 无同主题 pending；④ 落库前重跑一次 search（防并行会话窗口） | 灰色区/异常降人工 |
+| S3 类型白名单 | 仅放行：现状快照（文件/脚本/配置位置）、工具/命令用法、已发生且可验证的事实。排除：ADR/决策、偏好、推测、待办、概念解释、冲突信息——**S3 排除 ≠ 不沉淀**，这些照常提炼并走 Step 4 人工确认，只是不进自动档 | 降人工档 |
+| S4 只新增不覆盖 | 仅 `jfox add` 新笔记可自动；`jfox edit` 追加存量一律人工 | edit 类永远人工 |
+| S5 fail-closed | 任一通道退化/异常/拿不准 → 降人工。检测动作：跑 `jfox daemon status` 确认 embedding daemon 在跑；抽查 `jfox search --json` 结果的 `search_mode` 是否全为 `keyword`（健康态为 `hybrid`）。注意：`--json` 的 `warnings` 仅在组件缺失时写入，「成功且无 warnings」≠ 通道健康 | 降人工档 |
+
+三级分流：
+
+| 档位 | 条件 | 处置 |
+|------|------|------|
+| 高确信 | S1–S5 全过 | 直接落库（见 Step 5「自动档落库」），不弹确认 |
+| 中确信 | S1/S3/S4 过，S2 灰色区或证据偏弱 | 走 Step 4 人工确认 |
+| 低/排除 | S3 排除类、S1/S2 失败、S5 触发 | 走 Step 4 人工确认 |
+
+审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。veto 路径：`jfox edit` / `jfox delete`。随时回查：`jfox list --tag auto-distilled`。
+
 ### Step 4: 用户审阅（硬约束）
 
-**严禁未经审阅直接 `jfox add`。** 把草稿完整展示给用户，等明确确认。这是本技能和 `jfox-session-summary`（直接写入）最大的区别——session 笔记是存档可以存完再改，permanent 是知识沉淀，落库前必须过眼。确认环节一律用 AskUserQuestion 出选择题，用户方向键选择、回车即确认，不用打字回复。
+**默认严禁未经审阅直接 `jfox add`。** 仅当当前会话已获用户明确授权、且该条经 Step 3.5 判定为高确信度时，可免确认自动落库（须带 `auto-distilled` tag 并入审计清单）；其余草稿一律把草稿完整展示给用户、等明确确认。这是本技能和 `jfox-session-summary`（直接写入）最大的区别——session 笔记是存档可以存完再改，permanent 是知识沉淀，落库前必须过眼。确认环节一律用 AskUserQuestion 出选择题，用户方向键选择、回车即确认，不用打字回复。
 
 **分批审阅规则**：候选分批过，**每批最多 5 条**。会话短、候选只有 1–2 条就一批过完；候选超过 5 条时，第一批只取 5 条走完 Step 2–5，落库后再回到 Step 1–2 处理剩余候选、启动第二批……直到某一批不足 5 条（即没有额外可记的知识了）才算挖完结束。这样避免一次甩出十几条草稿把用户淹没，也让用户能逐批消化。
 
@@ -260,6 +285,22 @@ EOF
 jfox edit <已有笔记_id> --content-file /tmp/existing.md --kb <kb-name>
 ```
 
+**自动档落库（仅 Step 3.5 判定为高确信的笔记）**
+
+```bash
+# 落库前重跑一次 search 复核去重结论（S2④，防并行会话窗口）
+jfox search "<草稿一句话摘要>" --mode semantic --json
+
+# 写入 permanent：带审计 tag；正文含「## 依据」锚点段
+jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
+  --tag auto-distilled --tag <主题tag> --json
+```
+
+- **不传 `--force`**：若返回 `skipped: duplicate`（#383 防重闸门命中），该条降级人工确认，其余候选不受影响。
+- 自动档正文必须含「## 依据」锚点段（记录核心事实的出处，与 S1 对应）。
+- 自动档跳过 MOC 归属问询；落库后在审计清单里提示用户可用 `jfox moc update` 批量兜底归属。
+- 判断不了档位时按中/低档处理（fail-closed）。
+
 **MOC 归属挂载（Step 4 确认过归属的新笔记）**
 
 `jfox add` 成功拿到新笔记 ID 后，对每个选定的 MOC 执行挂载：
@@ -297,7 +338,7 @@ jfox graph --stats --json                        # 落库后看图谱健康度
 ## 关键约束
 
 - **去重是硬约束**：起草前必须先 `jfox search --type permanent` 查已有，已覆盖的跳过、可补充的标记。不查就写等于重复造笔记。
-- **审阅是硬约束**：所有草稿必须完整展示给用户确认后才能落库，严禁直接 `jfox add`。
+- **审阅默认是硬约束**：仅 Step 3.5 高确信度（S1–S5 全过）且用户会话内明确授权的笔记可免确认自动落库（必须带 `auto-distilled` 并输出审计清单）；其余一律完整展示并等用户确认，严禁直接 `jfox add`。
 - **一事实一笔记**：一条 permanent 只讲一个知识点，多个知识点分多条写。
 - **wiki link 精确标题**：`[[xxx]]` 必须精确匹配目标笔记标题，短链会悬空。
 - **知识库指定**：用 `--kb <name>` 指定目标知识库（约定见 `/skill:jfox-manage` §4.1），省略时写入当前默认知识库。
