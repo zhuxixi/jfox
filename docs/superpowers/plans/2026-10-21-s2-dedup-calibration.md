@@ -505,6 +505,7 @@ Run:
 ```bash
 uv run pytest tests/unit/test_similarity.py tests/unit/test_moc_cluster.py -v
 ```
+
 Expected: PASS（新增 4 个 + 既有 MOC 测试全绿）
 
 - [ ] **Step 5: 提交**
@@ -1592,6 +1593,7 @@ Run:
 uv run pytest tests/integration/test_similarity_cli.py -v
 time uv run python -c "import jfox.cli"
 ```
+
 Expected: 7 passed；import 时间仍 < 1s（无 ChromaDB/模型加载）
 
 - [ ] **Step 5: 提交**
@@ -1639,6 +1641,7 @@ Run:
 uv run python scripts/generate_docs.py
 git diff --exit-code -- docs/cli-reference.md docs/plugin-inventory.md
 ```
+
 Expected: diff 为空（第二次生成幂等）
 
 - [ ] **Step 4: 提交**
@@ -1759,6 +1762,7 @@ Run:
 uv run pytest tests/unit/test_session_dedup_skill_docs.py tests/unit/test_moc_skill_docs.py -v
 npx --yes markdownlint-cli2 skills-recommend/pi/jfox-session-to-permanent/SKILL.md packages/cc-plugin/skills/session-to-permanent/SKILL.md packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md skills-recommend/pi/jfox-common/SKILL.md packages/cc-plugin/skills/manage/SKILL.md packages/kimi-plugin/skills/jfox-manage/SKILL.md
 ```
+
 Expected: pytest 全绿；markdownlint 0 issues
 
 - [ ] **Step 7: 提交**
@@ -1816,6 +1820,7 @@ def test_large_matrix_is_chunked_and_bounded():
 ```bash
 uv run pytest tests/unit/test_similarity.py tests/integration/test_similarity_cli.py tests/unit/test_session_dedup_skill_docs.py -v
 ```
+
 Expected: 全绿。
 
 - [ ] **Step 3: 跑 Fast 回归（非 embedding / 非 slow）**
@@ -1823,6 +1828,7 @@ Expected: 全绿。
 ```bash
 uv run pytest tests/ -m "not embedding and not slow" -q
 ```
+
 Expected: 全绿；若出现既有 flaky，记录并在重跑后确认。
 
 - [ ] **Step 4: 静态检查**
@@ -1833,6 +1839,7 @@ uv run black --check jfox/similarity.py jfox/similarity_cli.py tests/unit/test_s
 uv run python scripts/generate_docs.py
 git diff --exit-code -- docs/cli-reference.md docs/plugin-inventory.md
 ```
+
 Expected: ruff/black 通过；生成文档 diff 为空。
 
 - [ ] **Step 5: 跑性能测试（本机，单独）**
@@ -1840,6 +1847,7 @@ Expected: ruff/black 通过；生成文档 diff 为空。
 ```bash
 uv run pytest tests/performance/test_similarity_perf.py -v
 ```
+
 Expected: PASS（本机 < 10s；CI Fast 不跑，因带 `slow` 标记）。
 
 - [ ] **Step 6: 提交**
