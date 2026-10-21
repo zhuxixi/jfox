@@ -36,10 +36,12 @@
 ### Task 1: 纯相似度函数
 
 **Files:**
+
 - Create: `jfox/similarity.py`
 - Test: `tests/unit/test_similarity.py`
 
 **Interfaces:**
+
 - Consumes: NumPy only.
 - Produces:
   - `serialize_document(title: str, content: str) -> str`
@@ -309,11 +311,13 @@ git commit -m "feat(similarity): add pure baseline and verdict helpers (#586)"
 ### Task 2: live permanent 快照过滤 + classifier 迁移
 
 **Files:**
+
 - Modify: `jfox/similarity.py`
 - Modify: `jfox/moc/cluster.py`（删除本地 `classify_vector_id`，改为 re-export）
 - Test: `tests/unit/test_similarity.py`
 
 **Interfaces:**
+
 - Consumes: `NoteMeta`（`jfox/note_index.py`）、`NoteType`（`jfox/models.py`）、`VectorStore`（延迟 import）。
 - Produces:
   - `classify_vector_id(note_id: str, permanent_meta: Mapping[str, NoteMeta]) -> Literal["ghost","archived","live"]`
@@ -502,6 +506,7 @@ def load_live_records(cfg: ZKConfig) -> LiveRecords:
 - [ ] **Step 4: 运行测试确认通过**
 
 Run:
+
 ```bash
 uv run pytest tests/unit/test_similarity.py tests/unit/test_moc_cluster.py -v
 ```
@@ -520,10 +525,12 @@ git commit -m "refactor(similarity): share live permanent snapshot filtering (#5
 ### Task 3: 基线与缓存
 
 **Files:**
+
 - Modify: `jfox/similarity.py`
 - Test: `tests/unit/test_similarity.py`
 
 **Interfaces:**
+
 - Consumes: Task 1/2 的函数；`load_index_state(cfg)`。
 - Produces:
   - `@dataclass Baseline(model, dimension, note_count, sampled, quantiles, nn_values, index_rebuilt_at, computed_at, from_cache=False)`
@@ -925,10 +932,12 @@ git commit -m "feat(similarity): cache the nearest-neighbor baseline (#586)"
 ### Task 4: 候选判定
 
 **Files:**
+
 - Modify: `jfox/similarity.py`
 - Test: `tests/unit/test_similarity.py`
 
 **Interfaces:**
+
 - Consumes: Task 1–3 的 `Baseline` / `LiveRecords` / `classify_verdict` / `serialize_document`。
 - Produces:
   - `check_candidate(cfg, title, content, *, exclude_id=None, top=3, pass_below=50, gray_below=90, refresh=False, records=None, baseline=None, backend=None) -> dict`
@@ -1261,11 +1270,13 @@ git commit -m "feat(similarity): judge candidates by library percentile (#586)"
 ### Task 5: CLI 子应用与注册
 
 **Files:**
+
 - Create: `jfox/similarity_cli.py`
 - Modify: `jfox/cli.py`（注册子应用）
 - Test: `tests/integration/test_similarity_cli.py`
 
 **Interfaces:**
+
 - Consumes: Task 1–4 的 `compute_baseline` / `baseline_public_dict` / `check_candidate` / `load_live_records` / `current_model_name`。
 - Produces:
   - `similarity_app`（Typer）
@@ -1589,6 +1600,7 @@ app.add_typer(similarity_app, name="similarity", help="查看相似度基线并�
 - [ ] **Step 4: 运行测试确认通过**
 
 Run:
+
 ```bash
 uv run pytest tests/integration/test_similarity_cli.py -v
 time uv run python -c "import jfox.cli"
@@ -1608,11 +1620,13 @@ git commit -m "feat(cli): add similarity stats and check commands (#586)"
 ### Task 6: 生成文档与英文描述
 
 **Files:**
+
 - Modify: `docs/cli-descriptions.yaml`
 - Modify: `docs/cli-reference.md`（生成物）
 - Test: 命令级校验（A11）
 
 **Interfaces:**
+
 - Consumes: Task 5 注册的三个命令路径。
 - Produces: `docs/cli-reference.md` 含 `jfox similarity` / `stats` / `check`。
 
@@ -1637,6 +1651,7 @@ Expected: 成功；`git diff --stat` 只显示 `docs/cli-reference.md`（若描�
 - [ ] **Step 3: 运行漂移校验**
 
 Run:
+
 ```bash
 uv run python scripts/generate_docs.py
 git diff --exit-code -- docs/cli-reference.md docs/plugin-inventory.md
@@ -1656,6 +1671,7 @@ git commit -m "docs(cli): document similarity stats and check (#586)"
 ### Task 7: 三平台闸门与命令参考
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-session-to-permanent/SKILL.md`
 - Modify: `packages/cc-plugin/skills/session-to-permanent/SKILL.md`
 - Modify: `packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md`
@@ -1665,6 +1681,7 @@ git commit -m "docs(cli): document similarity stats and check (#586)"
 - Test: `tests/unit/test_session_dedup_skill_docs.py`
 
 **Interfaces:**
+
 - Consumes: `jfox similarity check --title <t> --content-file <f> --json` 的输出契约（`verdict` / `percentile` / `unavailable_reason`）。
 - Produces: 三平台文本语义一致；三份命令参考含新命令。
 
@@ -1758,6 +1775,7 @@ jfox similarity check --title "<标题>" --content-file /tmp/note-draft.md --jso
 - [ ] **Step 6: 运行测试与 lint**
 
 Run:
+
 ```bash
 uv run pytest tests/unit/test_session_dedup_skill_docs.py tests/unit/test_moc_skill_docs.py -v
 npx --yes markdownlint-cli2 skills-recommend/pi/jfox-session-to-permanent/SKILL.md packages/cc-plugin/skills/session-to-permanent/SKILL.md packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md skills-recommend/pi/jfox-common/SKILL.md packages/cc-plugin/skills/manage/SKILL.md packages/kimi-plugin/skills/jfox-manage/SKILL.md
@@ -1783,10 +1801,12 @@ git commit -m "docs(skill): switch S2 dedup gate to similarity check (#586)"
 ### Task 8: 全量验收与性能护栏
 
 **Files:**
+
 - Create: `tests/performance/test_similarity_perf.py`
 - Test: 全量 A1–A11
 
 **Interfaces:**
+
 - Consumes: Task 1–7 全部。
 - Produces: A10 性能护栏；验收记录。
 
