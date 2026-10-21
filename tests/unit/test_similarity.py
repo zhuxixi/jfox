@@ -356,3 +356,143 @@ def test_compute_baseline_samples_above_sampling_cap(tmp_path, monkeypatch):
     assert baseline.sampled is True
     assert baseline.note_count == 513
     assert len(baseline.nn_values) == 512
+
+
+from jfox.similarity import check_candidate
+
+
+class _StubBackend:
+    def __init__(self, unit_vector):
+        self.unit_vector = np.asarray(unit_vector, dtype=np.float32)
+
+    def encode_single(self, text, *, daemon_only=False):
+        assert daemon_only is True
+        return self.unit_vector
+
+
+def _check_baseline():
+    return _baseline(
+        note_count=6,
+        quantiles={"p50": 0.6, "p75": 0.7, "p90": 0.8, "p95": 0.9, "p99": 0.95},
+        nn_values=np.array([0.5, 0.6, 0.7, 0.8, 0.9, 0.95], dtype=np.float32),
+    )
+
+
+def _check_records():
+    return _records(np.eye(3, dtype=np.float32))
+
+
+@pytest.mark.parametrize(
+    ("unit_vector", "expected"),
+    [
+        # Negative second component keeps n0 top-1 while its cosine is 0.4 (p0 -> new).
+        ([0.4, -0.916, 0.0], "new"),
+        ([0.8, 0.6, 0.0], "gray"),
+        ([1.0, 0.0, 0.0], "covered"),
+    ],
+)
+def test_check_candidate_three_verdicts(tmp_path, unit_vector, expected):
+    cfg = _cfg(tmp_path)
+    payload = check_candidate(
+        cfg,
+        "草稿标题",
+        "草稿正文",
+        records=_check_records(),
+        baseline=_check_baseline(),
+        backend=_StubBackend(unit_vector),
+    )
+    assert payload["success"] is True
+    assert payload["verdict"] == expected
+    assert payload["top1"]["id"] == "n0"
+    assert payload["policy"] == {"pass_below": 50, "gray_below": 90}
+
+
+def test_check_candidate_unavailable_without_baseline(tmp_path):
+    cfg = _cfg(tmp_path)
+    payload = check_candidate(
+        cfg,
+        "标题",
+        "正文",
+        records=_check_records(),
+        baseline=None,
+        backend=_StubBackend([1.0, 0.0, 0.0]),
+    )
+    assert payload["success"] is True
+    assert payload["verdict"] == "unavailable"
+    assert "baseline" in payload["unavailable_reason"]
+
+
+def test_check_candidate_unavailable_on_backend_error(tmp_path):
+    cfg = _cfg(tmp_path)
+
+    class _Boom:
+        def encode_single(self, text, *, daemon_only=False):
+            raise RuntimeError("daemon down")
+
+    payload = check_candidate(
+        cfg,
+        "标题",
+        "正文",
+        records=_check_records(),
+        baseline=_check_baseline(),
+        backend=_Boom(),
+    )
+    assert payload["verdict"] == "unavailable"
+    assert "embedding unavailable" in payload["unavailable_reason"]
+
+
+def test_check_candidate_unavailable_on_dimension_mismatch(tmp_path):
+    cfg = _cfg(tmp_path)
+    payload = check_candidate(
+        cfg,
+        "标题",
+        "正文",
+        records=_check_records(),
+        baseline=_check_baseline(),
+        backend=_StubBackend([1.0, 0.0]),
+    )
+    assert payload["verdict"] == "unavailable"
+    assert "dimension mismatch" in payload["unavailable_reason"]
+
+
+def test_check_candidate_excludes_edit_target(tmp_path):
+    cfg = _cfg(tmp_path)
+    payload = check_candidate(
+        cfg,
+        "标题",
+        "正文",
+        exclude_id="n0",
+        records=_check_records(),
+        baseline=_check_baseline(),
+        backend=_StubBackend([1.0, 0.0, 0.0]),
+    )
+    assert payload["top1"]["id"] != "n0"
+    assert payload["verdict"] in {"new", "gray", "covered"}
+
+
+def test_check_candidate_title_missing_warning(tmp_path):
+    cfg = _cfg(tmp_path)
+    payload = check_candidate(
+        cfg,
+        "",
+        "正文",
+        records=_check_records(),
+        baseline=_check_baseline(),
+        backend=_StubBackend([1.0, 0.0, 0.0]),
+    )
+    assert "title missing" in payload["warnings"][0]
+
+
+def test_check_candidate_rejects_invalid_policy(tmp_path):
+    cfg = _cfg(tmp_path)
+    with pytest.raises(ValueError):
+        check_candidate(
+            cfg,
+            "标题",
+            "正文",
+            pass_below=90,
+            gray_below=50,
+            records=_check_records(),
+            baseline=_check_baseline(),
+            backend=_StubBackend([1.0, 0.0, 0.0]),
+        )

@@ -406,3 +406,162 @@ def compute_baseline(
     )
     save_cached_baseline(cfg, baseline)
     return baseline
+
+
+def _unavailable(
+    reason: str,
+    *,
+    cfg: ZKConfig,
+    candidate: dict,
+    baseline: Optional[Baseline],
+    pass_below: int,
+    gray_below: int,
+    warnings: List[str],
+) -> dict:
+    return {
+        "success": True,
+        "kb": cfg.base_dir.name,
+        "candidate": candidate,
+        "top1": None,
+        "matches": [],
+        "baseline": baseline_public_dict(baseline) if baseline is not None else None,
+        "policy": {"pass_below": pass_below, "gray_below": gray_below},
+        "verdict": "unavailable",
+        "unavailable_reason": reason,
+        "warnings": warnings,
+    }
+
+
+def check_candidate(
+    cfg: ZKConfig,
+    title: str,
+    content: str,
+    *,
+    exclude_id: Optional[str] = None,
+    top: int = 3,
+    pass_below: int = 50,
+    gray_below: int = 90,
+    refresh: bool = False,
+    records: Optional[LiveRecords] = None,
+    baseline: Optional[Baseline] = None,
+    backend: Any = None,
+) -> dict:
+    """Compare a candidate note against the library and return a verdict.
+
+    ``backend`` is injectable for tests; production callers leave it ``None``
+    so the embedding daemon is used with ``daemon_only=True``.
+    """
+    import math
+
+    if not 0 <= pass_below < gray_below <= 100:
+        raise ValueError("require 0 <= pass_below < gray_below <= 100")
+    if top < 1:
+        raise ValueError("top must be at least 1")
+
+    warnings: List[str] = []
+    if not title:
+        warnings.append("title missing; comparison may be less accurate")
+    candidate = {"title": title, "chars": len(content)}
+
+    live = records if records is not None else load_live_records(cfg)
+    base = (
+        baseline if baseline is not None else compute_baseline(cfg, refresh=refresh, records=live)
+    )
+    if base is None:
+        return _unavailable(
+            f"baseline needs at least {MIN_BASELINE_NOTES} permanent notes",
+            cfg=cfg,
+            candidate=candidate,
+            baseline=None,
+            pass_below=pass_below,
+            gray_below=gray_below,
+            warnings=warnings,
+        )
+    if live.matrix.size == 0:
+        return _unavailable(
+            "no permanent notes with embeddings",
+            cfg=cfg,
+            candidate=candidate,
+            baseline=base,
+            pass_below=pass_below,
+            gray_below=gray_below,
+            warnings=warnings,
+        )
+
+    if backend is None:
+        from .embedding_backend import get_backend
+
+        backend = get_backend()
+    try:
+        vector = np.asarray(
+            backend.encode_single(serialize_document(title, content), daemon_only=True),
+            dtype=np.float32,
+        )
+    except Exception as exc:
+        return _unavailable(
+            f"embedding unavailable: {exc}",
+            cfg=cfg,
+            candidate=candidate,
+            baseline=base,
+            pass_below=pass_below,
+            gray_below=gray_below,
+            warnings=warnings,
+        )
+    if vector.ndim != 1 or vector.shape[0] != live.matrix.shape[1]:
+        return _unavailable(
+            "embedding dimension mismatch; run `jfox index rebuild`",
+            cfg=cfg,
+            candidate=candidate,
+            baseline=base,
+            pass_below=pass_below,
+            gray_below=gray_below,
+            warnings=warnings,
+        )
+
+    norms = np.linalg.norm(live.matrix, axis=1)
+    denominator = np.where(norms == 0, 1.0, norms) * (float(np.linalg.norm(vector)) or 1.0)
+    scores = (live.matrix @ vector) / denominator
+    if exclude_id is not None:
+        for index, note_id in enumerate(live.ids):
+            if note_id == exclude_id:
+                scores[index] = -np.inf
+
+    order = np.argsort(-scores)[:top]
+    matches = []
+    for index in order:
+        score = float(scores[index])
+        if not math.isfinite(score):
+            continue
+        matches.append(
+            {
+                "id": live.ids[index],
+                "title": live.titles[index],
+                "score": round(score, 6),
+                "percentile": round(percentile_rank(score, base.nn_values), 1),
+            }
+        )
+    if not matches:
+        return _unavailable(
+            "no comparable permanent notes after exclusion",
+            cfg=cfg,
+            candidate=candidate,
+            baseline=base,
+            pass_below=pass_below,
+            gray_below=gray_below,
+            warnings=warnings,
+        )
+
+    top1 = matches[0]
+    verdict = classify_verdict(float(top1["percentile"]), pass_below, gray_below)
+    return {
+        "success": True,
+        "kb": cfg.base_dir.name,
+        "candidate": candidate,
+        "top1": top1,
+        "matches": matches,
+        "baseline": baseline_public_dict(base),
+        "policy": {"pass_below": pass_below, "gray_below": gray_below},
+        "verdict": verdict,
+        "unavailable_reason": None,
+        "warnings": warnings,
+    }
