@@ -25,6 +25,11 @@ def test_platform_docs_use_similarity_gate():
         assert "jfox similarity check" in text
         assert "verdict=new" in text or "`verdict=new`" in text
         assert "unavailable" in text
+        s2_rows = [line for line in text.splitlines() if "S2 去重余量" in line]
+        assert s2_rows, f"{path}: missing S2 去重余量 row"
+        for row in s2_rows:
+            assert "`gray`" in row, f"{path}: S2 row missing gray verdict"
+            assert "`covered`" in row, f"{path}: S2 row missing covered verdict"
         assert "0.5–0.65" not in text
         assert text.count("--mode semantic") == 0
 
