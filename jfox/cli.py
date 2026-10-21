@@ -139,6 +139,11 @@ from .moc.cli import moc_app  # noqa: E402
 
 app.add_typer(moc_app, name="moc", help="诊断和维护 MOC 结构层")
 
+# Similarity 子命令组（S2 判重基线，延迟加载重依赖）
+from .similarity_cli import similarity_app  # noqa: E402
+
+app.add_typer(similarity_app, name="similarity", help="查看相似度基线并判定候选笔记")
+
 console = Console(legacy_windows=False)
 
 
