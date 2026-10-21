@@ -7,12 +7,17 @@ this module never loads a model or ChromaDB.
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 import numpy as np
 
 from .config import ZKConfig
+from .index_state import load_index_state
 from .models import NoteType
 from .note_index import NoteMeta
 
@@ -209,3 +214,184 @@ def load_live_records(cfg: ZKConfig) -> LiveRecords:
     except VectorStoreReadError as exc:
         raise SimilarityError(str(exc)) from exc
     return filter_live_records(vector_ids, vector_meta, embeddings, permanent_meta)
+
+
+STATS_FILENAME = "similarity_stats.json"
+STATS_VERSION = 1
+CACHE_MAX_AGE = timedelta(days=7)
+
+
+@dataclass
+class Baseline:
+    """Nearest-neighbor distribution for the current permanent snapshot."""
+
+    model: str
+    dimension: int
+    note_count: int
+    sampled: bool
+    quantiles: Dict[str, float]
+    nn_values: np.ndarray
+    index_rebuilt_at: Optional[str]
+    computed_at: str
+    from_cache: bool = False
+
+    def to_cache_dict(self) -> dict:
+        return {
+            "version": STATS_VERSION,
+            "model": self.model,
+            "dimension": self.dimension,
+            "note_count": self.note_count,
+            "sampled": self.sampled,
+            "quantiles": self.quantiles,
+            "nn_values": [float(value) for value in self.nn_values],
+            "index_rebuilt_at": self.index_rebuilt_at,
+            "computed_at": self.computed_at,
+        }
+
+
+def baseline_public_dict(baseline: Baseline) -> dict:
+    """Return the stable public shape (no raw nn_values array)."""
+    return {
+        "p50": baseline.quantiles.get("p50", 0.0),
+        "p75": baseline.quantiles.get("p75", 0.0),
+        "p90": baseline.quantiles.get("p90", 0.0),
+        "p95": baseline.quantiles.get("p95", 0.0),
+        "p99": baseline.quantiles.get("p99", 0.0),
+        "note_count": baseline.note_count,
+        "sampled": baseline.sampled,
+    }
+
+
+def stats_path(cfg: ZKConfig) -> Path:
+    return cfg.zk_dir / STATS_FILENAME
+
+
+def load_cached_baseline(
+    cfg: ZKConfig,
+    *,
+    model: str,
+    dimension: int,
+    note_count: int,
+    index_rebuilt_at: Optional[str],
+    now: Optional[datetime] = None,
+) -> Optional[Baseline]:
+    """Load a cache entry when every key matches and it is under 7 days old."""
+    try:
+        data = json.loads(stats_path(cfg).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("version") != STATS_VERSION:
+        return None
+    if data.get("model") != model or data.get("dimension") != dimension:
+        return None
+    if data.get("note_count") != note_count:
+        return None
+    if data.get("index_rebuilt_at") != index_rebuilt_at:
+        return None
+    try:
+        computed_at = datetime.fromisoformat(data["computed_at"])
+        quantiles_data = {str(key): float(value) for key, value in data["quantiles"].items()}
+        nn_values = np.asarray([float(value) for value in data["nn_values"]], dtype=np.float32)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if computed_at.tzinfo is not None:
+        computed_at = computed_at.astimezone().replace(tzinfo=None)
+    current = now or datetime.now()
+    if current - computed_at > CACHE_MAX_AGE:
+        return None
+    if len(nn_values) != min(note_count, MAX_BASELINE_QUERIES):
+        return None
+    return Baseline(
+        model=model,
+        dimension=dimension,
+        note_count=note_count,
+        sampled=bool(data.get("sampled")),
+        quantiles=quantiles_data,
+        nn_values=np.sort(nn_values),
+        index_rebuilt_at=index_rebuilt_at,
+        computed_at=data["computed_at"],
+        from_cache=True,
+    )
+
+
+def save_cached_baseline(cfg: ZKConfig, baseline: Baseline) -> bool:
+    """Atomically write the cache; failures are reported, never fatal."""
+    import tempfile
+
+    path = stats_path(cfg)
+    tmp: Optional[str] = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(baseline.to_cache_dict(), handle, ensure_ascii=False)
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        return False
+    finally:
+        if tmp is not None and os.path.exists(tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+
+def current_model_name(cfg: ZKConfig) -> str:
+    """Best-effort model label without loading the model."""
+    return str(cfg.embedding_model or "auto")
+
+
+def compute_baseline(
+    cfg: ZKConfig,
+    *,
+    refresh: bool = False,
+    records: Optional[LiveRecords] = None,
+    model: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> Optional[Baseline]:
+    """Compute (or load) the nearest-neighbor baseline for live permanent notes."""
+    live = records if records is not None else load_live_records(cfg)
+    note_count = len(live.ids)
+    if not baseline_is_usable(note_count):
+        return None
+    dimension = int(live.matrix.shape[1]) if live.matrix.size else 0
+    model_name = model or current_model_name(cfg)
+    state = load_index_state(cfg) or {}
+    index_rebuilt_at = state.get("last_rebuild") if isinstance(state, dict) else None
+    if not refresh:
+        cached = load_cached_baseline(
+            cfg,
+            model=model_name,
+            dimension=dimension,
+            note_count=note_count,
+            index_rebuilt_at=index_rebuilt_at,
+            now=now,
+        )
+        if cached is not None:
+            return cached
+
+    sampled = note_count > MAX_BASELINE_QUERIES
+    if sampled:
+        step = max(1, note_count // MAX_BASELINE_QUERIES)
+        query_indices = list(range(0, note_count, step))[:MAX_BASELINE_QUERIES]
+        nn_scores = nearest_neighbor_scores_for(
+            live.matrix[query_indices],
+            live.matrix,
+            query_indices=query_indices,
+        )
+    else:
+        nn_scores = nearest_neighbor_scores(live.matrix)
+
+    baseline = Baseline(
+        model=model_name,
+        dimension=dimension,
+        note_count=note_count,
+        sampled=sampled,
+        quantiles=quantiles(nn_scores),
+        nn_values=np.sort(nn_scores),
+        index_rebuilt_at=index_rebuilt_at,
+        computed_at=(now or datetime.now()).isoformat(timespec="seconds"),
+    )
+    save_cached_baseline(cfg, baseline)
+    return baseline

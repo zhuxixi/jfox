@@ -1,23 +1,32 @@
 """纯相似度函数的单元测试（不读盘、不加载模型）。"""
 
+import json
+from datetime import datetime
+
 import numpy as np
 import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
+from jfox.config import ZKConfig
 from jfox.models import NoteType
 from jfox.note_index import NoteMeta
 from jfox.similarity import (
     MIN_BASELINE_NOTES,
+    Baseline,
     SimilarityError,
     baseline_is_usable,
     classify_vector_id,
     classify_verdict,
+    compute_baseline,
     filter_live_records,
+    load_cached_baseline,
     nearest_neighbor_scores,
     percentile_rank,
     quantiles,
+    save_cached_baseline,
     serialize_document,
+    stats_path,
 )
 
 
@@ -156,3 +165,164 @@ def test_filter_live_records_rejects_corrupt_shapes():
         filter_live_records(["a", "b"], [{}], np.eye(2, dtype=np.float32), {"a": _meta("a", "A")})
     with pytest.raises(SimilarityError):
         filter_live_records(["a"], [{}], np.eye(2, dtype=np.float32), {"a": _meta("a", "A")})
+
+
+def _records(matrix):
+    from jfox.similarity import LiveRecords
+
+    return LiveRecords(
+        ids=[f"n{i}" for i in range(matrix.shape[0])],
+        titles=[f"T{i}" for i in range(matrix.shape[0])],
+        matrix=np.asarray(matrix, dtype=np.float32),
+    )
+
+
+def _cfg(tmp_path):
+    cfg = ZKConfig(base_dir=tmp_path)
+    cfg.ensure_dirs()
+    return cfg
+
+
+def _baseline(**overrides):
+    data = dict(
+        model="stub",
+        dimension=3,
+        note_count=3,
+        sampled=False,
+        quantiles={"p50": 0.5, "p75": 0.6, "p90": 0.7, "p95": 0.8, "p99": 0.9},
+        nn_values=np.array([0.4, 0.5, 0.6], dtype=np.float32),
+        index_rebuilt_at="2026-10-21T00:00:00",
+        computed_at="2026-10-21T00:00:00",
+    )
+    data.update(overrides)
+    return Baseline(**data)
+
+
+def test_baseline_cache_roundtrip(tmp_path):
+    cfg = _cfg(tmp_path)
+    baseline = _baseline()
+    assert save_cached_baseline(cfg, baseline)
+    loaded = load_cached_baseline(
+        cfg,
+        model="stub",
+        dimension=3,
+        note_count=3,
+        index_rebuilt_at="2026-10-21T00:00:00",
+        now=datetime(2026, 10, 21, 1, 0, 0),
+    )
+    assert loaded is not None
+    assert loaded.from_cache is True
+    assert loaded.quantiles["p99"] == pytest.approx(0.9)
+    assert np.allclose(loaded.nn_values, [0.4, 0.5, 0.6])
+
+
+def test_baseline_cache_invalidated_by_key_change(tmp_path):
+    cfg = _cfg(tmp_path)
+    save_cached_baseline(cfg, _baseline())
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="other",
+            dimension=3,
+            note_count=3,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="stub",
+            dimension=4,
+            note_count=3,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="stub",
+            dimension=3,
+            note_count=4,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+
+
+def test_baseline_cache_expires_after_seven_days(tmp_path):
+    cfg = _cfg(tmp_path)
+    save_cached_baseline(cfg, _baseline())
+    loaded = load_cached_baseline(
+        cfg,
+        model="stub",
+        dimension=3,
+        note_count=3,
+        index_rebuilt_at="2026-10-21T00:00:00",
+        now=datetime(2026, 10, 29, 0, 0, 1),
+    )
+    assert loaded is None
+
+
+def test_baseline_cache_corruption_is_ignored(tmp_path):
+    cfg = _cfg(tmp_path)
+    stats_path(cfg).write_text("{not json", encoding="utf-8")
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="stub",
+            dimension=3,
+            note_count=3,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+    stats_path(cfg).write_text(json.dumps({"version": 1}), encoding="utf-8")
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="stub",
+            dimension=3,
+            note_count=3,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+
+
+def test_compute_baseline_returns_none_below_minimum(tmp_path):
+    cfg = _cfg(tmp_path)
+    records = _records(np.eye(3, dtype=np.float32))
+    assert compute_baseline(cfg, records=records, model="stub") is None
+
+
+def test_compute_baseline_uses_cache_then_refresh(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    records = _records(np.eye(35, dtype=np.float32))
+    monkeypatch.setattr(
+        "jfox.similarity.load_index_state",
+        lambda cfg=None: {"last_rebuild": "2026-10-21T00:00:00"},
+    )
+    first = compute_baseline(cfg, records=records, model="stub", now=datetime(2026, 10, 21, 1))
+    assert first is not None and first.from_cache is False
+    second = compute_baseline(cfg, records=records, model="stub", now=datetime(2026, 10, 21, 2))
+    assert second is not None and second.from_cache is True
+    refreshed = compute_baseline(
+        cfg, records=records, model="stub", refresh=True, now=datetime(2026, 10, 21, 3)
+    )
+    assert refreshed is not None and refreshed.from_cache is False
+
+
+def test_compute_baseline_samples_above_sampling_cap(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    records = _records(np.eye(513, dtype=np.float32))
+    monkeypatch.setattr(
+        "jfox.similarity.load_index_state",
+        lambda cfg=None: {"last_rebuild": "2026-10-21T00:00:00"},
+    )
+    baseline = compute_baseline(cfg, records=records, model="stub", now=datetime(2026, 10, 21, 1))
+    assert baseline is not None
+    assert baseline.sampled is True
+    assert baseline.note_count == 513
+    assert len(baseline.nn_values) == 512
