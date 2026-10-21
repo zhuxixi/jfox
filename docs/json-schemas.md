@@ -140,6 +140,15 @@ else:
 
 `moc` 全部命令（`diagnose / create / update / add-member / remove-member`）本就带 `success`，本轮未改动：成功均为 `success` + 各自业务字段（`diagnose` 含 `coverage{...}, threshold_sweep[], orphans{...}`；`create` 含 `cluster{...}, draft{...}, created`；`update` 含 `updates[], applied`；`add-member/remove-member` 平铺操作结果），失败为 `{success, error}`。
 
+### similarity
+
+| 命令 | 成功顶层字段 | 实体位置 | 失败形状 |
+|------|--------------|----------|----------|
+| `similarity stats --json` | `success, kb, model, dimension, note_count, sampled, baseline{...}\|null, policy{pass_below,gray_below}, cached, computed_at, unavailable_reason` | 平铺 + `baseline` 嵌套 | `{success, error}` + 退出码 1 |
+| `similarity check --json` | `success, kb, candidate{title,chars}, top1{...}\|null, matches[], baseline{...}, policy{pass_below,gray_below}, verdict, unavailable_reason, warnings[]` | 平铺 + `top1`/`matches` | 输入错误 `{success, error}` + 退出码 1 |
+
+`similarity stats` 的 `baseline` 在空库（permanent < 30 或无向量库）时为 `null`，`unavailable_reason` 给出原因；命令本身仍 `success:true`。`similarity check` 的 `verdict` 取值 `new` / `gray` / `covered` / `unavailable`；`unavailable` 表示信号缺失（空库、daemon 不可用、维度不匹配等），命令本身仍 `success:true` 且退出码 0，调用方按 fail-closed 降人工。`baseline` 字段含 `p50,p75,p90,p95,p99,note_count,sampled`；`top1`/`matches` 项含 `id,title,score,percentile`。
+
 ## 特殊语义说明
 
 以下行为是**有意设计**，调用方按此理解：
