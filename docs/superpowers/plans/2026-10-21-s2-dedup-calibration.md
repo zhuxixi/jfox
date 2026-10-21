@@ -698,6 +698,20 @@ def test_compute_baseline_uses_cache_then_refresh(tmp_path, monkeypatch):
         cfg, records=records, model="stub", refresh=True, now=datetime(2026, 10, 21, 3)
     )
     assert refreshed is not None and refreshed.from_cache is False
+
+
+def test_compute_baseline_samples_above_query_cap(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    records = _records(np.eye(513, dtype=np.float32))
+    monkeypatch.setattr(
+        "jfox.similarity.load_index_state",
+        lambda cfg=None: {"last_rebuild": "2026-10-21T00:00:00"},
+    )
+    baseline = compute_baseline(cfg, records=records, model="stub", now=datetime(2026, 10, 21, 1))
+    assert baseline is not None
+    assert baseline.sampled is True
+    assert baseline.note_count == 513
+    assert len(baseline.nn_values) == 512
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -793,7 +807,7 @@ def load_cached_baseline(
     current = now or datetime.now()
     if current - computed_at > CACHE_MAX_AGE:
         return None
-    if len(nn_values) != note_count:
+    if len(nn_values) != min(note_count, MAX_BASELINE_QUERIES):
         return None
     return Baseline(
         model=model,
@@ -896,7 +910,7 @@ def compute_baseline(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/unit/test_similarity.py -v`
-Expected: PASS（17 passed）
+Expected: PASS（全部通过；Task 3 新增 7 个用例）
 
 - [ ] **Step 5: 提交**
 
@@ -1232,7 +1246,7 @@ def check_candidate(
 - [ ] **Step 4: 运行测试确认通过**
 
 Run: `uv run pytest tests/unit/test_similarity.py -v`
-Expected: PASS（24 passed）
+Expected: PASS（全部通过；Task 4 新增 9 个用例，含 3 个参数化 verdict）
 
 - [ ] **Step 5: 提交**
 
