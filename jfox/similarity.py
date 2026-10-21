@@ -7,9 +7,87 @@ this module never loads a model or ChromaDB.
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Sequence
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence
 
 import numpy as np
+
+from .config import ZKConfig
+from .models import NoteType
+from .note_index import NoteMeta
+
+
+class SimilarityError(RuntimeError):
+    """Raised when the permanent vector snapshot cannot be read safely."""
+
+
+@dataclass
+class LiveRecords:
+    """Live permanent notes with their stored vectors, sorted by note id."""
+
+    ids: List[str]
+    titles: List[str]
+    matrix: np.ndarray
+
+
+def classify_vector_id(
+    note_id: str, permanent_meta: Mapping[str, NoteMeta]
+) -> Literal["ghost", "archived", "live"]:
+    """Classify a permanent vector row as ghost / archived / live.
+
+    ghost: no matching permanent note on disk; archived: frontmatter marks it
+    archived; live: active permanent note. Duplicate rows are handled by the
+    caller's ``seen`` set, not here.
+    """
+    meta = permanent_meta.get(note_id)
+    if meta is None:
+        return "ghost"
+    if meta.archived:
+        return "archived"
+    return "live"
+
+
+def filter_live_records(
+    vector_ids: Sequence[str],
+    vector_meta: Sequence[Optional[Mapping[str, Any]]],
+    embeddings: np.ndarray,
+    permanent_meta: Mapping[str, NoteMeta],
+) -> LiveRecords:
+    """Filter a Chroma snapshot down to live permanent rows.
+
+    Archived, ghost and duplicate id rows are skipped; records are sorted by
+    note id so downstream sampling is deterministic.
+    """
+    matrix = np.asarray(embeddings, dtype=np.float32)
+    if len(vector_ids) != len(vector_meta):
+        raise SimilarityError(
+            f"Corrupt permanent vector data: ids={len(vector_ids)}, metadata={len(vector_meta)}"
+        )
+    if matrix.ndim != 2 or matrix.shape[0] != len(vector_ids):
+        raise SimilarityError(
+            f"Corrupt permanent vector data: ids={len(vector_ids)}, "
+            f"embeddings_shape={matrix.shape}"
+        )
+    records: List[tuple[str, str, np.ndarray]] = []
+    seen = set()
+    for index, note_id in enumerate(vector_ids):
+        if note_id in seen:
+            continue
+        if classify_vector_id(note_id, permanent_meta) != "live":
+            continue
+        seen.add(note_id)
+        records.append((note_id, permanent_meta[note_id].title, matrix[index]))
+    records.sort(key=lambda record: record[0])
+    if not records:
+        return LiveRecords(
+            ids=[], titles=[], matrix=np.empty((0, matrix.shape[1]), dtype=np.float32)
+        )
+    return LiveRecords(
+        ids=[record[0] for record in records],
+        titles=[record[1] for record in records],
+        matrix=np.asarray([record[2] for record in records], dtype=np.float32),
+    )
+
 
 MIN_BASELINE_NOTES = 30
 MAX_BASELINE_QUERIES = 512
@@ -114,3 +192,20 @@ def classify_verdict(percentile: float, pass_below: int = 50, gray_below: int = 
 def baseline_is_usable(note_count: int) -> bool:
     """A baseline needs enough notes for stable percentiles."""
     return note_count >= MIN_BASELINE_NOTES
+
+
+def load_live_records(cfg: ZKConfig) -> LiveRecords:
+    """Read the current Chroma snapshot and filter it to live permanent notes."""
+    from .note_index import get_note_index
+    from .vector_store import VectorStore, VectorStoreReadError
+
+    note_index = get_note_index(cfg)
+    permanent_meta = {
+        meta.id: meta for meta in note_index.get_all_meta() if meta.type == NoteType.PERMANENT
+    }
+    vector_store = VectorStore(persist_directory=cfg.chroma_dir)
+    try:
+        vector_ids, vector_meta, embeddings = vector_store.get_all_embeddings("permanent")
+    except VectorStoreReadError as exc:
+        raise SimilarityError(str(exc)) from exc
+    return filter_live_records(vector_ids, vector_meta, embeddings, permanent_meta)

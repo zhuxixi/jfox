@@ -5,10 +5,15 @@ import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.fast]
 
+from jfox.models import NoteType
+from jfox.note_index import NoteMeta
 from jfox.similarity import (
     MIN_BASELINE_NOTES,
+    SimilarityError,
     baseline_is_usable,
+    classify_vector_id,
     classify_verdict,
+    filter_live_records,
     nearest_neighbor_scores,
     percentile_rank,
     quantiles,
@@ -102,3 +107,52 @@ def test_classify_verdict_rejects_invalid_policy():
 def test_baseline_min_notes_boundary():
     assert not baseline_is_usable(MIN_BASELINE_NOTES - 1)
     assert baseline_is_usable(MIN_BASELINE_NOTES)
+
+
+def _meta(note_id: str, title: str, *, archived: bool = False) -> NoteMeta:
+    return NoteMeta(
+        id=note_id,
+        title=title,
+        type=NoteType.PERMANENT,
+        archived=archived,
+    )
+
+
+def test_classify_stored_id_three_way():
+    permanent = {"live-1": _meta("live-1", "Live"), "arch-1": _meta("arch-1", "Old", archived=True)}
+    assert classify_vector_id("live-1", permanent) == "live"
+    assert classify_vector_id("arch-1", permanent) == "archived"
+    assert classify_vector_id("ghost-1", permanent) == "ghost"
+
+
+def test_filter_live_records_skips_archived_and_ghost():
+    embeddings = np.eye(3, dtype=np.float32)
+    records = filter_live_records(
+        ["live-1", "arch-1", "ghost-1"],
+        [{"title": "Live"}, {"title": "Old"}, None],
+        embeddings,
+        {"live-1": _meta("live-1", "Live"), "arch-1": _meta("arch-1", "Old", archived=True)},
+    )
+    assert records.ids == ["live-1"]
+    assert records.titles == ["Live"]
+    assert records.matrix.shape == (1, 3)
+
+
+def test_filter_live_records_dedupes_repeated_ids_and_sorts():
+    embeddings = np.eye(3, dtype=np.float32)
+    records = filter_live_records(
+        ["b", "a", "a"],
+        [{}, {}, {}],
+        embeddings,
+        {"a": _meta("a", "A"), "b": _meta("b", "B")},
+    )
+    assert records.ids == ["a", "b"]
+    assert records.titles == ["A", "B"]
+    assert records.matrix.shape == (2, 3)
+
+
+def test_filter_live_records_rejects_corrupt_shapes():
+    with pytest.raises(SimilarityError):
+        filter_live_records(["a", "b"], [{}], np.eye(2, dtype=np.float32), {"a": _meta("a", "A")})
+    with pytest.raises(SimilarityError):
+        filter_live_records(["a"], [{}], np.eye(2, dtype=np.float32), {"a": _meta("a", "A")})
