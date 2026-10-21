@@ -291,6 +291,36 @@ def test_baseline_cache_corruption_is_ignored(tmp_path):
     )
 
 
+def test_baseline_cache_null_quantiles_is_ignored(tmp_path):
+    cfg = _cfg(tmp_path)
+    stats_path(cfg).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "model": "stub",
+                "dimension": 3,
+                "note_count": 3,
+                "sampled": False,
+                "quantiles": None,
+                "nn_values": [],
+                "index_rebuilt_at": "2026-10-21T00:00:00",
+                "computed_at": "2026-10-21T00:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="stub",
+            dimension=3,
+            note_count=3,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+
+
 def test_compute_baseline_returns_none_below_minimum(tmp_path):
     cfg = _cfg(tmp_path)
     records = _records(np.eye(3, dtype=np.float32))

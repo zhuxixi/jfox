@@ -275,7 +275,11 @@ def load_cached_baseline(
     index_rebuilt_at: Optional[str],
     now: Optional[datetime] = None,
 ) -> Optional[Baseline]:
-    """Load a cache entry when every key matches and it is under 7 days old."""
+    """Load a cache entry when every key matches and it is under 7 days old.
+
+    Any unreadable, mismatched, expired or malformed entry yields ``None`` so a
+    corrupt cache degrades to recomputation instead of failing.
+    """
     try:
         data = json.loads(stats_path(cfg).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -290,9 +294,16 @@ def load_cached_baseline(
         return None
     try:
         computed_at = datetime.fromisoformat(data["computed_at"])
-        quantiles_data = {str(key): float(value) for key, value in data["quantiles"].items()}
-        nn_values = np.asarray([float(value) for value in data["nn_values"]], dtype=np.float32)
     except (KeyError, TypeError, ValueError):
+        return None
+    quantiles_data = data.get("quantiles")
+    nn_raw = data.get("nn_values")
+    if not isinstance(quantiles_data, dict) or not isinstance(nn_raw, list):
+        return None
+    try:
+        quantiles_data = {str(key): float(value) for key, value in quantiles_data.items()}
+        nn_values = np.asarray([float(value) for value in nn_raw], dtype=np.float32)
+    except (TypeError, ValueError):
         return None
     if computed_at.tzinfo is not None:
         computed_at = computed_at.astimezone().replace(tzinfo=None)
