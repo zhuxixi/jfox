@@ -129,7 +129,7 @@ def check_cmd(
     if content_file is not None:
         try:
             text = content_file.read_text(encoding="utf-8")
-        except OSError as exc:
+        except (OSError, UnicodeError) as exc:
             _fail(f"cannot read content file: {exc}", output_format)
     else:
         text = content or ""

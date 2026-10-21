@@ -16,6 +16,8 @@ from jfox.similarity import (
     Baseline,
     SimilarityError,
     baseline_is_usable,
+    baseline_query_indices,
+    chunk_ranges,
     classify_vector_id,
     classify_verdict,
     compute_baseline,
@@ -72,6 +74,14 @@ def test_nearest_neighbor_zero_norm_row_scores_zero():
 def test_nearest_neighbor_single_note_scores_zero():
     scores = nearest_neighbor_scores(np.array([[1.0, 0.0]], dtype=np.float32))
     assert scores.tolist() == [0.0]
+
+
+def test_chunk_ranges_blocks_are_bounded():
+    ranges = chunk_ranges(5000, 512)
+    assert len(ranges) == 10
+    assert all(end - start <= 512 for start, end in ranges)
+    assert ranges[0][0] == 0
+    assert ranges[-1][1] == 5000
 
 
 def test_quantiles_on_empty_returns_zeros():
@@ -216,6 +226,28 @@ def test_baseline_cache_roundtrip(tmp_path):
     assert np.allclose(loaded.nn_values, [0.4, 0.5, 0.6])
 
 
+def test_baseline_cache_sampled_roundtrip(tmp_path):
+    cfg = _cfg(tmp_path)
+    baseline = _baseline(
+        note_count=5001,
+        sampled=True,
+        nn_values=np.linspace(0.1, 0.9, 512, dtype=np.float32),
+    )
+    assert save_cached_baseline(cfg, baseline)
+    loaded = load_cached_baseline(
+        cfg,
+        model="stub",
+        dimension=3,
+        note_count=5001,
+        index_rebuilt_at="2026-10-21T00:00:00",
+        now=datetime(2026, 10, 21, 1, 0, 0),
+    )
+    assert loaded is not None
+    assert loaded.from_cache is True
+    assert loaded.sampled is True
+    assert len(loaded.nn_values) == 512
+
+
 def test_baseline_cache_invalidated_by_key_change(tmp_path):
     cfg = _cfg(tmp_path)
     save_cached_baseline(cfg, _baseline())
@@ -321,6 +353,36 @@ def test_baseline_cache_null_quantiles_is_ignored(tmp_path):
     )
 
 
+def test_baseline_cache_missing_quantile_keys_is_ignored(tmp_path):
+    cfg = _cfg(tmp_path)
+    stats_path(cfg).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "model": "stub",
+                "dimension": 3,
+                "note_count": 3,
+                "sampled": False,
+                "quantiles": {},
+                "nn_values": [0.4, 0.5, 0.6],
+                "index_rebuilt_at": "2026-10-21T00:00:00",
+                "computed_at": "2026-10-21T00:00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        load_cached_baseline(
+            cfg,
+            model="stub",
+            dimension=3,
+            note_count=3,
+            index_rebuilt_at="2026-10-21T00:00:00",
+        )
+        is None
+    )
+
+
 def test_compute_baseline_returns_none_below_minimum(tmp_path):
     cfg = _cfg(tmp_path)
     records = _records(np.eye(3, dtype=np.float32))
@@ -344,17 +406,34 @@ def test_compute_baseline_uses_cache_then_refresh(tmp_path, monkeypatch):
     assert refreshed is not None and refreshed.from_cache is False
 
 
-def test_compute_baseline_samples_above_sampling_cap(tmp_path, monkeypatch):
+def test_baseline_query_indices_thresholds_and_span():
+    assert baseline_query_indices(3000) is None
+    idxs = baseline_query_indices(5001)
+    assert idxs is not None
+    assert len(idxs) == 512
+    assert idxs[0] == 0
+    assert idxs[-1] == 5000
+    assert idxs == sorted(idxs)
+    assert len(set(idxs)) == 512
+
+
+def test_compute_baseline_full_compute_under_cap(tmp_path):
     cfg = _cfg(tmp_path)
-    records = _records(np.eye(513, dtype=np.float32))
-    monkeypatch.setattr(
-        "jfox.similarity.load_index_state",
-        lambda cfg=None: {"last_rebuild": "2026-10-21T00:00:00"},
-    )
+    records = _records(np.random.default_rng(0).random((3000, 3), dtype=np.float32))
+    baseline = compute_baseline(cfg, records=records, model="stub", now=datetime(2026, 10, 21, 1))
+    assert baseline is not None
+    assert baseline.sampled is False
+    assert baseline.note_count == 3000
+    assert len(baseline.nn_values) == 3000
+
+
+def test_compute_baseline_samples_above_cap(tmp_path):
+    cfg = _cfg(tmp_path)
+    records = _records(np.random.default_rng(0).random((5001, 3), dtype=np.float32))
     baseline = compute_baseline(cfg, records=records, model="stub", now=datetime(2026, 10, 21, 1))
     assert baseline is not None
     assert baseline.sampled is True
-    assert baseline.note_count == 513
+    assert baseline.note_count == 5001
     assert len(baseline.nn_values) == 512
 
 

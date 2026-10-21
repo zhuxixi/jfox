@@ -119,3 +119,35 @@ def test_check_title_missing_warning(monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert "title missing" in payload["warnings"][0]
+
+
+def test_stats_empty_library_is_unavailable(monkeypatch, tmp_path):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr("jfox.similarity_cli._current_config", lambda: cfg)
+    result = runner.invoke(app, ["similarity", "stats", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["success"] is True
+    assert payload["baseline"] is None
+    assert payload["unavailable_reason"]
+
+
+def test_check_empty_library_is_unavailable(monkeypatch, tmp_path):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr("jfox.similarity_cli._current_config", lambda: cfg)
+    result = runner.invoke(app, ["similarity", "check", "--content", "正文", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["success"] is True
+    assert payload["verdict"] == "unavailable"
+    assert payload["unavailable_reason"]
+
+
+def test_check_content_file_invalid_utf8_is_clean_error(monkeypatch, tmp_path):
+    _patch_common(monkeypatch, tmp_path)
+    bad = tmp_path / "bad.txt"
+    bad.write_bytes(b"\xff\xfe\x00")
+    result = runner.invoke(app, ["similarity", "check", "--content-file", str(bad), "--json"])
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["success"] is False

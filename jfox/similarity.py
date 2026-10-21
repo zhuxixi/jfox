@@ -95,6 +95,7 @@ def filter_live_records(
 
 
 MIN_BASELINE_NOTES = 30
+MAX_FULL_COMPUTE_NOTES = 5000
 MAX_BASELINE_QUERIES = 512
 DEFAULT_CHUNK_SIZE = 512
 QUANTILE_POINTS = (50, 75, 90, 95, 99)
@@ -107,6 +108,15 @@ def serialize_document(title: str, content: str) -> str:
     ``document = f"{note.title}\\n{note.content}"``.
     """
     return f"{title}\n{content}"
+
+
+def chunk_ranges(count: int, chunk_size: int = DEFAULT_CHUNK_SIZE) -> List[tuple[int, int]]:
+    """Return ``(start, end)`` half-open blocks covering ``[0, count)``."""
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be positive")
+    return [(start, min(start + chunk_size, count)) for start in range(0, count, chunk_size)]
 
 
 def _normalize_rows(matrix: np.ndarray) -> np.ndarray:
@@ -141,8 +151,7 @@ def nearest_neighbor_scores_for(
         return np.zeros(query_count, dtype=np.float32)
 
     scores = np.zeros(query_count, dtype=np.float32)
-    for start in range(0, query_count, chunk_size):
-        end = min(start + chunk_size, query_count)
+    for start, end in chunk_ranges(query_count, chunk_size):
         block = normalized_queries[start:end] @ normalized_corpus.T
         if query_indices is not None:
             for local, corpus_index in enumerate(query_indices[start:end]):
@@ -199,11 +208,25 @@ def baseline_is_usable(note_count: int) -> bool:
     return note_count >= MIN_BASELINE_NOTES
 
 
+def baseline_query_indices(note_count: int) -> Optional[List[int]]:
+    """Return the query row indices used to compute the baseline.
+
+    ``None`` means every note is used (N ≤ ``MAX_FULL_COMPUTE_NOTES``); otherwise
+    an equal-interval sample of ``MAX_BASELINE_QUERIES`` indices spanning the
+    full note id range, so the distribution is not biased toward the front.
+    """
+    if note_count <= MAX_FULL_COMPUTE_NOTES:
+        return None
+    return np.linspace(0, note_count - 1, MAX_BASELINE_QUERIES, dtype=int).tolist()
+
+
 def load_live_records(cfg: ZKConfig) -> LiveRecords:
     """Read the current Chroma snapshot and filter it to live permanent notes."""
     from .note_index import get_note_index
     from .vector_store import VectorStore, VectorStoreReadError
 
+    if not (cfg.chroma_dir / "chroma.sqlite3").is_file():
+        return LiveRecords(ids=[], titles=[], matrix=np.empty((0, 0), dtype=np.float32))
     note_index = get_note_index(cfg)
     permanent_meta = {
         meta.id: meta for meta in note_index.get_all_meta() if meta.type == NoteType.PERMANENT
@@ -298,7 +321,10 @@ def load_cached_baseline(
         return None
     quantiles_data = data.get("quantiles")
     nn_raw = data.get("nn_values")
+    sampled = bool(data.get("sampled"))
     if not isinstance(quantiles_data, dict) or not isinstance(nn_raw, list):
+        return None
+    if not {f"p{p}" for p in QUANTILE_POINTS}.issubset(quantiles_data.keys()):
         return None
     try:
         quantiles_data = {str(key): float(value) for key, value in quantiles_data.items()}
@@ -310,13 +336,14 @@ def load_cached_baseline(
     current = now or datetime.now()
     if current - computed_at > CACHE_MAX_AGE:
         return None
-    if len(nn_values) != min(note_count, MAX_BASELINE_QUERIES):
+    expected_len = MAX_BASELINE_QUERIES if sampled else note_count
+    if len(nn_values) != expected_len:
         return None
     return Baseline(
         model=model,
         dimension=dimension,
         note_count=note_count,
-        sampled=bool(data.get("sampled")),
+        sampled=sampled,
         quantiles=quantiles_data,
         nn_values=np.sort(nn_values),
         index_rebuilt_at=index_rebuilt_at,
@@ -382,10 +409,9 @@ def compute_baseline(
         if cached is not None:
             return cached
 
-    sampled = note_count > MAX_BASELINE_QUERIES
-    if sampled:
-        step = max(1, note_count // MAX_BASELINE_QUERIES)
-        query_indices = list(range(0, note_count, step))[:MAX_BASELINE_QUERIES]
+    query_indices = baseline_query_indices(note_count)
+    sampled = query_indices is not None
+    if query_indices is not None:
         nn_scores = nearest_neighbor_scores_for(
             live.matrix[query_indices],
             live.matrix,
