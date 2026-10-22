@@ -51,6 +51,7 @@ jfox add "<markdown-escaped-summary>" \
   --type session \
   --topic <short-topic> \
   --tag session \
+  --agent kimi-code \
   --kb <kb-name> \
   --json
 ```
@@ -63,6 +64,8 @@ jfox add "<markdown-escaped-summary>" \
 - 标签统一使用 `session`
 - 总结内容已在上方以普通文本展示，供用户阅读；如需修改，事后用 `jfox edit`
 - 内容中的双引号需要转义，或使用 `--content-file` 从临时文件读取
+
+**agent 溯源（#578）**：`--agent kimi-code` 记录来源；能定位到 transcript 时再补 `--session-path`，知道模型时可用 `--agent-model provider/model`，两者都拿不到就省略。
 
 ### Step 3: 处理长内容
 
@@ -80,6 +83,7 @@ jfox add --content-file /tmp/session-summary.md \
   --type session \
   --topic <short-topic> \
   --tag session \
+  --agent kimi-code \
   --kb <kb-name> \
   --json
 ```
@@ -88,10 +92,10 @@ jfox add --content-file /tmp/session-summary.md \
 
 ```bash
 # 直接添加（短内容）
-jfox add "<summary>" --title "Session: <topic>" --type session --topic <short-topic> --tag session --kb <name>
+jfox add "<summary>" --title "Session: <topic>" --type session --topic <short-topic> --tag session --agent kimi-code --kb <name>
 
 # 从文件添加（长内容或含特殊字符）
-jfox add --content-file <path> --title "Session: <topic>" --type session --topic <short-topic> --tag session --kb <name>
+jfox add --content-file <path> --title "Session: <topic>" --type session --topic <short-topic> --tag session --agent kimi-code --kb <name>
 ```
 
 > 写入后的验证（`jfox show` / `jfox refs` 等）详见 `/skill:jfox-manage` §4.5。

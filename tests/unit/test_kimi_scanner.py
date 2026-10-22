@@ -22,6 +22,7 @@ def test_iter_sessions_finds_wire_jsonl(tmp_path):
     assert found[0].session_id == "s1"
     assert found[0].project_dir_name == "wd_jfox_abc"
     assert found[0].path.name == "wire.jsonl"
+    assert found[0].agent == "kimi-code"
 
 
 def test_iter_sessions_skips_too_recent(tmp_path):

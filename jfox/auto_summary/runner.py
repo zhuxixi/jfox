@@ -38,7 +38,7 @@ from .sources import (
 logger = logging.getLogger(__name__)
 
 
-SYSTEM_PROMPT = """你是知识库归档助手。我会通过用户消息提供一段 Claude Code 会话的对话记录（可能被截断）。
+SYSTEM_PROMPT = """你是知识库归档助手。我会通过用户消息提供一段 coding agent 会话的对话记录（可能被截断）。
 
 你的任务：阅读对话并输出一个**单一的 JSON 对象**，描述这次会话的内容。
 
@@ -245,7 +245,7 @@ def summarize_one(
 
     # 5) 写入知识库
     title = (parsed.get("title") or "").strip() or f"会话 {session_file.session_id[:8]}"
-    topic = (parsed.get("topic") or "").strip() or "claude-code-session"
+    topic = (parsed.get("topic") or "").strip() or f"{session_file.agent}-session"
     summary_md = (parsed.get("summary_md") or "").strip()
     tags = parsed.get("tags") or []
     if not isinstance(tags, list):
@@ -273,6 +273,9 @@ def summarize_one(
             tags=tags,
             topic=topic,
             target_kb=cfg.target_kb,
+            agent=session_file.agent,
+            session_file=str(session_file.path),
+            agent_model=extracted.agent_model,
         )
     except Exception as e:
         logger.exception("保存会话笔记失败 session=%s", session_file.session_id)
@@ -334,7 +337,7 @@ def _resolve_claude_binary(cfg: AutoSummaryConfig) -> str:
 def _build_user_prompt(session_file: SessionFile, extracted) -> str:
     """构造给 claude -p 的 stdin 输入：metadata 头 + dialog 正文"""
     lines = [
-        "# Claude Code 会话摘要请求",
+        "# coding agent 会话摘要请求",
         "",
         f"- session_id: {session_file.session_id}",
         f"- project_dir: {session_file.project_dir_name}",
@@ -627,6 +630,9 @@ def _save_session_note(
     tags: list[str],
     topic: str,
     target_kb: Optional[str],
+    agent: Optional[str] = None,
+    session_file: Optional[str] = None,
+    agent_model: Optional[str] = None,
 ) -> str:
     """
     在指定 KB 内创建一条 session 类型笔记，返回 note_id。
@@ -647,6 +653,9 @@ def _save_session_note(
             links=[],
             source=None,
             topic=topic,
+            agent=agent,
+            session_file=session_file,
+            agent_model=agent_model,
         )
         if not note_module.save_note(new_note):
             raise RuntimeError("note_module.save_note 返回 False")

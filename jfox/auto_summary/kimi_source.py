@@ -137,6 +137,7 @@ class KimiCodeSource:
                     mtime=mtime,
                     size_bytes=size,
                     source="kimi",
+                    agent="kimi-code",
                 )
 
     def extract_dialog(self, sf: SessionFile) -> ExtractedDialog:
@@ -172,6 +173,16 @@ class KimiCodeSource:
                         if first_time is None:
                             first_time = rec["time"]
                         last_time = rec["time"]
+
+                    if t == "llm.request":
+                        provider = rec.get("provider")
+                        model_id = rec.get("model")
+                        if isinstance(provider, str) and isinstance(model_id, str):
+                            result.agent_model = f"{provider}/{model_id}"
+                    elif t == "profile.bind" and result.agent_model is None:
+                        alias = rec.get("modelAlias")
+                        if isinstance(alias, str) and alias:
+                            result.agent_model = alias
 
                     if t == "context.append_loop_event" and cwd is None:
                         cwd = _find_cwd(rec)

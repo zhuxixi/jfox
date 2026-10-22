@@ -111,6 +111,19 @@ cat notes.txt | jfox add --content-file - --title "Title"
 jfox add --template meeting --title "Weekly Meeting Notes"
 ```
 
+**Session agent provenance (#578):**
+
+```bash
+jfox add "<content>" --type session --topic <topic> \
+  --agent pi-coding-agent \
+  --session-path "$PI_SESSION_FILE" \
+  --agent-model "provider/model"
+```
+
+- `--agent` — coding agent that produced the session (`claude-code` / `kimi-code` / `pi-coding-agent`)
+- `--session-path` — absolute path to the agent's session file (`~` is expanded; existence is not checked)
+- `--agent-model` — model used by the session, as `provider/modelId`
+
 Note types:
 
 - `fleeting` (default) — quick capture, refine later
