@@ -159,7 +159,7 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 | 信号 | 判定标准 | 失败时 |
 |------|----------|--------|
 | S1 证据锚点 | 每条核心事实有出处：文件路径类事实用 `test -e <path>` 实测存在；命令类须本会话实际执行过；issue/PR 号真实可查；用户原话会话中有 | 降人工档 |
-| S2 去重余量 | ① `jfox search --type permanent` 无「已覆盖」命中；② 追加 `jfox search "<草稿一句话摘要>" --mode semantic --json` 读最高分（cosine 量纲）：<0.5 通过；0.5–0.65 灰色区降人工；≥0.65 降人工并按「可补充/已覆盖」走原流程（阈值为初始值，dogfood 校准）；**空结果或无 score 字段 = 信号缺失 → 降人工，不得当作「无重复」通过**；③ 补查 `jfox search --type candidate` 无同主题 pending；④ 落库前重跑一次 search（防并行会话窗口） | 灰色区/异常降人工 |
+| S2 去重余量 | ① `jfox search --type permanent` 无「已覆盖」命中；② 追加 `jfox similarity check --title "<草稿标题>" --content-file <草稿正文文件> --json`：`verdict=new` 通过；`gray` 灰色区降人工；`covered` 降人工并按「可补充/已覆盖」走原流程；`unavailable` / 命令不存在 / 无 verdict 字段 / 非零退出 = 信号缺失 → 降人工（fail-closed，不得退回 0.5/0.65）；分位阈值由 `jfox similarity stats` 暴露，初始 50/90，dogfood 校准；③ 补查 `jfox search --type candidate` 无同主题 pending；④ 落库前重跑一次 `jfox similarity check`（防并行会话窗口，基线有缓存） | 灰色区/异常降人工 |
 | S3 类型白名单 | 仅放行：现状快照（文件/脚本/配置位置）、工具/命令用法、已发生且可验证的事实。排除：ADR/决策、偏好、推测、待办、概念解释、冲突信息——**S3 排除 ≠ 不沉淀**，这些照常提炼并走 Step 4 人工确认，只是不进自动档 | 降人工档 |
 | S4 只新增不覆盖 | 仅 `jfox add` 新笔记可自动；`jfox edit` 追加存量一律人工 | edit 类永远人工 |
 | S5 fail-closed | 任一通道退化/异常/拿不准 → 降人工。检测动作：跑 `jfox daemon status` 确认 embedding daemon 在跑；抽查 `jfox search --json` 结果的 `search_mode` 是否全为 `keyword`（健康态为 `hybrid`）。注意：`--json` 的 `warnings` 仅在组件缺失时写入，「成功且无 warnings」≠ 通道健康 | 降人工档 |
@@ -278,8 +278,8 @@ jfox edit <已有笔记_id> --content-file /tmp/existing.md
 **自动档落库（仅 Step 3.5 判定为高确信的笔记）**
 
 ```bash
-# 落库前重跑一次 search 复核去重结论（S2④，防并行会话窗口）
-jfox search "<草稿一句话摘要>" --mode semantic --json
+# 落库前重跑一次 similarity check 复核去重结论（S2④，防并行会话窗口）
+jfox similarity check --title "<标题>" --content-file /tmp/note-draft.md --json
 
 # 写入 permanent：带审计 tag；正文含「## 依据」锚点段
 jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \

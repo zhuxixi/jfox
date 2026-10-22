@@ -1226,6 +1226,57 @@ jfox show [OPTIONS] NOTE_REF
 | `json_output` | `--json` | BOOL | no | `false` | — | no | yes |
 | `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
 
+## `jfox similarity`
+
+Inspect similarity baselines and judge candidate notes against the library.
+
+**Usage**:
+
+```text
+jfox similarity COMMAND [ARGS]...
+```
+
+## `jfox similarity check`
+
+Compare a candidate note against the library and report a percentile verdict.
+
+**Usage**:
+
+```text
+jfox similarity check [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `content_file` | `--content-file` | PATH | no | — | — | no | no |
+| `content` | `--content` | TEXT | no | — | — | no | no |
+| `title` | `--title` | TEXT | no | — | — | no | no |
+| `exclude_id` | `--exclude-id` | TEXT | no | — | — | no | no |
+| `top` | `--top` | INTEGER | no | `3` | — | no | no |
+| `pass_below` | `--pass-below` | INTEGER | no | `50` | — | no | no |
+| `gray_below` | `--gray-below` | INTEGER | no | `90` | — | no | no |
+| `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
+| `refresh` | `--refresh` | BOOL | no | `false` | — | no | yes |
+| `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `json_output` | `--json` | BOOL | no | `false` | — | no | yes |
+
+## `jfox similarity stats`
+
+Show the nearest-neighbor similarity distribution for permanent notes.
+
+**Usage**:
+
+```text
+jfox similarity stats [OPTIONS]
+```
+
+| Parameter | Syntax | Type | Required | Default | Choices | Multiple | Flag |
+|---|---|---|---|---|---|---|---|
+| `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
+| `refresh` | `--refresh` | BOOL | no | `false` | — | no | yes |
+| `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
+| `json_output` | `--json` | BOOL | no | `false` | — | no | yes |
+
 ## `jfox status`
 
 Show knowledge-base and index status.

@@ -162,6 +162,9 @@ class TestContractList:
         ("auto-summary-scan", ["auto-summary", "scan", "--format", "json"], False),
         ("backup-status", ["backup", "status", "--format", "json"], False),
         ("backup-list", ["backup", "list", "--format", "json"], False),
+        # --- S2 dedup calibration: similarity stats/check ---
+        ("similarity-stats", ["similarity", "stats"], False),
+        ("similarity-check", ["similarity", "check", "--content", "契约候选正文"], False),
     ]
 
     @pytest.mark.parametrize(

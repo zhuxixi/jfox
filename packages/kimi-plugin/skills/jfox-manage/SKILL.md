@@ -472,6 +472,9 @@ jfox index bm25-status                         # 查看 BM25 索引状态
 jfox inbox --json --limit <N>                  # 未处理笔记
 ```
 
+- `jfox similarity stats --json` — 查看本库最近邻相似度分位（p50/p75/p90/p95/p99）。
+- `jfox similarity check --title "<标题>" --content-file <草稿> --json` — 候选去重判定：`new` / `gray` / `covered` / `unavailable`。
+
 ### Daemon
 
 ```bash

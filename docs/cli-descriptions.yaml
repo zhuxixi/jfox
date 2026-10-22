@@ -145,6 +145,12 @@ commands:
     description: "Search notes by keyword, semantic meaning, or both."
   "jfox show":
     description: "Show the complete Markdown content of a note."
+  "jfox similarity":
+    description: "Inspect similarity baselines and judge candidate notes against the library."
+  "jfox similarity check":
+    description: "Compare a candidate note against the library and report a percentile verdict."
+  "jfox similarity stats":
+    description: "Show the nearest-neighbor similarity distribution for permanent notes."
   "jfox status":
     description: "Show knowledge-base and index status."
   "jfox suggest-links":
