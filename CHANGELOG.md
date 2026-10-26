@@ -2,6 +2,12 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [Unreleased]
+
+### Fixes
+
+- **cli**: `edit --json` 补齐 `note.links` / `note.backlinks` 与顶层 `links_added` / `links_removed`（恒有，无变化时为空数组），脚本可在一次调用里核验链接解析结果，不必再跑 `show`；既有字段不变 (#577)
+
 ## [1.17.0] - 2026-10-27
 
 ### Features
