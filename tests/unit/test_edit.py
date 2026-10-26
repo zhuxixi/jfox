@@ -718,3 +718,80 @@ class TestEditJSONLinks:
         assert data["note"]["backlinks"] == []
         assert data["links_added"] == []
         assert data["links_removed"] == []
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_removed_order_multi(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        t1 = create_note("target one", title="OrderTargetOne", note_type=NoteType.PERMANENT)
+        save_note(t1, add_to_index=False)
+        t2 = create_note("target two", title="OrderTargetTwo", note_type=NoteType.PERMANENT)
+        save_note(t2, add_to_index=False)
+        source = create_note(
+            f"links [[{t1.id}|OrderTargetOne]] [[{t2.id}|OrderTargetTwo]]",
+            title="OrderSource",
+            note_type=NoteType.PERMANENT,
+            links=[t1.id, t2.id],
+        )
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content="no more links",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["links_added"] == []
+        # pre-edit order, not set iteration order
+        assert data["links_removed"] == [t1.id, t2.id]
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_added_order_multi(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        t1 = create_note("target one", title="AddTargetOne", note_type=NoteType.PERMANENT)
+        save_note(t1, add_to_index=False)
+        t2 = create_note("target two", title="AddTargetTwo", note_type=NoteType.PERMANENT)
+        save_note(t2, add_to_index=False)
+        source = create_note("no links yet", title="AddSource", note_type=NoteType.PERMANENT)
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content=f"first [[{t2.id}|AddTargetTwo]] then [[{t1.id}|AddTargetOne]]",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["note"]["links"] == [t2.id, t1.id]
+        assert data["links_added"] == [t2.id, t1.id]
+        assert data["links_removed"] == []
