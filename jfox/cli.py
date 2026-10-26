@@ -12,7 +12,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
@@ -430,6 +430,39 @@ def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[Lis
             # 报告完整原文（candidates[0]），保持用户可读
             unresolved.append(candidates[0])
     return resolved_links, unresolved
+
+
+def diff_links(old_links: Iterable[str], new_links: Iterable[str]) -> Tuple[List[str], List[str]]:
+    """Return (added, removed) link deltas, order-preserving and dedup-safe (#577).
+
+    `added` follows `new_links` order, `removed` follows `old_links` order.
+    Duplicate inputs collapse to their first occurrence, so callers may pass
+    raw lists without pre-normalising them.
+    """
+    old_order = list(old_links)
+    new_order = list(new_links)
+    old_set = set(old_order)
+    new_set = set(new_order)
+    added = [link for link in dict.fromkeys(new_order) if link not in old_set]
+    removed = [link for link in dict.fromkeys(old_order) if link not in new_set]
+    return added, removed
+
+
+def _edit_result_note(n: note.Note) -> Dict[str, Any]:
+    """Assemble the `note` payload of edit's --json response (#577).
+
+    Mirrors add's `note` shape and adds backlinks so callers can verify links
+    in a single call. Lists are copied: the caller must not be able to mutate
+    the Note through the response payload.
+    """
+    return {
+        "id": n.id,
+        "title": n.title,
+        "type": n.type.value,
+        "filepath": str(n.filepath),
+        "links": list(n.links),
+        "backlinks": list(n.backlinks),
+    }
 
 
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
