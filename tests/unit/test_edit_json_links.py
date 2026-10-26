@@ -87,3 +87,11 @@ class TestEditResultNote:
 
         assert n.links == ["a"]
         assert n.backlinks == ["b"]
+
+    def test_none_links_and_backlinks_are_safe(self):
+        from jfox.cli import _edit_result_note
+
+        payload = _edit_result_note(_note(links=None, backlinks=None))
+
+        assert payload["links"] == []
+        assert payload["backlinks"] == []

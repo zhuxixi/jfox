@@ -460,8 +460,8 @@ def _edit_result_note(n: note.Note) -> Dict[str, Any]:
         "title": n.title,
         "type": n.type.value,
         "filepath": str(n.filepath),
-        "links": list(n.links),
-        "backlinks": list(n.backlinks),
+        "links": list(n.links or []),
+        "backlinks": list(n.backlinks or []),
     }
 
 
