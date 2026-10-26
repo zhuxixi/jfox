@@ -2102,7 +2102,8 @@ def _edit_impl(
         raise ValueError(f"笔记不存在: {note_id}")
 
     old_title = n.title
-    old_links = set(n.links)
+    old_links_order = list(n.links)
+    old_links = set(old_links_order)
 
     # 更新字段
     if content is not None:
@@ -2154,14 +2155,12 @@ def _edit_impl(
                 target_note.backlinks.remove(n.id)
                 note.save_note(target_note, add_to_index=False)
 
+        links_added, links_removed = diff_links(old_links_order, n.links)
         result = {
             "success": True,
-            "note": {
-                "id": n.id,
-                "title": n.title,
-                "type": n.type.value,
-                "filepath": str(n.filepath),
-            },
+            "note": _edit_result_note(n),
+            "links_added": links_added,
+            "links_removed": links_removed,
         }
         if old_title != n.title:
             result["title_changed"] = {"old": old_title, "new": n.title}
