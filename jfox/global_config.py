@@ -129,8 +129,11 @@ class AutoSummaryConfig:
     skip_after_days: int = 0  # 0 表示不跳过任何 session；可自行设置上限
     claude_timeout_seconds: int = 120  # claude -p 调用超时
     claude_binary: Optional[str] = None  # claude 命令路径；None 表示从 PATH 解析
-    session_sources: List[str] = field(default_factory=lambda: ["claude", "kimi"])  # 启用的扫描来源
+    session_sources: List[str] = field(
+        default_factory=lambda: ["claude", "kimi", "pi"]
+    )  # 启用的扫描来源
     kimi_sessions_dir: Optional[str] = None  # None → ~/.kimi-code/sessions
+    pi_session_dirs: Optional[List[str]] = None  # None → 官方目录 + agent-board 目录
 
     # 调度时间窗口配置（Issue #298）
     schedule_enabled: bool = False  # 是否启用运行时间窗口
@@ -212,6 +215,17 @@ class AutoSummaryConfig:
             except (TypeError, ValueError):
                 return default
 
+        def _safe_str_list(v: Any) -> Optional[List[str]]:
+            """非 list 或元素非 str 时逐元素过滤；过滤后为空则回 None。
+
+            手工编辑配置写入数字等脏值时，不能让 Path(p) 在解析期抛 TypeError
+            （与 #481 的损坏配置回退取向一致）。
+            """
+            if not isinstance(v, list):
+                return None
+            items = [str(x).strip() for x in v if isinstance(x, str) and x.strip()]
+            return items or None
+
         return cls(
             enabled=bool(data.get("enabled", False)),
             interval_minutes=int(data.get("interval_minutes", 30)),
@@ -226,9 +240,10 @@ class AutoSummaryConfig:
             session_sources=(
                 list(data["session_sources"])
                 if isinstance(data.get("session_sources"), list)
-                else ["claude", "kimi"]
+                else ["claude", "kimi", "pi"]
             ),
             kimi_sessions_dir=data.get("kimi_sessions_dir"),
+            pi_session_dirs=_safe_str_list(data.get("pi_session_dirs")),
             schedule_enabled=bool(data.get("schedule_enabled", False)),
             schedule_weekday_start_hour=_safe_int(data.get("schedule_weekday_start_hour"), 0),
             schedule_weekday_end_hour=_safe_int(data.get("schedule_weekday_end_hour"), 6),

@@ -12,7 +12,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Sequence
+from typing import Iterator, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,9 @@ class SessionFile:
     path: Path
     mtime: float  # epoch seconds
     size_bytes: int
-    source: str = "claude"  # 来源："claude" / "kimi"，用于分发到对应解析器
+    source: str = "claude"  # 来源："claude" / "kimi" / "pi"，用于分发到对应解析器
+    agent: str = "claude-code"  # 产生会话的 coding agent（写入笔记 frontmatter）
+    agent_model: Optional[str] = None  # 会话使用的模型（provider/modelId）
 
     @property
     def age_seconds(self) -> float:

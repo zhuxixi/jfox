@@ -26,6 +26,7 @@ class ExtractedDialog:
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
     project_dir_name: Optional[str] = None
+    agent_model: Optional[str] = None  # 会话使用的模型（provider/modelId）
     user_turn_count: int = 0
     assistant_turn_count: int = 0
     truncated: bool = False
@@ -142,6 +143,12 @@ def extract_dialog(
                     if result.started_at is None:
                         result.started_at = ts
                     result.ended_at = ts
+
+                msg = rec.get("message")
+                if isinstance(msg, dict):
+                    model = msg.get("model")
+                    if isinstance(model, str) and model:
+                        result.agent_model = model
 
                 extracted = _extract_role_and_text(rec)
                 if extracted is None:

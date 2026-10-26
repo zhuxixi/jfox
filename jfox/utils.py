@@ -25,3 +25,19 @@ def atomic_write_json(path: Path, data: dict, *, indent: int = 2) -> None:
         except OSError:
             pass
         raise
+
+
+def normalize_agent(value: str) -> str:
+    """Trim the agent name and reject empty values; no enum restriction."""
+    agent = (value or "").strip()
+    if not agent:
+        raise ValueError("--agent 不能为空")
+    return agent
+
+
+def resolve_session_path(value: str) -> str:
+    """Expand ~ and require an absolute path; existence is not checked."""
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise ValueError("--session-path 必须是绝对路径")
+    return str(path)

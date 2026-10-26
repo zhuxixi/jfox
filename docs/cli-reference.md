@@ -47,6 +47,9 @@ jfox add [OPTIONS] [CONTENT]
 | `template` | `--template, -T` | TEXT | no | — | — | no | no |
 | `content_file` | `--content-file` | TEXT | no | — | — | no | no |
 | `topic` | `--topic` | TEXT | no | — | — | no | no |
+| `agent` | `--agent` | TEXT | no | — | — | no | no |
+| `session_path` | `--session-path` | TEXT | no | — | — | no | no |
+| `agent_model` | `--agent-model` | TEXT | no | — | — | no | no |
 | `force` | `--force` | BOOL | no | `false` | — | no | yes |
 | `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
 | `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
@@ -71,7 +74,7 @@ jfox archive [OPTIONS] NOTE_ID
 
 ## `jfox auto-summary`
 
-Manage automatic summaries of completed Claude Code sessions.
+Manage automatic summaries of completed coding-agent sessions (Claude Code, Kimi Code, pi).
 
 **Usage**:
 

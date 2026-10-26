@@ -575,6 +575,9 @@ def _add_note_impl(
     template: Optional[str] = None,
     topic: Optional[str] = None,
     force: bool = False,
+    agent: Optional[str] = None,
+    session_path: Optional[str] = None,
+    agent_model: Optional[str] = None,
 ):
     """添加笔记的内部实现"""
     # 如果指定了模板，使用模板渲染
@@ -632,6 +635,15 @@ def _add_note_impl(
     # 新笔记尚未入索引不会命中自身，self_id 传 None）
     resolved_links, unresolved = resolve_wiki_links(content, self_id=None)
 
+    # agent 元数据（--agent / --session-path / --agent-model）
+    from .utils import normalize_agent, resolve_session_path
+
+    if agent is not None:
+        agent = normalize_agent(agent)
+    session_file = resolve_session_path(session_path) if session_path is not None else None
+    if agent_model is not None:
+        agent_model = agent_model.strip() or None
+
     # 创建笔记
     new_note = note.create_note(
         content=content,
@@ -641,6 +653,9 @@ def _add_note_impl(
         links=resolved_links,
         source=source,
         topic=topic,
+        agent=agent,
+        session_file=session_file,
+        agent_model=agent_model,
     )
 
     # 保存笔记
@@ -743,6 +758,12 @@ def _add_note_impl(
                 "links": resolved_links,
             },
         }
+        if agent:
+            result["note"]["agent"] = agent
+        if session_file:
+            result["note"]["session_file"] = session_file
+        if agent_model:
+            result["note"]["agent_model"] = agent_model
 
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
@@ -832,6 +853,17 @@ def add(
         None, "--content-file", help="从文件读取内容（用 - 表示 stdin）"
     ),
     topic: Optional[str] = typer.Option(None, "--topic", help="会话主题（session 类型必填）"),
+    agent: Optional[str] = typer.Option(
+        None,
+        "--agent",
+        help="产生该会话的 coding agent（claude-code / kimi-code / pi-coding-agent）",
+    ),
+    session_path: Optional[str] = typer.Option(
+        None, "--session-path", help="agent 原始 session 文件绝对路径"
+    ),
+    agent_model: Optional[str] = typer.Option(
+        None, "--agent-model", help="该会话使用的模型（provider/modelId）"
+    ),
     force: bool = typer.Option(
         False, "--force", help="跳过防重检查，强制创建（迁移/回填/明确要重复时用）"
     ),
@@ -863,7 +895,18 @@ def add(
 
         with use_kb(kb):
             _add_note_impl(
-                content, title, note_type, tags, source, output_format, template, topic, force
+                content,
+                title,
+                note_type,
+                tags,
+                source,
+                output_format,
+                template,
+                topic,
+                force,
+                agent,
+                session_path,
+                agent_model,
             )
 
     except typer.Exit:
