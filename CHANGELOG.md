@@ -2,6 +2,15 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [Unreleased]
+
+### Changes
+
+- **init**: `jfox init --name X` 不再自动切换 current 知识库；需要切换时显式加 `--default`（#584）
+- **cli**: `add`/`edit`/`candidates promote --json` 输出新增 `kb` 字段（实际写入的注册库名，string，向后兼容）（#584）
+
+[Unreleased]: https://github.com/zhuxixi/jfox/compare/v1.17.0...HEAD
+
 ## [1.17.0] - 2026-10-27
 
 ### Features
