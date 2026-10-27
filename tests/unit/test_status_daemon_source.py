@@ -7,6 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from jfox.cli import app
+from jfox.embedding_backend import reset_backend
 
 runner = CliRunner()
 
@@ -23,6 +24,8 @@ DAEMON = {
 
 @pytest.fixture
 def no_daemon():
+    # 进程内 get_backend() 单例可能被前序用例加载过模型（顺序性）：重置以还原未加载态
+    reset_backend()
     with (
         patch("jfox.daemon.process.get_daemon_status", return_value=None),
         patch("jfox.daemon.process.is_daemon_running", return_value=False),
