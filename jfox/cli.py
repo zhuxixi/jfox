@@ -1264,10 +1264,17 @@ def _status_impl(output_format: str, json_output: bool):
 
     stats = note.get_stats()
 
-    # 获取 NPU 状态
+    # #363 daemon 是 embedding 的真实服务方：在跑就用它的自报值，不再读本地兜底
+    from .daemon.process import get_daemon_status, is_daemon_running
     from .embedding_backend import get_backend
 
     backend = get_backend()
+    local = {
+        "type": backend.resolved_device,
+        "model": backend.model_name,
+        "loaded": backend.model is not None,
+        "dimension": backend.dimension,
+    }
 
     result = {
         "knowledge_base": {
@@ -1275,15 +1282,10 @@ def _status_impl(output_format: str, json_output: bool):
             "exists": config.base_dir.exists(),
         },
         "stats": stats,
-        "backend": {
-            "type": backend.resolved_device,
-            "model": backend.model_name or "auto (未加载)",
-            "dimension": backend.dimension,
-        },
+        "backend": _status_backend_payload(local, get_daemon_status()),
     }
 
     # #519 语义组件可用性（不触发模型加载）
-    from .daemon.process import is_daemon_running
     from .embedding_backend import (
         is_embedding_service_available,
         is_local_embed_available,
@@ -1315,9 +1317,10 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
         table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
         table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-        table.add_row("Backend", backend.resolved_device)
-        table.add_row("Model", backend.model_name or "auto (未加载)")
-        table.add_row("Dimension", str(backend.dimension))
+        table.add_row("Backend", result["backend"]["type"])
+        table.add_row("Model", result["backend"]["model"])
+        table.add_row("Dimension", _display_dimension(result["backend"]["dimension"]))
+        table.add_row("Backend Source", result["backend"]["source"])
         table.add_row(
             "Embed Component",
             (
