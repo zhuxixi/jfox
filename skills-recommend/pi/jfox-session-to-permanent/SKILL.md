@@ -98,6 +98,8 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 **MOC 候选信号（顺带采集）**：查看 suggest-links 结果里的 `type` 字段——`type: structure` 的条目是 MOC（主题地图）候选信号。按 MOC ID 去重，保留标题和 score，记到对应候选名下；归档 structure 不会出现在默认结果里，无法确认状态的不当作信号。本步只采集信号，不自动挂载，也不改变上面的去重判定。
 
 > **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
+>
+> pi 平台可用 §codemode 加速 的模板一把全部候选的查询合并为一次调用。
 
 ### Step 3: 提炼 permanent 草稿
 
@@ -173,6 +175,8 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 | 低/排除 | S3 排除类、S1/S2 失败、S5 触发 | 走 Step 4 人工确认 |
 
 审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。veto 路径：`jfox edit` / `jfox delete`。随时回查：`jfox list --tag auto-distilled`。
+
+> pi 平台可用 §codemode 加速 把 S2 的去重检查合并为一次调用（S1 的 `test -e`、S5 的 `daemon status` 仍按本节要求自行执行）。
 
 ### Step 4: 用户审阅（硬约束）
 
@@ -267,7 +271,8 @@ jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
   --tag <tag1> --json
 
 # 补充已有笔记：把追加段落拼到原内容后，整体写回
-jfox show <已有笔记_id> --json | jq -r .content > /tmp/existing.md
+# jfox show 默认输出原始 Markdown；--content-file 回灌时会剥 frontmatter 与 H1
+jfox show <已有笔记_id> > /tmp/existing.md
 cat >> /tmp/existing.md << 'EOF'
 
 <追加段落>
@@ -291,6 +296,8 @@ jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
 - 自动档跳过 MOC 归属问询；落库后在审计清单里提示用户可用 `jfox moc update` 批量兜底归属。
 - 判断不了档位时按中/低档处理（fail-closed）。
 
+> pi 平台可用 §codemode 加速 的模板二把「重查 → 写入」压进同一脚本。
+
 **MOC 归属挂载（Step 4 确认过归属的新笔记）**
 
 `jfox add` 成功拿到新笔记 ID 后，对每个选定的 MOC 执行挂载：
@@ -305,6 +312,173 @@ jfox moc add-member <MOC_ID> <NEW_NOTE_ID> --json
 - 无 MOC 信号的批次正常落库结束，收尾时可提示用户后续用 `jfox moc add-member` 手动补挂。
 
 > 写入后的验证（`jfox show` / `jfox refs`）详见 `/skill:jfox-common` §4.5。落库后可以顺手 `jfox graph --stats --json` 看 avg_degree、isolated_nodes 是否健康（目标见 `jfox-organize` Step 3）。
+
+## codemode 加速（pi 专属）
+
+本节只提供**执行机制**，规则仍以五步流程为准；`codemode` 工具不可用（默认状态）时整段跳过，按上文 bash 流程执行，语义不变。
+
+模板按 pi `docs/codemode.md` 的语义编写：`tools.bash` 返回 `{output, exit_code}`（非零退出也 resolve）、`tools.write` 逐文件写盘、多调用用 `Promise.allSettled` 收集、`timeout_ms` 是整脚本硬期限。两段默认 Linux/macOS：Windows 上 `tools.write` 与 Git Bash 对 `/tmp` 的解析不同，需把临时路径改到 `$HOME` 下。
+
+### 封装点映射
+
+| 步骤 | 能否封装 | 收益 |
+|------|----------|------|
+| Step 2 去重查询 | 能 | 每批 10 次串行搜索压成一次并行，且只回传结论字段 |
+| Step 3.5 S2（去重余量） | 能 | 一次跑完；模板一额外回传 `all_keyword` 供 S5 抽查 |
+| Step 5 自动档落库 | 能 | 「重查 → 写入」进入同一脚本，收窄并发窗口 |
+| Step 1 提取 / Step 3 起草 / Step 4 审阅 | 不能 | 需要模型理解与用户交互 |
+
+### 模板一：批量去重查询（Step 2）
+
+把候选列表内联进脚本，一次拿到每条候选的 permanent 命中、`similarity check` 判定、pending candidate 与 MOC 信号（`metadata.type == "structure"` 的命中）；不输出 `document`、`baseline`、`matches` 全量，分档仍由模型按 Step 2 判定表完成。
+
+```js
+// @options: {"max_output_tokens": 6000, "timeout_ms": 180000}
+const candidates = [
+  { title: "候选标题", summary: "一句话摘要" },
+];
+
+// 统一兜底：bash 非零退出也会 resolve，解析失败不能把整批带崩
+const run = async (cmd) => {
+  try {
+    const r = await tools.bash({ command: cmd, timeout: 150 });
+    return JSON.parse(r.output);
+  } catch (e) {
+    return { error: String(e).slice(0, 200) };
+  }
+};
+
+// 摘要/标题是用户文本：必须走单引号包裹，否则 $() 与反引号会被 shell 展开
+const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
+const settled = await Promise.allSettled(candidates.map(async (c) => {
+  const [hits, sim, pending] = await Promise.all([
+    // 不加 --type：structure 笔记也要能被看见（MOC 信号来源）
+    // 窗口取 25 而不是 10：类型过滤发生在检索层，混合窗口里 structure/candidate
+    // 会挤掉 permanent 的坑位，窗口太小会漏掉真重复
+    run(`jfox search ${shq(c.summary)} --top 25 --json`),
+    run(
+      `jfox similarity check --title ${shq(c.title)} ` +
+        `--content ${shq(c.summary)} --json`,
+    ),
+    run(`jfox search ${shq(c.summary)} --type candidate --json`),
+  ]);
+  const results = hits.results || [];
+  return {
+    title: c.title,
+    permanent_hits: results
+      .filter((r) => r.metadata.type === "permanent")
+      .map((r) => ({ id: r.id, title: r.metadata.title })),
+    moc_signals: results
+      .filter((r) => r.metadata.type === "structure")
+      .map((r) => ({ id: r.id, title: r.metadata.title, score: r.score })),
+    // S5 抽查用：全为 keyword 表示语义通道退化
+    all_keyword: results.length > 0 && results.every((r) => r.search_mode === "keyword"),
+    verdict: sim.verdict,
+    top1: sim.top1,
+    pending_candidates: (pending.results || []).map((r) => r.metadata.title),
+    error: hits.error || sim.error || pending.error || null,
+  };
+}));
+return settled.map((s, i) =>
+  s.status === "fulfilled"
+    ? s.value
+    : { title: candidates[i].title, error: String(s.reason).slice(0, 200) },
+);
+```
+
+### 模板二：自动档原子落库（Step 5，仅高确信 + 已授权）
+
+每条候选内部严格按「写盘 → `similarity check` → 读 `verdict` → `add`」执行，候选之间并行；脚本只消费 `verdict`，不内嵌任何判定阈值或分档规则。
+
+```js
+// @options: {"max_output_tokens": 6000, "timeout_ms": 180000}
+// 防重闸门：不追加任何强制覆盖参数；add 返回 duplicate 即降级人工
+const drafts = [
+  { title: "笔记标题", body: "正文（含 [[链接]]）", topicTag: "主题标签" },
+];
+
+// 统一兜底：bash 非零退出也会 resolve，解析失败不能把整批带崩
+const run = async (cmd) => {
+  try {
+    const r = await tools.bash({ command: cmd, timeout: 150 });
+    return JSON.parse(r.output);
+  } catch (e) {
+    return { error: String(e).slice(0, 200) };
+  }
+};
+
+// 标题/标签是用户文本：必须走单引号包裹，否则 $() 与反引号会被 shell 展开
+const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
+// 临时名带随机后缀：避免多会话/连续两批互相串写
+const runId = Math.random().toString(36).slice(2, 8);
+
+const settled = await Promise.allSettled(drafts.map(async (d, i) => {
+  const path = `/tmp/codemode-draft-${runId}-${i}.md`;
+  // 顺序固定：先落盘，similarity check 才有文件可读
+  await tools.write({ path, content: d.body });
+
+  const sim = await run(
+    `jfox similarity check --title ${shq(d.title)} --content-file ${path} --json`,
+  );
+  const verdict = sim.verdict;
+  if (verdict === "gray" || verdict === "covered") {
+    return { title: d.title, outcome: "needs_manual", verdict };
+  }
+  if (verdict !== "new") {
+    return {
+      title: d.title,
+      outcome: "signal_missing",
+      verdict: verdict || null,
+      reason: sim.unavailable_reason || sim.error || "no verdict",
+    };
+  }
+
+  const added = await run(
+    `jfox add --content-file ${path} --title ${shq(d.title)} --type permanent ` +
+      `--tag auto-distilled --tag ${shq(d.topicTag)} --json`,
+  );
+  if (added.success) {
+    return { title: d.title, outcome: "added", note_id: added.id, verdict };
+  }
+  if (added.skipped === "duplicate") {
+    return {
+      title: d.title,
+      outcome: "duplicate",
+      matched_id: added.duplicate?.matched_id,
+      verdict,
+    };
+  }
+  return { title: d.title, outcome: "error", reason: added.error || "unknown", verdict };
+}));
+// 一条失败不影响其余条：失败项保留标题，避免审计清单漏条
+const items = settled.map((s, i) =>
+  s.status === "fulfilled"
+    ? s.value
+    : { title: drafts[i].title, outcome: "error", reason: String(s.reason).slice(0, 200) },
+);
+const count = (name) => items.filter((o) => o.outcome === name).length;
+return {
+  items,
+  counts: {
+    added: count("added"),
+    duplicate: count("duplicate"),
+    needs_manual: count("needs_manual"),
+    signal_missing: count("signal_missing"),
+    error: count("error"),
+  },
+};
+```
+
+### verdict 到结局的映射
+
+| `similarity check` 返回 | 模板二动作 | 结局 |
+|------|------|------|
+| `verdict=new` | 继续 `jfox add`（无 `--force`） | `added` 或 `duplicate` |
+| `verdict=gray` / `verdict=covered` | 不写入 | `needs_manual` |
+| `verdict=unavailable` / 无 `verdict` 字段 / 非零退出 | 不写入（fail-closed） | `signal_missing` |
+| `jfox add` 返 `skipped: duplicate` | 不重试 | `duplicate`（带 `matched_id`） |
 
 ## 命令参考
 
