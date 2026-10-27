@@ -252,6 +252,8 @@ question(
 
 ### Step 5: 落库
 
+**落库前核对当前知识库**：执行任何 `jfox add` / `jfox edit` 前，先跑 `jfox kb current --json` 确认 `name` 是预期库（默认 `default`）。不符则停止写入并报告，不得继续写（并发测试或其他会话可能劫持 current 指针，见 jfox #584）；确认后再继续。
+
 用户确认后再执行写入。**新笔记**用 `jfox add`，**补充已有笔记**用 `jfox edit` 追加。
 
 ```bash
