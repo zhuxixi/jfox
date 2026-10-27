@@ -33,6 +33,7 @@ from jfox.global_config import (
     PromptCaptureConfig,
     PromptJudgeConfig,
     get_global_config_manager,
+    pick_fallback_default,
 )
 
 
@@ -1164,3 +1165,14 @@ class TestLoadRecoveryOrchestration:
         )
 
         assert saved == [True]
+
+
+class TestPickFallbackDefault:
+    def test_prefers_canonical_default(self):
+        assert pick_fallback_default(["test_a", "default"], "test_a") == "default"
+
+    def test_skips_test_kbs_when_default_missing(self):
+        assert pick_fallback_default(["test_a", "work"], "test_a") == "work"
+
+    def test_dangling_default_when_only_test_kbs(self):
+        assert pick_fallback_default(["test_a", "test_b"], "test_a") == "default"
