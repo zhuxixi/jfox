@@ -202,95 +202,15 @@ Expected: FAIL on the three new tests
 
 - [ ] **Step 3: Replace the two template placeholders**
 
-模板一（要点：并发、只回传结论字段、按 `metadata.type` 拆分、不调 `suggest-links`）：
+模板的**唯一事实源是 SKILL.md 本身**，本计划不再内嵌代码快照（曾因快照滞后于修复，把已修掉的 `JSON.stringify` shell 注入写法重新带回来）。
 
-```js
-// @options: {"max_output_tokens": 6000, "timeout_ms": 180000}
-const candidates = [
-  { title: "候选标题", summary: "一句话摘要" },
-];
+落笔时必须满足这组不变量（对应 A6/A7/A8）：
 
-const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
-  (r) => JSON.parse(r.output),
-  (e) => ({ error: String(e).slice(0, 200) }),
-);
-
-const rows = await Promise.all(candidates.map(async (c) => {
-  const [hits, sim, pending] = await Promise.all([
-    // 不加 --type：structure 笔记也要能被看见（MOC 信号来源）
-    run(`jfox search ${JSON.stringify(c.summary)} --top 10 --json`),
-    run(`jfox similarity check --title ${JSON.stringify(c.title)} --content ${JSON.stringify(c.summary)} --json`),
-    run(`jfox search ${JSON.stringify(c.summary)} --type candidate --json`),
-  ]);
-  const results = hits.results || [];
-  return {
-    title: c.title,
-    permanent_hits: results.filter((r) => r.metadata.type === "permanent")
-      .map((r) => ({ id: r.id, title: r.metadata.title })),
-    moc_signals: results.filter((r) => r.metadata.type === "structure")
-      .map((r) => ({ id: r.id, title: r.metadata.title })),
-    verdict: sim.verdict,
-    top1: sim.top1,
-    pending_candidates: (pending.results || []).map((r) => r.metadata.title),
-    error: hits.error || sim.error || pending.error || null,
-  };
-}));
-return rows;
-```
-
-模板二（要点：先写盘再 check，逐条顺序，未知 verdict fail-closed，不传 `--force`）：
-
-```js
-// @options: {"max_output_tokens": 6000, "timeout_ms": 180000}
-// 保留 --force 之外的防重闸门：不要给 jfox add 加 --force
-const drafts = [
-  { title: "笔记标题", body: "正文（含 [[链接]]）", topicTag: "标签" },
-];
-
-const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
-  (r) => JSON.parse(r.output),
-  (e) => ({ error: String(e).slice(0, 200) }),
-);
-
-const outcomes = await Promise.all(drafts.map(async (d, i) => {
-  const path = `/tmp/codemode-draft-${i}.md`;
-  await tools.write({ path, content: d.body });
-
-  const sim = await run(
-    `jfox similarity check --title ${JSON.stringify(d.title)} --content-file ${path} --json`,
-  );
-  const verdict = sim.verdict;
-  if (verdict === "gray" || verdict === "covered") {
-    return { title: d.title, outcome: "needs_manual", verdict };
-  }
-  if (verdict !== "new") {
-    return { title: d.title, outcome: "signal_missing", verdict: verdict || null,
-             reason: sim.unavailable_reason || "no verdict" };
-  }
-
-  const added = await run(
-    `jfox add --content-file ${path} --title ${JSON.stringify(d.title)} --type permanent ` +
-    `--tag auto-distilled --tag ${JSON.stringify(d.topicTag)} --json`,
-  );
-  if (added.success) return { title: d.title, outcome: "added", note_id: added.id, verdict };
-  if (added.skipped === "duplicate") {
-    return { title: d.title, outcome: "duplicate", matched_id: added.duplicate?.matched_id, verdict };
-  }
-  return { title: d.title, outcome: "error", reason: added.error || "unknown", verdict };
-}));
-return outcomes;
-```
-
-并在两个模板之后加映射表：
-
-```markdown
-| `similarity check` 返回 | 模板二动作 | 结局 |
-|---|---|---|
-| `verdict=new` | 继续 `jfox add`（无 `--force`） | `added` 或 `duplicate` |
-| `verdict=gray` / `covered` | 不写入 | `needs_manual` |
-| `verdict=unavailable` / 无该字段 / 非零退出 | 不写入（fail-closed） | `signal_missing` |
-| `jfox add` 返 `skipped: duplicate` | 不重试 | `duplicate` |
-```
+- 用户文本（标题/摘要/标签）一律经 `shq()` 单引号包裹，禁止用 `JSON.stringify` 拼 shell 命令。
+- `run()` 用 `async` + `try/catch` 同时兜住工具失败与 `JSON.parse` 失败。
+- 多条候选用 `Promise.allSettled`，失败项保留标题，保证审计清单不缺条。
+- 模板一：`--top 25`、不加 `--type`、不调 `suggest-links`、不输出 `document`、回传 `all_keyword`。
+- 模板二：写盘 → `similarity check` → 读 `verdict` → `add`，不传 `--force`，未知 verdict 落 `signal_missing`，最后给出汇总计数。
 
 - [ ] **Step 4: Run tests to verify they pass**
 

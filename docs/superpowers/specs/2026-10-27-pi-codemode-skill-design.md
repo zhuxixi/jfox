@@ -61,8 +61,8 @@ Revised: deepseek/deepseek-flash (selected) · deepseek/deepseek-flash (physical
 ### 3.2 模板一契约（批量去重查询）
 
 - 输入：候选列表（`{title, summary}` 内联在脚本里，不读外部文件）。
-- 每条候选并行跑三条命令：
-  1. `jfox search "<summary>" --top 10 --json` —— **不加 `--type`**：这是唯一能同时拿到两类信号的查法。`metadata.type == "permanent"` 的命中是「已覆盖」候选；`metadata.type == "structure"` 的条目是 MOC 信号。加 `--type permanent` 会把 structure 过滤掉（`models.py` 的 NoteType 过滤），MOC 信号就无源了。
+- 每条候选并行跑三条命令（第 1 条取 `--top 25`：类型过滤发生在检索层，混合窗口太小会让 structure/candidate 命中挤掉 permanent 的坑位，从而漏判真重复）：
+  1. `jfox search "<summary>" --top 25 --json` —— **不加 `--type`**：这是唯一能同时拿到两类信号的查法。`metadata.type == "permanent"` 的命中是「已覆盖」候选；`metadata.type == "structure"` 的条目是 MOC 信号。加 `--type permanent` 会把 structure 过滤掉（`models.py` 的 NoteType 过滤），MOC 信号就无源了。
   2. `jfox similarity check --title "<title>" --content "<summary>" --json` —— 拿 `verdict` 与 `top1`。
   3. `jfox search "<summary>" --type candidate --json` —— S2③ 的 pending 检查。
 - **不调用 `jfox suggest-links`**：其语义分支恒空（#583），分数是关键词比率，不能当 MOC 信号源。MOC 信号改由第 1 条命令的结果按 `metadata.type` 拆分获得，语义职能交给 `similarity check`。
