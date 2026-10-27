@@ -86,3 +86,11 @@ def test_template_two_consumes_similarity_verdict():
 
 def test_template_one_is_data_only():
     assert template_one_is_data_only(_read(SKILL_PI))
+
+
+def uses_jq(text: str) -> bool:
+    return "jq " in text
+
+
+def test_pi_skill_has_no_jq_dependency():
+    assert not uses_jq(_read(SKILL_PI))

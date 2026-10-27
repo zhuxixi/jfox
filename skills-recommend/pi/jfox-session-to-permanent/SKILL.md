@@ -271,7 +271,8 @@ jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
   --tag <tag1> --json
 
 # 补充已有笔记：把追加段落拼到原内容后，整体写回
-jfox show <已有笔记_id> --json | jq -r .content > /tmp/existing.md
+# jfox show 默认输出原始 Markdown；--content-file 回灌时会剥 frontmatter 与 H1
+jfox show <已有笔记_id> > /tmp/existing.md
 cat >> /tmp/existing.md << 'EOF'
 
 <追加段落>
