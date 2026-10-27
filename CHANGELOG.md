@@ -2,6 +2,25 @@
 
 All notable changes to jfox-cli will be documented in this file.
 
+## [1.17.0] - 2026-10-27
+
+### Features
+
+- **session**: session 笔记记录 agent 类型与 session 文件路径，pi 接入 auto-summary（#578） (#582)
+- **similarity**: S2 dedup calibration with percentile verdicts (#586) (#587)
+- **skill**: session-to-permanent 高置信度分级闸门（#575） (#581)
+
+### Fixes
+
+- **links**: 标题含 # 的 wiki-link 截断与静默错链修复 (#458) (#574)
+- **moc**: add-member 末尾分组换行丢失/成员行粘连 (#547) (#571)
+
+### Changes
+
+- **claude.md**: batch refresh — fold in 5 pending auto/claude-md PRs (#570)
+
+[1.17.0]: https://github.com/zhuxixi/jfox/compare/v1.16.3...v1.17.0
+
 ## [1.16.3] - 2026-10-10
 
 ### Fixes
@@ -31,16 +50,6 @@ All notable changes to jfox-cli will be documented in this file.
 - **claude.md**: batch refresh — fold in 6 pending auto/claude-md PRs (#520/#524/#527/#532/#540/#545) (#546)
 
 [1.16.1]: https://github.com/zhuxixi/jfox/compare/v1.16.0...v1.16.1
-
-## [Unreleased]
-
-### Fixes
-
-- **note**: 加载的笔记钉住真实磁盘路径——文件名与当前字段分家时，补 backlink / rebuild --backlinks / MOC 成员回填不再写出同 ID 双文件，`show`/`delete` 也能正确读写该笔记；`update_note` 改为显式规范化写并在成功后重钉路径 (#549)
-
-- **note_index**: 剥离改单遍合并正则——反引号包 HTML 注释不再吞后续 wiki link (#548) (#550)
-
-- **index**: `index rebuild --backlinks` 写回改为「重读→分歧检测→原子写」：检测到并发修改或文件缺失的笔记本轮跳过（计入新 JSON 字段 `backlinks_skipped`，下轮重建自愈），并发 `edit` 的正文不再被旧快照静默覆盖 (#561)
 
 ## [1.16.0] - 2026-09-23
 
