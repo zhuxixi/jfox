@@ -117,7 +117,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 - **Comments/docs**: Chinese (中文)
 - **README**: 英文 baseline（#461 起重写），改 README 保持英文；其余项目文档/注释仍中文
 - **Adding a CLI command**: Add `@app.command()` in `cli.py`, implement `_xxx_impl()` helper, add `--kb` and `--format json` support（`--json` 简写等价于 `--format json`，全 CLI 统一约定，moc create/update 曾漏补，#425）；命令面有任何增删改还须补 `docs/cli-descriptions.yaml` 英文描述并跑 `uv run python scripts/generate_docs.py` 重新生成 `docs/cli-reference.md`，否则 CI lint drift gate 挂（#474/#476）
-- **`--json` 输出 schema 合同**（#502/#531）: 全部命令 JSON 输出顶层必有 `success: bool`，失败必有非空 `error` + exit 1，裸数组包成 `{success, items}`（如 prompts/backup list）。权威 schema 参考 `docs/json-schemas.md`（改 JSON 字段须同步更新），合同由 `tests/test_json_schema_contract.py` 锁定
+- **`--json` 输出 schema 合同**（#502/#531）: 全部命令 JSON 输出顶层必有 `success: bool`，失败必有非空 `error` + exit 1，裸数组包成 `{success, items}`（如 prompts/backup list）。权威 schema 参考 `docs/json-schemas.md`（改 JSON 字段须同步更新），合同由 `tests/test_json_schema_contract.py` 锁定；`edit --json` 的 note 载荷含 links/backlinks，顶层恒有 `links_added`/`links_removed` 边差异（空数组即无变化，一次调用可核验链接解析、免跑 show，#577/#595）
 - **Wiki-link 解析收敛**: edit/add/rebuild 三路径统一走 `cli.py` 的 `resolve_wiki_links()`（剥离 code fence/inline code/HTML 注释 → 三级匹配解析 → 自链过滤 → 去重，找不到的进 unresolved），改链接解析规则只改这一处（#511/#530）
 - **Adding a search mode**: Add to `SearchMode` enum in `search_engine.py`, implement in `HybridSearchEngine.search()`, update CLI `--mode` help text
 - **Adding a daemon-scheduled loop**: 镜像 `auto_summary/`（与 backup 同构）——`loop.py`（`_tick_once` + async `X_loop(stop_event)`）+ `daemon/server.py` lifespan 内 `_maybe_start/stop_X` 接线 + `GlobalConfigManager` opt-in（每 tick `reload()` 即时生效）；任何写类 loop 的 `_tick_once` 开头须 check `BackupCoordinator.is_running()` 跳过写，避免备份期间 ChromaDB 并发写
@@ -190,7 +190,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `packages/cc-plugin/.claude-plugin/plugin.json` — plugin source metadata
 - `packages/cc-plugin/skills/` — 9 skills: `search`, `ingest`, `manage`, `organize`, `promote`, `session-summary`, `session-to-permanent`, `using-jfox`, `bookshelf`
 
-**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.7.6.
+**Plugin versioning**: bump version in **three** places together — `packages/cc-plugin/.claude-plugin/plugin.json` (`version`) and both version fields in `.claude-plugin/marketplace.json` (`metadata.version` + `plugins[0].version`). 漏改任一处都会导致 marketplace 与 plugin 版本不一致。Current: 0.8.0.
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 **Non-Claude-Code platforms**: `skills-recommend/`（`pi/` + `kimi-cli/`）是 pi / Kimi CLI 适配版 SKILL.md 集（如 `pi/jfox-moc`，#419）——CLI 语义或命令面变更时须与 cc-plugin skills 同步更新。
 **pi prompt 采集扩展**（#462）：`packages/pi-plugin/extensions/jfox-prompt-capture.ts`（TypeScript 单文件、零 npm 依赖、node ≥ 22.6 直跑）监听 pi input 事件→合成 CC 兼容事件→原子写 spool 再尽力 POST daemon `/api/prompt`，与 cc-plugin hook 同链路、复用 `jfox prompts drain` 兜底；`user_prompts.source` 由 `prompts/service.py` 透传顶层 source（pi → `pi-coding-agent`，CC 默认 `claude-code`）；本地测试 `node --experimental-strip-types packages/pi-plugin/test/run-tests.ts`
