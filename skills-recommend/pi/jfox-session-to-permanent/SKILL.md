@@ -98,6 +98,8 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 **MOC 候选信号（顺带采集）**：查看 suggest-links 结果里的 `type` 字段——`type: structure` 的条目是 MOC（主题地图）候选信号。按 MOC ID 去重，保留标题和 score，记到对应候选名下；归档 structure 不会出现在默认结果里，无法确认状态的不当作信号。本步只采集信号，不自动挂载，也不改变上面的去重判定。
 
 > **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
+>
+> pi 平台可用 §codemode 加速 的模板一把全部候选的查询合并为一次调用。
 
 ### Step 3: 提炼 permanent 草稿
 
@@ -173,6 +175,8 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 | 低/排除 | S3 排除类、S1/S2 失败、S5 触发 | 走 Step 4 人工确认 |
 
 审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。veto 路径：`jfox edit` / `jfox delete`。随时回查：`jfox list --tag auto-distilled`。
+
+> pi 平台可用 §codemode 加速 批量执行本节机械检查。
 
 ### Step 4: 用户审阅（硬约束）
 
@@ -291,6 +295,8 @@ jfox add --content-file /tmp/note-draft.md --title "<标题>" --type permanent \
 - 自动档跳过 MOC 归属问询；落库后在审计清单里提示用户可用 `jfox moc update` 批量兜底归属。
 - 判断不了档位时按中/低档处理（fail-closed）。
 
+> pi 平台可用 §codemode 加速 的模板二把「重查 → 写入」压进同一脚本。
+
 **MOC 归属挂载（Step 4 确认过归属的新笔记）**
 
 `jfox add` 成功拿到新笔记 ID 后，对每个选定的 MOC 执行挂载：
@@ -305,6 +311,27 @@ jfox moc add-member <MOC_ID> <NEW_NOTE_ID> --json
 - 无 MOC 信号的批次正常落库结束，收尾时可提示用户后续用 `jfox moc add-member` 手动补挂。
 
 > 写入后的验证（`jfox show` / `jfox refs`）详见 `/skill:jfox-common` §4.5。落库后可以顺手 `jfox graph --stats --json` 看 avg_degree、isolated_nodes 是否健康（目标见 `jfox-organize` Step 3）。
+
+## codemode 加速（pi 专属）
+
+本节只提供**执行机制**，规则仍以五步流程为准；`codemode` 工具不可用（默认状态）时整段跳过，按上文 bash 流程执行，语义不变。
+
+### 封装点映射
+
+| 步骤 | 能否封装 | 收益 |
+|------|----------|------|
+| Step 2 去重查询 | 能 | 每批 10 次串行搜索压成一次并行，且只回传结论字段 |
+| Step 3.5 S1 / S2 / S5 | 能 | 机械信号一次跑完 |
+| Step 5 自动档落库 | 能 | 「重查 → 写入」进入同一脚本，收窄并发窗口 |
+| Step 1 提取 / Step 3 起草 / Step 4 审阅 | 不能 | 需要模型理解与用户交互 |
+
+### 模板一：批量去重查询（Step 2）
+
+<JS 模板，见 Task 2>
+
+### 模板二：自动档原子落库（Step 5，仅高确信 + 已授权）
+
+<JS 模板，见 Task 2>
 
 ## 命令参考
 
