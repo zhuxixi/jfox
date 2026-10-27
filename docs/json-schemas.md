@@ -42,7 +42,7 @@ else:
 | `init` | `success, message, name` | 平铺 | `{success, error}` |
 | `add` | `success, id, title, note{id,title,type,filepath,links}` + 可选 `agent,session_file,agent_model`（#578）+ 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}}`；其余 `{success, error}` |
 | `search` | `success, query, mode, include_archived, total, results[]` + 可选 `warnings[]`（#519 降级时） | 列表 `results` | `{success, error}`；`--mode semantic` 且无语义服务时拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
-| `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension}, embedding{local_package,daemon_running,service_available}`（#519 可用性块） | 嵌套三段 | `{success, error}` |
+| `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension,source}, embedding{local_package,daemon_running,service_available}`（#519 可用性块；#363 `backend.source` 取 `daemon`/`local`/`unloaded`，`unloaded` 时 `dimension` 为 `null`） | 嵌套三段 | `{success, error}` |
 | `list` | `success, total, notes[]`（项含 `outgoing,incoming`） | 列表 `notes` | `{success, error}` |
 | `show` | `success` + `id,title,type,created,updated,tags,links,backlinks,topic,filepath,content,content_body` + 可选 `source,archived,agent,session_file,agent_model`、candidate 字段（`gem_level` 等）、溯源字段（`source_fragments` 等） | 顶层平铺 | `{success, error}` |
 | `refs` | 默认：`success, notes[]`；`--search`：`success, query, matches[]`；`--note`：`success, note{id,title,type}, forward_links[], backward_links[]`（悬空项带 `dangling:true`） | 分支各异 | `{success, error}` |
@@ -173,5 +173,6 @@ else:
 | `prompts list` | 裸 JSON 数组 `[...]` | `{success, items:[...]}` |
 | `auto-summary run` | 顶层 `success` 为 int 计数 | `success` 变布尔（命令完成即 `true`）；计数改名 `succeeded` |
 | `auto-summary status` | `progress.success` 为 int 计数 | 改名 `progress.succeeded` |
+| `status` | `backend.dimension` 恒为 int（未加载时伪造默认 512） | `backend.dimension` 可为 `null`（当 `backend.source="unloaded"`）；新增 `backend.source` 字段 |
 
 其余全部变更为纯增量（新增 `success` 字段或错误分支补 JSON 输出），不影响既有解析。
