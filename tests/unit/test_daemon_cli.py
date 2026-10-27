@@ -185,3 +185,32 @@ class TestDaemonRestartAutoSummaryFlags:
             result = runner.invoke(app, ["daemon", "restart", "--enable-auto-summary"])
         assert result.exit_code != 0
         mock_global_config.update_auto_summary_config.assert_not_called()
+
+
+class TestDaemonStatusDimensionDisplay:
+    """A9：维度 None→unknown，0→0（degraded 不被 or 吞掉）。"""
+
+    @staticmethod
+    def _invoke(runner, dimension):
+        info = {
+            "pid": 1,
+            "port": 18700,
+            "model": "BAAI/bge-m3",
+            "dimension": dimension,
+            "device": "cpu",
+        }
+        with patch("jfox.daemon.process.get_daemon_status", return_value=info):
+            return runner.invoke(app, ["daemon", "status"])
+
+    def test_none_dimension_renders_unknown(self, runner):
+        result = self._invoke(runner, None)
+
+        assert result.exit_code == 0, result.output
+        assert "unknown" in result.output
+        assert "None" not in result.output
+
+    def test_zero_dimension_renders_zero(self, runner):
+        result = self._invoke(runner, 0)
+
+        assert result.exit_code == 0, result.output
+        assert "unknown" not in result.output

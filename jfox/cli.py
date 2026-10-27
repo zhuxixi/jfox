@@ -3735,7 +3735,8 @@ def daemon(
             table.add_row("PID", str(info["pid"]))
             table.add_row("端口", str(info["port"]))
             table.add_row("模型", info["model"])
-            table.add_row("维度", str(info["dimension"]))
+            dimension = info.get("dimension")
+            table.add_row("维度", "unknown" if dimension is None else str(dimension))
             table.add_row("设备", info.get("device", "unknown"))
             console.print(table)
         else:
@@ -3853,7 +3854,8 @@ def daemon(
                 table.add_row("PID", str(info["pid"]))
                 table.add_row("端口", str(info["port"]))
                 table.add_row("模型", info.get("model", "unknown"))
-                table.add_row("维度", str(info.get("dimension", "unknown")))
+                dimension = info.get("dimension")
+                table.add_row("维度", "unknown" if dimension is None else str(dimension))
                 table.add_row("设备", info.get("device", "unknown"))
                 console.print(table)
             else:
