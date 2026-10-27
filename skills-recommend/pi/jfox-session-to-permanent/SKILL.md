@@ -176,7 +176,7 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 审计与熔断：自动落库笔记必须带 `--tag auto-distilled`，会话末输出审计清单（每条一行：标题 | ID | 档位依据摘要）。用户 veto 或要求修改任一自动放行条 → **本会话剩余候选全部降回人工确认**。veto 路径：`jfox edit` / `jfox delete`。随时回查：`jfox list --tag auto-distilled`。
 
-> pi 平台可用 §codemode 加速 批量执行本节机械检查。
+> pi 平台可用 §codemode 加速 把 S2 的去重检查合并为一次调用（S1 的 `test -e`、S5 的 `daemon status` 仍按本节要求自行执行）。
 
 ### Step 4: 用户审阅（硬约束）
 
@@ -317,12 +317,14 @@ jfox moc add-member <MOC_ID> <NEW_NOTE_ID> --json
 
 本节只提供**执行机制**，规则仍以五步流程为准；`codemode` 工具不可用（默认状态）时整段跳过，按上文 bash 流程执行，语义不变。
 
+模板按 pi `docs/codemode.md` 的语义编写：`tools.bash` 返回 `{output, exit_code}`（非零退出也 resolve）、`tools.write` 逐文件写盘、多调用用 `Promise.allSettled` 收集、`timeout_ms` 是整脚本硬期限。两段默认 Linux/macOS：Windows 上 `tools.write` 与 Git Bash 对 `/tmp` 的解析不同，需把临时路径改到 `$HOME` 下。
+
 ### 封装点映射
 
 | 步骤 | 能否封装 | 收益 |
 |------|----------|------|
 | Step 2 去重查询 | 能 | 每批 10 次串行搜索压成一次并行，且只回传结论字段 |
-| Step 3.5 S1 / S2 / S5 | 能 | 机械信号一次跑完 |
+| Step 3.5 S2（去重余量） | 能 | 一次跑完；模板一额外回传 `all_keyword` 供 S5 抽查 |
 | Step 5 自动档落库 | 能 | 「重查 → 写入」进入同一脚本，收窄并发窗口 |
 | Step 1 提取 / Step 3 起草 / Step 4 审阅 | 不能 | 需要模型理解与用户交互 |
 
@@ -336,18 +338,25 @@ const candidates = [
   { title: "候选标题", summary: "一句话摘要" },
 ];
 
-const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
-  (r) => JSON.parse(r.output),
-  (e) => ({ error: String(e).slice(0, 200) }),
-);
+// 统一兜底：bash 非零退出也会 resolve，解析失败不能把整批带崩
+const run = async (cmd) => {
+  try {
+    const r = await tools.bash({ command: cmd, timeout: 150 });
+    return JSON.parse(r.output);
+  } catch (e) {
+    return { error: String(e).slice(0, 200) };
+  }
+};
 
 // 摘要/标题是用户文本：必须走单引号包裹，否则 $() 与反引号会被 shell 展开
 const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 
-const rows = await Promise.all(candidates.map(async (c) => {
+const settled = await Promise.allSettled(candidates.map(async (c) => {
   const [hits, sim, pending] = await Promise.all([
     // 不加 --type：structure 笔记也要能被看见（MOC 信号来源）
-    run(`jfox search ${shq(c.summary)} --top 10 --json`),
+    // 窗口取 25 而不是 10：类型过滤发生在检索层，混合窗口里 structure/candidate
+    // 会挤掉 permanent 的坑位，窗口太小会漏掉真重复
+    run(`jfox search ${shq(c.summary)} --top 25 --json`),
     run(
       `jfox similarity check --title ${shq(c.title)} ` +
         `--content ${shq(c.summary)} --json`,
@@ -362,14 +371,20 @@ const rows = await Promise.all(candidates.map(async (c) => {
       .map((r) => ({ id: r.id, title: r.metadata.title })),
     moc_signals: results
       .filter((r) => r.metadata.type === "structure")
-      .map((r) => ({ id: r.id, title: r.metadata.title })),
+      .map((r) => ({ id: r.id, title: r.metadata.title, score: r.score })),
+    // S5 抽查用：全为 keyword 表示语义通道退化
+    all_keyword: results.length > 0 && results.every((r) => r.search_mode === "keyword"),
     verdict: sim.verdict,
     top1: sim.top1,
     pending_candidates: (pending.results || []).map((r) => r.metadata.title),
     error: hits.error || sim.error || pending.error || null,
   };
 }));
-return rows;
+return settled.map((s, i) =>
+  s.status === "fulfilled"
+    ? s.value
+    : { title: candidates[i].title, error: String(s.reason).slice(0, 200) },
+);
 ```
 
 ### 模板二：自动档原子落库（Step 5，仅高确信 + 已授权）
@@ -383,16 +398,24 @@ const drafts = [
   { title: "笔记标题", body: "正文（含 [[链接]]）", topicTag: "主题标签" },
 ];
 
-const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
-  (r) => JSON.parse(r.output),
-  (e) => ({ error: String(e).slice(0, 200) }),
-);
+// 统一兜底：bash 非零退出也会 resolve，解析失败不能把整批带崩
+const run = async (cmd) => {
+  try {
+    const r = await tools.bash({ command: cmd, timeout: 150 });
+    return JSON.parse(r.output);
+  } catch (e) {
+    return { error: String(e).slice(0, 200) };
+  }
+};
 
 // 标题/标签是用户文本：必须走单引号包裹，否则 $() 与反引号会被 shell 展开
 const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 
-const outcomes = await Promise.all(drafts.map(async (d, i) => {
-  const path = `/tmp/codemode-draft-${i}.md`;
+// 临时名带随机后缀：避免多会话/连续两批互相串写
+const runId = Math.random().toString(36).slice(2, 8);
+
+const settled = await Promise.allSettled(drafts.map(async (d, i) => {
+  const path = `/tmp/codemode-draft-${runId}-${i}.md`;
   // 顺序固定：先落盘，similarity check 才有文件可读
   await tools.write({ path, content: d.body });
 
@@ -429,7 +452,23 @@ const outcomes = await Promise.all(drafts.map(async (d, i) => {
   }
   return { title: d.title, outcome: "error", reason: added.error || "unknown", verdict };
 }));
-return outcomes;
+// 一条失败不影响其余条：失败项保留标题，避免审计清单漏条
+const items = settled.map((s, i) =>
+  s.status === "fulfilled"
+    ? s.value
+    : { title: drafts[i].title, outcome: "error", reason: String(s.reason).slice(0, 200) },
+);
+const count = (name) => items.filter((o) => o.outcome === name).length;
+return {
+  items,
+  counts: {
+    added: count("added"),
+    duplicate: count("duplicate"),
+    needs_manual: count("needs_manual"),
+    signal_missing: count("signal_missing"),
+    error: count("error"),
+  },
+};
 ```
 
 ### verdict 到结局的映射
