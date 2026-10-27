@@ -32,10 +32,12 @@
 ### Task 1: Contract test skeleton + section existence (A1, A2)
 
 **Files:**
+
 - Create: `tests/unit/test_pi_codemode_skill_docs.py`
 - Modify: `skills-recommend/pi/jfox-session-to-permanent/SKILL.md` (new section only)
 
 **Interfaces:**
+
 - Produces: `SKILL_PI`, `SKILL_OTHER` path constants; helpers `_read(path)`, `has_codemode_section(text)`, `has_both_templates(text)`
 - Consumes: nothing
 
@@ -134,10 +136,12 @@ git commit -m "test(skill): pin pi codemode section shape (#585)"
 ### Task 2: Template bodies + verdict mapping (A6, A7, A8)
 
 **Files:**
+
 - Modify: `tests/unit/test_pi_codemode_skill_docs.py`
 - Modify: `skills-recommend/pi/jfox-session-to-permanent/SKILL.md`
 
 **Interfaces:**
+
 - Produces: `_fenced_blocks(text)`, `_section(text, heading)`, `auto_tier_code_blocks_use_force(text)`, `template_two_uses_verdict(text)`, `template_one_is_data_only(text)`
 - Consumes: `SKILL_PI` from Task 1
 
@@ -305,10 +309,12 @@ git commit -m "feat(skill): codemode templates for dedup and auto-tier write (#5
 ### Task 3: Drop the jq dependency + full verification (A3, A4, A5)
 
 **Files:**
+
 - Modify: `skills-recommend/pi/jfox-session-to-permanent/SKILL.md:270`
 - Modify: `tests/unit/test_pi_codemode_skill_docs.py`
 
 **Interfaces:**
+
 - Produces: `uses_jq(text)`
 - Consumes: `_read`, `SKILL_PI`
 
@@ -355,6 +361,7 @@ Expected: `jfox edit` returns `"success": true`, and the final `grep -c '^# '` p
 - [ ] **Step 5: Run the full gate**
 
 Run:
+
 ```bash
 uv run pytest tests/unit/test_pi_codemode_skill_docs.py \
   tests/unit/test_moc_skill_docs.py \
@@ -362,6 +369,7 @@ uv run pytest tests/unit/test_pi_codemode_skill_docs.py \
 npx --yes markdownlint-cli2 "skills-recommend/pi/jfox-session-to-permanent/SKILL.md" "packages/cc-plugin/skills/session-to-permanent/SKILL.md" "packages/kimi-plugin/skills/jfox-session-to-permanent/SKILL.md"
 git diff --stat main -- packages/
 ```
+
 Expected: all tests pass; `0 issues` from markdownlint; `git diff --stat` prints nothing for `packages/`.
 
 - [ ] **Step 6: Commit**
@@ -376,9 +384,11 @@ git commit -m "refactor(skill): drop jq dependency from pi step 5 (#585)"
 ### Task 4: Record manual verification as pending (U1–U4)
 
 **Files:**
+
 - Create: `docs/superpowers/plans/2026-10-27-pi-codemode-skill-verification.md`
 
 **Interfaces:**
+
 - Consumes: the finished SKILL.md
 
 - [ ] **Step 1: Write the verification checklist**

@@ -109,7 +109,7 @@ Revised: deepseek/deepseek-flash (selected) · deepseek/deepseek-flash (physical
 | A2 | cc/kimi 副本未被注入 codemode 内容 | 自动化（unit） | 同上，参数化三份文件 | 两份副本均不含 `codemode` |
 | A3 | 既有三平台契约不回归 | 自动化（unit） | `uv run pytest tests/unit/test_moc_skill_docs.py tests/unit/test_session_dedup_skill_docs.py` | 全部通过 |
 | A4 | 改动文档通过 markdownlint | 自动化（static） | `npx --yes markdownlint-cli2 <三份文件>` | 0 issues |
-| A5 | pi 副本 bash 路径不再依赖 jq | 自动化（static） | 新测试断言 pi SKILL.md 不含 `jq ` 调用 | 通过 |
+| A5 | pi 副本 bash 路径不再依赖 jq | 自动化（static） | 新测试断言 pi SKILL.md 不含 `jq` 调用 | 通过 |
 | A6 | 自动档模板不掀防重闸门 | 自动化（static） | 新测试只扫「自动档落库」小节内的**围栏代码块**，断言命令不含 `--force` | 通过（正文「不传 `--force`」合法） |
 | A7 | 模板不复制判定逻辑 | 自动化（static） | 新测试只断言模板层：模板二围栏代码块含 `similarity check` 与 `verdict`；模板一围栏块不出现 `--type permanent` 与 `--mode semantic` | 通过。全文级的「禁止遗留写法」由既有 `test_session_dedup_skill_docs.py:33-34` 负责，本测试不重复其断言 |
 | A8 | 模板一不内嵌分档判定 | 自动化（static） | 断言模板一围栏代码块不含 `document` 输出与分档词「已覆盖」「可补充」「未记录」 | 通过 |
@@ -139,7 +139,7 @@ Revised: deepseek/deepseek-flash (selected) · deepseek/deepseek-flash (physical
 | `_read(path)` | 纯函数 | 读文本（UTF-8） |
 | `has_codemode_section(text)` | 纯谓词 | 存在 `## codemode 加速` 与 fallback 关键词 |
 | `has_both_templates(text)` | 纯谓词 | 两个模板标题存在 |
-| `uses_jq(text)` | 纯谓词 | 出现 `jq ` 命令行调用 |
+| `uses_jq(text)` | 纯谓词 | 出现 `jq` 命令行调用 |
 | `_fenced_blocks(text)` / `_section_blocks(text, heading)` | 纯函数 | 切出围栏代码块 / 指定小节的围栏代码块 |
 | `auto_tier_code_blocks_use_force(text)` | 纯谓词 | 自动档小节围栏块内出现 `--force`（正文说明合法，不计入） |
 | `template_two_uses_verdict(text)` | 纯谓词 | 模板二围栏块含 `similarity check` 与 `verdict` |
@@ -203,7 +203,7 @@ Revised: deepseek/deepseek-flash (selected) · deepseek/deepseek-flash (physical
 
 ## 10. v6 → v7 变更摘要（重新基线化，2026-10-27）
 
-#586（PR #587，v1.17.0）把 S2② 从「绝对阈值 0.5/0.65」换成「库内分位判定」，并新增契约测试 `tests/unit/test_session_dedup_skill_docs.py`，其中断言三份 SKILL.md 中 `--mode semantic` 出现次数为 0、且不得出现 `0.5–0.65`。v6 的模板二正是按旧写法设计的，直接实现会与既有契约测试冲突。本版据此重写：
+变更来源 #586（PR #587，v1.17.0）把 S2② 从「绝对阈值 0.5/0.65」换成「库内分位判定」，并新增契约测试 `tests/unit/test_session_dedup_skill_docs.py`，其中断言三份 SKILL.md 中 `--mode semantic` 出现次数为 0、且不得出现 `0.5–0.65`。v6 的模板二正是按旧写法设计的，直接实现会与既有契约测试冲突。本版据此重写：
 
 | 变更点 | v6 | v7 |
 |---|---|---|
