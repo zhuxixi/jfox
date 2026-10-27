@@ -165,6 +165,41 @@ def _print_embed_refusal(output_format: str, context: str):
         print(f"✗ {hint}", file=sys.stderr)
 
 
+def _status_backend_payload(local: dict, daemon_info: Optional[dict]) -> dict:
+    """#363 组装 status 的 backend 块（纯函数，json/yaml/table 三态共用）。
+
+    daemon 在跑时它就是 embedding 的真实服务方，用其自报值覆盖本地快照；
+    否则退回进程内 backend 快照，并用 source 标明可信度。
+    """
+    if daemon_info is not None:
+        return {
+            "type": daemon_info.get("device") or "unknown",
+            "model": daemon_info.get("model") or "unknown",
+            "dimension": daemon_info.get("dimension"),
+            "source": "daemon",
+        }
+
+    device = local.get("type") or "unknown"
+    if local.get("loaded"):
+        return {
+            "type": device,
+            "model": local.get("model"),
+            "dimension": local.get("dimension"),
+            "source": "local",
+        }
+    return {
+        "type": device,
+        "model": local.get("model") or "auto (未加载)",
+        "dimension": None,
+        "source": "unloaded",
+    }
+
+
+def _display_dimension(value: Optional[int]) -> str:
+    """维度显示：None→unknown；0 与正整数照常显示（degraded daemon 上报 0）。"""
+    return "unknown" if value is None else str(value)
+
+
 def _index_status_payload(vs_stats: dict, bm25_stats: dict, state: Optional[dict]) -> dict:
     """#539 组装 index status 输出（纯函数，JSON/table 两态共用取数源）。"""
     return {
