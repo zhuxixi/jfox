@@ -94,3 +94,12 @@ def uses_jq(text: str) -> bool:
 
 def test_pi_skill_has_no_jq_dependency():
     assert not uses_jq(_read(SKILL_PI))
+
+
+def test_templates_shell_quote_user_text():
+    """用户文本（标题/摘要/标签）必须经单引号包裹，否则 shell 会展开 $() 与反引号。"""
+    text = _read(SKILL_PI)
+    for heading in ("### 模板一", "### 模板二"):
+        blocks = "\n".join(_fenced_blocks(_section(text, heading)))
+        assert "shq(" in blocks, f"{heading}: missing shell-quote helper"
+        assert "JSON.stringify" not in blocks, f"{heading}: raw JSON.stringify in shell command"

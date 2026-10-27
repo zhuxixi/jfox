@@ -341,15 +341,18 @@ const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
   (e) => ({ error: String(e).slice(0, 200) }),
 );
 
+// 摘要/标题是用户文本：必须走单引号包裹，否则 $() 与反引号会被 shell 展开
+const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
 const rows = await Promise.all(candidates.map(async (c) => {
   const [hits, sim, pending] = await Promise.all([
     // 不加 --type：structure 笔记也要能被看见（MOC 信号来源）
-    run(`jfox search ${JSON.stringify(c.summary)} --top 10 --json`),
+    run(`jfox search ${shq(c.summary)} --top 10 --json`),
     run(
-      `jfox similarity check --title ${JSON.stringify(c.title)} ` +
-        `--content ${JSON.stringify(c.summary)} --json`,
+      `jfox similarity check --title ${shq(c.title)} ` +
+        `--content ${shq(c.summary)} --json`,
     ),
-    run(`jfox search ${JSON.stringify(c.summary)} --type candidate --json`),
+    run(`jfox search ${shq(c.summary)} --type candidate --json`),
   ]);
   const results = hits.results || [];
   return {
@@ -385,13 +388,16 @@ const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
   (e) => ({ error: String(e).slice(0, 200) }),
 );
 
+// 标题/标签是用户文本：必须走单引号包裹，否则 $() 与反引号会被 shell 展开
+const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+
 const outcomes = await Promise.all(drafts.map(async (d, i) => {
   const path = `/tmp/codemode-draft-${i}.md`;
   // 顺序固定：先落盘，similarity check 才有文件可读
   await tools.write({ path, content: d.body });
 
   const sim = await run(
-    `jfox similarity check --title ${JSON.stringify(d.title)} --content-file ${path} --json`,
+    `jfox similarity check --title ${shq(d.title)} --content-file ${path} --json`,
   );
   const verdict = sim.verdict;
   if (verdict === "gray" || verdict === "covered") {
@@ -407,8 +413,8 @@ const outcomes = await Promise.all(drafts.map(async (d, i) => {
   }
 
   const added = await run(
-    `jfox add --content-file ${path} --title ${JSON.stringify(d.title)} --type permanent ` +
-      `--tag auto-distilled --tag ${JSON.stringify(d.topicTag)} --json`,
+    `jfox add --content-file ${path} --title ${shq(d.title)} --type permanent ` +
+      `--tag auto-distilled --tag ${shq(d.topicTag)} --json`,
   );
   if (added.success) {
     return { title: d.title, outcome: "added", note_id: added.id, verdict };
