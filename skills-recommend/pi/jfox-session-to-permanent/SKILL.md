@@ -327,11 +327,112 @@ jfox moc add-member <MOC_ID> <NEW_NOTE_ID> --json
 
 ### 模板一：批量去重查询（Step 2）
 
-<JS 模板，见 Task 2>
+把候选列表内联进脚本，一次拿到每条候选的 permanent 命中、`similarity check` 判定、pending candidate 与 MOC 信号（`metadata.type == "structure"` 的命中）；不输出 `document`、`baseline`、`matches` 全量，分档仍由模型按 Step 2 判定表完成。
+
+```js
+// @options: {"max_output_tokens": 6000, "timeout_ms": 180000}
+const candidates = [
+  { title: "候选标题", summary: "一句话摘要" },
+];
+
+const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
+  (r) => JSON.parse(r.output),
+  (e) => ({ error: String(e).slice(0, 200) }),
+);
+
+const rows = await Promise.all(candidates.map(async (c) => {
+  const [hits, sim, pending] = await Promise.all([
+    // 不加 --type：structure 笔记也要能被看见（MOC 信号来源）
+    run(`jfox search ${JSON.stringify(c.summary)} --top 10 --json`),
+    run(
+      `jfox similarity check --title ${JSON.stringify(c.title)} ` +
+        `--content ${JSON.stringify(c.summary)} --json`,
+    ),
+    run(`jfox search ${JSON.stringify(c.summary)} --type candidate --json`),
+  ]);
+  const results = hits.results || [];
+  return {
+    title: c.title,
+    permanent_hits: results
+      .filter((r) => r.metadata.type === "permanent")
+      .map((r) => ({ id: r.id, title: r.metadata.title })),
+    moc_signals: results
+      .filter((r) => r.metadata.type === "structure")
+      .map((r) => ({ id: r.id, title: r.metadata.title })),
+    verdict: sim.verdict,
+    top1: sim.top1,
+    pending_candidates: (pending.results || []).map((r) => r.metadata.title),
+    error: hits.error || sim.error || pending.error || null,
+  };
+}));
+return rows;
+```
 
 ### 模板二：自动档原子落库（Step 5，仅高确信 + 已授权）
 
-<JS 模板，见 Task 2>
+每条候选内部严格按「写盘 → `similarity check` → 读 `verdict` → `add`」执行，候选之间并行；脚本只消费 `verdict`，不内嵌任何判定阈值或分档规则。
+
+```js
+// @options: {"max_output_tokens": 6000, "timeout_ms": 180000}
+// 防重闸门：不追加任何强制覆盖参数；add 返回 duplicate 即降级人工
+const drafts = [
+  { title: "笔记标题", body: "正文（含 [[链接]]）", topicTag: "主题标签" },
+];
+
+const run = (cmd) => tools.bash({ command: cmd, timeout: 150 }).then(
+  (r) => JSON.parse(r.output),
+  (e) => ({ error: String(e).slice(0, 200) }),
+);
+
+const outcomes = await Promise.all(drafts.map(async (d, i) => {
+  const path = `/tmp/codemode-draft-${i}.md`;
+  // 顺序固定：先落盘，similarity check 才有文件可读
+  await tools.write({ path, content: d.body });
+
+  const sim = await run(
+    `jfox similarity check --title ${JSON.stringify(d.title)} --content-file ${path} --json`,
+  );
+  const verdict = sim.verdict;
+  if (verdict === "gray" || verdict === "covered") {
+    return { title: d.title, outcome: "needs_manual", verdict };
+  }
+  if (verdict !== "new") {
+    return {
+      title: d.title,
+      outcome: "signal_missing",
+      verdict: verdict || null,
+      reason: sim.unavailable_reason || sim.error || "no verdict",
+    };
+  }
+
+  const added = await run(
+    `jfox add --content-file ${path} --title ${JSON.stringify(d.title)} --type permanent ` +
+      `--tag auto-distilled --tag ${JSON.stringify(d.topicTag)} --json`,
+  );
+  if (added.success) {
+    return { title: d.title, outcome: "added", note_id: added.id, verdict };
+  }
+  if (added.skipped === "duplicate") {
+    return {
+      title: d.title,
+      outcome: "duplicate",
+      matched_id: added.duplicate?.matched_id,
+      verdict,
+    };
+  }
+  return { title: d.title, outcome: "error", reason: added.error || "unknown", verdict };
+}));
+return outcomes;
+```
+
+### verdict 到结局的映射
+
+| `similarity check` 返回 | 模板二动作 | 结局 |
+|------|------|------|
+| `verdict=new` | 继续 `jfox add`（无 `--force`） | `added` 或 `duplicate` |
+| `verdict=gray` / `verdict=covered` | 不写入 | `needs_manual` |
+| `verdict=unavailable` / 无 `verdict` 字段 / 非零退出 | 不写入（fail-closed） | `signal_missing` |
+| `jfox add` 返 `skipped: duplicate` | 不重试 | `duplicate`（带 `matched_id`） |
 
 ## 命令参考
 
