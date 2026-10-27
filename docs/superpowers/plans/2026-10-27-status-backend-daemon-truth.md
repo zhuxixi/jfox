@@ -25,10 +25,12 @@
 ### Task 1: 纯函数 `_status_backend_payload` + `_display_dimension`（A1、A8）
 
 **Files:**
+
 - Modify: `jfox/cli.py`（在 `_index_status_payload` 附近新增两个模块级函数，约 168 行前）
 - Test: `tests/unit/test_status_backend_payload.py`（新建）
 
 **Interfaces:**
+
 - Produces:
   - `_status_backend_payload(local: dict, daemon_info: Optional[dict]) -> dict`
     - `local` 键：`type: str`（`backend.resolved_device`）、`model: Optional[str]`（`backend.model_name`）、`loaded: bool`（`backend.model is not None`）、`dimension: int`
@@ -202,11 +204,13 @@ git commit -m "feat(status): add _status_backend_payload pure function for daemo
 ### Task 2: `get_daemon_status()` 维度兜底改 None + 两处显示点判空（A7、A9）
 
 **Files:**
+
 - Modify: `jfox/daemon/process.py:444`（`"dimension": health.get("dimension", 512)`）
 - Modify: `jfox/cli.py:3703`（`_print_daemon_status`）、`jfox/cli.py:3821`（`daemon status` 分支）
 - Test: `tests/unit/test_daemon_process.py`（新增 `TestGetDaemonStatus`）、`tests/unit/test_daemon_cli.py`（新增 `TestDaemonStatusDimensionDisplay`）
 
 **Interfaces:**
+
 - Produces: `get_daemon_status()["dimension"]` 类型为 `Optional[int]`（缺键时 `None`，不再伪造 512）。下游只有两处 table 显示点，均在本 task 内改完。
 
 - [ ] **Step 1: Write the failing tests**
@@ -333,10 +337,12 @@ git commit -m "fix(daemon): stop fabricating dimension 512 when /health omits it
 ### Task 3: `_status_impl` 接线三格式共用 payload（A2、A3、A4）
 
 **Files:**
+
 - Modify: `jfox/cli.py:1233-1248`（取数）、`jfox/cli.py:1283-1285`（table 三行）
 - Test: `tests/unit/test_status_daemon_source.py`（新建）
 
 **Interfaces:**
+
 - Consumes: `_status_backend_payload`、`_display_dimension`（Task 1）、`get_daemon_status() -> Optional[dict]`（Task 2）
 - Produces: `jfox status` 的 `backend` 块 = payload；table 新增 `Backend Source` 行
 
@@ -505,10 +511,12 @@ git commit -m "fix(status): read backend state from daemon health instead of laz
 ### Task 4: schema 文档同步 + 静态防漂移测试（A5）
 
 **Files:**
+
 - Modify: `docs/json-schemas.md:45`（status 行）、`docs/json-schemas.md:166-175`（破坏性变更表）
 - Test: `tests/unit/test_json_schema_contract_doc.py`（追加两条）
 
 **Interfaces:**
+
 - Consumes: `backend{type,model,dimension,source}` 字段集（Task 1/3）
 
 - [ ] **Step 1: Write the failing tests**
@@ -570,31 +578,37 @@ git commit -m "docs(schema): document status backend.source and nullable dimensi
 - [ ] **Step 1: 跑相关测试子集**
 
 Run:
+
 ```bash
 uv run pytest tests/unit/test_status_backend_payload.py tests/unit/test_status_daemon_source.py \
   tests/unit/test_daemon_process.py tests/unit/test_daemon_cli.py \
   tests/unit/test_json_schema_contract_doc.py tests/test_cli_format.py \
   tests/test_json_schema_contract.py -q
 ```
+
 Expected: 全绿
 
 - [ ] **Step 2: 格式检查**
 
 Run:
+
 ```bash
 uv run black --check jfox/cli.py jfox/daemon/process.py tests/unit/test_status_backend_payload.py tests/unit/test_status_daemon_source.py tests/unit/test_daemon_process.py tests/unit/test_daemon_cli.py tests/unit/test_json_schema_contract_doc.py
 uv run ruff check jfox/cli.py jfox/daemon/process.py tests/unit/
 npx --yes markdownlint-cli2 docs/superpowers/specs/2026-10-27-status-backend-daemon-truth-design.md docs/superpowers/plans/2026-10-27-status-backend-daemon-truth.md docs/json-schemas.md
 ```
+
 Expected: 全绿（black 需要格式化则先 `uv run black <files>` 再重跑）
 
 - [ ] **Step 3: 真机冒烟（实现者自测，替代部分 U1）**
 
 Run（worktree 内）:
+
 ```bash
 uv run jfox status --json | python3 -c "import json,sys; print(json.load(sys.stdin)['backend'])"
 uv run jfox daemon status
 ```
+
 Expected: 若本机 daemon 在跑，两命令的 model / dimension / device 一致且 `source == "daemon"`；若未跑，`source == "unloaded"` 且 `dimension` 为 `None`。**这是实现者自测，U1/U2 仍需用户在合入后的构建上确认。**
 
 - [ ] **Step 4: Commit（如有格式化改动）**
@@ -610,15 +624,15 @@ git commit -m "style: black formatting for #363 changes"
 
 | 验收 ID | 对应 Task | 结果 |
 |---|---|---|
-| A1 纯函数三态 | Task 1 | 待填 |
-| A2 三格式一致 | Task 3 | 待填 |
-| A3 无 daemon 不伪造 | Task 3 | 待填 |
-| A4 daemon 值不被遮蔽 | Task 3 | 待填 |
-| A5 schema 防漂移 | Task 4 | 待填 |
-| A6 无回归 | Task 5 | 待填 |
-| A7 get_daemon_status 本体 | Task 2 | 待填 |
-| A8 degraded 透传 | Task 1 | 待填 |
-| A9 维度显示 | Task 2 | 待填 |
-| U1 真 daemon 一致 | 用户实测 | pending |
-| U2 停 daemon 退化可读 | 用户实测 | pending |
-| U3 KB 笔记回写 | 用户授权后 | pending |
+| A1 纯函数三态 | Task 1 | ✅ 10 passed（`test_status_backend_payload.py`） |
+| A2 三格式一致 | Task 3 | ✅ 6 passed（`test_status_daemon_source.py`：json / yaml / table） |
+| A3 无 daemon 不伪造 | Task 3 | ✅ `source=unloaded`、`dimension=None`、table 无 `512` |
+| A4 daemon 值不被遮蔽 | Task 3 | ✅ `model != "auto (未加载)"` |
+| A5 schema 防漂移 | Task 4 | ✅ 4 passed + markdownlint 0 issue |
+| A6 无回归 | Task 5 | ✅ 103 passed / 4 skipped（Windows-only） |
+| A7 get_daemon_status 本体 | Task 2 | ✅ 3 passed（组装 / 失败清 pid / 缺键 None） |
+| A8 degraded 透传 | Task 1 | ✅ `dimension=0` 原样透传 |
+| A9 维度显示 | Task 2 | ✅ 2 passed（None→unknown、0→0） |
+| U1 真 daemon 一致 | 用户实测 | ⏳ pending（实现者冒烟已过：`backend={type:cuda, model:BAAI/bge-m3, dimension:1024, source:daemon}` 与 `daemon status` 一致） |
+| U2 停 daemon 退化可读 | 用户实测 | ⏳ pending |
+| U3 KB 笔记回写 | 用户授权后 | ⏳ pending（写 KB 需用户显式授权） |
