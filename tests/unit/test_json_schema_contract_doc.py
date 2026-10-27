@@ -14,3 +14,9 @@ def test_index_status_fields_documented():
 def test_index_status_dead_fields_removed_from_doc():
     text = DOC.read_text(encoding="utf-8")
     assert "success, total_indexed, last_indexed, pending_changes, vector_store" not in text
+
+
+def test_edit_link_fields_documented():
+    text = DOC.read_text(encoding="utf-8")
+    assert "note{id,title,type,filepath,links,backlinks}" in text
+    assert "`links_added[], links_removed[]`（恒有，可为空数组）" in text

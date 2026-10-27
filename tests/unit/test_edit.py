@@ -5,6 +5,7 @@
 依赖要求: 无外部依赖
 """
 
+import json
 import time
 
 import pytest
@@ -552,3 +553,245 @@ class TestEditImpl:
         loaded = load_note_by_id(n.id, cfg=cfg)
         assert loaded is not None
         assert loaded.content == ""
+
+
+class TestEditJSONLinks:
+    """#577：edit --json 输出 links/backlinks 与本次边差异。"""
+
+    def _make_config(self, tmp_path):
+        cfg = ZKConfig(base_dir=tmp_path)
+        cfg.ensure_dirs()
+        return cfg
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_added(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        target = create_note("target", title="LinkTarget", note_type=NoteType.PERMANENT)
+        save_note(target, add_to_index=False)
+        source = create_note("no links yet", title="LinkSource", note_type=NoteType.PERMANENT)
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content=f"see [[{target.id}|LinkTarget]] twice [[{target.id}|LinkTarget]]",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["note"]["links"] == [target.id]
+        assert data["note"]["backlinks"] == []
+        # duplicate [[...]] collapses: no repeated id in the delta
+        assert data["links_added"] == [target.id]
+        assert data["links_removed"] == []
+        # existing side effect must survive: the target gains the backlink
+        target_loaded = load_note_by_id(target.id, cfg=cfg)
+        assert source.id in target_loaded.backlinks
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_self_link_ignored(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        source = create_note("no links yet", title="SelfLink", note_type=NoteType.PERMANENT)
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content=f"self reference [[{source.id}|SelfLink]]",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["note"]["links"] == []
+        assert data["links_added"] == []
+        assert data["links_removed"] == []
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_removed(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        target = create_note("target", title="DropTarget", note_type=NoteType.PERMANENT)
+        save_note(target, add_to_index=False)
+        source = create_note(
+            f"links [[{target.id}|DropTarget]]",
+            title="DropSource",
+            note_type=NoteType.PERMANENT,
+            links=[target.id],
+        )
+        save_note(source, add_to_index=False)
+        target.backlinks.append(source.id)
+        save_note(target, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content="no more links",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["note"]["links"] == []
+        assert data["links_added"] == []
+        assert data["links_removed"] == [target.id]
+        # the existing side effect must survive: target loses the backlink
+        target_loaded = load_note_by_id(target.id, cfg=cfg)
+        assert source.id not in target_loaded.backlinks
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_title_only_unchanged(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        keep = create_note("keep", title="KeepTarget", note_type=NoteType.PERMANENT)
+        save_note(keep, add_to_index=False)
+        source = create_note(
+            f"links [[{keep.id}|KeepTarget]]",
+            title="TitleOnly",
+            note_type=NoteType.PERMANENT,
+            links=[keep.id],
+        )
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content=None,
+            content_file=None,
+            title="TitleOnlyRenamed",
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        # keys must exist even when content was not touched
+        assert data["note"]["links"] == [keep.id]
+        assert data["note"]["backlinks"] == []
+        assert data["links_added"] == []
+        assert data["links_removed"] == []
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_removed_order_multi(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        t1 = create_note("target one", title="OrderTargetOne", note_type=NoteType.PERMANENT)
+        save_note(t1, add_to_index=False)
+        t2 = create_note("target two", title="OrderTargetTwo", note_type=NoteType.PERMANENT)
+        save_note(t2, add_to_index=False)
+        source = create_note(
+            f"links [[{t1.id}|OrderTargetOne]] [[{t2.id}|OrderTargetTwo]]",
+            title="OrderSource",
+            note_type=NoteType.PERMANENT,
+            links=[t1.id, t2.id],
+        )
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content="no more links",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["links_added"] == []
+        # pre-edit order, not set iteration order
+        assert data["links_removed"] == [t1.id, t2.id]
+
+    @patch("jfox.vector_store.get_vector_store")
+    @patch("jfox.note.config")
+    @patch("jfox.config.config")
+    def test_edit_json_links_added_order_multi(
+        self, mock_global_config, mock_note_config, mock_vs, tmp_path, capsys
+    ):
+        from jfox.cli import _edit_impl
+
+        cfg = self._make_config(tmp_path)
+        mock_global_config.notes_dir = cfg.notes_dir
+        mock_note_config.notes_dir = cfg.notes_dir
+        mock_vs.return_value.last_embed_warning = None
+
+        t1 = create_note("target one", title="AddTargetOne", note_type=NoteType.PERMANENT)
+        save_note(t1, add_to_index=False)
+        t2 = create_note("target two", title="AddTargetTwo", note_type=NoteType.PERMANENT)
+        save_note(t2, add_to_index=False)
+        source = create_note("no links yet", title="AddSource", note_type=NoteType.PERMANENT)
+        save_note(source, add_to_index=False)
+
+        _edit_impl(
+            note_id=source.id,
+            content=f"first [[{t2.id}|AddTargetTwo]] then [[{t1.id}|AddTargetOne]]",
+            content_file=None,
+            title=None,
+            tags=None,
+            note_type=None,
+            source=None,
+            output_format="json",
+        )
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["note"]["links"] == [t2.id, t1.id]
+        assert data["links_added"] == [t2.id, t1.id]
+        assert data["links_removed"] == []

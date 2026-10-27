@@ -48,7 +48,7 @@ else:
 | `refs` | 默认：`success, notes[]`；`--search`：`success, query, matches[]`；`--note`：`success, note{id,title,type}, forward_links[], backward_links[]`（悬空项带 `dangling:true`） | 分支各异 | `{success, error}` |
 | `delete` | `success, deleted, title` | 平铺 | 入链守卫：`{success, error, references{frontmatter[],body[],total}}`；其余 `{success, error}` |
 | `archive` / `unarchive` | `success, archived`/`unarchived`, `title` | 平铺 | `{success, error}` |
-| `edit` | `success, note{id,title,type,filepath}` + 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时） | 嵌套 `note` | `{success, error}` |
+| `edit` | `success, note{id,title,type,filepath,links,backlinks}` + `links_added[], links_removed[]`（恒有，可为空数组） + 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时） | 嵌套 `note` | `{success, error}` |
 | `query` | `success, query, semantic_results, effective_mode, results[]` + 可选 `warnings[]`（#519 降级时 `effective_mode:"keyword"`） | 列表 `results` | `{success, error}` |
 | `graph` | `--stats`：`success, total_nodes, total_edges, avg_degree, isolated_nodes, clusters, top_hubs[]`；`--orphans`：`success, orphans[]`；`--note`：`success, note_id, title, related[]` | 分支各异 | `{success, error}` |
 | `daily` | `success, date, total, notes[]` | 列表 `notes` | `{success, error}` |

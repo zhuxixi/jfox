@@ -85,6 +85,21 @@ class TestAlreadyCompliantSmoke:
         assert data["id"] == data["note"]["id"]
         assert data["title"] == data["note"]["title"]
 
+    def test_edit_link_fields_shape(self, cli):
+        created = _run_json(cli, "add", "契约编辑前置正文", "--title", "Contract-Edit-Links")
+        note_id = assert_json_shape(created.stdout, True)["note"]["id"]
+
+        edited = _run_json(cli, "edit", note_id, "--content", "契约编辑正文")
+        data = assert_json_shape(edited.stdout, True)
+
+        for key in ("links", "backlinks"):
+            assert isinstance(data["note"][key], list), f"note.{key} must be a list"
+        for key in ("links_added", "links_removed"):
+            assert isinstance(data[key], list), f"{key} must be a list"
+
+        shown = assert_json_shape(_run_json(cli, "show", note_id).stdout, True)
+        assert data["note"]["links"] == shown["links"]
+
 
 class TestContractList:
     """Every entry: (id, cmd-args-after-'jfox', needs_existing_note).
@@ -139,6 +154,7 @@ class TestContractList:
             False,
         ),
         ("check", ["check"], False),
+        ("edit", ["edit", "{note_id}", "--content", "契约编辑正文"], True),
         # --- Task 3: index/kb ---
         ("index-status", ["index", "status"], False),
         ("index-bm25-status", ["index", "bm25-status"], False),
