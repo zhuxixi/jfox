@@ -228,3 +228,23 @@ def use_kb(kb_name: Optional[str] = None):
 
         # 重置单例，下次访问会用恢复后的配置重建
         _reset_singletons()
+
+
+def current_kb_name() -> str:
+    """返回当前生效知识库的注册名（#584）。
+
+    优先级：按 active base_dir 在注册表中反查 > JFOX_KB > 目录名。
+    反查可正确处理目录名为 ``kb`` 的自定义路径（测试库形态
+    ``zk_test_xxx/kb``）。
+    """
+    base = Path(config.base_dir).resolve()
+    env_kb = os.environ.get("JFOX_KB", "").strip()
+    try:
+        from .kb_manager import get_kb_manager
+
+        for entry in get_kb_manager().config_manager.list_knowledge_bases():
+            if Path(entry.path).resolve() == base:
+                return entry.name
+    except Exception:
+        logger.warning("current_kb_name: KB registry lookup failed", exc_info=True)
+    return env_kb or base.name

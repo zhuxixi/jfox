@@ -36,7 +36,7 @@ from rich.tree import Tree
 
 from . import __version__, note
 from .add_dedup import DuplicateNoteError
-from .config import config
+from .config import config, current_kb_name
 from .kb_manager import get_kb_manager
 from .models import NoteType
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
@@ -587,6 +587,7 @@ def _add_note_impl(
     agent: Optional[str] = None,
     session_path: Optional[str] = None,
     agent_model: Optional[str] = None,
+    kb_explicit: bool = False,  # #584：调用方是否显式指定 --kb（末位带默认值，兼容既有位置调用）
 ):
     """添加笔记的内部实现"""
     # 如果指定了模板，使用模板渲染
@@ -652,6 +653,11 @@ def _add_note_impl(
     session_file = resolve_session_path(session_path) if session_path is not None else None
     if agent_model is not None:
         agent_model = agent_model.strip() or None
+
+    # #584：未显式 --kb 却落在测试库时告警（走 logging/stderr，不污染 stdout JSON）
+    kb_name = current_kb_name()
+    if not kb_explicit and kb_name.startswith(("test_", "zk_test_")):
+        logger.warning("写入测试知识库 %s 且未显式指定 --kb；如非测试请检查 current KB", kb_name)
 
     # 创建笔记
     new_note = note.create_note(
@@ -759,6 +765,7 @@ def _add_note_impl(
             "success": True,
             "id": new_note.id,  # 顶层快捷字段（#502 C3），与 note.id 同值
             "title": new_note.title,  # 顶层快捷字段（#502 C3），与 note.title 同值
+            "kb": current_kb_name(),  # #584：实际写入库名
             "note": {
                 "id": new_note.id,
                 "title": new_note.title,
@@ -902,7 +909,11 @@ def add(
 
         from .config import use_kb
 
+        # #584：在 use_kb 上下文内捕获实际库名（with 退出即恢复 base_dir，
+        # except 分支里再调 current_kb_name() 会解析回原库）
+        active_kb: Optional[str] = None
         with use_kb(kb):
+            active_kb = current_kb_name()
             _add_note_impl(
                 content,
                 title,
@@ -916,6 +927,7 @@ def add(
                 agent,
                 session_path,
                 agent_model,
+                kb_explicit=bool(kb),
             )
 
     except typer.Exit:
@@ -928,7 +940,16 @@ def add(
             "score": e.score,
         }
         if output_format == "json":
-            print(output_json({"success": False, "skipped": "duplicate", "duplicate": dup_info}))
+            print(
+                output_json(
+                    {
+                        "success": False,
+                        "skipped": "duplicate",
+                        "duplicate": dup_info,
+                        "kb": active_kb or current_kb_name(),  # #584：实际目标库名
+                    }
+                )
+            )
         else:
             console.print(
                 f"[yellow]⚠[/yellow] 已存在重复笔记（{e.matched_by}）："
@@ -2055,6 +2076,7 @@ def _edit_impl(
     source: Optional[str],
     output_format: str,
     topic: Optional[str] = None,
+    kb_explicit: bool = False,  # #584：调用方是否显式指定 --kb（末位带默认值，兼容既有调用）
 ):
     """编辑笔记的内部实现"""
     # 验证：--content 和 --content-file 互斥
@@ -2109,6 +2131,11 @@ def _edit_impl(
     else:
         unresolved = []
 
+    # #584：未显式 --kb 却落在测试库时告警（走 logging/stderr，不污染 stdout JSON）
+    kb_name = current_kb_name()
+    if not kb_explicit and kb_name.startswith(("test_", "zk_test_")):
+        logger.warning("写入测试知识库 %s 且未显式指定 --kb；如非测试请检查 current KB", kb_name)
+
     # 保存更新
     if note.update_note(n):
         # 更新反向链接
@@ -2132,6 +2159,7 @@ def _edit_impl(
 
         result = {
             "success": True,
+            "kb": current_kb_name(),  # #584：实际写入库名
             "note": {
                 "id": n.id,
                 "title": n.title,
@@ -2218,7 +2246,16 @@ def edit(
 
         with use_kb(kb):
             _edit_impl(
-                note_id, content, content_file, title, tags, note_type, source, output_format, topic
+                note_id,
+                content,
+                content_file,
+                title,
+                tags,
+                note_type,
+                source,
+                output_format,
+                topic,
+                kb_explicit=bool(kb),
             )
     except typer.Exit:
         raise
