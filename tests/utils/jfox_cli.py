@@ -158,7 +158,8 @@ class ZKCLI:
 
     def init(self) -> CLIResult:
         """初始化知识库并注册"""
-        result = self._run("init")
+        # #584 P1 后 init 对非 default 库不再切 current，测试依赖 current 指向测试库，必须显式 --default
+        result = self._run("init", "--default")
         if result.success:
             self._initialized = True
         return result

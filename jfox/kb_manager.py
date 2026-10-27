@@ -22,6 +22,17 @@ from .global_config import (
 logger = logging.getLogger(__name__)
 
 
+def should_switch_default(name: str, explicit_default: Optional[bool]) -> bool:
+    """决定 `jfox init` 创建知识库后是否切换全局 current 指针（#584）。
+
+    规则：显式 --default / --no-default 优先；未显式指定时，仅规范库
+    ``default`` 切换指针。防止临时库（测试/复现脚本）创建即劫持路由。
+    """
+    if explicit_default is not None:
+        return explicit_default
+    return name == DEFAULT_KB_NAME
+
+
 @dataclass
 class KBStats:
     """知识库统计信息"""

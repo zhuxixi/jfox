@@ -190,7 +190,11 @@ def init(
         None, "--path", "-p", help="知识库路径（默认: ~/.zettelkasten/<name>/）"
     ),
     description: Optional[str] = typer.Option(None, "--desc", "-d", help="知识库描述"),
-    set_default: bool = typer.Option(True, "--default/--no-default", help="设为默认知识库"),
+    set_default: Optional[bool] = typer.Option(
+        None,
+        "--default/--no-default",
+        help="设为默认知识库（默认：仅 default 库切换当前指针）",
+    ),
     output_format: str = typer.Option("table", "--format", "-f", help="输出格式: json, table"),
     json_output: bool = typer.Option(
         False, "--json", help="JSON 输出（快捷方式，等同于 --format json）"
@@ -252,9 +256,14 @@ def init(
                     console.print(f"[red]✗[/red] {result['error']}")
                 raise typer.Exit(1)
 
+        # 决定是否切换全局 current 指针（#584：显式 flag 优先，未指定时仅 default 库切换）
+        from .kb_manager import should_switch_default
+
+        switch_default = should_switch_default(kb_name, set_default)
+
         # 创建知识库
         success, message = manager.create(
-            name=kb_name, path=path_obj, description=description, set_as_default=set_default
+            name=kb_name, path=path_obj, description=description, set_as_default=switch_default
         )
 
         if success:
@@ -273,7 +282,7 @@ def init(
                         "KB": kb_name,
                     },
                 )
-                if set_default:
+                if switch_default:
                     console.print("[dim]  This is now your default knowledge base[/dim]")
         else:
             result = {
