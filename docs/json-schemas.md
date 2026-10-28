@@ -40,7 +40,7 @@ else:
 | 命令 | 成功顶层字段 | 实体位置 | 失败形状 |
 |------|--------------|----------|----------|
 | `init` | `success, message, name` | 平铺 | `{success, error}` |
-| `add` | `success, id, title, kb, note{id,title,type,filepath,links}`（`kb` 为实际写入的注册库名，string，#584）+ 可选 `agent,session_file,agent_model`（#578）+ 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}, kb}`（`kb` 为实际目标注册库名，#584）；其余 `{success, error}` |
+| `add` | `success, id, title, kb, note{id,title,type,filepath,links}`（`kb` 为实际写入的注册库名，string，#584）+ 可选 `agent,session_file,agent_model`（#578）+ 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示）+ 可选 `kb_warning`（#584：未显式指定 `--kb`/`JFOX_KB` 而落在测试库时的告警文案，string；`--json` 下 logger 被静默，仅此字段可见） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}, kb}`（`kb` 为实际目标注册库名，#584）；其余 `{success, error}` |
 | `search` | `success, query, mode, include_archived, total, results[]` + 可选 `warnings[]`（#519 降级时） | 列表 `results` | `{success, error}`；`--mode semantic` 且无语义服务时拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
 | `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension}, embedding{local_package,daemon_running,service_available}`（#519 可用性块） | 嵌套三段 | `{success, error}` |
 | `list` | `success, total, notes[]`（项含 `outgoing,incoming`） | 列表 `notes` | `{success, error}` |
@@ -48,7 +48,7 @@ else:
 | `refs` | 默认：`success, notes[]`；`--search`：`success, query, matches[]`；`--note`：`success, note{id,title,type}, forward_links[], backward_links[]`（悬空项带 `dangling:true`） | 分支各异 | `{success, error}` |
 | `delete` | `success, deleted, title` | 平铺 | 入链守卫：`{success, error, references{frontmatter[],body[],total}}`；其余 `{success, error}` |
 | `archive` / `unarchive` | `success, archived`/`unarchived`, `title` | 平铺 | `{success, error}` |
-| `edit` | `success, kb, note{id,title,type,filepath}`（`kb` 为实际写入的注册库名，string，#584）+ 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时） | 嵌套 `note` | `{success, error}` |
+| `edit` | `success, kb, note{id,title,type,filepath}`（`kb` 为实际写入的注册库名，string，#584）+ 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时）+ 可选 `kb_warning`（#584：未显式指定 `--kb`/`JFOX_KB` 而落在测试库时的告警文案，string） | 嵌套 `note` | `{success, error}` |
 | `query` | `success, query, semantic_results, effective_mode, results[]` + 可选 `warnings[]`（#519 降级时 `effective_mode:"keyword"`） | 列表 `results` | `{success, error}` |
 | `graph` | `--stats`：`success, total_nodes, total_edges, avg_degree, isolated_nodes, clusters, top_hubs[]`；`--orphans`：`success, orphans[]`；`--note`：`success, note_id, title, related[]` | 分支各异 | `{success, error}` |
 | `daily` | `success, date, total, notes[]` | 列表 `notes` | `{success, error}` |

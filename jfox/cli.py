@@ -37,6 +37,7 @@ from rich.tree import Tree
 from . import __version__, note
 from .add_dedup import DuplicateNoteError
 from .config import config, current_kb_name
+from .global_config import TEST_KB_PREFIXES
 from .kb_manager import get_kb_manager
 from .models import NoteType
 from .template import TemplateManager, TemplateNotFoundError, TemplateRenderError
@@ -574,6 +575,22 @@ def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
     }
 
 
+def _test_kb_warning(kb_explicit: bool) -> Optional[str]:
+    """#584：未显式指定目标库却落在测试库时的告警文案；不命中返回 None。
+
+    显式指定指 --kb 或 JFOX_KB 环境变量任一存在（CR-A4：JFOX_KB 显式设置
+    同样视为用户明确选库，豁免告警）。文案去向由调用方决定：table 模式走
+    logger.warning（--json 下被入口 logging.disable 静默），JSON 模式并入
+    结果字段 ``kb_warning``（CR-B1：agent/自动化恰恰只能读 JSON）。
+    """
+    if kb_explicit or os.environ.get("JFOX_KB", "").strip():
+        return None
+    kb_name = current_kb_name()
+    if kb_name.startswith(TEST_KB_PREFIXES):
+        return f"写入测试知识库 {kb_name} 且未显式指定 --kb；如非测试请检查 current KB"
+    return None
+
+
 def _add_note_impl(
     content: str,
     title: Optional[str],
@@ -654,10 +671,10 @@ def _add_note_impl(
     if agent_model is not None:
         agent_model = agent_model.strip() or None
 
-    # #584：未显式 --kb 却落在测试库时告警（走 logging/stderr，不污染 stdout JSON）
-    kb_name = current_kb_name()
-    if not kb_explicit and kb_name.startswith(("test_", "zk_test_")):
-        logger.warning("写入测试知识库 %s 且未显式指定 --kb；如非测试请检查 current KB", kb_name)
+    # #584：未显式 --kb/JFOX_KB 却落在测试库时告警；--json 下并入 kb_warning 字段
+    kb_warning = _test_kb_warning(kb_explicit)
+    if kb_warning:
+        logger.warning(kb_warning)
 
     # 创建笔记
     new_note = note.create_note(
@@ -783,6 +800,9 @@ def _add_note_impl(
 
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
+        if kb_warning:
+            # CR-B1：与 vector_dimension_warning 同型的条件字段，仅在命中时写入
+            result["kb_warning"] = kb_warning
         if failed_refs:
             result["backfill_failures"] = failed_refs
         if rollback_failures:
@@ -2131,10 +2151,10 @@ def _edit_impl(
     else:
         unresolved = []
 
-    # #584：未显式 --kb 却落在测试库时告警（走 logging/stderr，不污染 stdout JSON）
-    kb_name = current_kb_name()
-    if not kb_explicit and kb_name.startswith(("test_", "zk_test_")):
-        logger.warning("写入测试知识库 %s 且未显式指定 --kb；如非测试请检查 current KB", kb_name)
+    # #584：未显式 --kb/JFOX_KB 却落在测试库时告警；--json 下并入 kb_warning 字段
+    kb_warning = _test_kb_warning(kb_explicit)
+    if kb_warning:
+        logger.warning(kb_warning)
 
     # 保存更新
     if note.update_note(n):
@@ -2171,6 +2191,9 @@ def _edit_impl(
             result["title_changed"] = {"old": old_title, "new": n.title}
         if unresolved:
             result["warnings"] = f"Unresolved links: {', '.join(unresolved)}"
+        if kb_warning:
+            # CR-B1：与 add 成功 result 同型的条件字段，仅在命中时写入
+            result["kb_warning"] = kb_warning
 
         # #519 语义组件缺失提示（对齐 add 的 JSON 字段模式）
         from .vector_store import get_vector_store

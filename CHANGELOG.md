@@ -8,6 +8,7 @@ All notable changes to jfox-cli will be documented in this file.
 
 - **init**: `jfox init --name X` 不再自动切换 current 知识库；需要切换时显式加 `--default`（#584）
 - **cli**: `add`/`edit`/`candidates promote --json` 输出新增 `kb` 字段（实际写入的注册库名，string，向后兼容）（#584）
+- **cli**: `add`/`edit` `--json` 新增可选 `kb_warning` 字段（未显式指定 `--kb` 且落在测试库时的告警文案）；`JFOX_KB` 显式设置与 `--kb` 一样豁免告警（#584）
 
 [Unreleased]: https://github.com/zhuxixi/jfox/compare/v1.17.0...HEAD
 

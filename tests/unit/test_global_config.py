@@ -24,6 +24,7 @@ from jfox.global_config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_KB_NAME,
     DEFAULT_KB_PATH,
+    TEST_KB_PREFIXES,
     AutoSummaryConfig,
     BackupConfig,
     FragmentCaptureConfig,
@@ -1176,3 +1177,13 @@ class TestPickFallbackDefault:
 
     def test_dangling_default_when_only_test_kbs(self):
         assert pick_fallback_default(["test_a", "test_b"], "test_a") == "default"
+
+
+class TestTestKbPrefixes:
+    """#584 CR-A3：公开 TEST_KB_PREFIXES，保留 _TEST_KB_PREFIXES 别名不破坏既有引用。"""
+
+    def test_public_constant_shape(self):
+        assert TEST_KB_PREFIXES == ("test_", "zk_test_")
+
+    def test_private_alias_same_object(self):
+        assert gc._TEST_KB_PREFIXES is TEST_KB_PREFIXES

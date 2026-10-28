@@ -22,7 +22,10 @@ DEFAULT_CONFIG_PATH = Path(_config_path_env or (Path.home() / ".zk_config.json")
 DEFAULT_KB_NAME = "default"
 DEFAULT_KB_PATH = Path(os.environ.get("ZK_KB_ROOT", str(Path.home() / ".zettelkasten")))
 
-_TEST_KB_PREFIXES = ("test_", "zk_test_")
+# 测试知识库命名前缀（公开常量，#584 CR-A3：cli 告警判定等处共用，避免字面量漂移）
+TEST_KB_PREFIXES = ("test_", "zk_test_")
+# 向后兼容别名：保留既有引用不破坏
+_TEST_KB_PREFIXES = TEST_KB_PREFIXES
 
 
 def pick_fallback_default(names: Iterable[str], removed: str) -> Optional[str]:
@@ -38,7 +41,7 @@ def pick_fallback_default(names: Iterable[str], removed: str) -> Optional[str]:
     if DEFAULT_KB_NAME in remaining:
         return DEFAULT_KB_NAME
     for name in remaining:
-        if not name.startswith(_TEST_KB_PREFIXES):
+        if not name.startswith(TEST_KB_PREFIXES):
             return name
     return DEFAULT_KB_NAME
 
