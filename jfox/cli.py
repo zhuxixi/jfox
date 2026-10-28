@@ -165,6 +165,41 @@ def _print_embed_refusal(output_format: str, context: str):
         print(f"✗ {hint}", file=sys.stderr)
 
 
+def _status_backend_payload(local: dict, daemon_info: Optional[dict]) -> dict:
+    """#363 组装 status 的 backend 块（纯函数，json/yaml/table 三态共用）。
+
+    daemon 在跑时它就是 embedding 的真实服务方，用其自报值覆盖本地快照；
+    否则退回进程内 backend 快照，并用 source 标明可信度。
+    """
+    if daemon_info is not None:
+        return {
+            "type": daemon_info.get("device") or "unknown",
+            "model": daemon_info.get("model") or "unknown",
+            "dimension": daemon_info.get("dimension"),
+            "source": "daemon",
+        }
+
+    device = local.get("type") or "unknown"
+    if local.get("loaded"):
+        return {
+            "type": device,
+            "model": local.get("model"),
+            "dimension": local.get("dimension"),
+            "source": "local",
+        }
+    return {
+        "type": device,
+        "model": local.get("model") or "auto (未加载)",
+        "dimension": None,
+        "source": "unloaded",
+    }
+
+
+def _display_dimension(value: Optional[int]) -> str:
+    """维度显示：None→unknown；0 与正整数照常显示（degraded daemon 上报 0）。"""
+    return "unknown" if value is None else str(value)
+
+
 def _index_status_payload(vs_stats: dict, bm25_stats: dict, state: Optional[dict]) -> dict:
     """#539 组装 index status 输出（纯函数，JSON/table 两态共用取数源）。"""
     return {
@@ -1262,10 +1297,17 @@ def _status_impl(output_format: str, json_output: bool):
 
     stats = note.get_stats()
 
-    # 获取 NPU 状态
+    # #363 daemon 是 embedding 的真实服务方：在跑就用它的自报值，不再读本地兜底
+    from .daemon.process import get_daemon_status, is_daemon_running
     from .embedding_backend import get_backend
 
     backend = get_backend()
+    local = {
+        "type": backend.resolved_device,
+        "model": backend.model_name,
+        "loaded": backend.model is not None,
+        "dimension": backend.dimension,
+    }
 
     result = {
         "knowledge_base": {
@@ -1273,15 +1315,10 @@ def _status_impl(output_format: str, json_output: bool):
             "exists": config.base_dir.exists(),
         },
         "stats": stats,
-        "backend": {
-            "type": backend.resolved_device,
-            "model": backend.model_name or "auto (未加载)",
-            "dimension": backend.dimension,
-        },
+        "backend": _status_backend_payload(local, get_daemon_status()),
     }
 
     # #519 语义组件可用性（不触发模型加载）
-    from .daemon.process import is_daemon_running
     from .embedding_backend import (
         is_embedding_service_available,
         is_local_embed_available,
@@ -1313,9 +1350,10 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
         table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
         table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-        table.add_row("Backend", backend.resolved_device)
-        table.add_row("Model", backend.model_name or "auto (未加载)")
-        table.add_row("Dimension", str(backend.dimension))
+        table.add_row("Backend", result["backend"]["type"])
+        table.add_row("Model", result["backend"]["model"])
+        table.add_row("Dimension", _display_dimension(result["backend"]["dimension"]))
+        table.add_row("Backend Source", result["backend"]["source"])
         table.add_row(
             "Embed Component",
             (
@@ -3732,7 +3770,7 @@ def daemon(
             table.add_row("PID", str(info["pid"]))
             table.add_row("端口", str(info["port"]))
             table.add_row("模型", info["model"])
-            table.add_row("维度", str(info["dimension"]))
+            table.add_row("维度", _display_dimension(info.get("dimension")))
             table.add_row("设备", info.get("device", "unknown"))
             console.print(table)
         else:
@@ -3850,7 +3888,7 @@ def daemon(
                 table.add_row("PID", str(info["pid"]))
                 table.add_row("端口", str(info["port"]))
                 table.add_row("模型", info.get("model", "unknown"))
-                table.add_row("维度", str(info.get("dimension", "unknown")))
+                table.add_row("维度", _display_dimension(info.get("dimension")))
                 table.add_row("设备", info.get("device", "unknown"))
                 console.print(table)
             else:
