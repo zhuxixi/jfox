@@ -14,17 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 def _current_kb_name() -> str:
-    """当前 KB 名：读模块级 config 单例（use_kb 原地改写其 base_dir；get_config()
-    会重新解析全局默认、看不到 with use_kb(kb) 的切换）。dedup 同模式。
+    """当前 KB 名：复用 jfox.config.current_kb_name（#584 CR-A2 统一实现：
+    注册表按 active base_dir 反查优先，其次 JFOX_KB、目录名）。use_kb 原地改写
+    模块级 config 单例的 base_dir，该函数同样读它，切换语义不变。
     """
-    import os
+    from ..config import current_kb_name as _resolve
 
-    from ..config import config as _zk_config
-
-    env = os.environ.get("JFOX_KB", "").strip()
-    if env:
-        return env
-    return _zk_config.base_dir.name
+    return _resolve()
 
 
 def on_post_promote(
