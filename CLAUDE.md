@@ -194,7 +194,7 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 **Skill rename history**: `kb` → `manage` (v0.2.0) — "manage" is the canonical KB lifecycle + CRUD skill.
 **Non-Claude-Code platforms**: `skills-recommend/`（`pi/` + `kimi-cli/`）是 pi / Kimi CLI 适配版 SKILL.md 集（如 `pi/jfox-moc`，#419）——CLI 语义或命令面变更时须与 cc-plugin skills 同步更新。
 **pi prompt 采集扩展**（#462）：`packages/pi-plugin/extensions/jfox-prompt-capture.ts`（TypeScript 单文件、零 npm 依赖、node ≥ 22.6 直跑）监听 pi input 事件→合成 CC 兼容事件→原子写 spool 再尽力 POST daemon `/api/prompt`，与 cc-plugin hook 同链路、复用 `jfox prompts drain` 兜底；`user_prompts.source` 由 `prompts/service.py` 透传顶层 source（pi → `pi-coding-agent`，CC 默认 `claude-code`）；本地测试 `node --experimental-strip-types packages/pi-plugin/test/run-tests.ts`
-**Skill 多副本同步**: skill 文案/行为改动须同步所有镜像副本——`packages/cc-plugin/skills/`、`packages/kimi-plugin/skills/`、`skills-recommend/kimi-cli/`、`skills-recommend/pi/`，只改一处会各端行为分叉（#440 踩过同步模式）
+**Skill 多副本同步**: skill 文案/行为改动须同步所有镜像副本——`packages/cc-plugin/skills/`、`packages/kimi-plugin/skills/`、`skills-recommend/kimi-cli/`、`skills-recommend/pi/`，只改一处会各端行为分叉（#440 踩过同步模式）；例外：pi 的 session-to-permanent「codemode 加速」节（#585/#596）是 pi-only 能力，不得同步进 cc/kimi 副本——`tests/unit/test_pi_codemode_skill_docs.py` 静态契约锁定（含反向断言其他副本不得出现 "codemode"）
 
 ## Branch Rules
 
@@ -214,4 +214,5 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - `jfox index verify` 以 frontmatter 真实 `id` 对账向量库，文件名格式无关——legacy `14位时间戳-6位微秒-slug` 文件名不再误报 orphan；frontmatter 缺 id/解析失败的文件计入 `unreadable_files` 不参与对账，同 id 多文件报 `duplicate_ids`（#407/#408）
 - CPU 默认 embedding 模型已从 `all-MiniLM-L6-v2`（384 维）切到 `BAAI/bge-small-zh-v1.5`（512 维，#442）：旧 KB 向量库维度不匹配时 search/add 显式告警不静默失败（`vector_store.last_dimension_warning`），按提示 `jfox index rebuild` 重建该 KB；CI 模型缓存 key 也随模型名（#453）
 - 语义组件缺失降级（#519）：无本地 sentence-transformers 且无 daemon 时，写路径降级继续——`save_note`/`update_note` typed catch `EmbedDependencyMissingError`（文件+BM25 照写、跳过向量索引），`update_note` 改走 `add_or_update_note` 守卫原语（服务不可用不删既有行），`index rebuild` 降级 BM25-only 不重置向量库，add/edit JSON 出 `semantic_index_warning`；读路径显式拒绝——search/query/suggest-links 的 semantic/hybrid 模式 exit 1 + 安装提示；`jfox status` JSON 含 `embedding` 探测节（local_package/daemon_running/service_available）
+- `jfox status` 的 `backend` 块 daemon 真相优先（#363/#593）：daemon 在跑即用 `/health` 自报值覆盖本地快照，新增 `backend.source`（`daemon`/`local`/`unloaded`）；`unloaded` 时 `dimension` 为 `null`（`get_daemon_status()` 不再缺省伪造 512），消费方勿假定 dimension 恒为 int
 - Wiki-link 排除区剥离（`note_index.py` `_strip_wiki_link_exclusions`，`resolve_wiki_links()` 链路第一步）必须保持单遍合并正则 `_EXCLUSION_RE`（alternation 顺序即优先级：fenced > HTML 注释 > inline code），勿拆回多次顺序 `re.sub`——顺序剔除会让已删区域拼出新结构再被后续 pass 跨界吞掉（#548：反引号包 HTML 注释，注释先删留空反引号对，inline 分支吞相邻 wiki link，#550 修复）；回归测试 `tests/unit/test_wiki_link_resolution.py`
