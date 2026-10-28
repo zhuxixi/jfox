@@ -12,7 +12,7 @@ import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
@@ -164,6 +164,41 @@ def _print_embed_refusal(output_format: str, context: str):
         import sys
 
         print(f"✗ {hint}", file=sys.stderr)
+
+
+def _status_backend_payload(local: dict, daemon_info: Optional[dict]) -> dict:
+    """#363 组装 status 的 backend 块（纯函数，json/yaml/table 三态共用）。
+
+    daemon 在跑时它就是 embedding 的真实服务方，用其自报值覆盖本地快照；
+    否则退回进程内 backend 快照，并用 source 标明可信度。
+    """
+    if daemon_info is not None:
+        return {
+            "type": daemon_info.get("device") or "unknown",
+            "model": daemon_info.get("model") or "unknown",
+            "dimension": daemon_info.get("dimension"),
+            "source": "daemon",
+        }
+
+    device = local.get("type") or "unknown"
+    if local.get("loaded"):
+        return {
+            "type": device,
+            "model": local.get("model"),
+            "dimension": local.get("dimension"),
+            "source": "local",
+        }
+    return {
+        "type": device,
+        "model": local.get("model") or "auto (未加载)",
+        "dimension": None,
+        "source": "unloaded",
+    }
+
+
+def _display_dimension(value: Optional[int]) -> str:
+    """维度显示：None→unknown；0 与正整数照常显示（degraded daemon 上报 0）。"""
+    return "unknown" if value is None else str(value)
 
 
 def _index_status_payload(vs_stats: dict, bm25_stats: dict, state: Optional[dict]) -> dict:
@@ -440,6 +475,39 @@ def resolve_wiki_links(content: str, self_id: Optional[str] = None) -> Tuple[Lis
             # 报告完整原文（candidates[0]），保持用户可读
             unresolved.append(candidates[0])
     return resolved_links, unresolved
+
+
+def diff_links(old_links: Iterable[str], new_links: Iterable[str]) -> Tuple[List[str], List[str]]:
+    """Return (added, removed) link deltas, order-preserving and dedup-safe (#577).
+
+    `added` follows `new_links` order, `removed` follows `old_links` order.
+    Duplicate inputs collapse to their first occurrence, so callers may pass
+    raw lists without pre-normalising them.
+    """
+    old_order = list(old_links)
+    new_order = list(new_links)
+    old_set = set(old_order)
+    new_set = set(new_order)
+    added = [link for link in dict.fromkeys(new_order) if link not in old_set]
+    removed = [link for link in dict.fromkeys(old_order) if link not in new_set]
+    return added, removed
+
+
+def _edit_result_note(n: note.Note) -> Dict[str, Any]:
+    """Assemble the `note` payload of edit's --json response (#577).
+
+    Mirrors add's `note` shape and adds backlinks so callers can verify links
+    in a single call. Lists are copied: the caller must not be able to mutate
+    the Note through the response payload.
+    """
+    return {
+        "id": n.id,
+        "title": n.title,
+        "type": n.type.value,
+        "filepath": str(n.filepath),
+        "links": list(n.links or []),
+        "backlinks": list(n.backlinks or []),
+    }
 
 
 def _rebuild_backlinks_impl(output_format: str = "table") -> Dict[str, Any]:
@@ -1279,10 +1347,17 @@ def _status_impl(output_format: str, json_output: bool):
 
     stats = note.get_stats()
 
-    # 获取 NPU 状态
+    # #363 daemon 是 embedding 的真实服务方：在跑就用它的自报值，不再读本地兜底
+    from .daemon.process import get_daemon_status, is_daemon_running
     from .embedding_backend import get_backend
 
     backend = get_backend()
+    local = {
+        "type": backend.resolved_device,
+        "model": backend.model_name,
+        "loaded": backend.model is not None,
+        "dimension": backend.dimension,
+    }
 
     result = {
         "knowledge_base": {
@@ -1290,15 +1365,10 @@ def _status_impl(output_format: str, json_output: bool):
             "exists": config.base_dir.exists(),
         },
         "stats": stats,
-        "backend": {
-            "type": backend.resolved_device,
-            "model": backend.model_name or "auto (未加载)",
-            "dimension": backend.dimension,
-        },
+        "backend": _status_backend_payload(local, get_daemon_status()),
     }
 
     # #519 语义组件可用性（不触发模型加载）
-    from .daemon.process import is_daemon_running
     from .embedding_backend import (
         is_embedding_service_available,
         is_local_embed_available,
@@ -1330,9 +1400,10 @@ def _status_impl(output_format: str, json_output: bool):
         table.add_row("Fleeting", str(stats["by_type"].get("fleeting", 0)))
         table.add_row("Literature", str(stats["by_type"].get("literature", 0)))
         table.add_row("Permanent", str(stats["by_type"].get("permanent", 0)))
-        table.add_row("Backend", backend.resolved_device)
-        table.add_row("Model", backend.model_name or "auto (未加载)")
-        table.add_row("Dimension", str(backend.dimension))
+        table.add_row("Backend", result["backend"]["type"])
+        table.add_row("Model", result["backend"]["model"])
+        table.add_row("Dimension", _display_dimension(result["backend"]["dimension"]))
+        table.add_row("Backend Source", result["backend"]["source"])
         table.add_row(
             "Embed Component",
             (
@@ -2120,7 +2191,8 @@ def _edit_impl(
         raise ValueError(f"笔记不存在: {note_id}")
 
     old_title = n.title
-    old_links = set(n.links)
+    old_links_order = list(n.links)
+    old_links = set(old_links_order)
 
     # 更新字段
     if content is not None:
@@ -2177,15 +2249,13 @@ def _edit_impl(
                 target_note.backlinks.remove(n.id)
                 note.save_note(target_note, add_to_index=False)
 
+        links_added, links_removed = diff_links(old_links_order, n.links)
         result = {
             "success": True,
             "kb": current_kb_name(),  # #584：实际写入库名
-            "note": {
-                "id": n.id,
-                "title": n.title,
-                "type": n.type.value,
-                "filepath": str(n.filepath),
-            },
+            "note": _edit_result_note(n),
+            "links_added": links_added,
+            "links_removed": links_removed,
         }
         if old_title != n.title:
             result["title_changed"] = {"old": old_title, "new": n.title}
@@ -3769,7 +3839,7 @@ def daemon(
             table.add_row("PID", str(info["pid"]))
             table.add_row("端口", str(info["port"]))
             table.add_row("模型", info["model"])
-            table.add_row("维度", str(info["dimension"]))
+            table.add_row("维度", _display_dimension(info.get("dimension")))
             table.add_row("设备", info.get("device", "unknown"))
             console.print(table)
         else:
@@ -3887,7 +3957,7 @@ def daemon(
                 table.add_row("PID", str(info["pid"]))
                 table.add_row("端口", str(info["port"]))
                 table.add_row("模型", info.get("model", "unknown"))
-                table.add_row("维度", str(info.get("dimension", "unknown")))
+                table.add_row("维度", _display_dimension(info.get("dimension")))
                 table.add_row("设备", info.get("device", "unknown"))
                 console.print(table)
             else:

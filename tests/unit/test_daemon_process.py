@@ -340,3 +340,46 @@ class TestRestartDaemon:
 
         restart_daemon(host="0.0.0.0", port=9999)
         mock_start.assert_called_once_with(host="0.0.0.0", port=9999)
+
+
+class TestGetDaemonStatus:
+    """A7：get_daemon_status() 本体行为（此前零覆盖）。"""
+
+    @staticmethod
+    def _patch(monkeypatch, health, pid_data=None):
+        from jfox.daemon import process
+
+        monkeypatch.setattr(process, "_read_pid_file", lambda: pid_data)
+        monkeypatch.setattr(process, "_http_health_check", lambda *a, **k: health)
+        removed = []
+        monkeypatch.setattr(process, "_remove_pid_file", lambda: removed.append(1))
+        return process, removed
+
+    def test_assembles_dict_from_health(self, monkeypatch):
+        health = {"pid": 347901, "model": "BAAI/bge-m3", "dimension": 1024, "device": "cuda"}
+        pid_data = {"host": "127.0.0.1", "port": 18700, "started_at": "t0"}
+        process, removed = self._patch(monkeypatch, health, pid_data)
+
+        info = process.get_daemon_status()
+
+        assert info == {
+            "pid": 347901,
+            "host": "127.0.0.1",
+            "port": 18700,
+            "model": "BAAI/bge-m3",
+            "dimension": 1024,
+            "device": "cuda",
+            "started_at": "t0",
+        }
+        assert removed == []
+
+    def test_health_failure_returns_none_and_cleans_pid_file(self, monkeypatch):
+        process, removed = self._patch(monkeypatch, None)
+
+        assert process.get_daemon_status() is None
+        assert removed == [1]
+
+    def test_missing_dimension_key_is_none_not_512(self, monkeypatch):
+        process, _ = self._patch(monkeypatch, {"pid": 1, "model": "m", "device": "cpu"})
+
+        assert process.get_daemon_status()["dimension"] is None

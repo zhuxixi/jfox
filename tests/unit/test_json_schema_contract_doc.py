@@ -14,3 +14,21 @@ def test_index_status_fields_documented():
 def test_index_status_dead_fields_removed_from_doc():
     text = DOC.read_text(encoding="utf-8")
     assert "success, total_indexed, last_indexed, pending_changes, vector_store" not in text
+
+
+def test_status_backend_documents_source_field():
+    """#363：status 的 backend 块新增 source 字段，文档必须跟上。"""
+    text = DOC.read_text(encoding="utf-8")
+    assert "backend{type,model,dimension,source}" in text
+
+
+def test_status_dimension_nullability_in_breaking_changes():
+    """#363：dimension 从 int 变 int|null，属破坏性变更，必须在表里登记。"""
+    text = DOC.read_text(encoding="utf-8")
+    assert "`backend.dimension` 可为 `null`" in text
+
+
+def test_edit_link_fields_documented():
+    text = DOC.read_text(encoding="utf-8")
+    assert "note{id,title,type,filepath,links,backlinks}" in text
+    assert "`links_added[], links_removed[]`（恒有，可为空数组）" in text
