@@ -61,7 +61,7 @@ Notes are Markdown files with YAML frontmatter stored under `~/.zettelkasten/<kb
 | Module | Role |
 |--------|------|
 | `cli.py` | All CLI commands (~4200 lines). Commands follow pattern: `@app.command()` → `_xxx_impl()` helper for reuse |
-| `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching |
+| `config.py` | `ZKConfig` + `use_kb()` context manager for multi-KB switching；`current_kb_name()` 当前库名统一解析（#584：注册表按 active base_dir 反查 > `JFOX_KB` > 目录名，prompts 等处复用，勿再自写私有版本） |
 | `global_config.py` | `GlobalConfigManager` managing `~/.zk_config.json`；损坏恢复契约（#481/#526）：`from_dict` 各级非 dict 守卫回默认，文件级加载失败先字节级备份 `.corrupt-*` 快照再恢复默认，备份失败则不落盘覆盖原文件 |
 | `kb_manager.py` | Knowledge base lifecycle (create, rename, remove) |
 | `formatters.py` | Output formats: JSON, CSV, YAML, Table, Paths |
@@ -207,6 +207,8 @@ JFox ships as a Claude Code plugin. Two-tier structure:
 - 生命周期订阅模块的重依赖（numpy 等）必须 lazy import 进回调体，不能顶层 import——`jfox/__init__.py` 每次启动都 import 订阅模块，顶层会令 `--version`/`search` 等不相关命令多付 ~70-100ms eager 加载。参考 `dedup_lifecycle.py`
 - `rich` Console 输出机器解析的 JSON 时须 `soft_wrap=True`：默认按 80 列硬折行，会把长字符串（如 Windows 绝对路径）在 JSON 字符串内部断行，`json.loads` 报 Invalid control character（Ubuntu 路径短不触发，只在 Windows CI 挂，#336）。参考 `bookshelf/cli.py` `_emit_json`
 - JSON 模式（`cli.py` `_json_mode_requested` 兼容 `--json`/`-f json`/`-fjson`/`--format=json`，重复 flag 取后者）下 CLI 入口统一 `logging.disable(CRITICAL)` + `TQDM_DISABLE=1`，保证 `--json 2>&1 | jq` 合流后仍是纯 JSON（#383 根因 A：INFO/tqdm 噪声曾令调用方解析失败、误判后重跑产生重复笔记）；命令内告警并入 JSON 字段（如 add 的 `vector_dimension_warning`）而非 stderr print——stderr 在 2>&1 管道同样污染解析流
+- `jfox init` 不再默认切 current 指针（#584）：未显式 `--default/--no-default` 时仅规范库 `default` 切换（`kb_manager.should_switch_default`），防临时库创建即劫持路由；删除当前库回退优先 `default`、其次首个非测试库（`global_config.pick_fallback_default`）；测试工具 `tests/utils/jfox_cli.py` 的 `init()` 依赖 current 指向测试库，必须显式传 `--default`
+- 写入类命令 JSON 暴露实际库名（#584）：add/edit 成功与 duplicate-skip、candidates promote 的 JSON 均带 `kb` 字段；未显式 `--kb`/`JFOX_KB` 却落在 `test_`/`zk_test_` 前缀库（`global_config.TEST_KB_PREFIXES`）时命中条件字段 `kb_warning`——自动化消费方据此核对没写错库
 - `delete_note`/`promote_note` 增量同步各 target 的 backlinks（#388 起对称）：写盘前按真实磁盘路径 re-read-and-merge——重读 fresh 再合并写回，文件名发散不产生同 id 双文件、与常驻 daemon 并发写不丢更新（#392/#422）；单 target 写盘失败仅 warning 不中断，悬空/不对称残留用 `jfox index rebuild --backlinks` 全量重算兜底
 - 笔记双写路径契约（#549）：`from_markdown` 加载时钉住真实磁盘路径——加载笔记的 `note.filepath` 即真实路径（legacy 发散名不误算），按当前字段现算的规则路径用 `expected_filepath`；`save_note` 就地写（写回 pin 路径、不随字段改名），`update_note` 规范化写（目标 `expected_filepath`，路径变化删旧文件并重钉 pin，发散名笔记被触碰即自愈为规则名）——改 title/type 必须走 `update_note`，写盘目标误用 `note.filepath` 会让改名判据恒假、edit --title 不再移动文件
 - backlinks 批量写回统一走 `note.apply_backlinks()` 窄写原语（#561/#562）：定位（快照钉住路径优先）→ 重读 fresh → 与快照序列化比对，发现并发分歧即本轮跳过（返回 `"skipped"` 属正常竞态非故障，下轮 rebuild 自愈）→ 零写入守卫 → 原子写；`index rebuild --backlinks` 不得用 `save_note` 从陈旧快照整条覆盖（曾静默吞并发 edit 的正文），调用方也别原地改快照的 `links`/`backlinks`（分歧检测以快照为比对基准）；rebuild JSON 统计含 `backlinks_skipped`
