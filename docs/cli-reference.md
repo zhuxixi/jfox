@@ -717,7 +717,7 @@ jfox init [OPTIONS]
 | `name` | `--name, -n` | TEXT | no | — | — | no | no |
 | `path` | `--path, -p` | TEXT | no | — | — | no | no |
 | `description` | `--desc, -d` | TEXT | no | — | — | no | no |
-| `set_default` | `--default / --no-default` | BOOL | no | `true` | — | no | yes |
+| `set_default` | `--default / --no-default` | BOOL | no | — | — | no | yes |
 | `output_format` | `--format, -f` | TEXT | no | `table` | — | no | no |
 | `json_output` | `--json` | BOOL | no | `false` | — | no | yes |
 

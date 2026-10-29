@@ -12,7 +12,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,29 @@ _config_path_env = os.environ.get("ZK_CONFIG_PATH", "").strip()
 DEFAULT_CONFIG_PATH = Path(_config_path_env or (Path.home() / ".zk_config.json")).expanduser()
 DEFAULT_KB_NAME = "default"
 DEFAULT_KB_PATH = Path(os.environ.get("ZK_KB_ROOT", str(Path.home() / ".zettelkasten")))
+
+# 测试知识库命名前缀（公开常量，#584 CR-A3：cli 告警判定等处共用，避免字面量漂移）
+TEST_KB_PREFIXES = ("test_", "zk_test_")
+# 向后兼容别名：保留既有引用不破坏
+_TEST_KB_PREFIXES = TEST_KB_PREFIXES
+
+
+def pick_fallback_default(names: Iterable[str], removed: str) -> Optional[str]:
+    """删除当前默认库时选择回退目标（#584）。
+
+    优先规范库 ``default``；其次第一个非测试库；只剩测试库时返回
+    ``DEFAULT_KB_NAME``（允许悬空，由 get_default_kb_path 兜底）。
+    判定是启发式：不以 test_/zk_test_ 开头的残留不在此防护内。
+    """
+    remaining = [n for n in names if n != removed]
+    if not remaining:
+        return None
+    if DEFAULT_KB_NAME in remaining:
+        return DEFAULT_KB_NAME
+    for name in remaining:
+        if not name.startswith(TEST_KB_PREFIXES):
+            return name
+    return DEFAULT_KB_NAME
 
 
 @dataclass
@@ -830,9 +853,11 @@ class GlobalConfigManager:
 
         del config.knowledge_bases[name]
 
-        # 如果删除的是默认知识库，切换到第一个可用的
+        # 如果删除的是默认知识库，优先回退到 default，其次第一个非测试库（#584）
         if config.default == name:
-            config.default = next(iter(config.knowledge_bases.keys()))
+            fallback = pick_fallback_default(list(config.knowledge_bases.keys()), name)
+            if fallback is not None:
+                config.default = fallback
 
         self._config = config
         return self._save()

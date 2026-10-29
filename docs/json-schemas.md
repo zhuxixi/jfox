@@ -40,7 +40,7 @@ else:
 | 命令 | 成功顶层字段 | 实体位置 | 失败形状 |
 |------|--------------|----------|----------|
 | `init` | `success, message, name` | 平铺 | `{success, error}` |
-| `add` | `success, id, title, note{id,title,type,filepath,links}` + 可选 `agent,session_file,agent_model`（#578）+ 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}}`；其余 `{success, error}` |
+| `add` | `success, id, title, kb, note{id,title,type,filepath,links}`（`kb` 为实际写入的注册库名，string，#584）+ 可选 `agent,session_file,agent_model`（#578）+ 可选 `warnings, backfill_failures, rollback_failures, backfill_note_save_failed, vector_dimension_warning, semantic_index_warning`（#519 无语义组件时降级提示）+ 可选 `kb_warning`（#584：未显式指定 `--kb`/`JFOX_KB` 而落在测试库时的告警文案，string；`--json` 下 logger 被静默，仅此字段可见） | 嵌套 `note`；顶层冗余 `id`/`title` | 重复：`{success, skipped:"duplicate", duplicate{matched_id,matched_title,matched_by,score}, kb}`（`kb` 为实际目标注册库名，#584）；其余 `{success, error}` |
 | `search` | `success, query, mode, include_archived, total, results[]` + 可选 `warnings[]`（#519 降级时） | 列表 `results` | `{success, error}`；`--mode semantic` 且无语义服务时拒绝：`{success, code:"embed_dependency_missing", error}`（#519） |
 | `status` | `success, knowledge_base{path,exists}, stats, backend{type,model,dimension,source}, embedding{local_package,daemon_running,service_available}`（#519 可用性块；#363 `backend.source` 取 `daemon`/`local`/`unloaded`，`unloaded` 时 `dimension` 为 `null`；daemon 健康检查异常缺该键时亦为 `null`） | 嵌套三段 | `{success, error}` |
 | `list` | `success, total, notes[]`（项含 `outgoing,incoming`） | 列表 `notes` | `{success, error}` |
@@ -48,7 +48,7 @@ else:
 | `refs` | 默认：`success, notes[]`；`--search`：`success, query, matches[]`；`--note`：`success, note{id,title,type}, forward_links[], backward_links[]`（悬空项带 `dangling:true`） | 分支各异 | `{success, error}` |
 | `delete` | `success, deleted, title` | 平铺 | 入链守卫：`{success, error, references{frontmatter[],body[],total}}`；其余 `{success, error}` |
 | `archive` / `unarchive` | `success, archived`/`unarchived`, `title` | 平铺 | `{success, error}` |
-| `edit` | `success, note{id,title,type,filepath,links,backlinks}` + `links_added[], links_removed[]`（恒有，可为空数组） + 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时） | 嵌套 `note` | `{success, error}` |
+| `edit` | `success, kb, note{id,title,type,filepath,links,backlinks}`（`kb` 为实际写入的注册库名，string，#584）+ `links_added[], links_removed[]`（恒有，可为空数组）+ 可选 `title_changed{old,new}, warnings, semantic_index_warning`（#519 无语义组件时）+ 可选 `kb_warning`（#584：未显式指定 `--kb`/`JFOX_KB` 而落在测试库时的告警文案，string） | 嵌套 `note` | `{success, error}` |
 | `query` | `success, query, semantic_results, effective_mode, results[]` + 可选 `warnings[]`（#519 降级时 `effective_mode:"keyword"`） | 列表 `results` | `{success, error}` |
 | `graph` | `--stats`：`success, total_nodes, total_edges, avg_degree, isolated_nodes, clusters, top_hubs[]`；`--orphans`：`success, orphans[]`；`--note`：`success, note_id, title, related[]` | 分支各异 | `{success, error}` |
 | `daily` | `success, date, total, notes[]` | 列表 `notes` | `{success, error}` |
@@ -104,7 +104,7 @@ else:
 |------|--------------|----------|----------|
 | `candidates list --format json` | `success, candidates[], total` | 列表 `candidates` | `{success, error}` |
 | `candidates show <id>` | `success` + `Note.to_dict()` 平铺（`content` 为全文） | 顶层平铺 | `{success, error}` |
-| `candidates promote/reject <id>` | `{promoted`/`rejected`, `success}`（`success` 为操作结果布尔，见特殊语义说明） | 平铺 | 正常失败无 `error` 键（已知例外）；异常失败 `{success:false, error}` |
+| `candidates promote/reject <id>` | `{promoted`/`rejected`, `success}`（`success` 为操作结果布尔，见特殊语义说明）；promote 另带 `kb`（实际写入的注册库名，string，#584），reject 不带 | 平铺 | 正常失败无 `error` 键（已知例外）；异常失败 `{success:false, error}`（promote 分支另带 `kb`） |
 
 ### bookshelf
 
@@ -160,7 +160,7 @@ else:
 5. **`kb` 错误分支的触发条件**：`kb` 的错误 JSON 由 `--json` 标志（`json_output`）触发；仅 `--format json` 不带 `--json` 时错误走 console 文本。这是全库 `json_output` 快捷方式约定的一部分。
 6. **`prompts config --set` 成功输出**：仅 console 确认文本，无 JSON 成功形状（失败时有 `{success, error}`）。
 7. **`prompts` 动作命令成功无 JSON**：`promote` 等五个动作命令成功时只输出 console 确认文本（历史行为，未纳入本轮统一范围）。
-8. **`candidates promote/reject` 正常失败无 `error` 键**：service 层拒绝（如校验不通过）返回 `{promoted:false, success:false}` 而无 `error`；仅异常失败带 `error`。已知例外，后续版本收敛。
+8. **`candidates promote/reject` 正常失败无 `error` 键**：service 层拒绝（如校验不通过）返回 `{promoted:false, success:false, kb}`（promote，#584 起；reject 为 `{rejected:false, success:false}` 无 `kb`）而无 `error`；仅异常失败带 `error`。已知例外，后续版本收敛。
 9. **`update` 成功时的 `error` 键**：恒存在但成功时为空字符串 `""`——判断成败请以 `success` 布尔为准，勿以 `error` 是否为 `null` 判断。
 
 ## 统一引入的破坏性变更

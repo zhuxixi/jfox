@@ -137,7 +137,7 @@ def promote_cmd(
     output_format: str = typer.Option("table", "--format", "-f", help="table, json"),
 ) -> None:
     """晋升 candidate → permanent（改 type + 移文件 + 回填 backlinks）"""
-    from ..config import use_kb
+    from ..config import current_kb_name, use_kb
     from ..note import promote_note
 
     with use_kb(kb):
@@ -148,7 +148,12 @@ def promote_cmd(
             if output_format == "json":
                 typer.echo(
                     _json.dumps(
-                        {"promoted": note_id, "success": False, "error": str(e)},
+                        {
+                            "promoted": note_id,
+                            "success": False,
+                            "error": str(e),
+                            "kb": current_kb_name(),  # #584：实际写入库名
+                        },
                         ensure_ascii=False,
                     )
                 )
@@ -156,7 +161,12 @@ def promote_cmd(
                 console.print(f"[red]✗ 晋升异常：{e}[/red]")
             raise typer.Exit(code=1)
         if output_format == "json":
-            typer.echo(_json.dumps({"promoted": note_id, "success": ok}, ensure_ascii=False))
+            typer.echo(
+                _json.dumps(
+                    {"promoted": note_id, "success": ok, "kb": current_kb_name()},
+                    ensure_ascii=False,
+                )
+            )
         elif ok:
             console.print(f"[green]✓[/green] 晋升 {note_id} → permanent")
         else:
