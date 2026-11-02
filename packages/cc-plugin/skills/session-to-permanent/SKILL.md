@@ -81,6 +81,8 @@ jfox search "<知识点关键词>" --type permanent --json
 jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 ```
 
+> `suggest-links` 返回两类分数（`match_type` 字段区分）：`semantic` 是 cosine 语义相似度，`keyword` 是关键词重合率合成分（0.3–0.6）。**两个量纲不可直接比较**，`score` 仅在同类型内可比；cosine 在本库中普遍偏高（无关笔记也可达 0.55–0.68），`0.6` 只能当噪声地板、不等于强相关——应按排序取 top-N 并看 `match_type`，不要只看绝对分。关键词分支的准入线是 `threshold × 0.5`；语义分支的阈值就是 `threshold`。
+
 按搜出来的结果给每条候选分三类：
 
 | 查询结果 | 判定 | 处置 |

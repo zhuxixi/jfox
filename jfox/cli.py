@@ -2793,7 +2793,11 @@ def suggest_links(
     """
     根据内容推荐可以链接的已有笔记
 
-    使用语义相似度和关键词匹配混合策略，帮助发现知识间的联系。
+    使用 cosine 语义相似度 + 关键词匹配的混合策略，帮助发现知识间的联系。
+
+    返回项的 match_type 区分两类分数：semantic 是 cosine 语义相似度（threshold 生效）；
+    keyword 是关键词重合率合成分（0.3–0.6，准入线为 threshold×0.5）。两量纲不可直接比较；
+    cosine 在本库普遍偏高，0.6 为噪声地板非强相关，应按排序取 top-N 并看 match_type。
 
     示例:
         jfox suggest-links "今天学习了 Python 的 async/await 机制"

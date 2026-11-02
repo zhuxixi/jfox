@@ -54,7 +54,7 @@ jfox inbox --json --limit 50
    jfox suggest-links "<提炼后的内容摘要>" --json
    ```
 
-   筛选 score >= 0.6 的关联笔记
+   筛选 score >= 0.6 的关联笔记。两量纲注意：`semantic` 是 cosine 语义相似度（阈值即 `threshold`），`keyword` 是关键词重合率合成分（准入线为 `threshold × 0.5`），两量纲不可直接比较、看 `match_type` 区分；cosine 普遍偏高，`0.6` 是噪声地板非强相关——按排序取 top-N，不要只看绝对分。
 3. **生成 permanent 笔记**：将核心知识点整理为结构化内容，嵌入 `[[wiki links]]` 关联到已有笔记
 4. **批量交叉链接**：如果同一批正在创建多条 permanent 笔记，在它们之间也添加 `[[links]]`
 5. **插入**：

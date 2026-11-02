@@ -152,7 +152,7 @@ except Exception as e:
 
    ```bash
    jfox search "<簇主题关键词>" --type permanent
-   jfox suggest-links "<簇代表正文>" --format json   # 阈值可放宽到 0.4–0.5
+   jfox suggest-links "<簇代表正文>" --format json   # keyword 项可放宽到 0.4–0.5；cosine 项低于 0.6 多为噪声，按排序取并看 match_type
    ```
 
 2. **已被覆盖**：在簇里保留 grounding 最扎实、信息最完整的一条（keep-best），其余 reject。`grounding` 指 candidate 合成时依据的永久笔记，grounding 扎实意味着它的来源更可靠。
@@ -206,7 +206,7 @@ def clean_for_promote(content: str) -> str:
 ## 6. 已知坑（条条实踩）
 
 - **wiki link 必须精确标题**：`[[Boktionary]]`、`[[没爆就别修]]` 这种短链会悬空（找不到目标笔记）。promote 时遇到解析不了的链只会 warning 然后跳过，不会报上层错误，容易漏发现。
-- **`suggest-links` 常误命中或漏邻居**：它容易按关键词误匹配，又漏掉语义相近的笔记（比如「版权」和「Boktionary」相似度返回不到 0.6）。所以不能只信它的结果，要手动按概念补链。
+- **`suggest-links` 常误命中或漏邻居**：它容易按关键词误匹配，又漏掉语义相近的笔记（比如「版权」和「Boktionary」相似度返回不到 0.6）。所以不能只信它的结果，要手动按概念补链。（#583 已修语义分支：现在返回真实 cosine 分，`semantic`/`keyword` 两量纲看 `match_type`、0.6 是噪声地板；关键词误命中仍需人工复核。）
 - **confidence 不等于质量或冗余**：confidence 是合成器给自己的自评置信度，和 candidate 准不准、是否冗余无关。别按 confidence 排序，也别因为它高就跳过审核直接晋升——0.85 的簇里照样既有冗余条目，也有 grounding 标错的。
 - **reject 等于 archive（软删除）**：reject 后文件仍保留在 candidate/ 目录，用 `jfox unarchive` 可以恢复，所以可以放心清。
 - **批量 reject 要放后台跑**：一次 reject 超过约 40 条时，每条都会触发一次 chroma embedding（虽然是增量、不是全量重建，但累积耗时），建议后台跑。用 `while read` 循环时注意文件尾要有换行，否则漏最后一条。
@@ -226,6 +226,6 @@ wiki-link 报告: <已有链验证 + suggest-links 推荐>
 ## 关键约束
 
 - **promote 命令本身不改正文**：晋升前要先用 `jfox edit <candidate_id> --content-file cleaned.md` 把清理、改写后的正文写回 candidate，再执行 `jfox candidates promote <id>`。promote 只负责改笔记类型、移动文件、回填 backlinks。
-- **补链阈值默认 ≥ 0.6**（与 organize skill 一致）；在模式1 或改写场景，candidate 正文较短，可放宽到 0.4–0.5。
+- **补链阈值默认 ≥ 0.6**（与 organize skill 一致）；在模式1 或改写场景，candidate 正文较短，keyword 项可放宽到 0.4–0.5；cosine 项低于 0.6 多为噪声，按排序取并看 match_type。
 - **用户有最终决定权**：agent 负责判档和给依据，用户随时可以 override。
 - **溯源信息不能丢**：promote 会保留 `source_fragments` 和 `grounded_by`；清理时剥掉的只是正文里的 `## 来源` 段落，完整的溯源信息已经在 frontmatter 里。
