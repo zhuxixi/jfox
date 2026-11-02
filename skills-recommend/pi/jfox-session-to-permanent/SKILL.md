@@ -99,7 +99,7 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 **MOC 候选信号（顺带采集）**：查看 suggest-links 结果里的 `type` 字段——`type: structure` 的条目是 MOC（主题地图）候选信号。按 MOC ID 去重，保留标题和 score，记到对应候选名下；归档 structure 不会出现在默认结果里，无法确认状态的不当作信号。本步只采集信号，不自动挂载，也不改变上面的去重判定。
 
-> **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
+> **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（语义分支 #583 已修，关键词误命中仍需人工复核；参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
 >
 > pi 平台可用 §codemode 加速 的模板一把全部候选的查询合并为一次调用。
 
