@@ -1097,7 +1097,12 @@ def suggest_links(
     """
     根据内容推荐可以链接的已有笔记
 
-    使用语义相似度 + 关键词匹配的混合策略
+    使用语义相似度（cosine，纯 semantic 模式）+ 关键词匹配的混合策略
+
+    分数量纲：`semantic` 为 cosine 相似度（threshold 生效）；`keyword` 为
+    关键词重合率合成分（0.3–0.6，准入线为 threshold×0.5）。两量纲不可直接
+    比较，按 match_type 区分；cosine 在本库普遍偏高，0.6 为噪声地板非强相关，
+    应按排序取 top-N。
 
     Args:
         content: 输入内容
@@ -1115,7 +1120,7 @@ def suggest_links(
 
     # 1. 语义搜索 - 获取相似笔记
     try:
-        semantic_results = search_notes(content, top_k=top_k * 2)
+        semantic_results = search_notes(content, top_k=top_k * 2, mode="semantic")
         for r in semantic_results:
             note_id = r.get("id")
             if note_id and note_id not in seen_ids:
