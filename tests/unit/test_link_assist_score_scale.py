@@ -2,7 +2,8 @@
 
 命名约束（关键）：tests/conftest.py 的 pytest_collection_modifyitems 会按
 nodeid 关键词自动加标记——semantic/vector/embedding → embedding+very_slow；
-search/suggest/query → slow。本文件与所有测试函数名刻意避开这些词，保证被
+search/suggest/query → slow；bulk/batch/large/many → slow+bulk。本文件与
+所有测试函数名刻意避开这些词，保证被
 `-m "not embedding and not slow"`（CI Fast 口径）收集。改名前先看该文件。
 
 接缝：全进程内。temp_kb_registered + use_kb（先切库重置单例）+ 进程内

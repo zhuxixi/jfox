@@ -490,7 +490,7 @@ return {
 
 ```bash
 jfox search "<query>" --type permanent --json   # 关键词搜已有 permanent（去重）
-jfox suggest-links "<摘要>" --json              # 语义找关联笔记（去重 + 补链，阈值 ≥ 0.6）
+jfox suggest-links "<摘要>" --json              # 语义找关联笔记（去重 + 补链，阈值 ≥ 0.6；semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤）
 jfox add ... --type permanent                   # 写入新 permanent 笔记
 jfox edit <id> --content-file <path>            # 追加内容到已有 permanent 笔记
 jfox graph --stats --json                        # 落库后看图谱健康度
@@ -501,7 +501,7 @@ jfox graph --stats --json                        # 落库后看图谱健康度
 - **会话里没有可沉淀的现状**（没有事实/决策/现状可记，或只剩众所周知的常识）→ 告知用户「本次会话无可沉淀的现状」，不强行造笔记。
 - **`jfox search` / `suggest-links` 因 daemon 未启动而失败** → 提示用户启动 daemon（见 `/skill:jfox-common` §6），或先用 `jfox search` 关键词模式（不依赖 embedding）。
 - **草稿被用户全部否决** → 不写入任何内容，记录用户反馈后结束。
-- **`suggest-links` 返回低匹配度**（score < 0.6）→ 不强制补链，但 `jfox search` 命中或手动判断相关的仍可嵌入。
+- **`suggest-links` 返回低匹配度**（score < 0.6）→ 不强制补链（semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤），但 `jfox search` 命中或手动判断相关的仍可嵌入。
 
 ## 关键约束
 

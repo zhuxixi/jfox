@@ -1109,7 +1109,8 @@ def suggest_links(
         top_k: 返回建议数量
         threshold: 相似度阈值（0-1）
         exclude_ids: 要排除的笔记 ID 列表
-        cfg: 可选的配置对象，默认使用全局 config
+        cfg: 可选的配置对象，默认使用全局 config。语义分支始终查询当前知识库，
+            忽略 cfg（已知限制）
 
     Returns:
         建议链接的笔记列表，按置信度排序

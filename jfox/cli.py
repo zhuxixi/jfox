@@ -2761,7 +2761,7 @@ def _suggest_links_impl(
         if degraded:
             console.print("[yellow]⚠ 语义组件不可用，当前仅使用关键词匹配[/yellow]")
         if suggestions:
-            console.print(f"[bold]Suggested links (confidence > {threshold}):[/bold]\n")
+            console.print(f"[bold]Suggested links (threshold: {threshold}):[/bold]\n")
             for i, s in enumerate(suggestions, 1):
                 match_badge = (
                     "[cyan]semantic[/cyan]"
