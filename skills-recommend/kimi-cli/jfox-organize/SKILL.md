@@ -53,7 +53,7 @@ Core capability. For each user-confirmed suggestion:
    jfox suggest-links "<refined content summary>" --format json
    ```
 
-   Filter results with score >= 0.6
+   Filter results with score >= 0.6. Score scales differ by `match_type`: `semantic` items are cosine similarity (threshold ≥ 0.6 applies); `keyword` items are keyword-overlap scores (0.3–0.6, admitted at threshold×0.5) — do not filter keyword items by the semantic threshold.
 3. **Generate permanent note**: Structure core knowledge with embedded `[[wiki links]]` to existing notes
 4. **Cross-link within batch**: If creating multiple permanent notes in one batch, add `[[links]]` between them too
 5. **Insert**:
@@ -98,7 +98,7 @@ For each orphaned permanent note:
    jfox suggest-links "<content>" --format json
    ```
 
-3. If matches with score >= 0.6, suggest adding links:
+3. If matches with score >= 0.6, suggest adding links (scale reminder: `semantic`/cosine items filter at >= 0.6; `keyword` items are admitted at threshold×0.5 — do not filter keyword scores by the semantic threshold):
 
    ```bash
    jfox edit <orphan-id> --content "Original content... [[Related Note Title]]"
@@ -171,7 +171,7 @@ jfox daemon stop
 ## Error Handling
 
 - **Empty inbox**: Inform user "Inbox is empty, nothing to organize"; skip to Step 3 graph optimization
-- **`jfox suggest-links` low score** (< 0.6): Skip link recommendation; do not force-add
+- **`jfox suggest-links` low score** (< 0.6): Skip link recommendation; do not force-add (scale reminder: `semantic`/cosine items filter at >= 0.6; `keyword` items are admitted at threshold×0.5 — do not filter keyword scores by the semantic threshold)
 - **`jfox archive` ID not found**: Report error; continue processing other notes
 - **`jfox add` / `jfox edit` / `jfox delete`**: Support `--format json` or `--json`
 
