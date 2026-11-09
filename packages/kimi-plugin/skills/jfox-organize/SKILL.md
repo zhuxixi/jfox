@@ -54,7 +54,7 @@ jfox inbox --json --limit 50
    jfox suggest-links "<提炼后的内容摘要>" --json
    ```
 
-   筛选 score >= 0.6 的关联笔记
+   筛选 score >= 0.6 的关联笔记。两量纲注意：`semantic` 是 cosine 语义相似度（阈值即 `threshold`），`keyword` 是关键词重合率合成分（准入线为 `threshold × 0.5`），两量纲不可直接比较、看 `match_type` 区分；cosine 普遍偏高，`0.6` 是噪声地板非强相关——按排序取 top-N，不要只看绝对分。
 3. **生成 permanent 笔记**：将核心知识点整理为结构化内容，嵌入 `[[wiki links]]` 关联到已有笔记
 4. **批量交叉链接**：如果同一批正在创建多条 permanent 笔记，在它们之间也添加 `[[links]]`
 5. **插入**：
@@ -95,7 +95,7 @@ jfox graph --orphans --json
 **并行推荐链接（AgentSwarm）：**
 
 - `items`：推荐使用**孤立笔记 ID**（如 `["n1", "n2", "n3", ...]`），避免不同笔记内容相似导致 prompt 重复；子代理内部先用 `jfox show <id>` 读取内容。
-- prompt template：读取 `{{item}}` 对应笔记的内容，执行 `jfox suggest-links "<内容>" --json`，返回 score ≥ 0.6 的候选链接。
+- prompt template：读取 `{{item}}` 对应笔记的内容，执行 `jfox suggest-links "<内容>" --json`，返回 score ≥ 0.6 的候选链接（量纲提醒：semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤）。
 - 主代理汇总所有候选后，统一向用户展示并确认需要添加的链接。
 
 **添加链接（必须串行执行，避免写冲突）：**
@@ -126,7 +126,7 @@ jfox graph --stats --json
 
 在整理过程中，用户可能想直接创建或编辑一条笔记。命令完整语法详见 `/skill:jfox-manage` §4。本技能的工作流约束：
 
-- **对 permanent 笔记**：先运行 `jfox suggest-links "<内容摘要>" --json` 取匹配度 ≥ 0.6 的结果作为 `[[wiki links]]` 候选，再以含链接的内容调用 `jfox add --type permanent`
+- **对 permanent 笔记**：先运行 `jfox suggest-links "<内容摘要>" --json` 取匹配度 ≥ 0.6 的结果（量纲提醒：semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤）作为 `[[wiki links]]` 候选，再以含链接的内容调用 `jfox add --type permanent`
 - **对 fleeting 笔记**：直接 `jfox add`（默认即 fleeting），链接留到后续提炼阶段
 - **默认类型**：`fleeting`（快速记录，后续用本技能提炼）；只有当内容已是成熟知识时才用 `permanent`
 
@@ -146,7 +146,7 @@ jfox graph --stats --json                     # 图谱统计指标（avg_degree�
 ## 错误处理
 
 - **收件箱为空** → 告知用户 "收件箱为空，无需整理"，可跳到 Step 3 图谱优化
-- **`jfox suggest-links` 返回低匹配度**（score < 0.6）→ 跳过链接推荐，不强制添加
+- **`jfox suggest-links` 返回低匹配度**（score < 0.6）→ 跳过链接推荐，不强制添加（量纲提醒：semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤）
 - **`jfox archive` 目标 ID 不存在** → 报告错误，跳过继续处理其他笔记
 
 ## 使用建议

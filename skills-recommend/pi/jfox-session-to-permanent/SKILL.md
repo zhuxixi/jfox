@@ -87,6 +87,8 @@ jfox search "<知识点关键词>" --type permanent --json
 jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 ```
 
+> `suggest-links` 返回两类分数（`match_type` 字段区分）：`semantic` 是 cosine 语义相似度，`keyword` 是关键词重合率合成分（0.3–0.6）。**两个量纲不可直接比较**，`score` 仅在同类型内可比；cosine 在本库中普遍偏高（无关笔记也可达 0.55–0.68），`0.6` 只能当噪声地板、不等于强相关——应按排序取 top-N 并看 `match_type`，不要只看绝对分。关键词分支的准入线是 `threshold × 0.5`；语义分支的阈值就是 `threshold`。
+
 按搜出来的结果给每条候选分三类：
 
 | 查询结果 | 判定 | 处置 |
@@ -97,7 +99,7 @@ jfox suggest-links "<知识点一句话摘要>" --json   # 阈值默认 ≥ 0.6
 
 **MOC 候选信号（顺带采集）**：查看 suggest-links 结果里的 `type` 字段——`type: structure` 的条目是 MOC（主题地图）候选信号。按 MOC ID 去重，保留标题和 score，记到对应候选名下；归档 structure 不会出现在默认结果里，无法确认状态的不当作信号。本步只采集信号，不自动挂载，也不改变上面的去重判定。
 
-> **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
+> **别只信 `suggest-links`**：它既会按关键词误命中，也会漏掉语义相近的笔记（语义分支 #583 已修，关键词误命中仍需人工复核；参见 `jfox-promote` §6 的已知坑）。关键词搜（`jfox search`）和语义搜（`suggest-links`）要一起看，拿不准时手动按概念补查一次。
 >
 > pi 平台可用 §codemode 加速 的模板一把全部候选的查询合并为一次调用。
 
@@ -488,7 +490,7 @@ return {
 
 ```bash
 jfox search "<query>" --type permanent --json   # 关键词搜已有 permanent（去重）
-jfox suggest-links "<摘要>" --json              # 语义找关联笔记（去重 + 补链，阈值 ≥ 0.6）
+jfox suggest-links "<摘要>" --json              # 语义找关联笔记（去重 + 补链，阈值 ≥ 0.6；semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤）
 jfox add ... --type permanent                   # 写入新 permanent 笔记
 jfox edit <id> --content-file <path>            # 追加内容到已有 permanent 笔记
 jfox graph --stats --json                        # 落库后看图谱健康度
@@ -499,7 +501,7 @@ jfox graph --stats --json                        # 落库后看图谱健康度
 - **会话里没有可沉淀的现状**（没有事实/决策/现状可记，或只剩众所周知的常识）→ 告知用户「本次会话无可沉淀的现状」，不强行造笔记。
 - **`jfox search` / `suggest-links` 因 daemon 未启动而失败** → 提示用户启动 daemon（见 `/skill:jfox-common` §6），或先用 `jfox search` 关键词模式（不依赖 embedding）。
 - **草稿被用户全部否决** → 不写入任何内容，记录用户反馈后结束。
-- **`suggest-links` 返回低匹配度**（score < 0.6）→ 不强制补链，但 `jfox search` 命中或手动判断相关的仍可嵌入。
+- **`suggest-links` 返回低匹配度**（score < 0.6）→ 不强制补链（semantic/cosine 项按 ≥0.6；keyword 项按 threshold×0.5 准入，勿把 keyword 分当语义分过滤），但 `jfox search` 命中或手动判断相关的仍可嵌入。
 
 ## 关键约束
 
