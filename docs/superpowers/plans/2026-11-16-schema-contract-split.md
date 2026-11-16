@@ -152,9 +152,9 @@ Run:
 ```bash
 rg -c "^def test_" tests/unit/schema_contract/*.py
 rg -lF "pytestmark = [pytest.mark.unit, pytest.mark.fast]" tests/unit/schema_contract/ | wc -l
-git diff HEAD --stat
+git status --short
 ```
-Expected: `test_edit.py:1`、`test_index.py:2`、`test_status.py:2`；第二命令输出 `3`；diff --stat 只涉及上述 5 个文件
+Expected: `test_edit.py:1`、`test_index.py:2`、`test_status.py:2`；第二命令输出 `3`；status 只涉及上述 5 个文件（旧文件 D、新文件未跟踪）
 
 - [ ] **Step 9: 执行 A3 复核**
 
