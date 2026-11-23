@@ -12,6 +12,8 @@ from jfox.config import ZKConfig
 from jfox.models import NoteType
 from jfox.note_index import NoteMeta
 from jfox.similarity import (
+    DEFAULT_GRAY_BELOW,
+    DEFAULT_PASS_BELOW,
     MIN_BASELINE_NOTES,
     Baseline,
     SimilarityError,
@@ -107,10 +109,10 @@ def test_percentile_rank_boundaries_and_ties():
 
 def test_classify_verdict_boundaries():
     assert classify_verdict(0.0) == "new"
-    assert classify_verdict(49.9) == "new"
-    assert classify_verdict(50.0) == "gray"
-    assert classify_verdict(89.9) == "gray"
-    assert classify_verdict(90.0) == "covered"
+    assert classify_verdict(DEFAULT_PASS_BELOW - 0.1) == "new"
+    assert classify_verdict(float(DEFAULT_PASS_BELOW)) == "gray"
+    assert classify_verdict(DEFAULT_GRAY_BELOW - 0.1) == "gray"
+    assert classify_verdict(float(DEFAULT_GRAY_BELOW)) == "covered"
     assert classify_verdict(100.0) == "covered"
 
 
@@ -483,7 +485,7 @@ def test_check_candidate_three_verdicts(tmp_path, unit_vector, expected):
     assert payload["success"] is True
     assert payload["verdict"] == expected
     assert payload["top1"]["id"] == "n0"
-    assert payload["policy"] == {"pass_below": 50, "gray_below": 90}
+    assert payload["policy"] == {"pass_below": DEFAULT_PASS_BELOW, "gray_below": DEFAULT_GRAY_BELOW}
 
 
 def test_check_candidate_unavailable_without_baseline(tmp_path):

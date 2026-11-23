@@ -98,6 +98,10 @@ MIN_BASELINE_NOTES = 30
 MAX_FULL_COMPUTE_NOTES = 5000
 MAX_BASELINE_QUERIES = 512
 DEFAULT_CHUNK_SIZE = 512
+# Default S2 percentile policy, calibrated by the #586 dogfood run (2026-10-28):
+# pass_below 50 -> 20 (missed true duplicates at percentile 20.8/45.2), gray_below kept.
+DEFAULT_PASS_BELOW = 20
+DEFAULT_GRAY_BELOW = 90
 QUANTILE_POINTS = (50, 75, 90, 95, 99)
 
 
@@ -192,7 +196,11 @@ def percentile_rank(value: float, sorted_values: Sequence[float]) -> float:
     return float(100.0 * np.searchsorted(arr, value, side="left") / arr.size)
 
 
-def classify_verdict(percentile: float, pass_below: int = 50, gray_below: int = 90) -> str:
+def classify_verdict(
+    percentile: float,
+    pass_below: int = DEFAULT_PASS_BELOW,
+    gray_below: int = DEFAULT_GRAY_BELOW,
+) -> str:
     """Map a percentile to ``new`` / ``gray`` / ``covered``."""
     if not 0 <= pass_below < gray_below <= 100:
         raise ValueError("require 0 <= pass_below < gray_below <= 100")
@@ -465,8 +473,8 @@ def check_candidate(
     *,
     exclude_id: Optional[str] = None,
     top: int = 3,
-    pass_below: int = 50,
-    gray_below: int = 90,
+    pass_below: int = DEFAULT_PASS_BELOW,
+    gray_below: int = DEFAULT_GRAY_BELOW,
     refresh: bool = False,
     records: Optional[LiveRecords] = None,
     baseline: Optional[Baseline] = None,

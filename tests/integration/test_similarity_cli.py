@@ -9,7 +9,12 @@ from typer.testing import CliRunner
 
 from jfox.cli import app
 from jfox.config import ZKConfig
-from jfox.similarity import Baseline, LiveRecords
+from jfox.similarity import (
+    DEFAULT_GRAY_BELOW,
+    DEFAULT_PASS_BELOW,
+    Baseline,
+    LiveRecords,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.fast]
 
@@ -70,7 +75,18 @@ def test_stats_json_contract(monkeypatch, tmp_path):
     assert payload["success"] is True
     assert payload["note_count"] == 3
     assert payload["baseline"]["p99"] == pytest.approx(0.95)
-    assert payload["policy"] == {"pass_below": 50, "gray_below": 90}
+    assert payload["policy"] == {"pass_below": DEFAULT_PASS_BELOW, "gray_below": DEFAULT_GRAY_BELOW}
+
+
+def test_check_option_defaults_match_core_constants():
+    """CLI literal defaults must mirror jfox/similarity.py constants (kept literal for lazy import)."""
+    import inspect
+
+    from jfox.similarity_cli import check_cmd
+
+    params = inspect.signature(check_cmd).parameters
+    assert params["pass_below"].default.default == DEFAULT_PASS_BELOW == 20
+    assert params["gray_below"].default.default == DEFAULT_GRAY_BELOW == 90
 
 
 def test_stats_unavailable_when_baseline_missing(monkeypatch, tmp_path):

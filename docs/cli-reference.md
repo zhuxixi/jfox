@@ -1256,7 +1256,7 @@ jfox similarity check [OPTIONS]
 | `title` | `--title` | TEXT | no | — | — | no | no |
 | `exclude_id` | `--exclude-id` | TEXT | no | — | — | no | no |
 | `top` | `--top` | INTEGER | no | `3` | — | no | no |
-| `pass_below` | `--pass-below` | INTEGER | no | `50` | — | no | no |
+| `pass_below` | `--pass-below` | INTEGER | no | `20` | — | no | no |
 | `gray_below` | `--gray-below` | INTEGER | no | `90` | — | no | no |
 | `kb` | `--kb, -k` | TEXT | no | — | — | no | no |
 | `refresh` | `--refresh` | BOOL | no | `false` | — | no | yes |
