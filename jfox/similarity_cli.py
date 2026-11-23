@@ -54,6 +54,8 @@ def stats_cmd(
         with use_kb(kb):
             cfg = _current_config()
             from .similarity import (
+                DEFAULT_GRAY_BELOW,
+                DEFAULT_PASS_BELOW,
                 MIN_BASELINE_NOTES,
                 baseline_public_dict,
                 compute_baseline,
@@ -71,7 +73,7 @@ def stats_cmd(
                 "note_count": len(records.ids),
                 "sampled": baseline.sampled if baseline is not None else False,
                 "baseline": baseline_public_dict(baseline) if baseline is not None else None,
-                "policy": {"pass_below": 50, "gray_below": 90},
+                "policy": {"pass_below": DEFAULT_PASS_BELOW, "gray_below": DEFAULT_GRAY_BELOW},
                 "cached": baseline.from_cache if baseline is not None else False,
                 "computed_at": baseline.computed_at if baseline is not None else None,
                 "unavailable_reason": (
@@ -109,7 +111,10 @@ def check_cmd(
     title: Optional[str] = typer.Option(None, "--title"),
     exclude_id: Optional[str] = typer.Option(None, "--exclude-id"),
     top: int = typer.Option(3, "--top"),
-    pass_below: int = typer.Option(50, "--pass-below"),
+    # Literal defaults mirror jfox/similarity.py DEFAULT_PASS_BELOW/DEFAULT_GRAY_BELOW
+    # (kept literal so CLI startup stays lazy — importing similarity pulls numpy);
+    # tests/integration/test_similarity_cli.py pins them against the constants.
+    pass_below: int = typer.Option(20, "--pass-below"),
     gray_below: int = typer.Option(90, "--gray-below"),
     kb: Optional[str] = typer.Option(None, "--kb", "-k"),
     refresh: bool = typer.Option(False, "--refresh"),
