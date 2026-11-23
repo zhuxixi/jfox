@@ -44,6 +44,7 @@ Task 1 覆盖全部 A1–A5；无超出验收矩阵的实现步骤。
 ### Task 1: 拆分 schema 契约静态测试为按命令的包
 
 **Files:**
+
 - Create: `tests/unit/schema_contract/__init__.py`
 - Create: `tests/unit/schema_contract/test_index.py`
 - Create: `tests/unit/schema_contract/test_status.py`
@@ -51,6 +52,7 @@ Task 1 覆盖全部 A1–A5；无超出验收矩阵的实现步骤。
 - Delete: `tests/unit/test_json_schema_contract_doc.py`
 
 **Interfaces:**
+
 - Consumes: `docs/json-schemas.md`（只读，被测对象，不动）
 - Produces: 无代码接口；产出物是 3 个可独立运行的 pytest 文件（后续 PR 新增契约断言时新建文件即可）
 
@@ -149,11 +151,13 @@ Expected: `5 passed`（收集数恰为 5，无 error）
 - [ ] **Step 8: 执行 A4 + A5 静态检查**
 
 Run:
+
 ```bash
 rg -c "^def test_" tests/unit/schema_contract/*.py
 rg -lF "pytestmark = [pytest.mark.unit, pytest.mark.fast]" tests/unit/schema_contract/ | wc -l
 git status --short
 ```
+
 Expected: `test_edit.py:1`、`test_index.py:2`、`test_status.py:2`；第二命令输出 `3`；status 只涉及上述 5 个文件（旧文件 D、新文件未跟踪）
 
 - [ ] **Step 9: 执行 A3 复核**
